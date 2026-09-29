@@ -7,6 +7,7 @@ import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { prepareCandidatePackage } from "./candidate-package.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, "../..");
@@ -39,6 +40,7 @@ assert.equal(hostCommit, expectedHostCommit, `functional host must be Paperclip 
 const hostImport = (path: string) => import(pathToFileURL(resolve(root, path)).href);
 const qualificationId = randomUUID();
 const runtime = await mkdtemp(resolve(tmpdir(), "paperclip-council-package-"));
+const preparedCandidate = await prepareCandidatePackage(packageRoot, candidateCommit, runtime);
 const evidencePath = process.env.COUNCIL_PACKAGE_EVIDENCE_PATH
   ?? resolve(packageRoot, "artifacts", "functional.json");
 await mkdir(dirname(evidencePath), { recursive: true });
@@ -80,6 +82,9 @@ const evidence: Record<string, any> = {
     commit: candidateCommit,
     branch: candidateBranch,
     clean: candidateStatus === "",
+    source: "git archive of the exact candidate commit, built in an isolated temporary directory",
+    sourceArchiveSha256: preparedCandidate.sourceArchiveSha256,
+    distSha256: preparedCandidate.distSha256,
   },
   configuration: {
     database: "fresh embedded PostgreSQL test cluster",
@@ -316,7 +321,7 @@ try {
   evidence.configuration.secretId = secret.body.id;
 
   const install = await request("human", "POST", "/api/plugins/install", {
-    packageName: packageRoot,
+    packageName: preparedCandidate.packageRoot,
     isLocalPath: true,
   });
   assert.equal(install.status, 200);

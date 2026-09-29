@@ -49,7 +49,7 @@
   },
   "limits": [
     "Candidate evidence is not the distinct Council's acceptance decision.",
-    "Functional evidence is valid only for the exact clean candidate commit recorded in the trace.",
+    "Functional evidence is valid only for the exact clean candidate commit and isolated-build digests recorded in the trace.",
     "Compatibility is claimed only for the named Paperclip commit.",
     "Subscription-backed execution cost is unknown."
   ]

@@ -35,10 +35,12 @@ COUNCIL_PACKAGE_EXPECTED_COMMIT=<candidate-sha> \
 
 The candidate SHA must be the exact clean commit under qualification, and the
 host checkout supplied to the functional test must be at the exact commit
-listed above. The harness records both revisions, creates a fresh authenticated
-instance and embedded PostgreSQL test cluster, installs this built package
-through Paperclip's normal local-plugin lifecycle, and replays V1 → changes
-requested → V2 → acceptance.
+listed above. The harness records both revisions, exports the candidate commit
+with `git archive`, installs dependencies and builds in an isolated temporary
+directory, and records SHA-256 digests for the source archive and built `dist`.
+It then creates a fresh authenticated instance and embedded PostgreSQL test
+cluster, installs that isolated build through Paperclip's normal local-plugin
+lifecycle, and replays V1 → changes requested → V2 → acceptance.
 Its agents, issues, policies, and heartbeat runs are explicitly synthetic test
 preparation. Executor and Council are distinct agents, and each decision uses a
 fresh active run. The isolated instance and database are removed afterward.
