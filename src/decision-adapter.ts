@@ -60,6 +60,7 @@ function decisionPatch(input: CouncilDecisionInput) {
         `Council decision: ${label}.`,
         `Justification: ${input.justification}`,
         `Result reference: ${input.resultReference}`,
+        ...(input.verdict === "approved" ? [`Approved commit: ${input.approvedCommit}`] : []),
       ].join("\n"),
     },
   } as const;

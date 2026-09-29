@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
@@ -403,10 +403,63 @@ try {
   evidence.results.v2Submission = "PASS";
 
   await freshRun("council");
-  const acceptance = await request("council", "POST", `/api/plugins/${pluginId}/api/issues/${issueId}/decision`, {
+  const approvedCommit = "cfc316625ef4b097126c86d7123a13d00df905b9";
+  const baseCommit = "307101af5f3f28e57db52d6ec4a8725e1a7b9544";
+  const decisionPath = `/api/plugins/${pluginId}/api/issues/${issueId}/decision`;
+  const approvalBody = {
     verdict: "approved",
+    approvedCommit,
     justification: "Fixture V2 contains the required corrected marker.",
     resultReference: "fixture://result/v2",
+  };
+  const refused = await request("council", "POST", decisionPath, approvalBody);
+  assert.equal(refused.status, 409);
+  assert.match(refused.body.error, /delivery-manifest/);
+  const beforeManifest = await safeSnapshot();
+  assert.equal(beforeManifest.issue.status, "in_review");
+  assert.deepEqual(beforeManifest.decisions.map((decision: any) => decision.outcome), ["changes_requested"]);
+  evidence.results.missingManifestRefusal = "PASS";
+
+  const bundlePath = resolve(runtime, "candidate.bundle");
+  const candidateRef = "origin/codex/extract-council-plugin";
+  assert.equal(execFileSync("git", ["rev-parse", candidateRef], { cwd: packageRoot, encoding: "utf8" }).trim(), approvedCommit);
+  execFileSync("git", ["bundle", "create", bundlePath, candidateRef, `^${baseCommit}`], { cwd: packageRoot });
+  execFileSync("git", ["bundle", "verify", bundlePath], { cwd: packageRoot });
+  const bundleBytes = await readFile(bundlePath);
+  const bundleSha256 = createHash("sha256").update(bundleBytes).digest("hex");
+  const form = new FormData();
+  form.append("file", new Blob([bundleBytes], { type: "application/octet-stream" }), "candidate.bundle");
+  const uploadResponse = await fetch(`${baseUrl}/api/companies/${companyId}/issues/${issueId}/attachments`, {
+    method: "POST", headers: { cookie, origin: baseUrl }, body: form,
+    signal: AbortSignal.timeout(30_000),
+  });
+  const uploaded = await uploadResponse.json();
+  assert.equal(uploadResponse.status, 201, `bundle upload: ${JSON.stringify(uploaded)}`);
+  assert.equal(uploaded.sha256, bundleSha256);
+  evidence.configuration.fixtureBundle = { attachmentId: uploaded.id, sha256: bundleSha256, source: "git bundle of approved extraction commit" };
+
+  const candidateProduct = await request("human", "POST", `/api/issues/${issueId}/work-products`, {
+    type: "commit", provider: "github", title: "Approved extraction candidate",
+    status: "ready_for_review",
+    metadata: { repo: "ty000/paperclip-council", branch: "codex/extract-council-plugin", sha: approvedCommit, baseCommit },
+  });
+  assert.equal(candidateProduct.status, 201);
+  const deliveryManifest = {
+    repository: "https://github.com/ty000/paperclip-council.git",
+    branch: "codex/extract-council-plugin", baseCommit, approvedCommit,
+    bundleAttachmentId: uploaded.id, bundleSha256,
+    deliveryWorkspacePath: "/home/davy-lp/workspace/paperclip-council-delivery",
+    assigneeAgentId: executorId,
+  };
+  const document = await request("human", "PUT", `/api/issues/${issueId}/documents/delivery-manifest`, {
+    title: "Delivery manifest", format: "markdown", body: JSON.stringify(deliveryManifest),
+    changeSummary: "Prepare exact approved candidate for Council review",
+  });
+  assert.equal(document.status, 201);
+  evidence.results.candidatePreparation = "PASS";
+
+  const acceptance = await request("council", "POST", `/api/plugins/${pluginId}/api/issues/${issueId}/decision`, {
+    ...approvalBody,
   });
   assert.equal(acceptance.status, 200);
   assert.equal(acceptance.body.verdict, "approved");
@@ -421,7 +474,7 @@ try {
   assert.equal(issueReadback.body.executionState.lastDecisionOutcome, "approved");
   assert.equal(commentsReadback.status, 200);
   const comments = commentsReadback.body.map((item: any) => item.body);
-  for (const marker of ["Submission V1", "Fixture V1", "Submission V2 corrected", "Fixture V2"]) {
+  for (const marker of ["Submission V1", "Fixture V1", "Submission V2 corrected", "Fixture V2", `Approved commit: ${approvedCommit}`]) {
     assert(comments.some((body: string) => body.includes(marker)), `missing persisted marker: ${marker}`);
   }
   const snapshot = await safeSnapshot();

@@ -12,14 +12,27 @@ export type CouncilConfig = {
 
 export type CouncilVerdict = "changes_requested" | "approved";
 
-export type CouncilDecisionInput = {
+type CouncilDecisionCommon = {
   companyId: string;
   issueId: string;
   runId: string;
-  verdict: CouncilVerdict;
   justification: string;
   resultReference: string;
 };
+
+export type CouncilDecisionPayload = {
+  verdict: "changes_requested";
+  approvedCommit?: never;
+  justification: string;
+  resultReference: string;
+} | {
+  verdict: "approved";
+  approvedCommit: string;
+  justification: string;
+  resultReference: string;
+};
+
+export type CouncilDecisionInput = CouncilDecisionCommon & CouncilDecisionPayload;
 
 export type CouncilDecisionResult = {
   verdict: CouncilVerdict;
