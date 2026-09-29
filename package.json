@@ -1,0 +1,45 @@
+{
+  "name": "@paperclipai/plugin-council",
+  "version": "0.1.0",
+  "description": "Agent-led review decisions for Paperclip workflows",
+  "type": "module",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "paperclipPlugin": {
+    "manifest": "./dist/manifest.js",
+    "worker": "./dist/worker.js"
+  },
+  "scripts": {
+    "build": "tsc && node ./esbuild.config.mjs",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run --config ./vitest.config.ts",
+    "test:functional": "tsx tests/functional/run.ts"
+  },
+  "dependencies": {
+    "@paperclipai/plugin-sdk": "2026.916.1"
+  },
+  "devDependencies": {
+    "@paperclipai/shared": "2026.916.1",
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=24.11.0"
+  },
+  "license": "MIT"
+}
