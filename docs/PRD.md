@@ -1,9 +1,11 @@
 # Paperclip Council — PRD
 
 Status: initial proposal, requiring product decisions and review before use as an implementation reference.
-Document version: 0.1 — September 29, 2026.
+Document version: 0.2 — September 29, 2026.
 
 This document defines the target product, its users, journeys, requirements, and the outcomes used to assess its value. The [roadmap](ROADMAP.md) proposes evolution horizons; it does not change this PRD's requirements. Architecture, libraries, infrastructure, tickets, sprints, and delivery dates belong in other documents.
+
+The [proposed agent catalogue](AGENT-CATALOG.md) translates these responsibilities into candidate missions, execution settings and skills against a reviewed Paperclip source baseline. It prepares the TAD without configuring agents or replacing the mandate defined here.
 
 The full vision is retained: councils, shared memory, and measured improvement. The detailed boundary of the first release and the horizons below remain proposals. The document version does not identify a released software version.
 
@@ -38,6 +40,8 @@ Paperclip Council is an extension of Paperclip. Its own scope covers supervision
 
 The product relies on platform services to organize work and execute agents. The exact technical division of responsibilities must be verified in the TAD. This positioning does not assume that Paperclip already provides every required capability.
 
+The reviewed Paperclip baseline provides agent identities, execution runs, issue review stages and decision history. Council connects the mandate, identified submission, evidence, verdict and verified effect. The actors and acceptance paths covered by supervision must be declared when it is enabled; the availability of a platform capability does not demonstrate its integration into Council.
+
 ### Included in the vision
 
 - Guide a request already present in Paperclip and examine its expected outcome.
@@ -69,11 +73,11 @@ The local trials reported on September 29, 2026 established:
 - an isolated functional workflow: V1 → correction requested → V2 → acceptance;
 - a persistent local installation and an initial task completed and accepted by distinct Executor and Council agents.
 
-The real-agent workflow concerned a small software function accompanied by tests. It required configuration and recovery interventions. Its council consisted of one agent. The trials were not rerun to author this document.
+The correction-and-acceptance sequence used controlled fixtures. The separate real-agent workflow concerned a small software function accompanied by tests. It required configuration and recovery interventions, and its council consisted of one agent. These observations do not establish a complete correction-and-resumption journey with real agents. The trials were not rerun to author or revise this document.
 
 They do not yet demonstrate general council authority, resistance to other completion paths, control over external delivery, the quality of a multidisciplinary council, learning, or net savings in time and resources.
 
-These results come from a prototype integrated into another Paperclip checkout. At the time of initial drafting, the dedicated repository contained a README and did not yet constitute a validated plugin distribution. The following requirements describe expected behavior, not a set of capabilities that are all already available.
+These results come from a prototype integrated into the reference Paperclip checkout. At this document revision, the dedicated repository contains the product definition, roadmap and proposed agent catalogue; the prototype and qualification reports remain in the reference checkout. This does not constitute a validated standalone plugin distribution. The following requirements describe expected behavior, not a set of capabilities that are all already available.
 
 ## 5. Product principles
 
@@ -89,7 +93,7 @@ These results come from a prototype integrated into another Paperclip checkout. 
 
 ### 6.1 Composition and accountability
 
-Supervision may start with one reviewer distinct from the executor. The term "multidisciplinary council" is reserved for a review that actually involves several identifiable perspectives. Product, architecture, and quality are the reference perspectives; others are involved according to the request's consequences.
+The recommended starting composition is one Executor and one distinct Generalist Reviewer, as described in the [proposed agent catalogue](AGENT-CATALOG.md#3-h1-startup-profiles). The term "multidisciplinary council" is reserved for a review involving several distinct agents with attributable domain contributions. A single agent switching perspectives does not demonstrate such a council, and several identities alone do not demonstrate independent or better judgments. Product, architecture, and quality are the reference perspectives; others are involved according to the request's consequences.
 
 The product must make it clear who reviewed what, which objections were upheld or dismissed, and who is accountable for the final verdict. An executor cannot turn its own contribution into delegated acceptance. Responsibility for integration remains distinct from acceptance.
 
@@ -102,6 +106,8 @@ The mandate specifies the expected outcome, criteria, decision scope, commitment
 The council may guide work, request targeted evidence, select a sufficient correction, reject an unnecessary scope extension, and accept a compliant result. A new product requirement or a relaxation of criteria requires the owner's decision.
 
 Within the workflow declared to be governed, acceptance must be linked to a valid verdict on the current result. If the decision has not been applied, the product exposes that failure and does not present the work as accepted. The actual scope of this control must be visible; control over an external action cannot be claimed without integration and evidence specific to that action.
+
+The submission identifies the reviewed content and the relevant evidence used. A changed result does not inherit the earlier verdict. The supervision experience distinguishes the reasoning verdict, the recorded decision and its confirmed application. Uncertain application remains visible until its actual effect is established.
 
 An explicit intervention by the owner remains possible and identifiable as such; it is not presented as a council decision. The extent of guarantees regarding other access paths and administrative privileges must be specified and validated before making a general claim of authority.
 
@@ -187,10 +193,10 @@ The learning process may be reviewed periodically or in response to a repeated e
 | C03 | Explicit correction, re-review, and acceptance | J02–J03 conclude with rationale and evidence; acceptance applies to the result actually reviewed. | First usable release |
 | C04 | Actual effect and visible limits | An unapplied decision is not reported as applied; the governed workflow is not declared accepted without a valid verdict. | First usable release |
 | C05 | Escalation and resumption | J04 and J06 preserve understandable waiting states, without approval by silence or duplicate effects on resumption. | First usable release |
-| C06 | Proportionality and stopping | Each correction addresses a justified gap; repetition without new evidence leads to a conclusion, an explained blocker, or escalation. | First usable release |
+| C06 | Proportionality and stopping | Each correction addresses a justified gap; repetition without new evidence leads to a conclusion, an explained blocker, or escalation. The stopping rule names a reachable escalation destination and explains what happens at the configured limit. | First usable release |
 | C07 | Accessible human inspection | The owner can inspect the result, state, rationale, evidence, and next action without reading complete logs. | First usable release |
 | C08 | Minimal usage assessment | Outcomes, time, interventions, corrections, and available resource-usage data are visible; missing data remains flagged. | First usable release |
-| C09 | Configuration of the covered scope | The operator understands prerequisites and limits, and can activate then suspend supervision without silently losing pending decisions. | First usable release |
+| C09 | Configuration of the covered scope | The operator understands prerequisites and limits. Activation verifies distinct executor/reviewer identities, the applicable review path and the owner decision destination; suspension makes the disposition of pending work and decisions explicit, without silently losing pending decisions. | First usable release |
 | C10 | Proportionate multidisciplinary council | Several perspectives contribute to an actual decision, with attributed objections and explicit accountability for the verdict. | Vision |
 | C11 | Bounded appeals | J05 can resolve a disagreement without creating an indefinite chain of councils or exceeding the mandate. | Vision |
 | C12 | Collective continuity | Decisions, trade-offs, and follow-up remain reusable by another team and linked to the original need. | Vision |
@@ -210,7 +216,7 @@ These scenarios are behavioral requirements to translate into the validation env
 | A01 | Compliant result, sufficient evidence, mandate respected | Acceptance applied and attributed to the council, without a mandatory second human approval. | C01–C04 |
 | A02 | A user criterion fails | Specific correction requested; the work remains unaccepted; a compliant new version can be accepted. | C03 |
 | A03 | Content changes after review | The previous verdict does not silently accept the new result. | C03–C04 |
-| A04 | Recording the decision fails | The reason and resumable state are visible; no false closure or duplicated decision on resumption. | C04–C05 |
+| A04 | Recording or applying the decision fails, or application is uncertain | The reason and resumable state are visible; the actual effect is reconciled before retry, with no false closure or duplicated decision on resumption. | C04–C05 |
 | A05 | A decision requires the owner, who does not respond | Dependent work waits, the recommendation is available, and there is no implicit authorization. | C05 |
 | A06 | A review proposes a generic redesign where a local correction would suffice | The extension can be rejected with a rationale; a real obligation is not dropped in the name of simplification. | C06 |
 | A07 | The agent repeats a review using the same evidence | Applicable conclusions are reused; stop or escalate if no progress justifies repetition. | C06 |
@@ -224,6 +230,8 @@ These scenarios are behavioral requirements to translate into the validation env
 | A15 | Turnaround time falls after a model change and simpler requests | Observed improvement is distinguished from attribution to learning. | C14–C15 |
 | A16 | Supervision reduces interventions but consumes more resources and leaves more defects | Trade-offs remain visible; no success claim based on a single metric. | C08, C14–C15 |
 | A17 | A user inspects a decision through the supervision experience | State, rationale, and required action are understandable, evidence is accessible, and meaning does not depend on color alone. | C07 |
+
+In A01–A02, insufficient decisive evidence produces a precise evidence request or an explained waiting state, never inferred acceptance. The request identifies what is missing and why it changes the decision; it does not automatically require a new result version when additional evidence is sufficient.
 
 Validation must prioritize product journeys and their boundaries, with checks targeted enough to identify the cause of a failure. High line coverage or a large test count does not replace a demonstrated journey. The use of simulated components must be explicit when the conclusion concerns a real integration.
 
@@ -268,7 +276,7 @@ Decisions still required, without reopening those already agreed:
 
 1. Confirm C01–C09 as the first usable release boundary and select representative requests.
 2. Specify the actors and paths covered by acceptance authority, including the visibility of owner intervention.
-3. Select the minimal supervision experience and the degree of mandate configuration available to the first user.
+3. Confirm how the proposed startup profiles are selected, and choose the minimal supervision experience and degree of mandate configuration available to the first user. Reusing suitable existing agents is recommended; plugin-provided defaults remain an option, not a provisioning requirement.
 4. Set usage budgets, proportionate stopping rules, and criteria for judging acceptable council overhead.
 5. Define the visible differences between suspension, withdrawal, reset, and deletion of knowledge before committing to memory capabilities.
 6. Specify the promised Paperclip compatibility and adoption beyond the initial setting before expanding distribution.
@@ -278,5 +286,7 @@ Decisions still required, without reopening those already agreed:
 This definition carries forward product decisions made while framing the initial ecosystem, followed by the choice of a Paperclip extension, a public repository, and a full vision with a first release centered on councils. Specific profiles are identified rather than presented as universal obligations.
 
 The evidence baseline in section 4 comes from the local functional, packaging, and persistent-installation qualification reports dated September 29, 2026, cross-checked against the prototype documentation. Those private materials are not reproduced in this repository: no instance address, account identity, secret reference, or raw trace is necessary for this public product definition.
+
+Version 0.2 incorporates a documentary integration review against [Paperclip commit `61b3fd57a695614dc4a37e2303f426a34a9795cf`](https://github.com/paperclipai/paperclip/tree/61b3fd57a695614dc4a37e2303f426a34a9795cf) and the local prototype. The [agent catalogue](AGENT-CATALOG.md) cites the observed contracts and identifies unpublished evidence separately. Source inspection supports the proposed division of responsibilities; it does not extend the historical runtime qualification or settle the open product decisions.
 
 This proposal is neither an independent validation of the product nor a delivery schedule commitment. The scenarios describe required behavior; only the facts explicitly qualified in section 4 are reported as demonstrated within their trial scope.
