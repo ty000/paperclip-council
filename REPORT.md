@@ -42,17 +42,25 @@ Final verification before handoff:
 | `pnpm install --frozen-lockfile --store-dir .pnpm-store` | PASS — lockfile current |
 | `pnpm build` | PASS |
 | `pnpm typecheck` | PASS |
-| `pnpm test` | PASS — 2 files, 4 tests |
-| `PAPERCLIP_TEST_HOST_ROOT=/home/davy-lp/workspace/paperclip pnpm test:functional` | PASS — candidate loaded; 6 checkpoints |
+| `pnpm test` | PASS — 3 files, 13 tests |
+| `COUNCIL_PACKAGE_EXPECTED_COMMIT=3a480019d2f7a347ce8b49f162464a0afba34866 PAPERCLIP_TEST_HOST_ROOT=/home/davy-lp/workspace/paperclip pnpm test:functional` | PASS — exact candidate loaded from an isolated build; 6 checkpoints |
 | `pnpm pack --dry-run --pack-destination .runtime` | FAIL — pnpm 9 does not support `--dry-run`; no artifact produced |
 | `pnpm pack --pack-destination .runtime` | PASS — package contents limited to `dist`, README, license, and metadata |
+
+The corrected functional replay above ran against clean candidate commit
+`3a480019d2f7a347ce8b49f162464a0afba34866`. Its ignored structured trace
+recorded source-archive SHA-256
+`04604d74b40cd3502f5dd721762c27b393b0c0ec8cedb5cf33040c05c941d8b3` and
+built-`dist` SHA-256
+`c9a9c9ea184bf0d012aa469178fe436a684b770da54bcd7a615a9301ceffe77d`.
 
 ## Isolated candidate load and replay
 
 The functional harness required the host checkout to resolve exactly to
 `61b3fd57a695614dc4a37e2303f426a34a9795cf`. It created a fresh authenticated
-Paperclip instance and embedded PostgreSQL cluster, built and installed this
-candidate by local path through the normal plugin lifecycle, configured a
+Paperclip instance and embedded PostgreSQL cluster, exported the exact candidate
+commit with `git archive`, built it in an isolated temporary directory, installed
+that build through the normal plugin lifecycle, configured a
 company-scoped encrypted secret reference, restarted the application, and
 confirmed the plugin worker loaded.
 
