@@ -21,7 +21,7 @@ const manifest: PaperclipPluginManifestV1 = {
         type: "string",
         format: "uri",
         title: "Paperclip API base URL",
-        description: "Absolute URL of the Paperclip instance, without an /api suffix.",
+        description: "Loopback origin of the Paperclip instance, without credentials, path, query, fragment, or an /api suffix.",
       },
       councilAgentId: {
         type: "string",

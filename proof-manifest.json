@@ -43,12 +43,13 @@
       "pnpm build",
       "pnpm typecheck",
       "pnpm test",
-      "PAPERCLIP_TEST_HOST_ROOT=/absolute/path/to/paperclip pnpm test:functional",
+      "COUNCIL_PACKAGE_EXPECTED_COMMIT=<candidate-sha> PAPERCLIP_TEST_HOST_ROOT=/absolute/path/to/paperclip pnpm test:functional",
       "pnpm pack --pack-destination .runtime"
     ]
   },
   "limits": [
     "Candidate evidence is not the distinct Council's acceptance decision.",
+    "Functional evidence is valid only for the exact clean candidate commit recorded in the trace.",
     "Compatibility is claimed only for the named Paperclip commit.",
     "Subscription-backed execution cost is unknown."
   ]

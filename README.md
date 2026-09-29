@@ -29,13 +29,16 @@ pnpm install --frozen-lockfile
 pnpm build
 pnpm typecheck
 pnpm test
-PAPERCLIP_TEST_HOST_ROOT=/absolute/path/to/paperclip pnpm test:functional
+COUNCIL_PACKAGE_EXPECTED_COMMIT=<candidate-sha> \
+  PAPERCLIP_TEST_HOST_ROOT=/absolute/path/to/paperclip pnpm test:functional
 ```
 
-The host checkout supplied to the functional test must be at the exact commit
-listed above. The harness creates a fresh authenticated instance and embedded
-PostgreSQL test cluster, installs this built package through Paperclip's normal
-local-plugin lifecycle, and replays V1 → changes requested → V2 → acceptance.
+The candidate SHA must be the exact clean commit under qualification, and the
+host checkout supplied to the functional test must be at the exact commit
+listed above. The harness records both revisions, creates a fresh authenticated
+instance and embedded PostgreSQL test cluster, installs this built package
+through Paperclip's normal local-plugin lifecycle, and replays V1 → changes
+requested → V2 → acceptance.
 Its agents, issues, policies, and heartbeat runs are explicitly synthetic test
 preparation. Executor and Council are distinct agents, and each decision uses a
 fresh active run. The isolated instance and database are removed afterward.
@@ -69,9 +72,12 @@ Create a company-scoped configuration with Paperclip's plugin configuration API:
 }
 ```
 
-`apiBaseUrl` is the instance origin without `/api`. `councilAgentId` must own
-the stored key. `councilApiKey` must remain a `secret_ref`; never store a raw
-token in plugin configuration, source, logs, or reports.
+`apiBaseUrl` is the loopback instance origin without `/api`, credentials, a
+path, query, or fragment. Remote origins are rejected before the secret is
+resolved so a configuration mistake cannot transmit the standard Council token
+off-host. `councilAgentId` must own the stored key. `councilApiKey` must remain
+a `secret_ref`; never store a raw token in plugin configuration, source, logs,
+or reports.
 
 Using a board session authorized for the target company:
 
