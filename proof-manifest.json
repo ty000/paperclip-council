@@ -1,0 +1,55 @@
+{
+  "schema_version": "proof-manifest.v1",
+  "proof_id": "paperclip-council-standalone-functional-2026-09-29",
+  "subject": "Standalone Paperclip Council plugin using explicit registry SDK dependencies and a Paperclip secret reference",
+  "status": "pass",
+  "summary": "The standalone package builds, typechecks, passes targeted tests, loads in a fresh isolated Paperclip instance, and persists the synthetic V1 correction and V2 acceptance with distinct executor and Council actors.",
+  "compatibility": {
+    "paperclip_commit": "61b3fd57a695614dc4a37e2303f426a34a9795cf",
+    "plugin_sdk": "2026.916.1",
+    "shared": "2026.916.1",
+    "node": ">=24.11.0"
+  },
+  "evidence": [
+    {
+      "id": "functional-trace",
+      "kind": "runtime-observation",
+      "location": "artifacts/functional.json",
+      "git_ignored": true,
+      "notes": "Redacted structured trace for Paperclip attachment; fixture preparation is synthetic."
+    },
+    {
+      "id": "functional-harness",
+      "kind": "automated-test",
+      "location": "tests/functional/run.ts",
+      "replayable": true
+    },
+    {
+      "id": "unit-tests",
+      "kind": "automated-test",
+      "location": "tests/decision-adapter.spec.ts",
+      "replayable": true
+    },
+    {
+      "id": "extraction-report",
+      "kind": "document",
+      "location": "REPORT.md",
+      "replayable": false
+    }
+  ],
+  "replay": {
+    "steps": [
+      "pnpm install --frozen-lockfile --store-dir .pnpm-store",
+      "pnpm build",
+      "pnpm typecheck",
+      "pnpm test",
+      "PAPERCLIP_TEST_HOST_ROOT=/absolute/path/to/paperclip pnpm test:functional",
+      "pnpm pack --pack-destination .runtime"
+    ]
+  },
+  "limits": [
+    "Candidate evidence is not the distinct Council's acceptance decision.",
+    "Compatibility is claimed only for the named Paperclip commit.",
+    "Subscription-backed execution cost is unknown."
+  ]
+}

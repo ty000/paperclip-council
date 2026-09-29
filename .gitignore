@@ -1,0 +1,7 @@
+node_modules/
+dist/
+artifacts/functional.json
+.npm-cache/
+.pnpm-store/
+.git-local/
+.runtime/
