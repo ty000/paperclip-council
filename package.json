@@ -1,6 +1,6 @@
 {
   "name": "@paperclipai/plugin-council",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Agent-led review decisions for Paperclip workflows",
   "type": "module",
   "private": true,

@@ -5,12 +5,12 @@ export const PLUGIN_ID = "private.paperclip-council";
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
-  version: "0.1.0",
+  version: "0.1.1",
   displayName: "Paperclip Council",
   description: "Private local integration that emits explicit council decisions through Paperclip's public issue API.",
   author: "Local Paperclip integration",
   categories: ["automation"],
-  capabilities: ["api.routes.register", "issues.read", "secrets.read-ref"],
+  capabilities: ["api.routes.register", "issues.read", "issue.documents.read", "issue.attachments.read", "secrets.read-ref"],
   entrypoints: { worker: "./dist/worker.js" },
   instanceConfigSchema: {
     type: "object",

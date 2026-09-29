@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
+import type { CouncilDecisionInput } from "../src/contracts.js";
 import { emitCouncilDecision, parseCouncilConfig } from "../src/decision-adapter.js";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -50,18 +51,14 @@ describe("council decision adapter", () => {
     }));
     vi.stubGlobal("fetch", fetchMock);
     const ctx = { secrets: { resolve } } as unknown as PluginContext;
+    const decision: CouncilDecisionInput = verdict === "approved"
+      ? { companyId: "company-id", issueId: "issue-id", runId: "run-id", verdict, approvedCommit: "b".repeat(40), justification: "Fixture justification", resultReference: "fixture://result/v2" }
+      : { companyId: "company-id", issueId: "issue-id", runId: "run-id", verdict, justification: "Fixture justification", resultReference: "fixture://result/v2" };
     const result = await emitCouncilDecision(ctx, {
       apiBaseUrl: "http://127.0.0.1:3100",
       councilAgentId: "council-agent",
       councilApiKey: { type: "secret_ref", secretId: "secret-id" },
-    }, {
-      companyId: "company-id",
-      issueId: "issue-id",
-      runId: "run-id",
-      verdict,
-      justification: "Fixture justification",
-      resultReference: "fixture://result/v2",
-    });
+    }, decision);
 
     expect(resolve).toHaveBeenCalledWith(
       { type: "secret_ref", secretId: "secret-id" },
@@ -78,6 +75,7 @@ describe("council decision adapter", () => {
     expect(JSON.parse(String(request.body))).toMatchObject({ status });
     expect(String(request.body)).toContain("Fixture justification");
     expect(String(request.body)).toContain("fixture://result/v2");
+    if (verdict === "approved") expect(String(request.body)).toContain("Approved commit: " + "b".repeat(40));
     expect(result).toMatchObject({ verdict, requestedIssueStatus: status, nativeStatus: 200 });
   });
 });
