@@ -421,10 +421,13 @@ try {
   evidence.results.missingManifestRefusal = "PASS";
 
   const bundlePath = resolve(runtime, "candidate.bundle");
-  const candidateRef = "origin/codex/extract-council-plugin";
-  assert.equal(execFileSync("git", ["rev-parse", candidateRef], { cwd: packageRoot, encoding: "utf8" }).trim(), approvedCommit);
-  execFileSync("git", ["bundle", "create", bundlePath, candidateRef, `^${baseCommit}`], { cwd: packageRoot });
-  execFileSync("git", ["bundle", "verify", bundlePath], { cwd: packageRoot });
+  const candidateRepository = resolve(runtime, "candidate.git");
+  const candidateRef = "refs/heads/candidate";
+  execFileSync("git", ["clone", "--bare", "--shared", packageRoot, candidateRepository]);
+  execFileSync("git", ["update-ref", candidateRef, approvedCommit], { cwd: candidateRepository });
+  assert.equal(execFileSync("git", ["rev-parse", candidateRef], { cwd: candidateRepository, encoding: "utf8" }).trim(), approvedCommit);
+  execFileSync("git", ["bundle", "create", bundlePath, candidateRef, `^${baseCommit}`], { cwd: candidateRepository });
+  execFileSync("git", ["bundle", "verify", bundlePath], { cwd: candidateRepository });
   const bundleBytes = await readFile(bundlePath);
   const bundleSha256 = createHash("sha256").update(bundleBytes).digest("hex");
   const form = new FormData();
