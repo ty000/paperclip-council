@@ -30,8 +30,17 @@ function requireSecretRef(value: unknown): SecretRef {
 export function parseCouncilConfig(value: Record<string, unknown>): CouncilConfig {
   const rawUrl = requiredString(value.apiBaseUrl, "apiBaseUrl");
   const url = new URL(rawUrl);
+  const isLoopback = url.hostname === "localhost"
+    || url.hostname === "[::1]"
+    || /^127(?:\.\d{1,3}){3}$/.test(url.hostname);
+  if (!isLoopback) {
+    throw new Error("apiBaseUrl must use a loopback host");
+  }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error("apiBaseUrl must use http or https");
+  }
+  if (url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
+    throw new Error("apiBaseUrl must be an origin without credentials, path, query, or fragment");
   }
   return {
     apiBaseUrl: url.toString().replace(/\/$/, ""),

@@ -10,6 +10,24 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, "../..");
+const expectedCandidateCommit = process.env.COUNCIL_PACKAGE_EXPECTED_COMMIT;
+if (!expectedCandidateCommit || !/^[0-9a-f]{40}$/.test(expectedCandidateCommit)) {
+  throw new Error("COUNCIL_PACKAGE_EXPECTED_COMMIT must be the exact 40-character candidate commit");
+}
+const candidateCommit = execFileSync("git", ["rev-parse", "HEAD"], {
+  cwd: packageRoot,
+  encoding: "utf8",
+}).trim();
+assert.equal(candidateCommit, expectedCandidateCommit, "functional candidate must match the expected commit");
+const candidateStatus = execFileSync("git", ["status", "--porcelain"], {
+  cwd: packageRoot,
+  encoding: "utf8",
+}).trim();
+assert.equal(candidateStatus, "", "functional candidate worktree must be clean");
+const candidateBranch = execFileSync("git", ["branch", "--show-current"], {
+  cwd: packageRoot,
+  encoding: "utf8",
+}).trim();
 const hostRootInput = process.env.PAPERCLIP_TEST_HOST_ROOT;
 if (!hostRootInput) {
   throw new Error("PAPERCLIP_TEST_HOST_ROOT must point to the Paperclip checkout under test");
@@ -57,7 +75,12 @@ const evidence: Record<string, any> = {
   head: hostCommit,
   branch: execFileSync("git", ["branch", "--show-current"], { cwd: root, encoding: "utf8" }).trim(),
   node: process.version,
-  command: "PAPERCLIP_TEST_HOST_ROOT=<checkout> pnpm test:functional",
+  command: "COUNCIL_PACKAGE_EXPECTED_COMMIT=<candidate-sha> PAPERCLIP_TEST_HOST_ROOT=<checkout> pnpm test:functional",
+  candidate: {
+    commit: candidateCommit,
+    branch: candidateBranch,
+    clean: candidateStatus === "",
+  },
   configuration: {
     database: "fresh embedded PostgreSQL test cluster",
     deploymentMode: "authenticated/private",

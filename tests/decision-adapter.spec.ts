@@ -14,6 +14,32 @@ describe("council decision adapter", () => {
   });
 
   it.each([
+    "http://paperclip.example.test:3100",
+    "https://paperclip.example.test",
+    "http://127.0.0.1:3100/api",
+    "http://user:password@127.0.0.1:3100",
+    "http://127.0.0.1:3100?target=other",
+  ])("rejects an unsafe credential-bearing API origin: %s", (apiBaseUrl) => {
+    expect(() => parseCouncilConfig({
+      apiBaseUrl,
+      councilAgentId: "agent-1",
+      councilApiKey: { type: "secret_ref", secretId: "secret-id" },
+    })).toThrow(/apiBaseUrl/);
+  });
+
+  it.each([
+    ["http://localhost:3100", "http://localhost:3100"],
+    ["http://127.42.0.7:3100/", "http://127.42.0.7:3100"],
+    ["https://[::1]:3100", "https://[::1]:3100"],
+  ])("accepts a loopback Paperclip origin: %s", (apiBaseUrl, expected) => {
+    expect(parseCouncilConfig({
+      apiBaseUrl,
+      councilAgentId: "agent-1",
+      councilApiKey: { type: "secret_ref", secretId: "secret-id" },
+    }).apiBaseUrl).toBe(expected);
+  });
+
+  it.each([
     ["changes_requested", "in_progress"],
     ["approved", "done"],
   ] as const)("maps explicit %s to the native %s transition", async (verdict, status) => {
