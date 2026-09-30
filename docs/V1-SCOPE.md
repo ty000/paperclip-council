@@ -1,8 +1,8 @@
 # Paperclip Council — V1 scope
 
-Version 0.1 — September 30, 2026. Product framing for implementation; no deployed capability is asserted.
+Version 0.2 — September 30, 2026. Product framing for implementation; no deployed capability is asserted.
 
-Authority: [PRD 0.3](PRD.md), especially §6.3 and C01–C11, C16–C18. Technical realization: [TAD](TAD.md). Delivery sequence: [implementation plan](IMPLEMENTATION-PLAN.md).
+Authority: [PRD 0.4](PRD.md), especially §6.3 and C01–C11, C16–C18. Technical realization: [TAD](TAD.md). Delivery sequence: [implementation plan](IMPLEMENTATION-PLAN.md).
 
 ## 1. Selected outcome and decision status
 
@@ -71,9 +71,9 @@ V1 does not extract reusable lessons, adopt knowledge items, build role/project 
 
 ## 6. Authority, limits and stopping
 
-The full [initial owner mandate](PRD.md#63-initial-delegation-profile) applies without alteration: protected essential uses, affected-group p95 strictly below 30 seconds for delegated degradations, owner decisions for infrastructure cost changes in either direction, and both task and period spending limits. The mandate's majority refers to usage, not votes. The TAD defines guard records without pretending that prompts prove product facts.
+The [owner mandate](PRD.md#63-initial-delegation-profile), including the explicitly approved DEC-G4-01 policy, applies: protected essential uses, affected-group p95 strictly below 30 seconds for delegated degradations, owner decisions for infrastructure cost changes in either direction, and both task and period spending limits. The mandate's majority refers to usage, not votes. The TAD defines guard records without pretending that prompts prove product facts.
 
-Activation requires explicit task/period budget policy, review/correction limits, appeal limit, elapsed-time limits, owner destination and available measurement sources. This document invents no monetary envelope. Missing decisive cost or impact information produces bounded investigation or owner waiting; unknown is never zero. Native agent budgets alone do not establish an aggregate Council mission budget.
+Activation requires explicit task/period budget policy, review/correction limits, appeal limit, elapsed-time limits, owner destination and available measurement sources. This document invents no monetary envelope. Missing decisive cost or impact information produces bounded investigation or owner waiting; unknown is never zero. Native agent budgets alone do not establish an aggregate Council mission budget. V1 requires atomic admission reservations and mandatory operational limits, but does not promise an absolute monetary ceiling on already-committed work. Unknown remaining exposure blocks new launches. The [G3/G4 decisions](G3-G4-DECISIONS.md) authorize the minimal supported readback direction and adopt this budget policy; neither is runtime qualification.
 
 The initial authority claim covers Council-managed submissions, reviews and decisions for selected root issues. Administrative overrides, direct platform mutations and external merge/deployment paths are separately attributed and outside that guarantee. If a policy is removed or native ownership drifts, Council suspends application until reconciled. External delivery integrations require their own authorization and qualification.
 
