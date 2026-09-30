@@ -1,13 +1,15 @@
 # Paperclip Council — PRD
 
-Status: initial proposal, requiring product decisions and review before use as an implementation reference.
-Document version: 0.2 — September 29, 2026.
+Status: V1 product scope selected; implementation and qualification pending. Detailed design choices and activation prerequisites are identified in the companion documents.
+Document version: 0.3 — September 30, 2026.
 
 This document defines the target product, its users, journeys, requirements, and the outcomes used to assess its value. The [roadmap](ROADMAP.md) proposes evolution horizons; it does not change this PRD's requirements. Architecture, libraries, infrastructure, tickets, sprints, and delivery dates belong in other documents.
 
 The [proposed agent catalogue](AGENT-CATALOG.md) translates these responsibilities into candidate missions, execution settings and skills against a reviewed Paperclip source baseline. It prepares the TAD without configuring agents or replacing the mandate defined here.
 
-The full vision is retained: councils, shared memory, and measured improvement. The detailed boundary of the first release and the horizons below remain proposals. The document version does not identify a released software version.
+The full vision is retained: councils, shared memory, and measured improvement. On September 30, 2026 the owner selected teams and council mechanics for V1, with memory and learning deferred. V1 includes C01–C11 and C16, plus C17–C18 below. C12–C15 remain later capabilities; durable state needed to resume the same mission belongs to C05 and is required now. The document version does not identify a released software version.
+
+The [V1 scope](V1-SCOPE.md) elaborates this boundary; the [TAD](TAD.md) derives technical contracts from it, and the [implementation plan](IMPLEMENTATION-PLAN.md) sequences verifiable delivery lots. Neither document weakens the mandate in §6.3.
 
 ## 1. Problem and promise
 
@@ -77,7 +79,7 @@ The correction-and-acceptance sequence used controlled fixtures. The separate re
 
 They do not yet demonstrate general council authority, resistance to other completion paths, control over external delivery, the quality of a multidisciplinary council, learning, or net savings in time and resources.
 
-These results come from a prototype integrated into the reference Paperclip checkout. At this document revision, the dedicated repository contains the product definition, roadmap and proposed agent catalogue; the prototype and qualification reports remain in the reference checkout. This does not constitute a validated standalone plugin distribution. The following requirements describe expected behavior, not a set of capabilities that are all already available.
+These results come from a prototype integrated into the reference Paperclip checkout. The documentary branch contains the product definition, roadmap and agent catalogue. Separate locally inspected repository commits contain a standalone extraction (`cfc3166`) and a manifest approval gate (`7a7ba24`); their exact identities and limits are recorded in the TAD. They are not integrated into this documentation branch and were not rerun for this design. Their existence does not establish team orchestration, collective decisions, activation on a target instance or V1 qualification. The following requirements describe expected behavior, not a set of capabilities that are all already available.
 
 ## 5. Product principles
 
@@ -93,11 +95,11 @@ These results come from a prototype integrated into the reference Paperclip chec
 
 ### 6.1 Composition and accountability
 
-The recommended starting composition is one Executor and one distinct Generalist Reviewer, as described in the [proposed agent catalogue](AGENT-CATALOG.md#3-h1-startup-profiles). The term "multidisciplinary council" is reserved for a review involving several distinct agents with attributable domain contributions. A single agent switching perspectives does not demonstrate such a council, and several identities alone do not demonstrate independent or better judgments. Product, architecture, and quality are the reference perspectives; others are involved according to the request's consequences.
+The smallest starting composition is one Executor and one distinct Generalist Reviewer, as described in the [proposed agent catalogue](AGENT-CATALOG.md#3-h1-startup-profiles). The term "multidisciplinary council" is reserved for a review involving several distinct agents with attributable domain contributions. A single agent switching perspectives does not demonstrate such a council, and several identities alone do not demonstrate independent or better judgments. Product, architecture, and quality are the reference perspectives; others are involved according to the request's consequences.
 
 The product must make it clear who reviewed what, which objections were upheld or dismissed, and who is accountable for the final verdict. An executor cannot turn its own contribution into delegated acceptance. Responsibility for integration remains distinct from acceptance.
 
-Several agents with the same role may contribute when useful. The expected outcome remains an integrated result; increasing agent count is neither a measure of progress nor a requirement for every task.
+Several agents with the same role may contribute when useful. V1 includes execution teams, specialist councils and bounded appeals; the two-agent starting composition is not its full release boundary. The expected outcome remains an integrated result; increasing agent count is neither a measure of progress nor a requirement for every task.
 
 ### 6.2 Mandate and decisions
 
@@ -182,9 +184,9 @@ The learning process may be reviewed periodically or in response to a repeated e
 | J08 | Suspend or revise knowledge that has become harmful | New decisions stop silently relying on withdrawn knowledge; past uses remain explainable. |
 | J09 | Review outcomes and adjust supervision or learning | A justified adjustment can be retained, limited, or reversed; making no change remains a valid outcome. |
 
-## 9. Requirements and proposed first-release boundary
+## 9. Requirements and selected first-release boundary
 
-"First usable release" refers to the proposed initial useful version. "Vision" refers to a target requirement whose commitment depends on the roadmap. These categories neither demonstrate implementation nor prescribe a ticket sequence.
+"First usable release" refers to the selected V1 scope. "Vision" refers to a target requirement whose commitment depends on the roadmap. These categories neither demonstrate implementation nor prescribe a ticket sequence.
 
 | ID | Requirement | Product acceptance criterion | Proposed scope |
 | --- | --- | --- | --- |
@@ -197,13 +199,15 @@ The learning process may be reviewed periodically or in response to a repeated e
 | C07 | Accessible human inspection | The owner can inspect the result, state, rationale, evidence, and next action without reading complete logs. | First usable release |
 | C08 | Minimal usage assessment | Outcomes, time, interventions, corrections, and available resource-usage data are visible; missing data remains flagged. | First usable release |
 | C09 | Configuration of the covered scope | The operator understands prerequisites and limits. Activation verifies distinct executor/reviewer identities, the applicable review path and the owner decision destination; suspension makes the disposition of pending work and decisions explicit, without silently losing pending decisions. | First usable release |
-| C10 | Proportionate multidisciplinary council | Several perspectives contribute to an actual decision, with attributed objections and explicit accountability for the verdict. | Vision |
-| C11 | Bounded appeals | J05 can resolve a disagreement without creating an indefinite chain of councils or exceeding the mandate. | Vision |
+| C10 | Proportionate multidisciplinary council | Several perspectives contribute to an actual decision, with attributed objections and explicit accountability for the verdict. | First usable release |
+| C11 | Bounded appeals | J05 can resolve a disagreement without creating an indefinite chain of councils or exceeding the mandate. | First usable release |
 | C12 | Collective continuity | Decisions, trade-offs, and follow-up remain reusable by another team and linked to the original need. | Vision |
 | C13 | Inspectable and controllable knowledge | J07–J08 cover provenance, scope, applications, suspension, withdrawal, and revision. | Vision |
 | C14 | Evaluated learning | Assessment distinguishes reuse from benefit on new requests; a regression calls the knowledge item's scope into question. | Vision |
 | C15 | Process review | J09 allows reversible trials within approved limits and preserves unfavorable measurements. | Vision |
-| C16 | Coherence across multiple contributions | Acceptance examines the integrated result; it is not derived from individual statuses alone. | Vision |
+| C16 | Coherence across multiple contributions | Acceptance examines the integrated result; it is not derived from individual statuses alone. | First usable release |
+| C17 | Explicit teams and council composition | The owner can create, revise and retire scoped rosters using existing agents, identify integration and verdict responsibilities, and see which composition governs each active mission. Changes never silently replace an in-flight reviewer or mandate. | First usable release |
+| C18 | Coordinated contribution lifecycle | A mission links assigned contributions, dependencies and integration; unavailable members, replacement, suspension and cancellation preserve an attributable next action without accepting incomplete work. | First usable release |
 
 This first release does not require a full council for every task or every future memory capability. It must nevertheless reach an acceptance decision that is actually applied, a correction that can be reviewed again, or an understandable blocker. A collection of mechanisms without a usable journey is insufficient.
 
@@ -230,6 +234,11 @@ These scenarios are behavioral requirements to translate into the validation env
 | A15 | Turnaround time falls after a model change and simpler requests | Observed improvement is distinguished from attribution to learning. | C14–C15 |
 | A16 | Supervision reduces interventions but consumes more resources and leaves more defects | Trade-offs remain visible; no success claim based on a single metric. | C08, C14–C15 |
 | A17 | A user inspects a decision through the supervision experience | State, rationale, and required action are understandable, evidence is accessible, and meaning does not depend on color alone. | C07 |
+| A18 | A roster changes while a mission is active | The mission retains its recorded composition until an explicit, attributed reconfiguration; invalid reviews are superseded, not silently reused. | C17–C18 |
+| A19 | A required specialist is absent or a contributor fails | There is an explained wait, authorized replacement or escalation; silence and missing contributions never count as approval. | C05–C06, C10, C18 |
+| A20 | Duplicate delivery, concurrent commands or a worker restart occurs | One logical action has at most one accepted Council result; ambiguous external effects are reconciled before further dispatch. | C04–C05, C18 |
+| A21 | A roster is suspended/retired or a mission is suspended/cancelled | Roster changes stop new use while existing missions retain their pinned revision; mission suspension stops new dependent dispatch and accounts for in-flight work. History survives; no task or agent is silently deleted. | C09, C17–C18 |
+| A22 | Another company or an unauthorized member submits a command | The command is refused without changing the mission, impersonating a reviewer or disclosing protected evidence. | C01–C02, C17 |
 
 In A01–A02, insufficient decisive evidence produces a precise evidence request or an explained waiting state, never inferred acceptance. The request identifies what is missing and why it changes the decision; it does not automatically require a new result version when additional evidence is sufficient.
 
@@ -274,9 +283,9 @@ An increase in agents, memory items, or reviews demonstrates no progress by itse
 
 Decisions still required, without reopening those already agreed:
 
-1. Confirm C01–C09 as the first usable release boundary and select representative requests.
+1. V1 scope is selected: C01–C11, C16–C18. Choose representative requests and the deployment-specific roster before qualification; memory and learning remain deferred.
 2. Specify the actors and paths covered by acceptance authority, including the visibility of owner intervention.
-3. Confirm how the proposed startup profiles are selected, and choose the minimal supervision experience and degree of mandate configuration available to the first user. Reusing suitable existing agents is recommended; plugin-provided defaults remain an option, not a provisioning requirement.
+3. The V1 design starts with owner-selected existing agents and explicit team/council configuration, with a minimal Paperclip plugin supervision surface. Concrete agent identities and runtime availability are activation inputs. Automatic agent provisioning is deferred; ordinary Paperclip agent/catalogue setup remains available outside the Council mission.
 4. Set usage budgets, proportionate stopping rules, and criteria for judging acceptable council overhead.
 5. Define the visible differences between suspension, withdrawal, reset, and deletion of knowledge before committing to memory capabilities.
 6. Specify the promised Paperclip compatibility and adoption beyond the initial setting before expanding distribution.
@@ -290,3 +299,5 @@ The evidence baseline in section 4 comes from the local functional, packaging, a
 Version 0.2 incorporates a documentary integration review against [Paperclip commit `61b3fd57a695614dc4a37e2303f426a34a9795cf`](https://github.com/paperclipai/paperclip/tree/61b3fd57a695614dc4a37e2303f426a34a9795cf) and the local prototype. The [agent catalogue](AGENT-CATALOG.md) cites the observed contracts and identifies unpublished evidence separately. Source inspection supports the proposed division of responsibilities; it does not extend the historical runtime qualification or settle the open product decisions.
 
 This proposal is neither an independent validation of the product nor a delivery schedule commitment. The scenarios describe required behavior; only the facts explicitly qualified in section 4 are reported as demonstrated within their trial scope.
+
+Version 0.3 records the September 30 owner scope decision, adds team lifecycle requirements C17–C18 and scenarios A18–A22, and links V1 design and delivery planning. Detailed technical defaults are design proposals, not evidence of installed or running behavior. The initial §6.3 mandate is unchanged.
