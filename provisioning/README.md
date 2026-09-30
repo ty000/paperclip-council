@@ -3,7 +3,7 @@
 Status: **preparation only**. These artifacts do not create, configure, install,
 mount, activate or run a Paperclip agent. They prepare reuse-first setup against
 Paperclip source `61b3fd57a695614dc4a37e2303f426a34a9795cf` and Council base
-`ee262eed809c5d7c96eef0e7ee330e0e56a65104`.
+`b4f876fa1166ad565bbec959d0d45e5b673ecbf4`.
 
 ## Challenge outcome
 
@@ -204,14 +204,16 @@ policy review through the current participant's normal issue PATCH. A future
 setup must choose the actual retained route; no profile may silently substitute
 one path for another.
 
-At preparation time, `origin/main` is
-`ee262eed809c5d7c96eef0e7ee330e0e56a65104`; PR #10's documentation is merged and
-the owner-accepted G3/G4 record is on main. The observed pre-L3 PR #9 remains
-open and behind main at `a385a7d31729a77908b845991a9da5f5fd4e2003`. It adds
-bounded qualification infrastructure and environment-class documentation, but
-does not turn the proposed specialist opinion/verdict/appeal contract into an
-available runtime route. Its commands and environment boundaries remain
-provisional until merge and reconciliation with the selected candidate.
+The publication baseline is Council
+`b4f876fa1166ad565bbec959d0d45e5b673ecbf4`, which includes both the owner-accepted
+G3/G4 record from PR #10 and the pre-L3 qualification infrastructure from
+[PR #9](https://github.com/ty000/paperclip-council/pull/9). The latter was merged
+on September 30, 2026; its environment boundaries are documented in
+[ENVIRONMENTS.md](../docs/ENVIRONMENTS.md). This infrastructure does not turn the
+proposed specialist opinion/verdict/appeal contract into an available runtime
+route. The historical runtime replay belongs to candidate `36ba70d`, not the
+merged candidate; neither that replay nor these profiles proves operational
+agent readiness.
 
 Those decisions are preserved here: minimal supported native
 decision readback belongs to G3; no blind retry follows a lost response. G4 uses
