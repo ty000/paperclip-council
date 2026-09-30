@@ -1,14 +1,14 @@
 # Paperclip Council — Product Roadmap
 
-Status: V1 scope selected (H1 + H2 + team lifecycle); later horizons remain conditional.
-Document version: 0.3 — September 30, 2026.
+Status: V1 scope selected (H1 + H2, implementation through PR and project coordination); later horizons remain conditional.
+Document version: 0.4 — September 30, 2026.
 Product reference: [PRD](PRD.md).
 
 This roadmap describes potential major evolutions, their value, their product dependencies, and the observations needed to decide what comes next. It is neither a schedule, a technical backlog, nor a commitment to deliver every horizon.
 
 The PRD is authoritative on needs and behavior. The roadmap identifies what may be taken forward; it cannot silently remove a requirement or extend delegated authority. A change in need requires a PRD update; a change in priority may affect only this roadmap.
 
-The September 30 scope decision selects H1 and H2 together, including C16–C18 team coordination, for the first release. H1 is an implementation dependency and intermediate demonstration, not the complete V1. Memory and learning (H3–H5) follow later. See [V1 scope](V1-SCOPE.md), [TAD](TAD.md) and [implementation lots](IMPLEMENTATION-PLAN.md).
+The September 30 decisions select H1 and H2 together, including C16–C23: teams, technical planning, skill-based execution/QA, PR handoff, durable multi-mission coordination and on-demand facilitation. H1 is an intermediate demonstration, not complete V1. Reusable knowledge and learning (H3–H5) follow later; current project work state belongs to V1. See [V1 scope](V1-SCOPE.md), [TAD](TAD.md) and [implementation lots](IMPLEMENTATION-PLAN.md).
 
 ## 1. Starting point
 
@@ -21,7 +21,7 @@ The dedicated repository and public availability are not, by themselves, a funct
 | Horizon | Intended user outcome | PRD references | Status |
 | --- | --- | --- | --- |
 | H1 — Useful review and acceptance | Delegate a bounded request, obtain a correction or an applied acceptance decision, and understand a blocker. | C01–C09; J01–J04, J06 | Selected V1 foundation |
-| H2 — Proportionate multidisciplinary council | Have the relevant disciplines examine a trade-off without turning every task into a committee. | C10–C11, C16–C18; J05 | Selected V1 council and team capability; built on H1 |
+| H2 — Multidisciplinary delivery and coordination | Carry planned team work through verification, Council acceptance and PR; coordinate several missions and facilitate real blockers. | C10–C11, C16–C23; J05, J10–J12 | Selected V1 capability; built on H1, with M1 then M2 |
 | H3 — Collective continuity | Retrieve decisions, trade-offs, and follow-up for a new request or after an agent change. | C12; J06–J08 | Deferred beyond V1; same-mission resumption remains in H1 |
 | H4 — Shared, controllable knowledge | Understand, reuse, and withdraw lessons useful to a role or project. | C13; J07–J08 | Candidate, after identifying reusable experience |
 | H5 — Evaluated improvement | Observe what knowledge and process adjustments contribute, then retain or reverse those changes. | C14–C15; J09 | Candidate, after observable reuse and an actionable comparison baseline |
@@ -41,7 +41,9 @@ Horizons express usable capabilities, not technical layers to deliver separately
 
 **Implementation gate.** Establish this workflow before enabling the selected H2 mechanisms. Compare overhead with simpler supervision, and fix resumption or consumption problems before expanding a particular live mission. No arbitrary number of validation campaigns is imposed.
 
-## 4. H2 — Proportionate multidisciplinary council
+<a id="4-h2--proportionate-multidisciplinary-council"></a>
+
+## 4. H2 — Multidisciplinary delivery and coordination
 
 **Value.** Avoid decisions that are technically defensible but offer no product value, insufficient corrections, and disproportionate scope extensions.
 
@@ -52,6 +54,12 @@ Horizons express usable capabilities, not technical layers to deliver separately
 **Dependency.** H1's acceptance, correction, and escalation workflow already works. Multiple agents are not used to compensate for a basic problem in that workflow.
 
 **Proportional use within V1.** The capability is included, but simple requests may still use one reviewer. Activate specialist opinions only for relevant domains. Qualification must demonstrate actual multidisciplinary work and an integrated team result; the two-agent path alone cannot close V1.
+
+**Implementation and project responsibilities.** A planner decomposes the product task technically; one orchestrator owns execution and names the integration owner. Suitable developers/architects contribute, and testers help define evidence early and verify the integrated journey. The Project Manager coordinates native missions within delegated priorities/capacity. A facilitator handles concrete cooperation problems. Responsibilities may share agents where independent-review rules permit; no permanent committee or continuously running manager is required.
+
+**Selected product milestones.** M1 demonstrates one complete mission with complementary contributions, an actual correction, integrated verification, acceptance and an authorized PR. M2 then demonstrates two active missions sharing a constrained resource or dependency, with observed prioritization, waiting and resumption. Two unrelated concurrent successes do not satisfy M2. N1–N4 remain the nominal foundation, N5 completes M1 and N6 demonstrates M2; detailed sequencing belongs to the sprint plan.
+
+**Delivery boundary.** PR creation/update authority is explicit; the actual URL/head/check/review state is observed separately from Council acceptance. Merge/deployment remain outside this release contract. Executive supplies optional methods/profiles; internal technical decomposition preserves the upstream product task rather than creating a competing backlog.
 
 ## 5. H3 — Collective continuity
 
