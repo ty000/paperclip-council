@@ -557,7 +557,46 @@ try {
     await mkdir(dirname(screenshotPath), { recursive: true });
     await ownerPage.screenshot({ path: screenshotPath, fullPage: true });
     evidence.configuration.uiScreenshot = screenshotPath;
+
+    const browserCreatedList = await request("human", "GET", `${rosterBase}?companyId=${companyId}`);
+    const browserCreated = browserCreatedList.body.rosters.find((entry: any) => entry.revision.name === "Browser-created team");
+    assert(browserCreated);
+    const concurrentBrowserRevision = await request("human", "POST", `${rosterBase}/${browserCreated.head.rosterId}/commands`, {
+      companyId,
+      command: "revise",
+      expectedVersion: browserCreated.head.version,
+      roster: { ...teamDraft, name: "Concurrent browser revision" },
+    });
+    assert.equal(concurrentBrowserRevision.status, 200);
+    await ownerPage.getByLabel("Name").fill("Stale browser revision");
+    await ownerPage.getByRole("button", { name: "Publish revision" }).click();
+    await ownerPage.getByRole("alert").filter({ hasText: "stale" }).waitFor();
     await ownerContext.close();
+
+    const loadingContext = await browser.newContext({ viewport: { width: 760, height: 760 } });
+    await addSessionCookies(loadingContext, cookie);
+    const loadingPage = await loadingContext.newPage();
+    await loadingPage.route("**/api/plugins/*/bridge/data", async (route) => {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 500));
+      await route.continue();
+    });
+    const loadingNavigation = loadingPage.goto(`${baseUrl}/FCQ/council-rosters`, { waitUntil: "domcontentloaded" });
+    await loadingPage.getByText("Loading Council roster configuration…").waitFor();
+    await loadingNavigation;
+    await loadingPage.getByText("No rosters yet. Create the first team or council below.").waitFor();
+    await loadingContext.close();
+
+    const errorContext = await browser.newContext({ viewport: { width: 760, height: 760 } });
+    await addSessionCookies(errorContext, cookie);
+    const errorPage = await errorContext.newPage();
+    await errorPage.route("**/api/plugins/*/bridge/data", (route) => route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "Injected UI load failure" }),
+    }));
+    await errorPage.goto(`${baseUrl}/CPQ/council-rosters`, { waitUntil: "domcontentloaded" });
+    await errorPage.getByRole("alert").filter({ hasText: "Council configuration could not load" }).waitFor();
+    await errorContext.close();
 
     const intruderContext = await browser.newContext({ viewport: { width: 760, height: 760 } });
     await addSessionCookies(intruderContext, intruderCookie);
@@ -567,6 +606,7 @@ try {
     assert.equal(await intruderPage.getByRole("button", { name: "Create draft" }).isDisabled(), true);
     await intruderContext.close();
     evidence.results.installedBrowserPageAndAuthenticatedAction = "PASS";
+    evidence.results.installedBrowserStates = "PASS";
   } finally {
     await browser.close();
   }
