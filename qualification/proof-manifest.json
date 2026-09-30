@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "proofId": "paperclip-council-pre-l3-bounded-qualification-v1",
+  "environmentClass": "local-sandbox",
+  "candidatePolicy": "clean committed HEAD recorded in generated evidence",
+  "hostConfiguration": "qualification/environments.json",
+  "replayCommand": "pnpm qualification:bounded",
+  "generatedEvidence": "artifacts/functional.json (git-ignored)",
+  "expectedOutcome": "L2 STEP A MISSION PERSISTENCE VALIDATED",
+  "requiredChecks": [
+    "all functional result entries equal PASS",
+    "candidate commit equals replay HEAD",
+    "Paperclip host commit and build digests match pinned configuration",
+    "runtime and embedded database cleanup are recorded"
+  ],
+  "claimLimits": [
+    "single-plugin local sandbox only",
+    "no multi-plugin recipe claim",
+    "no selected-target activation or deployment claim",
+    "no model or provider execution"
+  ]
+}
