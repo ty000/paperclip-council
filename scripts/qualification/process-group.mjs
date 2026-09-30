@@ -65,6 +65,7 @@ export function runProcessGroup(command, args, {
   terminationGraceMs = 5_000,
   onFailure = async () => undefined,
   waitForExit = waitForProcessGroupExit,
+  signal = signalProcessGroup,
 } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -79,6 +80,7 @@ export function runProcessGroup(command, args, {
     let forceError;
     let forceComplete;
     const forced = new Promise((resolve) => { forceComplete = resolve; });
+    let settled = false;
     let listenersRemoved = false;
     const removeSignalListeners = () => {
       if (listenersRemoved) return;
@@ -86,13 +88,24 @@ export function runProcessGroup(command, args, {
       process.off("SIGINT", onSigint);
       process.off("SIGTERM", onSigterm);
     };
+    const rejectOnce = (error, { unrefChild = false } = {}) => {
+      if (settled) return;
+      settled = true;
+      removeSignalListeners();
+      if (unrefChild) child.unref();
+      reject(error);
+    };
     const terminate = (reason) => {
       if (terminationReason) return;
       terminationReason = reason;
-      signalProcessGroup(child, processGroupId, "SIGTERM");
+      try {
+        signal(child, processGroupId, "SIGTERM");
+      } catch {
+        // A failed graceful signal must not prevent the forced drain attempt.
+      }
       forceTimer = setTimeout(async () => {
         try {
-          signalProcessGroup(child, processGroupId, "SIGKILL");
+          signal(child, processGroupId, "SIGKILL");
           await waitForExit(processGroupId, terminationGraceMs);
         } catch (error) {
           forceError = isProcessGroupDrainError(error)
@@ -101,6 +114,7 @@ export function runProcessGroup(command, args, {
         } finally {
           forceComplete();
         }
+        if (forceError) rejectOnce(forceError, { unrefChild: true });
       }, terminationGraceMs);
     };
     const timeout = setTimeout(() => terminate(`timed out after ${timeoutMs} ms`), timeoutMs);
@@ -114,19 +128,17 @@ export function runProcessGroup(command, args, {
     });
     child.once("close", async (code, signal) => {
       clearTimeout(timeout);
+      if (settled) return;
       if (code === 0 && !terminationReason) {
         clearTimeout(forceTimer);
+        settled = true;
         removeSignalListeners();
         resolve();
         return;
       }
       if (!terminationReason) terminate(`exited ${code ?? signal}`);
       await forced;
-      if (forceError) {
-        removeSignalListeners();
-        reject(forceError);
-        return;
-      }
+      if (settled) return;
       let cleanupError;
       try {
         await onFailure();
@@ -136,12 +148,12 @@ export function runProcessGroup(command, args, {
         removeSignalListeners();
       }
       if (cleanupError) {
-        reject(new AggregateError(
+        rejectOnce(new AggregateError(
           [cleanupError],
           `${command} failed during cleanup`,
         ));
       } else {
-        reject(new Error(`${command} ${terminationReason}`));
+        rejectOnce(new Error(`${command} ${terminationReason}`));
       }
     });
   });

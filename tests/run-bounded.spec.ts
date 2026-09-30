@@ -72,13 +72,20 @@ describe("bounded qualification launcher", () => {
     const initialSigintListeners = process.listenerCount("SIGINT");
     const initialSigtermListeners = process.listenerCount("SIGTERM");
     let processCleanupCalls = 0;
-    const probeFailure = Object.assign(new Error("group liveness probe denied"), { code: "EPERM" });
+    const gracefulSignalFailure = Object.assign(new Error("graceful signal denied"), { code: "EPERM" });
+    const forcedSignalFailure = Object.assign(new Error("forced signal denied"), { code: "EPERM" });
+    const signals: NodeJS.Signals[] = [];
 
     const failure = await withOwnedQualificationRuntime(async () => {
       await runProcessGroup("/command-that-does-not-exist", [], {
         timeoutMs: 5_000,
         terminationGraceMs: 1,
-        waitForExit: async () => { throw probeFailure; },
+        signal: (_child: unknown, _processGroupId: number | undefined, signalName: NodeJS.Signals) => {
+          signals.push(signalName);
+          if (signalName === "SIGTERM") throw gracefulSignalFailure;
+          throw forcedSignalFailure;
+        },
+        waitForExit: async () => { throw new Error("drain must not run after forced signaling fails"); },
         onFailure: async () => { processCleanupCalls += 1; },
       });
     }, {
@@ -88,10 +95,12 @@ describe("bounded qualification launcher", () => {
 
     expect(failure).toMatchObject({
       code: "PROCESS_GROUP_DRAIN_FAILED",
-      cause: probeFailure,
+      cause: forcedSignalFailure,
       preservedRuntime: "/tmp/exact-undrained-runtime",
     });
+    expect((failure as { cause: unknown }).cause).toBe(forcedSignalFailure);
     expect(String((failure as Error).message)).toMatch(/runtime preserved at \/tmp\/exact-undrained-runtime/);
+    expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
     expect(processCleanupCalls).toBe(0);
     expect(cleaned).toEqual([]);
     expect(process.listenerCount("SIGINT")).toBe(initialSigintListeners);

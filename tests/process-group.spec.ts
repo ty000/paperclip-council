@@ -196,6 +196,85 @@ describe("bounded qualification process groups", () => {
     expect(process.listenerCount("SIGTERM")).toBe(initialSigtermListeners);
   });
 
+  it("still forces and drains after the initial SIGTERM delivery fails", async () => {
+    const root = await mkdtemp(resolve(tmpdir(), "council-process-group-term-error-"));
+    roots.push(root);
+    const initialSigintListeners = process.listenerCount("SIGINT");
+    const initialSigtermListeners = process.listenerCount("SIGTERM");
+    const signals: NodeJS.Signals[] = [];
+    let drainCalls = 0;
+    let cleanupCalls = 0;
+
+    await expect(runProcessGroup(resolve(root, "missing-command"), [], {
+      timeoutMs: 5_000,
+      terminationGraceMs: 1,
+      signal: (_child: unknown, _processGroupId: number | undefined, signalName: NodeJS.Signals) => {
+        signals.push(signalName);
+        if (signalName === "SIGTERM") {
+          throw Object.assign(new Error("graceful signal denied"), { code: "EPERM" });
+        }
+      },
+      waitForExit: async () => { drainCalls += 1; },
+      onFailure: async () => { cleanupCalls += 1; },
+    })).rejects.toThrow(/ENOENT/);
+
+    expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
+    expect(drainCalls).toBe(1);
+    expect(cleanupCalls).toBe(1);
+    expect(process.listenerCount("SIGINT")).toBe(initialSigintListeners);
+    expect(process.listenerCount("SIGTERM")).toBe(initialSigtermListeners);
+  });
+
+  it("settles a forced-signal failure while the child is still live", async () => {
+    const initialSigintListeners = process.listenerCount("SIGINT");
+    const initialSigtermListeners = process.listenerCount("SIGTERM");
+    const gracefulSignalFailure = Object.assign(new Error("graceful signal denied"), { code: "EPERM" });
+    const forcedSignalFailure = Object.assign(new Error("forced signal denied"), { code: "EPERM" });
+    const signals: NodeJS.Signals[] = [];
+    let childPid: number | undefined;
+    let cleanupCalls = 0;
+    let settlementTimer: NodeJS.Timeout | undefined;
+
+    try {
+      const failure = await Promise.race([
+        runProcessGroup(process.execPath, ["-e", "setInterval(() => {}, 1_000)"], {
+          timeoutMs: 25,
+          terminationGraceMs: 1,
+          signal: (child: { pid?: number }, _processGroupId: number | undefined, signalName: NodeJS.Signals) => {
+            childPid = child.pid;
+            signals.push(signalName);
+            if (signalName === "SIGTERM") throw gracefulSignalFailure;
+            throw forcedSignalFailure;
+          },
+          waitForExit: async () => { throw new Error("drain must not run after forced signaling fails"); },
+          onFailure: async () => { cleanupCalls += 1; },
+        }).catch((error: unknown) => error),
+        new Promise((_, reject) => {
+          settlementTimer = setTimeout(() => reject(new Error("supervisor did not settle")), 1_000);
+        }),
+      ]);
+      clearTimeout(settlementTimer);
+
+      expect(failure).toMatchObject({ code: "PROCESS_GROUP_DRAIN_FAILED", cause: forcedSignalFailure });
+      expect((failure as { cause: unknown }).cause).toBe(forcedSignalFailure);
+      expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
+      expect(cleanupCalls).toBe(0);
+      expect(childPid).toBeTypeOf("number");
+      expect(processIsRunning(childPid!)).toBe(true);
+      expect(process.listenerCount("SIGINT")).toBe(initialSigintListeners);
+      expect(process.listenerCount("SIGTERM")).toBe(initialSigtermListeners);
+    } finally {
+      clearTimeout(settlementTimer);
+      if (childPid) {
+        try { process.kill(-childPid, "SIGKILL"); } catch { /* External fixture cleanup. */ }
+        for (let attempt = 0; attempt < 50 && processIsRunning(childPid); attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        expect(processIsRunning(childPid)).toBe(false);
+      }
+    }
+  });
+
   it("classifies an injected drain deadline and skips unsafe cleanup", async () => {
     let clock = 0;
     const drainError = await waitForProcessGroupExit(4242, 25, {

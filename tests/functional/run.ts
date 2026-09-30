@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { prepareCandidatePackage } from "./candidate-package.js";
+import { createFunctionalRuntimeCleanup } from "./runtime-cleanup.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, "../..");
@@ -50,6 +51,8 @@ const runtime = suppliedRuntime
   : await mkdtemp(resolve(tmpdir(), "paperclip-council-package-"));
 assert.equal(dirname(runtime), resolve(tmpdir()), "qualification runtime must be directly under the system temp root");
 assert(basename(runtime).startsWith("paperclip-council-package-"), "qualification runtime must use the owned prefix");
+const runtimeCleanup = createFunctionalRuntimeCleanup({ runtime, parentOwned: Boolean(suppliedRuntime) });
+let runtimeCleanupHandled = false;
 try {
 const preparedCandidate = await prepareCandidatePackage(packageRoot, candidateCommit, runtime);
 const evidencePath = process.env.COUNCIL_PACKAGE_EVIDENCE_PATH
@@ -1133,20 +1136,32 @@ try {
     : String(error);
   process.exitCode = 1;
 } finally {
+  let appShutdownSafe = true;
   try {
     await closeApp();
     evidence.appCleanup = "stopped only the plugin worker, listener, and application created by this run";
   } catch (error) {
+    appShutdownSafe = false;
     evidence.cleanupError = String(error);
     process.exitCode = 1;
   }
-  try {
-    await database?.cleanup();
-    await rm(runtime, { recursive: true, force: true });
-    evidence.databaseCleanup = "fresh isolated PostgreSQL cluster and temporary instance removed";
-  } catch (error) {
-    evidence.databaseCleanupError = String(error);
+  const runtimeCleanupResult = await runtimeCleanup.runAfterShutdown({
+    appShutdownSafe,
+    cleanupDatabase: async () => database?.cleanup(),
+  });
+  runtimeCleanupHandled = true;
+  if (runtimeCleanupResult.error) {
+    const evidenceKey = runtimeCleanupResult.failureStage === "database"
+      ? "databaseCleanupError"
+      : "runtimeCleanupError";
+    evidence[evidenceKey] = String(runtimeCleanupResult.error);
     process.exitCode = 1;
+  } else if (suppliedRuntime) {
+    evidence.databaseCleanup = "fresh isolated PostgreSQL cluster removed; parent-owned temporary instance retained";
+  } else if (!appShutdownSafe) {
+    evidence.databaseCleanup = "fresh isolated PostgreSQL cluster removed; temporary instance retained because application shutdown was not proven";
+  } else {
+    evidence.databaseCleanup = "fresh isolated PostgreSQL cluster and temporary instance removed";
   }
   evidence.finishedAt = new Date().toISOString();
   const serializedEvidence = JSON.stringify(evidence);
@@ -1162,5 +1177,8 @@ try {
   }));
 }
 } finally {
-  await rm(runtime, { recursive: true, force: true });
+  if (!runtimeCleanupHandled) {
+    const earlyCleanup = await runtimeCleanup.runEarlyFailure();
+    if (earlyCleanup.error) throw earlyCleanup.error;
+  }
 }
