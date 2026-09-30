@@ -2,7 +2,7 @@
 
 Date: 2026-09-30 (Europe/Paris)
 
-Runtime-tested candidate: `67c98af638315f10305a21d3005c0f300537aa18` on `codex/council-s1`
+Runtime-tested candidate: `bbfecc39c93f4a6a395f3447ff5b6f3233fb23b9` on `codex/council-s1`
 
 Documentary base: `b1c76d34b1c0166c6cf675089dce877c6f88b693` (`origin/main`)
 
@@ -21,24 +21,25 @@ The larger statuses remain unchanged: **L1 is partial** until an active mission 
 | Ticket | Observable result | Runtime proof | Status |
 | --- | --- | --- | --- |
 | S1-01 — revisioned rosters | Company-scoped immutable revision rows plus CAS-protected mutable heads; reads expose the current revision and full history | Real install/restart/migration; concurrent revisions at the same expected version yield one published head and one `409`, with history remaining immutable | PASS |
-| S1-02 — ownership, validation and lifecycle | Create, validate pair, atomically activate pair, revise to draft, suspend and retire; configured company owner is derived from authoritative company state; request-body owner spoofing is ignored | Wrong configured owner receives `403` with no mutation; cross-company overwrite receives `404`; stale transitions receive `409` with no head mutation; invalid composition/project/agent conflicts are rejected | PASS |
+| S1-02 — ownership, validation and lifecycle | Create, validate pair, atomically activate pair, revise to draft, suspend and retire; configured company owner is derived from authoritative company state; request-body owner spoofing is ignored | Wrong configured owner receives `403` with no mutation; cross-company overwrite receives `404`; an asymmetric stale pair activation receives `409` with both heads unchanged; other stale transitions also preserve the head; invalid composition/project/agent conflicts are rejected | PASS |
 | S1-03 — installed configuration UI | Page lists and edits existing-agent rosters, shows revision history and explicit mission prerequisites, and exposes no mission-enable/dispatch control | Installed bundle + bridge pass; real authenticated browser creates a roster; loading, empty, injected transport error, read-only actor and stale-version feedback are exercised; keyboard activation and non-color status text pass | PASS |
 
 ## Implementation boundary
 
 - `migrations/002_revisioned_rosters.sql` adds plugin-private `roster_revisions` and `roster_heads`; no host schema is changed.
 - Revision identifiers are UUIDs and published revision rows are never updated or deleted. A losing concurrent candidate can remain unreferenced for auditability; only the CAS winner becomes the head.
-- `src/rosters.ts` validates company/project scope, eligible agent status, declared responsibilities, team/council role conflicts and lifecycle versions. Pair activation is one guarded SQL update that must affect both heads.
+- `src/rosters.ts` validates company/project scope, eligible agent status, declared responsibilities, team/council role conflicts and lifecycle versions. Pair activation is one guarded SQL update whose locking subquery must match both expected heads before either head can be updated.
 - The mutation authority is the authenticated user matching `company.defaultResponsibleUserId`; client-supplied owner identifiers do not grant authority.
 - `src/ui/index.tsx` uses the host bridge identity, Paperclip tokens and existing agents/projects. It distinguishes saved configuration, eligible roster pairs, mission activation unavailability and the inherited G3/G4 limitations.
 - No L2 mission model, active-mission pinning, dispatch, provider call, model call, budget reservation, G3 reconciliation, learning/memory, deployment, publication or durable `council-local` mutation is included.
 
 ## Evidence and frontend QA
 
-- Structured runtime trace: `docs/reviews/s1/evidence/functional.json`, SHA-256 `04c7f5e11a245294e997487f0e5357a1c5136b99703bbc2a972626a2d357bfd1`.
-- Installed-page capture: `docs/reviews/s1/evidence/ui-page.png`, SHA-256 `afbcdb0473fda7f79db83df01112d0831a621605af7f7e62db88e1af1009e43d`.
+- Structured runtime trace: `docs/reviews/s1/evidence/functional.json`, SHA-256 `fcf5e6fb61ead3b3b68ef166d62d40be8194ed53403e495946722b8f908bfea1`.
+- Installed-page capture: `docs/reviews/s1/evidence/ui-page.png`, SHA-256 `2f1abf9ae6a8559ae2401aa205c8d36e00bdda44b34c67a43fecc58329ee5955`.
 - Frontend QA detail: `docs/reviews/s1/FRONTEND-QA.md`.
-- The trace records candidate source archive SHA-256 `bb25ae129172162c896c5785d6611c26ca831388b431d3414d2367469b35ec6c` and built distribution SHA-256 `8cd181bdf0b08584875982988b0a0783b03decf3bfcfadeed2a59eba4004388c`.
+- The trace records candidate source archive SHA-256 `8b4126b8bda93e64e7caa141aa47dc3e960abb4f8faf218272a201b8b75b68db` and built distribution SHA-256 `eb4dae3f2d6fc2f704b524c6378adcc054f916598cded92137ae5447a9382598`.
+- The host source was a clean local clone of `/home/davy-lp/workspace/paperclip` checked out detached at the exact pinned commit. The harness records `hostTrackedFilesClean: true` and now fails before runtime if tracked host files differ from that commit.
 - All actors, companies, projects, rosters and issues in the replay are synthetic fixtures. The run uses no model. Ephemeral agent credentials are not serialized in evidence and the isolated app/database/runtime are removed afterward.
 
 Non-blocking observations: the integrated L0 manifest still produces its pre-existing strict-schema warning for `councilApiKey`; the pinned host emits Vite deprecation warnings and expected websocket/join-request noise during browser use. These warnings did not invalidate the tested S1 paths and were not broadened into this lot.
@@ -50,16 +51,33 @@ COREPACK_HOME=/tmp/council-s1-corepack pnpm install --offline --frozen-lockfile
 COREPACK_HOME=/tmp/council-s1-corepack pnpm typecheck
 COREPACK_HOME=/tmp/council-s1-corepack pnpm test
 COREPACK_HOME=/tmp/council-s1-corepack pnpm build
+
+COUNCIL_HOST_PROOF_DIR=$(mktemp -d /tmp/paperclip-s1-host-proof.XXXXXX)
+git clone --shared --no-checkout /home/davy-lp/workspace/paperclip "$COUNCIL_HOST_PROOF_DIR/paperclip"
+git -C "$COUNCIL_HOST_PROOF_DIR/paperclip" checkout --detach 61b3fd57a695614dc4a37e2303f426a34a9795cf
+while IFS= read -r -d '' source_dir; do
+  relative_path=${source_dir#/home/davy-lp/workspace/paperclip/}
+  if [ "$relative_path" != node_modules ] && [ -d "$COUNCIL_HOST_PROOF_DIR/paperclip/${relative_path%/node_modules}" ]; then
+    ln -s "$source_dir" "$COUNCIL_HOST_PROOF_DIR/paperclip/$relative_path"
+  fi
+done < <(find /home/davy-lp/workspace/paperclip -path '*/node_modules' -prune -print0)
+ln -s /home/davy-lp/workspace/paperclip/node_modules "$COUNCIL_HOST_PROOF_DIR/paperclip/node_modules"
+
 COREPACK_HOME=/tmp/council-s1-corepack \
-COUNCIL_PACKAGE_EXPECTED_COMMIT=67c98af638315f10305a21d3005c0f300537aa18 \
-PAPERCLIP_TEST_HOST_ROOT=/home/davy-lp/workspace/paperclip \
+COUNCIL_PACKAGE_EXPECTED_COMMIT=bbfecc39c93f4a6a395f3447ff5b6f3233fb23b9 \
+PAPERCLIP_TEST_HOST_ROOT="$COUNCIL_HOST_PROOF_DIR/paperclip" \
 PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH=/home/davy-lp/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell \
 COUNCIL_PACKAGE_EVIDENCE_PATH="$PWD/docs/reviews/s1/evidence/functional.json" \
 COUNCIL_UI_SCREENSHOT_PATH="$PWD/docs/reviews/s1/evidence/ui-page.png" \
 pnpm test:functional
+rm -rf -- "$COUNCIL_HOST_PROOF_DIR"
 ```
 
 Expected: typecheck/build succeed; 6 test files and 32 tests pass; functional output ends with `SPRINT 1 CONFIGURATION INCREMENT VALIDATED` and every result is `PASS`.
+
+## Independent-review remediation
+
+The first independent review correctly rejected the earlier candidate: pair activation could update one current head before discovering that the other expected version was stale, and the replay accepted a dirty host checkout. Candidate `bbfecc3` remedies both findings. Activation now locks and counts both eligible heads inside the single permitted `UPDATE` statement before mutation; the real-host replay asserts an asymmetric `409` leaves both heads at draft/version 1. The harness also rejects tracked host drift, and the successful replay used a clean detached clone of the exact host commit. The initial failure evidence remains outside the repository as diagnostic history and is not closure proof.
 
 ## Deferrals and next minimum
 

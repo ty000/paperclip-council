@@ -1,5 +1,5 @@
 {
-  "claim": "Paperclip Council candidate 67c98af638315f10305a21d3005c0f300537aa18 implements only Sprint 1 S1-01 through S1-03: revisioned team and council configuration, configured-owner authorization, eligibility and lifecycle controls, and an installed minimal configuration page, while preserving the documented boundary that L1 remains partial and mission activation, G3/G4 completion, L2 dispatch and V1 closure are unavailable.",
+  "claim": "Paperclip Council candidate bbfecc39c93f4a6a395f3447ff5b6f3233fb23b9 implements only Sprint 1 S1-01 through S1-03: revisioned team and council configuration, configured-owner authorization, all-or-nothing pair activation, eligibility and lifecycle controls, and an installed minimal configuration page, while preserving the documented boundary that L1 remains partial and mission activation, G3/G4 completion, L2 dispatch and V1 closure are unavailable.",
   "files_inspected": [
     "docs/SPRINT-PLAN.md",
     "docs/V1-SCOPE.md",

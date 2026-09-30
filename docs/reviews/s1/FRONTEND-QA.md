@@ -2,7 +2,7 @@
 
 Verdict: **PASS for the installed Sprint 1 configuration page on the pinned host/candidate.**
 
-Tested candidate: `67c98af638315f10305a21d3005c0f300537aa18`
+Tested candidate: `bbfecc39c93f4a6a395f3447ff5b6f3233fb23b9`
 
 Host: Paperclip `61b3fd57a695614dc4a37e2303f426a34a9795cf`
 
