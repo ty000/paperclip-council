@@ -412,6 +412,28 @@ try {
   assert(workerManager.isRunning(pluginId), "installed package worker must load after restart");
   evidence.results.installation = "PASS";
 
+  const migrationNames = [
+    "001_foundation_probe.sql", "002_revisioned_rosters.sql", "003_missions.sql",
+    "004_decision_receipts.sql", "005_admission.sql",
+  ];
+  const installedMigrations = await db.select({
+    migrationKey: tables.pluginMigrations.migrationKey,
+    checksum: tables.pluginMigrations.checksum,
+    status: tables.pluginMigrations.status,
+    pluginVersion: tables.pluginMigrations.pluginVersion,
+  }).from(tables.pluginMigrations).where(eq(tables.pluginMigrations.pluginId, pluginId));
+  assert.deepEqual(installedMigrations.map((item: any) => item.migrationKey).sort(), migrationNames);
+  for (const migration of installedMigrations) {
+    const source = await readFile(resolve(packageRoot, "migrations", migration.migrationKey), "utf8");
+    assert.equal(migration.checksum, createHash("sha256").update(source).digest("hex"));
+    assert.equal(migration.status, "applied");
+    assert.equal(migration.pluginVersion, "0.5.0");
+  }
+  evidence.migrations = installedMigrations.map((item: any) => ({
+    key: item.migrationKey, checksum: item.checksum, status: item.status, pluginVersion: item.pluginVersion,
+  })).sort((left: any, right: any) => left.key.localeCompare(right.key));
+  evidence.results.migrationRegistryAndChecksums = "PASS";
+
   const rosterBase = `/api/plugins/${pluginId}/api/companies/${companyId}/rosters`;
   const teamDraft = {
     kind: "team",
