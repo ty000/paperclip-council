@@ -12,6 +12,7 @@
     "sourceMap": true,
     "outDir": "dist",
     "rootDir": "src",
+    "jsx": "react-jsx",
     "verbatimModuleSyntax": true
   },
   "include": ["src"]

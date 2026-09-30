@@ -109,12 +109,14 @@ let server: Server | undefined;
 let workerManager: any;
 let baseUrl = "";
 let cookie = "";
+let intruderCookie = "";
 let tables: any;
 let issueId: string | undefined;
 const companyId = randomUUID();
 const projectId = randomUUID();
 const executorId = randomUUID();
 const councilId = randomUUID();
+const foreignCompanyId = randomUUID();
 const agentTokens = new Map<string, { token: string; keyId: string; runId: string; agentId: string }>();
 
 async function safeSnapshot() {
@@ -131,6 +133,9 @@ async function safeSnapshot() {
 }
 
 function redactedResponse(method: string, path: string, value: any) {
+  if (path.startsWith("/_plugins/")) {
+    return { installedUiBundle: typeof value === "string", byteLength: typeof value === "string" ? Buffer.byteLength(value) : null };
+  }
   if (path.startsWith("/api/auth/")) {
     return { user: value?.user ? { id: value.user.id, email: value.user.email } : null };
   }
@@ -146,6 +151,7 @@ function redactedResponse(method: string, path: string, value: any) {
 async function request(actor: string, method: string, path: string, body?: unknown) {
   const headers: Record<string, string> = { "content-type": "application/json", origin: baseUrl };
   if (actor === "human") headers.cookie = cookie;
+  if (actor === "intruder") headers.cookie = intruderCookie;
   const agent = agentTokens.get(actor);
   if (agent) {
     headers.authorization = `Bearer ${agent.token}`;
@@ -243,8 +249,8 @@ try {
     port: address.port,
   };
   const auth = createBetterAuthInstance(db, authConfig, [baseUrl]);
-  const opts = () => ({
-    uiMode: "none" as any,
+  const opts = (uiMode: "none" | "vite-dev" = "none") => ({
+    uiMode,
     serverPort: address.port,
     storageService: createStorageService(createLocalDiskStorageProvider(resolve(runtime, "storage"))),
     deploymentMode: "authenticated" as const,
@@ -283,9 +289,27 @@ try {
   const userId = signin.body.user.id;
   evidence.configuration.humanUserId = userId;
 
-  await db.insert(tables.companies).values({ id: companyId, name: "Isolated council package qualification", issuePrefix: "CPQ" });
+  const intruderPassword = randomBytes(24).toString("hex");
+  assert.equal((await request("anonymous", "POST", "/api/auth/sign-up/email", {
+    email: "council-package-intruder@example.test",
+    password: intruderPassword,
+    name: "Council Package Intruder",
+  })).status, 200);
+  const intruderSignin = await request("anonymous", "POST", "/api/auth/sign-in/email", {
+    email: "council-package-intruder@example.test",
+    password: intruderPassword,
+  });
+  assert.equal(intruderSignin.status, 200);
+  intruderCookie = intruderSignin.headers.getSetCookie().map((value) => value.split(";", 1)[0]).join("; ");
+  const intruderUserId = intruderSignin.body.user.id;
+  evidence.configuration.intruderUserId = intruderUserId;
+
+  await db.insert(tables.companies).values({ id: companyId, name: "Isolated council package qualification", issuePrefix: "CPQ", defaultResponsibleUserId: userId });
   await db.insert(tables.companyMemberships).values({ companyId, principalType: "user", principalId: userId, membershipRole: "owner", status: "active" });
+  await db.insert(tables.companyMemberships).values({ companyId, principalType: "user", principalId: intruderUserId, membershipRole: "viewer", status: "active" });
   await db.insert(tables.instanceUserRoles).values({ userId, role: "instance_admin" });
+  await db.insert(tables.companies).values({ id: foreignCompanyId, name: "Foreign Council fixture", issuePrefix: "FCQ", defaultResponsibleUserId: userId });
+  await db.insert(tables.companyMemberships).values({ companyId: foreignCompanyId, principalType: "user", principalId: userId, membershipRole: "owner", status: "active" });
   await db.insert(tables.projects).values({ id: projectId, companyId, name: "Council package fixture" });
   for (const [actor, id] of [["executor", executorId], ["council", councilId]] as const) {
     await db.insert(tables.agents).values({
@@ -341,7 +365,7 @@ try {
 
   await closeApp();
   workerManager = createPluginWorkerManager();
-  app = await createApp(db, opts());
+  app = await createApp(db, opts("vite-dev"));
   server = createServer(app);
   await new Promise<void>((resolveListen, reject) => {
     server!.once("error", reject);
@@ -350,6 +374,197 @@ try {
   await app.locals.bundledPluginsStartup;
   assert(workerManager.isRunning(pluginId), "installed package worker must load after restart");
   evidence.results.installation = "PASS";
+
+  const rosterBase = `/api/plugins/${pluginId}/api/companies/${companyId}/rosters`;
+  const teamDraft = {
+    kind: "team",
+    name: "Delivery team",
+    projectId,
+    members: [{ agentId: executorId, responsibilities: ["integration_lead"] }],
+    integrationLeadAgentId: executorId,
+    finalReviewerAgentId: null,
+    requiredPerspectives: [],
+  };
+  const councilDraft = {
+    kind: "council",
+    name: "Release council",
+    projectId,
+    members: [{ agentId: councilId, responsibilities: ["final_reviewer"] }],
+    integrationLeadAgentId: null,
+    finalReviewerAgentId: councilId,
+    requiredPerspectives: [],
+  };
+
+  const unauthorizedBefore = await request("human", "GET", `${rosterBase}?companyId=${companyId}`);
+  assert.equal(unauthorizedBefore.status, 200);
+  assert.deepEqual(unauthorizedBefore.body.rosters, []);
+  const unauthorizedCreate = await request("intruder", "POST", rosterBase, {
+    companyId,
+    ownerUserId: userId,
+    command: "create",
+    roster: teamDraft,
+  });
+  assert.equal(unauthorizedCreate.status, 403);
+  assert.equal(unauthorizedCreate.body.code, "owner_required");
+  const afterUnauthorized = await request("human", "GET", `${rosterBase}?companyId=${companyId}`);
+  assert.deepEqual(afterUnauthorized.body.rosters, []);
+  evidence.results.ownerAuthorityNoMutation = "PASS";
+
+  const teamCreate = await request("human", "POST", rosterBase, { companyId, command: "create", roster: teamDraft });
+  const councilCreate = await request("human", "POST", rosterBase, { companyId, command: "create", roster: councilDraft });
+  assert.equal(teamCreate.status, 201);
+  assert.equal(councilCreate.status, 201);
+  const teamRosterId = teamCreate.body.head.rosterId;
+  const councilRosterId = councilCreate.body.head.rosterId;
+  assert.equal(teamCreate.body.head.publishedRevision, teamCreate.body.revision.revision);
+  assert.equal(councilCreate.body.head.publishedRevision, councilCreate.body.revision.revision);
+
+  const validation = await request("human", "POST", rosterBase, {
+    companyId,
+    command: "validate-pair",
+    teamRosterId,
+    councilRosterId,
+  });
+  assert.equal(validation.status, 200);
+  assert.equal(validation.body.eligible, true);
+  assert(validation.body.prerequisites.some((item: any) => item.code === "decision_reconciliation" && item.status === "unsupported"));
+  const activation = await request("human", "POST", rosterBase, {
+    companyId,
+    command: "activate-pair",
+    teamRosterId,
+    teamExpectedVersion: 1,
+    councilRosterId,
+    councilExpectedVersion: 1,
+  });
+  assert.equal(activation.status, 200);
+  assert.equal(activation.body.team.head.lifecycle, "active");
+  assert.equal(activation.body.council.head.lifecycle, "active");
+  assert.equal(activation.body.missionActivation, "unavailable");
+  evidence.results.createValidateActivate = "PASS";
+
+  const competingRevisions = await Promise.all([
+    request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
+      companyId, command: "revise", expectedVersion: 2,
+      roster: { ...teamDraft, name: "Delivery team revision A" },
+    }),
+    request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
+      companyId, command: "revise", expectedVersion: 2,
+      roster: { ...teamDraft, name: "Delivery team revision B" },
+    }),
+  ]);
+  assert.deepEqual(competingRevisions.map((result) => result.status).sort(), [200, 409]);
+  const winningRevision = competingRevisions.find((result) => result.status === 200)!.body.roster;
+  const conflictingRevision = competingRevisions.find((result) => result.status === 409)!.body.details;
+  assert.equal(conflictingRevision.outcome, "conflict");
+  assert.notEqual(conflictingRevision.orphanedRevision, winningRevision.head.publishedRevision);
+  const teamRead = await request("human", "GET", `${rosterBase}/${teamRosterId}?companyId=${companyId}`);
+  assert.equal(teamRead.status, 200);
+  assert.equal(teamRead.body.history.length, 3);
+  const originalRevision = teamRead.body.history.find((item: any) => item.revision === teamCreate.body.revision.revision);
+  assert.equal(originalRevision.name, "Delivery team");
+  assert.deepEqual(originalRevision.content, teamDraft.members ? {
+    members: teamDraft.members,
+    integrationLeadAgentId: executorId,
+    finalReviewerAgentId: null,
+    requiredPerspectives: [],
+  } : null);
+  evidence.results.concurrentPublicationAndImmutability = "PASS";
+
+  const reactivate = await request("human", "POST", rosterBase, {
+    companyId,
+    command: "activate-pair",
+    teamRosterId,
+    teamExpectedVersion: winningRevision.head.version,
+    councilRosterId,
+    councilExpectedVersion: activation.body.council.head.version,
+  });
+  assert.equal(reactivate.status, 200);
+  const suspend = await request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
+    companyId, command: "suspend", expectedVersion: reactivate.body.team.head.version,
+  });
+  assert.equal(suspend.status, 200);
+  assert.equal(suspend.body.head.lifecycle, "suspended");
+  const staleSuspend = await request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
+    companyId, command: "suspend", expectedVersion: reactivate.body.team.head.version,
+  });
+  assert.equal(staleSuspend.status, 409);
+  const afterStale = await request("human", "GET", `${rosterBase}/${teamRosterId}?companyId=${companyId}`);
+  assert.equal(afterStale.body.roster.head.lifecycle, "suspended");
+  assert.equal(afterStale.body.roster.head.version, suspend.body.head.version);
+  const retired = await request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
+    companyId, command: "retire", expectedVersion: suspend.body.head.version,
+  });
+  assert.equal(retired.status, 200);
+  assert.equal(retired.body.head.lifecycle, "retired");
+  assert.equal((await request("human", "GET", `${rosterBase}/${teamRosterId}?companyId=${companyId}`)).body.history.length, 3);
+  evidence.results.reviseSuspendRetireAndStaleNoMutation = "PASS";
+
+  const foreignBase = `/api/plugins/${pluginId}/api/companies/${foreignCompanyId}/rosters`;
+  const foreignList = await request("human", "GET", `${foreignBase}?companyId=${foreignCompanyId}`);
+  assert.equal(foreignList.status, 200);
+  assert.deepEqual(foreignList.body.rosters, []);
+  const foreignWrite = await request("human", "POST", `${foreignBase}/${teamRosterId}/commands`, {
+    companyId: foreignCompanyId,
+    command: "revise",
+    expectedVersion: retired.body.head.version,
+    roster: { ...teamDraft, projectId: null, name: "Cross-company overwrite" },
+  });
+  assert.equal(foreignWrite.status, 404);
+  const ownReadAfterForeign = await request("human", "GET", `${rosterBase}/${teamRosterId}?companyId=${companyId}`);
+  assert.equal(ownReadAfterForeign.body.roster.revision.name, winningRevision.revision.name);
+  evidence.results.interCompanyIsolation = "PASS";
+
+  const bridgeData = await request("human", "POST", `/api/plugins/${pluginId}/bridge/data`, {
+    key: "council-rosters",
+    companyId,
+    params: { rosterId: teamRosterId },
+  });
+  assert.equal(bridgeData.status, 200);
+  assert.equal(bridgeData.body.data.selected.head.rosterId, teamRosterId);
+  assert.equal(bridgeData.body.data.ownerUserId, userId);
+  const uiBundle = await request("human", "GET", `/_plugins/${pluginId}/ui/index.js?companyId=${companyId}`);
+  assert.equal(uiBundle.status, 200);
+  assert.match(uiBundle.body, /CouncilRostersPage|Council rosters/);
+  evidence.results.installedUiBundleAndAuthenticatedBridge = "PASS";
+
+  const { chromium } = requireServer("@playwright/test");
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const addSessionCookies = async (browserContext: any, rawCookie: string) => {
+      await browserContext.addCookies(rawCookie.split("; ").map((part) => {
+        const separator = part.indexOf("=");
+        return { name: part.slice(0, separator), value: part.slice(separator + 1), url: baseUrl };
+      }));
+    };
+    const ownerContext = await browser.newContext({ viewport: { width: 1180, height: 820 } });
+    await addSessionCookies(ownerContext, cookie);
+    const ownerPage = await ownerContext.newPage();
+    await ownerPage.goto(`${baseUrl}/CPQ/council-rosters`, { waitUntil: "networkidle" });
+    await ownerPage.getByRole("heading", { name: "Council rosters" }).waitFor();
+    await ownerPage.getByRole("button", { name: "New roster" }).focus();
+    await ownerPage.keyboard.press("Enter");
+    await ownerPage.getByLabel("Name").fill("Browser-created team");
+    await ownerPage.getByLabel("Integration lead").selectOption(executorId);
+    await ownerPage.getByRole("button", { name: "Create draft" }).click();
+    await ownerPage.getByText("Draft roster created.").waitFor();
+    await ownerPage.getByText("Browser-created team").first().waitFor();
+    const screenshotPath = process.env.COUNCIL_UI_SCREENSHOT_PATH ?? resolve(packageRoot, "artifacts", "ui-page.png");
+    await mkdir(dirname(screenshotPath), { recursive: true });
+    await ownerPage.screenshot({ path: screenshotPath, fullPage: true });
+    evidence.configuration.uiScreenshot = screenshotPath;
+    await ownerContext.close();
+
+    const intruderContext = await browser.newContext({ viewport: { width: 760, height: 760 } });
+    await addSessionCookies(intruderContext, intruderCookie);
+    const intruderPage = await intruderContext.newPage();
+    await intruderPage.goto(`${baseUrl}/CPQ/council-rosters`, { waitUntil: "networkidle" });
+    await intruderPage.getByText("Status: read only").waitFor();
+    assert.equal(await intruderPage.getByRole("button", { name: "Create draft" }).isDisabled(), true);
+    await intruderContext.close();
+    evidence.results.installedBrowserPageAndAuthenticatedAction = "PASS";
+  } finally {
+    await browser.close();
+  }
 
   const policy = {
     mode: "normal",

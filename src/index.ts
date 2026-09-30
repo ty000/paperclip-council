@@ -7,6 +7,7 @@ export {
   readFoundationProbe,
   verifyCandidateAttachment,
 } from "./foundation-probe.js";
+export * from "./rosters.js";
 export type {
   CouncilConfig,
   CouncilDecisionInput,
