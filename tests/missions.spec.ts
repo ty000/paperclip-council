@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import {
   buildMissionAggregate,
@@ -10,7 +10,7 @@ import {
   parseMissionCreateInput,
   type MissionMandate,
 } from "../src/missions.js";
-import type { RosterSnapshot } from "../src/rosters.js";
+import { RosterError, type RosterSnapshot } from "../src/rosters.js";
 
 const ids = {
   command: randomUUID(),
@@ -70,6 +70,63 @@ function roster(kind: "team" | "council"): RosterSnapshot {
       createdByUserId: "owner-1",
       createdAt: new Date(0).toISOString(),
     },
+  };
+}
+
+function createInput() {
+  return parseMissionCreateInput({
+    command: "create",
+    commandId: ids.command,
+    missionId: ids.mission,
+    rootIssueId: ids.issue,
+    projectId: ids.project,
+    teamRosterId: ids.team,
+    teamRevision: ids.teamRevision,
+    councilRosterId: ids.council,
+    councilRevision: ids.councilRevision,
+    mandate,
+  });
+}
+
+function storedMissionRow() {
+  const create = createInput();
+  const aggregate = buildMissionAggregate({
+    create,
+    companyId: ids.company,
+    ownerUserId: "owner-1",
+    team: roster("team"),
+    council: roster("council"),
+    payloadHash: canonicalPayloadHash(create),
+    at: new Date(0).toISOString(),
+  });
+  return {
+    company_id: ids.company,
+    mission_id: ids.mission,
+    root_issue_id: ids.issue,
+    project_id: ids.project,
+    owner_user_id: "owner-1",
+    team_roster_id: ids.team,
+    team_revision: ids.teamRevision,
+    council_roster_id: ids.council,
+    council_revision: ids.councilRevision,
+    version: 1,
+    aggregate,
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString(),
+  };
+}
+
+function createRequest() {
+  return {
+    routeKey: "missions-command",
+    method: "POST",
+    path: "",
+    params: { companyId: ids.company },
+    query: {},
+    body: createInput(),
+    actor: { actorType: "user" as const, actorId: "owner-1", userId: "owner-1" },
+    companyId: ids.company,
+    headers: {},
   };
 }
 
@@ -139,6 +196,91 @@ describe("Council mission contracts", () => {
       actorUserId: "intruder-1",
       body: { command: "create" },
     })).rejects.toMatchObject({ status: 403, code: "owner_required" });
+  });
+
+  it("replays stored creation before consulting mutable issue, project or roster eligibility", async () => {
+    const row = storedMissionRow();
+    const admissionRead = vi.fn(async () => { throw new Error("Current admission is no longer valid"); });
+    const query = vi.fn(async (sql: string) => {
+      if (!sql.includes(".missions")) throw new Error("Roster eligibility must not be read on replay");
+      return [row];
+    });
+    const execute = vi.fn();
+    const ctx = {
+      companies: { get: async () => ({ id: ids.company, defaultResponsibleUserId: "owner-1" }) },
+      issues: { get: admissionRead },
+      projects: { get: admissionRead },
+      db: { namespace: "plugin_private_paperclip_council_test", query, execute },
+    } as unknown as PluginContext;
+    const result = await executeMissionCommand(ctx, {
+      companyId: ids.company,
+      actorUserId: "owner-1",
+      body: createInput(),
+    });
+    expect(result.outcome).toBe("replayed");
+    expect(result.receipt).toEqual(row.aggregate.commandReceipts[0]);
+    expect(result.mission.aggregate).toEqual(row.aggregate);
+    expect(result.mission.version).toBe(1);
+    expect(admissionRead).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { name: "changed payload", change: { mandate: { ...mandate, objective: "Different objective" } }, code: "command_identity_conflict", actor: "owner-1" },
+    { name: "changed authenticated owner", change: {}, code: "command_identity_conflict", actor: "owner-2" },
+    { name: "occupied mission ID", change: { commandId: randomUUID(), rootIssueId: randomUUID() }, code: "mission_exists", actor: "owner-1" },
+    { name: "occupied root issue", change: { commandId: randomUUID(), missionId: randomUUID() }, code: "mission_exists", actor: "owner-1" },
+    { name: "same command with another mission ID", change: { missionId: randomUUID() }, code: "command_identity_conflict", actor: "owner-1" },
+  ])("rejects $name before mutable admission or writes", async ({ change, code, actor }) => {
+    const row = storedMissionRow();
+    const query = vi.fn(async (sql: string, values: unknown[]) => {
+      if (!sql.includes(".missions")) throw new Error("Unexpected roster lookup");
+      const matches = sql.includes("AND mission_id =") ? values[1] === row.mission_id : values[1] === row.root_issue_id;
+      return matches ? [row] : [];
+    });
+    const execute = vi.fn();
+    const ctx = {
+      companies: { get: async () => ({ id: ids.company, defaultResponsibleUserId: actor }) },
+      db: { namespace: "plugin_private_paperclip_council_test", query, execute },
+    } as unknown as PluginContext;
+    await expect(executeMissionCommand(ctx, {
+      companyId: ids.company,
+      actorUserId: actor,
+      body: { ...createInput(), ...change },
+    })).rejects.toMatchObject({ status: 409, code });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("returns a structured 404 for missing roster selection without inserting a mission", async () => {
+    const execute = vi.fn();
+    const ctx = {
+      companies: { get: async () => ({ id: ids.company, defaultResponsibleUserId: "owner-1" }) },
+      issues: { get: async () => ({ companyId: ids.company, projectId: ids.project, parentId: null }) },
+      projects: { get: async () => ({ companyId: ids.company, archivedAt: null }) },
+      db: { namespace: "plugin_private_paperclip_council_test", query: async () => [], execute },
+    } as unknown as PluginContext;
+    await expect(handleMissionApi(createRequest(), ctx)).resolves.toMatchObject({
+      status: 404,
+      body: { code: "roster_not_found", error: "Team or council roster not found in this company" },
+    });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("preserves roster error details and lets unexpected failures escape", async () => {
+    const query = vi.fn();
+    const ctx = {
+      companies: { get: async () => ({ id: ids.company, defaultResponsibleUserId: "owner-1" }) },
+      db: { namespace: "plugin_private_paperclip_council_test", query },
+    } as unknown as PluginContext;
+    const details = { rosterId: ids.team };
+    query.mockRejectedValueOnce(new RosterError(422, "roster_fixture", "Roster fixture error", details));
+    await expect(handleMissionApi(createRequest(), ctx)).resolves.toEqual({
+      status: 422,
+      body: { code: "roster_fixture", error: "Roster fixture error", details },
+    });
+    const unexpected = new Error("Database unavailable");
+    query.mockRejectedValueOnce(unexpected);
+    await expect(handleMissionApi(createRequest(), ctx)).rejects.toBe(unexpected);
   });
 
   it("makes mission insertion conditional on locking both active current roster heads", () => {

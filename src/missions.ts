@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import {
-  getRoster,
+  RosterError,
   validateRosterPair,
   type RosterSnapshot,
 } from "./rosters.js";
@@ -412,10 +412,22 @@ function replayOrConflict(mission: MissionRecord, commandId: string, actorId: st
   return { outcome: "replayed" as const, mission, receipt };
 }
 
+function existingCreationResult(mission: MissionRecord, commandId: string, actorId: string, payloadHash: string) {
+  const replay = replayOrConflict(mission, commandId, actorId, payloadHash);
+  if (replay) return replay;
+  throw new MissionError(409, "mission_exists", "A mission already exists for this mission ID or root issue", {
+    missionId: mission.missionId,
+    rootIssueId: mission.rootIssueId,
+  });
+}
+
 async function createMission(ctx: PluginContext, companyId: string, actorUserId: string | null, body: unknown) {
   const ownerUserId = await requireOwner(ctx, companyId, actorUserId);
   const create = parseMissionCreateInput(body);
   const payloadHash = canonicalPayloadHash(create);
+  const existing = await getMission(ctx, companyId, create.missionId)
+    ?? await getMissionByRootIssue(ctx, companyId, create.rootIssueId);
+  if (existing) return existingCreationResult(existing, create.commandId, ownerUserId, payloadHash);
   const issue = await ctx.issues.get(create.rootIssueId, companyId);
   if (!issue || issue.companyId !== companyId) throw new MissionError(404, "root_issue_not_found", "Root issue not found in this company");
   if (issue.parentId) throw new MissionError(422, "root_issue_required", "Mission issue must be a root issue");
@@ -456,12 +468,7 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
     );
   }
   if (insert.rowCount === 1) return { outcome: "applied" as const, mission, receipt: mission.aggregate.commandReceipts[0] };
-  const replay = replayOrConflict(mission, create.commandId, ownerUserId, payloadHash);
-  if (replay) return replay;
-  throw new MissionError(409, "mission_exists", "A mission already exists for this mission ID or root issue", {
-    missionId: mission.missionId,
-    rootIssueId: mission.rootIssueId,
-  });
+  return existingCreationResult(mission, create.commandId, ownerUserId, payloadHash);
 }
 
 async function updateMandate(
@@ -583,7 +590,7 @@ export async function handleMissionApi(input: PluginApiRequestInput, ctx: Plugin
     }
     return { status: 404, body: { error: "Unknown mission route" } };
   } catch (error) {
-    if (error instanceof MissionError) {
+    if (error instanceof MissionError || error instanceof RosterError) {
       return { status: error.status, body: { error: error.message, code: error.code, details: error.details } };
     }
     throw error;

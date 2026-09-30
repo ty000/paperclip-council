@@ -508,6 +508,20 @@ try {
   const unauthorizedMission = await request("intruder", "POST", missionBase, missionCreateBody);
   assert.equal(unauthorizedMission.status, 403);
   assert.equal(unauthorizedMission.body.code, "owner_required");
+  for (const missingRosterField of ["teamRosterId", "councilRosterId"]) {
+    const missingRosterMissionId = randomUUID();
+    const missingRoster = await request("human", "POST", missionBase, {
+      ...missionCreateBody,
+      missionId: missingRosterMissionId,
+      [missingRosterField]: randomUUID(),
+    });
+    assert.equal(missingRoster.status, 404);
+    assert.equal(missingRoster.body.code, "roster_not_found");
+    const absentMission = await request("human", "GET", `${missionBase}/${missingRosterMissionId}?companyId=${companyId}`);
+    assert.equal(absentMission.status, 404);
+    assert.equal(absentMission.body.code, "mission_not_found");
+  }
+  evidence.results.missingRosterStructuredRefusal = "PASS";
   const missionCreate = await request("human", "POST", missionBase, missionCreateBody);
   assert.equal(missionCreate.status, 201);
   assert.equal(missionCreate.body.outcome, "applied");
@@ -589,6 +603,12 @@ try {
     requiredPerspectives: [],
   } : null);
   evidence.results.concurrentPublicationAndImmutability = "PASS";
+  const replayAfterRevision = await request("human", "POST", missionBase, missionCreateBody);
+  assert.equal(replayAfterRevision.status, 200);
+  assert.equal(replayAfterRevision.body.outcome, "replayed");
+  assert.deepEqual(replayAfterRevision.body.receipt, missionCreate.body.receipt);
+  assert.deepEqual(replayAfterRevision.body.mission, winningMandate.mission);
+  evidence.results.missionCreateReplayAfterRosterRevision = "PASS";
 
   const reactivate = await request("human", "POST", rosterBase, {
     companyId,
@@ -653,11 +673,60 @@ try {
     createStatuses: missionLifecycleRaceOutcomes,
     invariant: "create serialized before suspension or refused after selection changed",
   };
+  const orderedRoot = await request("human", "POST", `/api/companies/${companyId}/issues`, {
+    title: "Mission create-before-suspend fixture",
+    description: "Deterministic public API ordering; no dispatch.",
+    projectId,
+    status: "backlog",
+    assigneeAgentId: executorId,
+  });
+  assert.equal(orderedRoot.status, 201);
+  const orderedCreateBody = {
+    ...missionCreateBody,
+    commandId: randomUUID(),
+    missionId: randomUUID(),
+    rootIssueId: orderedRoot.body.id,
+    teamRevision: winningRevision.revision.revision,
+  };
+  const orderedCreate = await request("human", "POST", missionBase, orderedCreateBody);
+  assert.equal(orderedCreate.status, 201);
+  assert.equal(orderedCreate.body.outcome, "applied");
   const suspend = await request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
     companyId, command: "suspend", expectedVersion: currentPair.team.head.version,
   });
   assert.equal(suspend.status, 200);
   assert.equal(suspend.body.head.lifecycle, "suspended");
+  const orderedRead = await request("human", "GET", `${missionBase}/${orderedCreateBody.missionId}?companyId=${companyId}`);
+  assert.equal(orderedRead.status, 200);
+  assert.deepEqual(orderedRead.body.mission, orderedCreate.body.mission);
+  const orderedReplay = await request("human", "POST", missionBase, orderedCreateBody);
+  assert.equal(orderedReplay.status, 200);
+  assert.equal(orderedReplay.body.outcome, "replayed");
+  assert.deepEqual(orderedReplay.body.receipt, orderedCreate.body.receipt);
+  assert.deepEqual(orderedReplay.body.mission, orderedCreate.body.mission);
+  evidence.results.missionCreateBeforeSuspensionPersistsAndReplays = "PASS";
+
+  const suspendedRoot = await request("human", "POST", `/api/companies/${companyId}/issues`, {
+    title: "Mission suspend-before-create fixture",
+    description: "Deterministic public API ordering; no dispatch.",
+    projectId,
+    status: "backlog",
+    assigneeAgentId: executorId,
+  });
+  assert.equal(suspendedRoot.status, 201);
+  const suspendedMissionId = randomUUID();
+  const suspendedCreate = await request("human", "POST", missionBase, {
+    ...orderedCreateBody,
+    commandId: randomUUID(),
+    missionId: suspendedMissionId,
+    rootIssueId: suspendedRoot.body.id,
+  });
+  assert.equal(suspendedCreate.status, 409);
+  assert.equal(suspendedCreate.body.code, "active_rosters_required");
+  const suspendedRead = await request("human", "GET", `${missionBase}/${suspendedMissionId}?companyId=${companyId}`);
+  assert.equal(suspendedRead.status, 404);
+  assert.equal(suspendedRead.body.code, "mission_not_found");
+  evidence.results.missionSuspensionBeforeCreateRefusesPersistence = "PASS";
   const staleSuspend = await request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
     companyId, command: "suspend", expectedVersion: currentPair.team.head.version,
   });
@@ -682,6 +751,13 @@ try {
   assert.equal(pinnedMission.body.mission.aggregate.compositions.team.revision, teamCreate.body.revision.revision);
   assert.equal(pinnedMission.body.state.executable, false);
   evidence.results.missionPinsSurviveRosterRevisionSuspensionRetirement = "PASS";
+  const replayAfterRetirement = await request("human", "POST", missionBase, missionCreateBody);
+  assert.equal(replayAfterRetirement.status, 200);
+  assert.equal(replayAfterRetirement.body.outcome, "replayed");
+  assert.deepEqual(replayAfterRetirement.body.receipt, missionCreate.body.receipt);
+  assert.deepEqual(replayAfterRetirement.body.mission, pinnedMission.body.mission);
+  assert.equal(replayAfterRetirement.body.mission.aggregate.commandReceipts.length, 2);
+  evidence.results.missionCreateReplayAfterRosterRetirement = "PASS";
 
   const unavailableRoot = await request("human", "POST", `/api/companies/${companyId}/issues`, {
     title: "Retired roster selection refusal fixture",
@@ -714,8 +790,12 @@ try {
   assert(workerManager.isRunning(pluginId), "installed package worker must reload after mission persistence restart");
   const missionAfterRestart = await request("human", "GET", `${missionBase}/${missionId}?companyId=${companyId}`);
   assert.equal(missionAfterRestart.status, 200);
-  assert.equal(missionAfterRestart.body.mission.teamRevision, teamCreate.body.revision.revision);
-  assert.equal(missionAfterRestart.body.mission.version, 2);
+  assert.deepEqual(missionAfterRestart.body, pinnedMission.body);
+  const replayAfterRestart = await request("human", "POST", missionBase, missionCreateBody);
+  assert.equal(replayAfterRestart.status, 200);
+  assert.equal(replayAfterRestart.body.outcome, "replayed");
+  assert.deepEqual(replayAfterRestart.body.receipt, missionCreate.body.receipt);
+  assert.deepEqual(replayAfterRestart.body.mission, pinnedMission.body.mission);
   evidence.results.missionPersistenceAfterRestart = "PASS";
 
   const foreignBase = `/api/plugins/${pluginId}/api/companies/${foreignCompanyId}/rosters`;
