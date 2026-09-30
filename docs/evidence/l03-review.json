@@ -1,6 +1,6 @@
 {
   "schema_version": "l03-independent-review.v1",
-  "basis": "Current two worktree integration diffs; source review plus bounded rereview after batches2 and3",
+  "basis": "Independent whole integration source review, bounded rereviews and final batch6 semantic review; runtime findings recorded separately.",
   "reviewer": "independent /root/integration_review",
   "source_findings": [
     {
@@ -40,6 +40,16 @@
       "id": "L03-RR-002",
       "status": "resolved",
       "evidence": "docs/L03-REAL-CAMPAIGN.md"
+    },
+    {
+      "id": "L03-CI-001",
+      "status": "resolved",
+      "evidence": "Council src/l03-runtime.ts; CI dcbb34a; independent semantic review"
+    },
+    {
+      "id": "L03-HOST-001",
+      "status": "resolved_native_observed",
+      "evidence": "docs/evidence/l03-host-attempt6.json checks.authenticatedOpinionBridge"
     }
   ],
   "remaining_p1_p2": [],
@@ -53,6 +63,11 @@
       "id": "EVENT-ACK",
       "status": "documented_native_limit",
       "detail": "Native event delivery is not durable subscriber acknowledgement. Missing observations block dependent work."
+    },
+    {
+      "id": "L03-HOST-002",
+      "status": "documented_native_limit",
+      "detail": "Native interrupted sessions produce session terminal output but no plugin lifecycle event. Executive failure may remain unobserved by Council; required opinion blocks direction. No automatic recovery claim."
     }
   ],
   "checks": {
@@ -60,5 +75,19 @@
     "built_hash_readback": "pass",
     "suite_rerun_by_reviewer": false
   },
-  "qualification": "Executive host attempt3 exposed terminal callback invocation scope failure. Source fix and fresh integrated qualification pending. This report is the bounded source rereview, not final runtime readiness."
+  "qualification": "Partial only. Final host packet FAIL; browser PASS_BLOCKED_STATE_RENDERED. No real model campaign. Source review is not proof of correction continuation.",
+  "final_batch6_review": {
+    "status": "pass",
+    "basis": "Current final source; independent read-only review, no suite rerun",
+    "result": "No semantic drift or new P1/P2 in control, admission, dispatch, terminal persistence, UI helper extraction. HOST002 residual documented.",
+    "remaining_qualification": "HOST003 blocks the integrated correction journey; real-profile qualification remains unexecuted."
+  },
+  "runtime_blocking_findings": [
+    {
+      "id": "L03-HOST-003",
+      "status": "unresolved",
+      "detail": "V1 changes_requested receipt native_observed HTTP200 and reassignment confirmed; no following executor correction run observed within 30 seconds. V2 and fresh review unqualified. Deeper wake cause unknown.",
+      "evidence": "docs/evidence/l03-host-attempt6.json"
+    }
+  ]
 }
