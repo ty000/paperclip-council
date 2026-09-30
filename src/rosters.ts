@@ -285,12 +285,19 @@ async function insertRevision(
   draft: ReturnType<typeof parseRosterDraft>,
   actorUserId: string,
 ): Promise<RosterRevision> {
-  const rows = await ctx.db.query<RevisionRow>(
+  const revisionId = randomUUID();
+  const insert = await ctx.db.execute(
     `INSERT INTO ${table(ctx, "roster_revisions")}
       (company_id, roster_id, revision, kind, name, project_id, content, created_by_user_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
-      RETURNING company_id, roster_id, revision, kind, name, project_id, content, created_by_user_id, created_at`,
-    [companyId, rosterId, randomUUID(), draft.kind, draft.name, draft.projectId, JSON.stringify(draft.content), actorUserId],
+      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
+    [companyId, rosterId, revisionId, draft.kind, draft.name, draft.projectId, JSON.stringify(draft.content), actorUserId],
+  );
+  if (insert.rowCount !== 1) throw new Error("Roster revision insert did not affect one row");
+  const rows = await ctx.db.query<RevisionRow>(
+    `SELECT company_id, roster_id, revision, kind, name, project_id, content, created_by_user_id, created_at
+      FROM ${table(ctx, "roster_revisions")}
+      WHERE company_id = $1 AND roster_id = $2 AND revision = $3`,
+    [companyId, rosterId, revisionId],
   );
   if (!rows[0]) throw new Error("Roster revision insert returned no row");
   return parseRevision(rows[0]);
