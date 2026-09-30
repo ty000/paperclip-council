@@ -83,14 +83,28 @@ export function createL03Runtime(ctx: PluginContext) {
       receipts: receipts.filter(r => g.receiptRefs.includes(r.operationId)),
     })) };
   }
+  function positiveFinite(value: unknown): value is number {
+    return typeof value === "number" && Number.isFinite(value) && value > 0;
+  }
+  function positiveInteger(value: unknown): boolean {
+    return positiveFinite(value) && Number.isSafeInteger(value);
+  }
   async function requireExecutorControls(g: L03Governance) {
     const agent = await ctx.agents.get(g.authority.executorAgentId, g.companyId);
-    const config = agent?.adapterConfig as Record<string, unknown> | undefined;
-    const runtime = agent?.runtimeConfig as { heartbeat?: { maxConcurrentRuns?: number; maxDailyRuns?: number; maxDailyCostCents?: number; wakeOnDemand?: boolean } } | undefined;
-    if (!agent || !["idle", "running", "active"].includes(agent.status) || !config || typeof config.timeoutSec !== "number" || !Number.isFinite(config.timeoutSec) || config.timeoutSec <= 0
-      || runtime?.heartbeat?.wakeOnDemand !== true || runtime.heartbeat.maxConcurrentRuns !== 1
-      || !Number.isSafeInteger(runtime.heartbeat.maxDailyRuns) || (runtime.heartbeat.maxDailyRuns ?? 0) <= 0
-      || !Number.isSafeInteger(runtime.heartbeat.maxDailyCostCents) || (runtime.heartbeat.maxDailyCostCents ?? 0) <= 0) {
+    if (!agent || !["idle", "running", "active"].includes(agent.status)) {
+      throw new L03Error(409, "execution_controls_missing", "Executor must be operational");
+    }
+    const config = agent.adapterConfig as Record<string, unknown>;
+    const runtime = agent.runtimeConfig as { heartbeat?: Record<string, unknown> };
+    const heartbeat = runtime?.heartbeat ?? {};
+    const controls = [
+      positiveFinite(config?.timeoutSec),
+      heartbeat.wakeOnDemand === true,
+      heartbeat.maxConcurrentRuns === 1,
+      positiveInteger(heartbeat.maxDailyRuns),
+      positiveInteger(heartbeat.maxDailyCostCents),
+    ];
+    if (!controls.every(Boolean)) {
       throw new L03Error(409, "execution_controls_missing", "Executor requires a positive timeout, explicit on-demand wake, concurrency one and finite daily run/cost thresholds");
     }
   }
