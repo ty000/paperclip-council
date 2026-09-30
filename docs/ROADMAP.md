@@ -1,12 +1,14 @@
 # Paperclip Council — Product Roadmap
 
-Status: proposed horizons, pending product decisions.
-Document version: 0.1 — September 29, 2026.
+Status: V1 scope selected (H1 + H2 + team lifecycle); later horizons remain conditional.
+Document version: 0.2 — September 30, 2026.
 Product reference: [PRD](PRD.md).
 
 This roadmap describes potential major evolutions, their value, their product dependencies, and the observations needed to decide what comes next. It is neither a schedule, a technical backlog, nor a commitment to deliver every horizon.
 
 The PRD is authoritative on needs and behavior. The roadmap identifies what may be taken forward; it cannot silently remove a requirement or extend delegated authority. A change in need requires a PRD update; a change in priority may affect only this roadmap.
+
+The September 30 scope decision selects H1 and H2 together, including C16–C18 team coordination, for the first release. H1 is an implementation dependency and intermediate demonstration, not the complete V1. Memory and learning (H3–H5) follow later. See [V1 scope](V1-SCOPE.md), [TAD](TAD.md) and [implementation lots](IMPLEMENTATION-PLAN.md).
 
 ## 1. Starting point
 
@@ -18,9 +20,9 @@ The dedicated repository and public availability are not, by themselves, a funct
 
 | Horizon | Intended user outcome | PRD references | Status |
 | --- | --- | --- | --- |
-| H1 — Useful review and acceptance | Delegate a bounded request, obtain a correction or an applied acceptance decision, and understand a blocker. | C01–C09; J01–J04, J06 | Proposed next horizon |
-| H2 — Proportionate multidisciplinary council | Have the relevant disciplines examine a trade-off without turning every task into a committee. | C10–C11, C16; J05 | Candidate, dependent on H1 and an observed need |
-| H3 — Collective continuity | Retrieve decisions, trade-offs, and follow-up for a new request or after an agent change. | C12; J06–J08 | Candidate; may precede H2 if resumption is the main problem |
+| H1 — Useful review and acceptance | Delegate a bounded request, obtain a correction or an applied acceptance decision, and understand a blocker. | C01–C09; J01–J04, J06 | Selected V1 foundation |
+| H2 — Proportionate multidisciplinary council | Have the relevant disciplines examine a trade-off without turning every task into a committee. | C10–C11, C16–C18; J05 | Selected V1 council and team capability; built on H1 |
+| H3 — Collective continuity | Retrieve decisions, trade-offs, and follow-up for a new request or after an agent change. | C12; J06–J08 | Deferred beyond V1; same-mission resumption remains in H1 |
 | H4 — Shared, controllable knowledge | Understand, reuse, and withdraw lessons useful to a role or project. | C13; J07–J08 | Candidate, after identifying reusable experience |
 | H5 — Evaluated improvement | Observe what knowledge and process adjustments contribute, then retain or reverse those changes. | C14–C15; J09 | Candidate, after observable reuse and an actionable comparison baseline |
 | H6 — Broader use cases | Transfer useful capabilities to other users, contexts, or professions without exporting private data. | PRD sections 2–3 and 7 | Exploration; requires additional product framing |
@@ -37,7 +39,7 @@ Horizons express usable capabilities, not technical layers to deliver separately
 
 **Boundary.** This horizon requires neither several specialists, every memory scope, nor control over external delivery. It does require validated acceptance authority within the claimed workflow. Validation following manual intervention does not demonstrate operation without intervention.
 
-**Next decision.** Expand only if the workflow offers plausible value compared with simpler supervision. If resumptions or consumption dominate, improve this use case before adding more agents. No arbitrary number of validation campaigns is imposed.
+**Implementation gate.** Establish this workflow before enabling the selected H2 mechanisms. Compare overhead with simpler supervision, and fix resumption or consumption problems before expanding a particular live mission. No arbitrary number of validation campaigns is imposed.
 
 ## 4. H2 — Proportionate multidisciplinary council
 
@@ -49,7 +51,7 @@ Horizons express usable capabilities, not technical layers to deliver separately
 
 **Dependency.** H1's acceptance, correction, and escalation workflow already works. Multiple agents are not used to compensate for a basic problem in that workflow.
 
-**Reason to defer.** If requests do not expose useful cross-disciplinary disagreements, or the council merely repeats the same analysis, retain simpler supervision.
+**Proportional use within V1.** The capability is included, but simple requests may still use one reviewer. Activate specialist opinions only for relevant domains. Qualification must demonstrate actual multidisciplinary work and an integrated team result; the two-agent path alone cannot close V1.
 
 ## 5. H3 — Collective continuity
 
