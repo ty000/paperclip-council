@@ -31,6 +31,9 @@ bootstrap accepts only the source lock digest and exact repaired lock/diff
 digests recorded in `qualification/environments.json`, performs the frozen
 install against that validated temporary repair, then restores the committed
 lockfile and verifies that tracked host files are clean.
+It then builds the pinned `@paperclipai/plugin-sdk` workspace and its declared
+shared dependency, and verifies the exact runtime entry points required by the
+Paperclip server before reporting `runtimeReady: true`.
 
 `pnpm qualification:bounded` requires a clean committed Council candidate,
 verifies or prepares the host, then delegates to the existing functional

@@ -42,7 +42,10 @@ describe("repo-owned Paperclip qualification host", () => {
       install: false,
       allowedRoot: ownedRoot,
     });
-    expect(result).toMatchObject({ prepared: true, head: fixture.commit, trackedClean: true, owned: true });
+    expect(result).toMatchObject({
+      prepared: true, head: fixture.commit, trackedClean: true, owned: true,
+      dependenciesInstalled: false, runtimeReady: false,
+    });
     expect(inspectHost(target, fixture.commit, ownedRoot)).toMatchObject({ prepared: true });
   });
 

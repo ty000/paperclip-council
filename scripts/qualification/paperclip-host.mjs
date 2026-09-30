@@ -14,6 +14,7 @@ const configuration = JSON.parse(readFileSync(resolve(repositoryRoot, "qualifica
 export const expectedPaperclipCommit = configuration.paperclip.commit;
 export const defaultPaperclipSource = configuration.paperclip.repository;
 const lockfileRepair = configuration.paperclip.lockfileRepair;
+const hostBuild = configuration.paperclip.hostBuild;
 const ownershipMarkerName = ".paperclip-council-owned.json";
 
 function run(command, args, options = {}) {
@@ -69,6 +70,24 @@ function prepareDependencies(hostRoot) {
   };
 }
 
+function prepareHostBuild(hostRoot) {
+  run("corepack", ["pnpm", ...hostBuild.arguments], {
+    cwd: hostRoot,
+    env: { ...process.env, COREPACK_HOME: resolve(runtimeRoot, "corepack") },
+  });
+  const missingOutputs = hostBuild.requiredOutputs.filter((output) => !existsSync(resolve(hostRoot, output)));
+  if (missingOutputs.length > 0) {
+    throw new Error(`Paperclip host build did not create required outputs: ${missingOutputs.join(", ")}`);
+  }
+  return { command: ["corepack", "pnpm", ...hostBuild.arguments], requiredOutputs: hostBuild.requiredOutputs };
+}
+
+function updateMarker(hostRoot, values) {
+  const markerPath = resolve(hostRoot, ownershipMarkerName);
+  const marker = JSON.parse(readFileSync(markerPath, "utf8"));
+  writeFileSync(markerPath, `${JSON.stringify({ ...marker, ...values }, null, 2)}\n`);
+}
+
 export function assertOwnedTarget(target, allowedRoot = runtimeRoot) {
   const absoluteTarget = resolve(target);
   const absoluteRoot = resolve(allowedRoot);
@@ -93,6 +112,9 @@ export function inspectHost(target, expectedCommit = expectedPaperclipCommit, al
     && dependencyPreparation.originalSha256 === lockfileRepair.originalSha256
     && dependencyPreparation.repairedSha256 === lockfileRepair.repairedSha256
     && dependencyPreparation.diffSha256 === lockfileRepair.diffSha256;
+  const hostBuildPreparation = marker?.hostBuildPreparation ?? null;
+  const hostBuildValid = JSON.stringify(hostBuildPreparation?.command) === JSON.stringify(["corepack", "pnpm", ...hostBuild.arguments])
+    && hostBuild.requiredOutputs.every((output) => existsSync(resolve(absoluteTarget, output)));
   return {
     prepared: head === expectedCommit && trackedStatus === "" && marker?.expectedCommit === expectedCommit,
     target: absoluteTarget,
@@ -102,6 +124,8 @@ export function inspectHost(target, expectedCommit = expectedPaperclipCommit, al
     owned: marker?.environmentClass === "local-sandbox",
     dependencyPreparation,
     dependenciesInstalled: dependencyPreparationValid && existsSync(resolve(absoluteTarget, "node_modules")),
+    hostBuildPreparation,
+    runtimeReady: dependencyPreparationValid && hostBuildValid,
   };
 }
 
@@ -118,7 +142,7 @@ export async function materializeHost({
     if (!current.prepared) {
       throw new Error(`Existing qualification host is not an owned clean ${expectedCommit} checkout: ${absoluteTarget}`);
     }
-    if (!install || current.dependenciesInstalled) return current;
+    if (!install || current.runtimeReady) return current;
   } else {
     await mkdir(dirname(absoluteTarget), { recursive: true });
     const partialTarget = assertOwnedTarget(`${absoluteTarget}.partial-${process.pid}`, allowedRoot);
@@ -143,13 +167,14 @@ export async function materializeHost({
   if (install) {
     const corepackHome = resolve(runtimeRoot, "corepack");
     await mkdir(corepackHome, { recursive: true });
-    const dependencyPreparation = prepareDependencies(absoluteTarget);
-    const markerPath = resolve(absoluteTarget, ownershipMarkerName);
-    const marker = JSON.parse(readFileSync(markerPath, "utf8"));
-    await writeFile(markerPath, `${JSON.stringify({ ...marker, dependencyPreparation }, null, 2)}\n`);
+    const installedState = inspectHost(absoluteTarget, expectedCommit, allowedRoot);
+    if (!installedState.dependenciesInstalled) {
+      updateMarker(absoluteTarget, { dependencyPreparation: prepareDependencies(absoluteTarget) });
+    }
+    updateMarker(absoluteTarget, { hostBuildPreparation: prepareHostBuild(absoluteTarget) });
   }
   const result = inspectHost(absoluteTarget, expectedCommit, allowedRoot);
-  if (!result.prepared || (install && !result.dependenciesInstalled)) {
+  if (!result.prepared || (install && !result.runtimeReady)) {
     throw new Error("Paperclip qualification host did not reach the requested prepared state");
   }
   return result;
@@ -176,7 +201,7 @@ async function main() {
     result = await materializeHost({ source: options.source, target, install: options.install });
   } else if (options.command === "status" || options.command === "verify") {
     result = inspectHost(target);
-    if (options.command === "verify" && (!result.prepared || !result.dependenciesInstalled)) process.exitCode = 1;
+    if (options.command === "verify" && (!result.prepared || !result.runtimeReady)) process.exitCode = 1;
   } else if (options.command === "path") {
     console.log(assertOwnedTarget(target));
     return;
