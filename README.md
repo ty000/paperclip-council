@@ -139,6 +139,7 @@ Example request body:
 
 ```json
 {
+  "operationId": "review-result-v1",
   "verdict": "changes_requested",
   "justification": "The result needs the corrected marker.",
   "resultReference": "artifact://review/result-v1"
@@ -156,6 +157,7 @@ the exact 40-character lowercase head hash. A hash mentioned only in
 
 ```json
 {
+  "operationId": "review-result-v2",
   "verdict": "approved",
   "approvedCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "justification": "The reviewed candidate matches the delivery manifest.",
@@ -184,6 +186,47 @@ that list. Work-product consistency is therefore not verified on that host.
 The public work-product route needs a credential, and the Council PATCH secret
 is deliberately not resolved before all refusal checks. The attachment check
 compares stored metadata; it does not open or parse the bundle bytes.
+
+## Persistent decision receipts
+
+Each new verdict requires an `operationId` (1–128 letters, digits, dots,
+underscores, colons or hyphens). Keep it stable for the same intended operation.
+Council stores the target, content and authenticated actor/run before atomically
+claiming one attempt. Repeating the same operation/content reads its receipt;
+changing its content or target conflicts. The original run attribution remains.
+
+A lost, malformed or ambiguous response leaves the operation **indeterminate**.
+It stays persisted across restart and blocks any new Council verdict key for that
+issue. There is no automatic resend, privileged SDK fallback, or force-success
+control. The nominal path records usable native responses without requiring a
+human action. A receipt is not proof of subsequent execution.
+
+The existing Council page includes **Council decision receipts**. The configured
+company owner can acknowledge uncertainty or record abandonment with a note.
+These actions preserve the native observation and the hold. Inspect the receipt
+and the native issue using existing authorized interfaces; do not infer success
+from `done`, a comment or an agent summary. If safe resumption needs a missing
+contract, leave the issue blocked. Do not delete receipts, invent a new key,
+reinstall an older blind-send worker, or treat abandonment as cancellation.
+
+The additive migration `004_decision_receipts.sql` is private to the plugin.
+Existing records are preserved. See [the V1 contract](docs/DECISION-RECEIPTS-V1.md)
+and [owner policy](docs/G3-G4-DECISIONS.md). No Paperclip patch or upstream PR is a
+dependency. Installing/upgrading a running instance is a separate operator step.
+
+Replay the isolated transactional/fault/browser proof on Linux with installed
+Paperclip test dependencies (read-only source):
+
+```sh
+PAPERCLIP_TEST_HOST_ROOT=/path/to/paperclip \
+PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH=/path/to/chromium \
+pnpm test:receipts
+```
+
+This creates and stops a fresh temporary PostgreSQL cluster, uses a synthetic
+native HTTP endpoint and SDK UI transport, and makes no model/provider call.
+It is separate from `test:functional` on an unchanged host and from any live
+qualification. Test evidence records that distinction.
 
 ## Preparing future Council tickets
 

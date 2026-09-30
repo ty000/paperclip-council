@@ -1,0 +1,74 @@
+{
+  "schema_version": "prompt-quality-compiler-implementation-envelope.v3",
+  "envelope_id": "executive-docs-receipts-v3",
+  "phase": "lot-prompt",
+  "plan_id": "council-receipts-v1",
+  "contract_id": "executive-docs-receipts",
+  "parent_lot_id": "RECEIPTS",
+  "child_lot_id": "executive-docs",
+  "slice_id": "executive-docs",
+  "parent_plan_ref": "sprint-ready-plan.v2.json",
+  "parent_plan_sha256": "169c7c4a691dcbeabe31ef18c7eaf02a1fc6f345276c37c750cf71e9521c827c",
+  "coverage_manifest_ref": "executive-docs-acceptance-coverage.v1.json",
+  "coverage_manifest_sha256": "2e86b842e045e5c2264cbfc5137520ba23bfef5934523ca557ad3931d933fcca",
+  "objective": "Align Executive documentation with the accepted plugin-only uncertainty-stop V1 contract.",
+  "parent_objective": "Deliver plugin-only Council verdict receipts with one claimed attempt, durable uncertainty holds and authenticated human handling; align Executive prescriptions.",
+  "criterion_ids": [
+    "RC1",
+    "RC2",
+    "RC3",
+    "RC4",
+    "RC5",
+    "RC6",
+    "RC7",
+    "RC8",
+    "RC9"
+  ],
+  "surface_ids": [
+    "alignment",
+    "backend",
+    "operator",
+    "storage"
+  ],
+  "repository_ids": [
+    "council",
+    "executive"
+  ],
+  "exclusions": [
+    {
+      "exclusion_id": "outside-slice",
+      "capability": "Other bounded-lot obligations remain parent-owned and mandatory",
+      "criterion_ids": [
+        "RC1",
+        "RC2",
+        "RC3",
+        "RC4",
+        "RC5",
+        "RC6",
+        "RC7",
+        "RC8"
+      ],
+      "surface_ids": [
+        "backend",
+        "storage",
+        "operator"
+      ],
+      "disposition": "parent-blocked"
+    }
+  ],
+  "activation_posture": {
+    "implementation": "contract-only",
+    "production_activation": "default-off"
+  },
+  "migration_prewrite": {
+    "applicability": "not-applicable",
+    "reason": "Documentary prescription alignment only; no storage or runtime changes."
+  },
+  "executable_prompt": {
+    "format": "codex-worker-prompt.v1",
+    "content": "Mission: documentation-only alignment in /home/davy-lp/.codex/worktrees/executive-receipts/paperclip-executive, branch codex/executive-receipts at base 940aa21. No runtime/source changes, commits, publication or host writes. Read docs/L03-FRAMING.md, L03-CONTRACT-AUDIT.md and related PRD/TAD/BACKLOG active prescriptions. Authority is user priority rescope summarized in /home/davy-lp/workspace/paperclip-council-decision-receipts/docs/DECISION-RECEIPTS-V1.md. Mandatory D-H host API and automatic recovery of ambiguous native effects are REPLACED for V1 by Council persistent one-attempt receipt, indeterminate hold, no blind resend/new-key bypass and authenticated owner acknowledge/abandon that is NOT native success and does NOT unlock uncertainty. Existing public Paperclip APIs only. Native done/comment/summary alone are not effect proof; native persisted decision does not prove next run.\nPreserve audit as dated historical observation: add visible subsequent decision annotation/link, do not rewrite historical findings into implementation success. Update active D-H, L03-A5,Q6 and dependency references and only actual contradictions in PRD/TAD/BACKLOG; retain A1 attribution/permissions, A2 direction semantics, A3 exact subject, A4 correction, A6 limits and A7 distinct opinions/A8 operator view mandatory. D-LIMIT, D-C and overall L03 remain open. No duplicated full product rewrite. Add small dated decision record if useful. No new claims of tested/installed Council runtime. Parent will update Council docs separately and supply PR dependency after publication.\nWrite only Executive docs/*.md and necessary README reference if actual contradictory requirement. No package/runtime/config files. Validate references/diff and report exact modified docs, preserved criteria and residual links. migration_prewrite not-applicable: documentary prescription alignment only, no storage or runtime changes.\nPlugins/skills \u00e0 utiliser: cross-repo-governance ownership, prompt-quality-compiler bounded prompt; implementation-meta-flow native coordination. git-safety gate already passed exact base and clean codex branch. Modele et effort recommandes: documentation worker gpt-5.6-sol medium, supported by launcher; mapping /home/davy-lp/.codex/shared/model-selection/model-effort-mapping.md updated 2026-09-05. Reevaluate substantial unresolved contradictions after two attempts. English documents. Stop after targeted edits+structural review; return findings and paths, no claim parent completion.",
+    "content_sha256": "b20e7c40bb8147d1fbacaecf29efa4a195f910db4cd4362e2628f092b2376679",
+    "target_phase": "lot-run",
+    "dispatch_posture": "prepared-not-authorized"
+  }
+}

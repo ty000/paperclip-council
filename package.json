@@ -1,6 +1,6 @@
 {
   "name": "@paperclipai/plugin-council",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Revisioned Council rosters, pinned draft missions, and bounded review decisions for Paperclip workflows",
   "type": "module",
   "private": true,
@@ -32,7 +32,8 @@
     "qualification:host:prepare": "node scripts/qualification/paperclip-host.mjs prepare",
     "qualification:host:status": "node scripts/qualification/paperclip-host.mjs status",
     "qualification:host:verify": "node scripts/qualification/paperclip-host.mjs verify",
-    "qualification:bounded": "node scripts/qualification/run-bounded.mjs"
+    "qualification:bounded": "node scripts/qualification/run-bounded.mjs",
+    "test:receipts": "tsx tests/receipts/run.ts"
   },
   "dependencies": {
     "@paperclipai/plugin-sdk": "2026.916.1"

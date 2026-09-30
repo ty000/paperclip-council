@@ -1,0 +1,13 @@
+{
+  "schema_version": "prewrite-migration-contract.v1",
+  "migration_id": "council-decision-receipts-v1",
+  "classification": "cross-entrypoint",
+  "owner": "paperclip-council",
+  "surfaces": [
+    "Private additive Council receipt table and indexes; preserve migrations 001-003 and existing records",
+    "Existing verdict API and native HTTP adapter: durable claim before possible send",
+    "Council operator read and authenticated owner acknowledgement/abandonment without unlocking uncertain work"
+  ],
+  "slicing_verdict": "one-lot",
+  "ordered_slices": ["Add private receipts, wire verdict/owner surfaces, verify isolated PostgreSQL, retain uncertainty through restart"]
+}

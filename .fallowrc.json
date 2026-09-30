@@ -1,0 +1,7 @@
+{
+  "entry": [
+    "src/ui/index.tsx",
+    "tests/receipts/crash-child.ts",
+    "tests/receipts/ui-fixture.tsx"
+  ]
+}

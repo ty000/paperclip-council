@@ -999,6 +999,7 @@ try {
 
   await freshRun("council");
   const correction = await request("council", "POST", `/api/plugins/${pluginId}/api/issues/${issueId}/decision`, {
+    operationId: "functional-correction-v1",
     verdict: "changes_requested",
     justification: "Fixture V1 is missing the corrected V2 marker.",
     resultReference: "fixture://result/v1",
@@ -1024,6 +1025,7 @@ try {
   const baseCommit = "307101af5f3f28e57db52d6ec4a8725e1a7b9544";
   const decisionPath = `/api/plugins/${pluginId}/api/issues/${issueId}/decision`;
   const approvalBody = {
+    operationId: "functional-approval-v2",
     verdict: "approved",
     approvedCommit,
     justification: "Fixture V2 contains the required corrected marker.",

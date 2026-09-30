@@ -3,7 +3,14 @@
   "compilerOptions": {
     "noEmit": true,
     "rootDir": ".",
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src", "tests/**/*.spec.ts"]
+  "include": [
+    "src",
+    "tests/**/*.spec.ts",
+    "tests/receipts/**/*.ts",
+    "tests/receipts/**/*.tsx"
+  ]
 }

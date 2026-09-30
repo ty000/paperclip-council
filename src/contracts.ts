@@ -15,17 +15,20 @@ export type CouncilVerdict = "changes_requested" | "approved";
 type CouncilDecisionCommon = {
   companyId: string;
   issueId: string;
+  actorAgentId: string;
   runId: string;
   justification: string;
   resultReference: string;
 };
 
 export type CouncilDecisionPayload = {
+  operationId: string;
   verdict: "changes_requested";
   approvedCommit?: never;
   justification: string;
   resultReference: string;
 } | {
+  operationId: string;
   verdict: "approved";
   approvedCommit: string;
   justification: string;
@@ -39,4 +42,6 @@ export type CouncilDecisionResult = {
   requestedIssueStatus: "in_progress" | "done";
   nativeStatus: number;
   nativeResponse: unknown;
+  nativeBodyValid: boolean;
+  nativeBodyTruncated: boolean;
 };

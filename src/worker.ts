@@ -5,7 +5,15 @@ import {
   type PluginContext,
 } from "@paperclipai/plugin-sdk";
 import type { CouncilDecisionPayload } from "./contracts.js";
-import { emitCouncilDecision, parseCouncilConfig } from "./decision-adapter.js";
+import { parseCouncilConfig } from "./decision-adapter.js";
+import {
+  DecisionReceiptError,
+  executeCouncilDecision,
+  findDecisionReplay,
+  handleDecisionReceiptApi,
+  registerDecisionReceiptBridge,
+  type DecisionReceipt,
+} from "./decision-receipts.js";
 import { ApprovalPreflightError, verifyApprovalCandidate } from "./delivery-manifest.js";
 import { handleFoundationProbe } from "./foundation-probe.js";
 import { handleMissionApi } from "./missions.js";
@@ -31,12 +39,39 @@ function parseBody(body: unknown): CouncilDecisionPayload {
   }
   const justification = requiredString(record.justification, "justification");
   const resultReference = requiredString(record.resultReference, "resultReference");
+  if (justification.length > 8_000) throw new Error("justification must not exceed 8000 characters");
+  if (resultReference.length > 2_048) throw new Error("resultReference must not exceed 2048 characters");
+  const operationId = requiredString(record.operationId, "operationId");
+  if (operationId.length > 128 || !/^[A-Za-z0-9._:-]+$/.test(operationId)) {
+    throw new Error("operationId must use 1-128 letters, digits, dots, underscores, colons, or hyphens");
+  }
   return record.verdict === "approved"
-    ? { verdict: "approved", approvedCommit: approvedCommit as string, justification, resultReference }
-    : { verdict: "changes_requested", justification, resultReference };
+    ? { verdict: "approved", approvedCommit: approvedCommit as string, justification, resultReference, operationId }
+    : { verdict: "changes_requested", justification, resultReference, operationId };
 }
 
-export async function handleDecision(input: PluginApiRequestInput, context: PluginContext = ctx) {
+function decisionResponse(receipt: DecisionReceipt, replayed: boolean) {
+  const requestedIssueStatus = receipt.verdict === "changes_requested" ? "in_progress" : "done";
+  return {
+    status: receipt.state === "native_observed" ? receipt.nativeObservation!.status : 202,
+    body: {
+      integration: "plugin receipt -> Paperclip secret_ref -> public issue PATCH",
+      councilAgentId: receipt.actorAgentId,
+      runId: receipt.runId,
+      verdict: receipt.verdict,
+      requestedIssueStatus,
+      nativeStatus: receipt.nativeObservation?.status ?? null,
+      nativeResponse: receipt.nativeObservation?.body ?? null,
+      receipt,
+      replayed,
+    },
+  };
+}
+
+export async function handleDecision(
+  input: PluginApiRequestInput,
+  context: PluginContext = ctx,
+): Promise<{ status: number; body: Record<string, unknown> }> {
   let decision;
   try {
     decision = parseBody(input.body);
@@ -50,6 +85,22 @@ export async function handleDecision(input: PluginApiRequestInput, context: Plug
   }
   const runId = requiredString(input.actor.runId, "council run id");
   const issueId = requiredString(input.params.issueId, "issueId");
+  const decisionInput = {
+    companyId: input.companyId,
+    issueId,
+    actorAgentId: config.councilAgentId,
+    runId,
+    ...decision,
+  };
+  try {
+    const replay = await findDecisionReplay(context, config, decisionInput);
+    if (replay) return decisionResponse(replay.receipt, true);
+  } catch (error) {
+    if (error instanceof DecisionReceiptError) {
+      return { status: error.status, body: { error: error.message, code: error.code, receipt: error.receipt } };
+    }
+    throw error;
+  }
   const issue = await context.issues.get(issueId, input.companyId);
   if (!issue) return { status: 404, body: { error: "Issue not found" } };
   if (issue.companyId !== input.companyId || issue.status !== "in_review" || issue.assigneeAgentId !== config.councilAgentId) {
@@ -65,25 +116,20 @@ export async function handleDecision(input: PluginApiRequestInput, context: Plug
     }
   }
 
-  const result = await emitCouncilDecision(context, config, {
-    companyId: input.companyId,
-    issueId,
-    runId,
-    ...decision,
-  });
-  return {
-    status: result.nativeStatus,
-    body: {
-      integration: "plugin route -> Paperclip secret_ref -> public issue PATCH",
-      councilAgentId: config.councilAgentId,
-      runId,
-      ...result,
-    },
-  };
+  try {
+    const result = await executeCouncilDecision(context, config, decisionInput);
+    return decisionResponse(result.receipt, result.replayed);
+  } catch (error) {
+    if (error instanceof DecisionReceiptError) {
+      return { status: error.status, body: { error: error.message, code: error.code, receipt: error.receipt } };
+    }
+    throw error;
+  }
 }
 
 export async function handlePluginRequest(input: PluginApiRequestInput, context: PluginContext = ctx) {
   if (input.routeKey === "decision") return handleDecision(input, context);
+  if (input.routeKey.startsWith("council-decision")) return handleDecisionReceiptApi(input, context);
   if (input.routeKey.startsWith("roster")) return handleRosterApi(input, context);
   if (input.routeKey.startsWith("mission")) return handleMissionApi(input, context);
   if (input.routeKey !== "foundation-probe") {
@@ -101,6 +147,7 @@ const plugin = definePlugin({
   async setup(context) {
     ctx = context;
     registerRosterBridge(context);
+    registerDecisionReceiptBridge(context);
   },
   async onHealth() { return { status: "ok", message: "Council decision adapter ready" }; },
   async onApiRequest(input) { return handlePluginRequest(input); },

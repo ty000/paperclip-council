@@ -1,0 +1,67 @@
+{
+  "schema_version": "prompt-quality-compiler-implementation-envelope.v3",
+  "envelope_id": "backend-receipts-v3",
+  "phase": "lot-prompt",
+  "plan_id": "council-receipts-v1",
+  "contract_id": "backend-receipts",
+  "parent_lot_id": "RECEIPTS",
+  "child_lot_id": "backend",
+  "slice_id": "backend",
+  "parent_plan_ref": "sprint-ready-plan.v2.json",
+  "parent_plan_sha256": "169c7c4a691dcbeabe31ef18c7eaf02a1fc6f345276c37c750cf71e9521c827c",
+  "coverage_manifest_ref": "backend-acceptance-coverage.v1.json",
+  "coverage_manifest_sha256": "2cd6cb472ccbae00963f2edae8ab6f1934a5206c51f31b48417fa51121900b83",
+  "objective": "Implement the existing Council verdict path with persistent attempt receipts and conservative uncertainty blocking.",
+  "parent_objective": "Deliver plugin-only Council verdict receipts with one claimed attempt, durable uncertainty holds and authenticated human handling; align Executive prescriptions.",
+  "criterion_ids": [
+    "RC1",
+    "RC2",
+    "RC3",
+    "RC4",
+    "RC5",
+    "RC6",
+    "RC7",
+    "RC8",
+    "RC9"
+  ],
+  "surface_ids": [
+    "alignment",
+    "backend",
+    "operator",
+    "storage"
+  ],
+  "repository_ids": [
+    "council",
+    "executive"
+  ],
+  "exclusions": [
+    {
+      "exclusion_id": "outside-slice",
+      "capability": "Other bounded-lot obligations remain parent-owned and mandatory",
+      "criterion_ids": [
+        "RC8",
+        "RC9"
+      ],
+      "surface_ids": [
+        "operator",
+        "alignment"
+      ],
+      "disposition": "parent-blocked"
+    }
+  ],
+  "activation_posture": {
+    "implementation": "required-executable-path",
+    "production_activation": "default-off"
+  },
+  "migration_prewrite": {
+    "applicability": "required",
+    "contract_ref": "council-decision-receipts-migration.json"
+  },
+  "executable_prompt": {
+    "format": "codex-worker-prompt.v1",
+    "content": "Mission: implement RC1-RC7 in /home/davy-lp/workspace/paperclip-council-decision-receipts, branch codex/decision-receipts at base 46669b3. Read docs/DECISION-RECEIPTS-V1.md and migration contract, current worker/adapter/rosters/missions, tests and SDK available contracts. User priority rescope forbids ALL Paperclip writes and direct core DB access; use only existing native issue PATCH and supported SDK reads. Original host experiment is suspended; do not use its endpoints. No providers, installation, activation, commits or publication by worker.\nWrite allowlist: src/decision-receipts.ts (new), migrations/004_decision_receipts.sql (new), src/contracts.ts, src/decision-adapter.ts, src/worker.ts, src/manifest.ts, tests/decision-adapter.spec.ts, tests/approval-preflight.spec.ts, tests/decision-receipts.spec.ts (new). Parent owns UI, PostgreSQL integration tests, all docs/artifacts and release commits. Do not edit other files.\nImplement mandatory operationId in verdict body. Persist normalized exact native request content and target (including configured API origin), actor/run and operation identity before possible send. Atomic INSERT/unique constraints/CAS must elect exactly one sender. Same operation/content must return old receipt even after issue has advanced and across a new authenticated run; preserve original attribution. Changed content under same identity conflicts. Unknown company/issue hold blocks ANY new verdict key on that same issue. Use private additive table/index, preserve 001-003. Existing db.query is SELECT-only; db.execute reports rowCount, obey SDK SQL guard. Avoid SELECT-then-send race.\nConservative default: claim creates a persisted indeterminate/possibly-sent record before secrets/fetch, so crash never resets it. Only the original claimed attempt may record its late response. Human acknowledgement or abandonment must never clear uncertainty/issue hold, nor prevent recording late native observation. No lease retry, no reset or forced-success path. Qualify narrow pre-mutation refusals only if supported; unexpected HTTP errors, malformed/mismatching response and transport failure remain unknown. Success requires usable native issue identity/company and response contract; retain actual status/body and available decision refs, never claim downstream run started. Keep body size bounded and no tokens/headers in storage. Use redirect:error and bounded timeout. Preserve configured actor/run checks and approval candidate preflight before secret/PATCH. Look up existing receipt after authorization but before current-stage preflight so retry reads don't revalidate already-applied status.\nWire existing worker handleDecision. Add operator read/human API routes plus existing UI bridge registration, using current company defaultResponsibleUserId and host-derived actor identity (never request userId). Proposed bridge names: data council-decisions returns { receipts, ownerUserId }; action council-decision-human accepts { operationId, action: acknowledge|abandon, note }, derives company/user from PluginPerformActionContext. Expose each receipt's issueId/operationId/verdict/state/blockReason/native observation/human decisions/actor/run. Send exact exported type and bridge API to parent early for UI. Reading a receipt must not write or send. Board HTTP company binding follows existing routes. Authenticated non-owner can read under existing company visibility; only configured owner mutates human disposition. Actions append server timestamp/user/note separately, never overwrite native truth.\nWrite focused unit tests and adapt existing adapter/preflight fixtures for operationId and persistence. Parent will add real PostgreSQL concurrency/restart proof. Run package typecheck/tests for your scope; report blockers rather than mocks as persistence proof. Stop when backend implementation wired, tests pass and changed file inventory returned. No unrelated refactor, broad workflow, SDK change, counters or budget reset. migration_prewrite required docs/contracts/council-decision-receipts-migration.json; gate already passed, rerun before source writes.\nPlugins/skills \u00e0 utiliser: git-safety gate already passed exact base (current parent contract docs dirty authorized); prompt-quality-compiler contract and prewrite gate; implementation-meta-flow native bounded worker; no additional workflow machinery.\nModele et effort recommandes: bounded worker gpt-5.6-sol medium, supported launcher. Mapping /home/davy-lp/.codex/shared/model-selection/model-effort-mapping.md updated 2026-09-05. Reevaluate two failures without new evidence or substantive architecture ambiguity; ask parent instead of expanding scope. English docs/code, concise findings/evidence report. Do not claim full L03 or installed runtime.",
+    "content_sha256": "dd728df34577c5682e5a1c75f96a03698fb26e059bbf11de502eaf7fff9ad0ee",
+    "target_phase": "lot-run",
+    "dispatch_posture": "prepared-not-authorized"
+  }
+}
