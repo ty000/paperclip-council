@@ -12,6 +12,9 @@ const manifest: PaperclipPluginManifestV1 = {
   categories: ["automation"],
   capabilities: [
     "api.routes.register",
+    "events.emit",
+    "events.subscribe",
+    "issues.orchestration.read",
     "companies.read",
     "projects.read",
     "agents.read",
@@ -59,6 +62,22 @@ const manifest: PaperclipPluginManifestV1 = {
     },
   },
   apiRoutes: [
+    {
+      routeKey: "l03-list", method: "GET", path: "/companies/:companyId/l03",
+      auth: "board-or-agent", capability: "api.routes.register",
+      companyResolution: { from: "query", key: "companyId" },
+    },
+    {
+      routeKey: "l03-create", method: "POST", path: "/companies/:companyId/l03",
+      auth: "board", capability: "api.routes.register",
+      companyResolution: { from: "body", key: "companyId" },
+    },
+    {
+      routeKey: "l03-command", method: "POST", path: "/companies/:companyId/l03/:missionId/commands",
+      auth: "board-or-agent", capability: "api.routes.register",
+      companyResolution: { from: "body", key: "companyId" },
+    },
+
     {
       routeKey: "rosters-list",
       method: "GET",
@@ -158,7 +177,7 @@ const manifest: PaperclipPluginManifestV1 = {
     },
   ],
   ui: {
-    slots: [{
+    slots: [{ type: "page", id: "council-l03", displayName: "Council missions", exportName: "CouncilL03Page", routePath: "council-l03" }, {
       type: "page",
       id: "council-rosters",
       displayName: "Council rosters",

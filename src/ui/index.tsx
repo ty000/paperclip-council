@@ -384,3 +384,4 @@ function RosterConfiguration({ context }: PluginPageProps) {
 export function CouncilRostersPage(props: PluginPageProps) {
   return <><RosterConfiguration {...props} />{props.context.companyId && <CouncilDecisionReceipts />}</>;
 }
+export { CouncilL03Page } from "./l03.js";

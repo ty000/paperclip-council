@@ -53,7 +53,7 @@ function fixture(options: {
     secrets: { resolve },
     db: {
       namespace: "plugin_private_paperclip_council_270061461e",
-      query: vi.fn().mockImplementation(async () => receipt ? [receipt] : []),
+      query: vi.fn().mockImplementation(async (sql: string) => sql.includes("mission_governance") ? [] : receipt ? [receipt] : []),
       execute: vi.fn().mockImplementation(async (sql: string, params: unknown[]) => {
         if (sql.includes("INSERT INTO")) {
           const now = new Date().toISOString();

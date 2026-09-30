@@ -1,3 +1,4 @@
+import { createL03Runtime, isL03GovernedIssue } from "./l03-runtime.js";
 import {
   definePlugin,
   runWorker,
@@ -20,6 +21,7 @@ import { handleMissionApi } from "./missions.js";
 import { handleRosterApi, registerRosterBridge } from "./rosters.js";
 
 let ctx: PluginContext;
+let l03: ReturnType<typeof createL03Runtime>;
 
 function requiredString(value: unknown, label: string): string {
   if (typeof value !== "string" || value.trim() === "") throw new Error(`Missing ${label}`);
@@ -107,6 +109,10 @@ export async function handleDecision(
     return { status: 409, body: { error: "Issue is not pending this council" } };
   }
 
+  if (await isL03GovernedIssue(context, input.companyId, issueId)) {
+    return { status: 409, body: { error: "Governed L03 results require their stored mission decision; the legacy verdict route is disabled" } };
+  }
+
   if (decision.verdict === "approved") {
     try {
       await verifyApprovalCandidate(context, issue, input.companyId, decision.approvedCommit);
@@ -128,6 +134,7 @@ export async function handleDecision(
 }
 
 export async function handlePluginRequest(input: PluginApiRequestInput, context: PluginContext = ctx) {
+  if (input.routeKey.startsWith("l03-")) return (context === ctx ? l03 : createL03Runtime(context, null)).api(input);
   if (input.routeKey === "decision") return handleDecision(input, context);
   if (input.routeKey.startsWith("council-decision")) return handleDecisionReceiptApi(input, context);
   if (input.routeKey.startsWith("roster")) return handleRosterApi(input, context);
@@ -148,6 +155,8 @@ const plugin = definePlugin({
     ctx = context;
     registerRosterBridge(context);
     registerDecisionReceiptBridge(context);
+    l03 = createL03Runtime(context, null);
+    l03.register();
   },
   async onHealth() { return { status: "ok", message: "Council decision adapter ready" }; },
   async onApiRequest(input) { return handlePluginRequest(input); },
