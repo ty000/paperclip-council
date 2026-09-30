@@ -14,7 +14,7 @@ Product authority is [PRD 0.4 §6.3](PRD.md#63-initial-delegation-profile). The 
 
 **Still required before affected activation/dispatch.** Qualify the applicable measurement/reservation contract through the supported runtime: competing missions cannot overbook admission allowance; operational limits reject further launches; crash/restart retains unsettled reservations; late/unknown usage blocks new admission and is reconciled. A purely mocked counter is insufficient. If the selected runtime cannot supply the information needed by this policy, dispatch remains blocked even though the owner accepted monetary overrun risk.
 
-Amounts, period boundaries, measurement sources and the treatment of reservation estimates remain explicit activation inputs. No values or permission for real provider calls are supplied here. Prior owner decisions for infrastructure cost changes in either direction, essential uses and the p95 mandate remain unchanged. Owner/mandate/submission-bound human continuation remains a separate unqualified G4 component planned in L3.
+Amounts, period boundaries, measurement sources and the treatment of reservation estimates remain explicit activation inputs. No values or permission for real provider calls are supplied here. Prior owner decisions for infrastructure cost changes in either direction, essential uses and the p95 mandate remain unchanged. Owner/mandate/submission-bound human continuation remains a separate unqualified `DEP-OWNER` requirement planned in L3.
 
 ## DEC-G3-01 — Minimal supported native decision readback
 
