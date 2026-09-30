@@ -6,7 +6,7 @@ Product authority: [PRD 0.3](PRD.md) and [V1 scope](V1-SCOPE.md). Sequence and e
 
 ## 1. Baseline and evidence
 
-Source inspection used native WSL files and Git objects; no build, test, provider request, installation or live API mutation was performed for this TAD. The documentary base is Council `365809efdf190010f818a25b938bad59ebd4f33c`. The following separate sources were inspected without merging their branches:
+Source inspection used native WSL files and Git objects; no build, test, provider request, installation or live API mutation was performed for this TAD. The initial documentary base was Council `365809efdf190010f818a25b938bad59ebd4f33c`. Publication is based on main at `9d7d0e0efd21d8385f10fea018e3e4c0697eaf30`, which already contains the standalone adapter, manifest gate and current-candidate validation fix. The following sources were inspected; historical commits remain evidence of their own revisions:
 
 | Ref | Source and claim supported by inspection | Limit |
 | --- | --- | --- |
@@ -18,6 +18,8 @@ Source inspection used native WSL files and Git objects; no build, test, provide
 | S6 | [Interaction resolver](https://github.com/paperclipai/paperclip/blob/61b3fd57a695614dc4a37e2303f426a34a9795cf/server/src/services/issue-thread-interaction-resolution.ts), [interaction service](https://github.com/paperclipai/paperclip/blob/61b3fd57a695614dc4a37e2303f426a34a9795cf/server/src/services/issue-thread-interactions.ts) | `human_only` and addressed user are source-supported; system resolution is possible, so Council must also verify the actual owner responder |
 | S7 | [Team catalogue routes](https://github.com/paperclipai/paperclip/blob/61b3fd57a695614dc4a37e2303f426a34a9795cf/server/src/routes/teams-catalog.ts) | Preview/install/installed catalogue surfaces exist; they do not by themselves prove Council roster, mandate or voting semantics |
 | S8 | Council extraction commit `cfc316625ef4b097126c86d7123a13d00df905b9` and [manifest-gate commit `7a7ba2416cd54fb25d4d51ee16acf07ae7e923fa`](https://github.com/ty000/paperclip-council/tree/7a7ba2416cd54fb25d4d51ee16acf07ae7e923fa), inspected through local Git objects: `package.json`, `src/worker.ts`, `src/manifest.ts`, `src/delivery-manifest.ts`, README | Existing adapter 0.1.1 pins SDK/shared `2026.916.1`, pnpm 9.15.4 and Node >=24.11. Gate compares request/manifest commit and attachment SHA metadata; it does not read bundle bytes, aggregate opinions or reconcile application |
+
+Publication refresh: [Council main at `9d7d0e0`](https://github.com/ty000/paperclip-council/tree/9d7d0e0efd21d8385f10fea018e3e4c0697eaf30) additionally rejects mismatched current/primary work-product candidates when that projection is supplied. Inspection of `src/delivery-manifest.ts`, `src/worker.ts` and README confirms that bundle byte verification, collective review and application reconciliation remain V1 work. The pinned host still lacks the work-product projection through this SDK bridge; no wider runtime guarantee follows from this fix.
 
 The existing untracked integration review in the original checkout remains unchanged historical context. It predates S8 and is not copied into this branch. Reports of earlier deterministic and real-agent demonstrations are historical, not fresh verification. Links are pinned source references, not claims that unpublished local reports are public.
 
