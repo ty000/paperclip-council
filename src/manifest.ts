@@ -32,7 +32,7 @@ const manifest: PaperclipPluginManifestV1 = {
   database: {
     namespaceSlug: "private_paperclip_council",
     migrationsDir: "migrations",
-    coreReadTables: ["companies", "issues"],
+    coreReadTables: ["companies", "issues", "projects"],
   },
   instanceConfigSchema: {
     type: "object",
