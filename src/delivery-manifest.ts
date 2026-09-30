@@ -71,7 +71,11 @@ function verifyWorkProducts(issue: Issue, manifest: DeliveryManifest): void {
   // issue projections include them; check those when the projection is present.
   const candidates = issue.workProducts?.filter((product) => product.type === "commit" || product.type === "branch");
   if (!candidates?.length) return;
-  const matches = candidates.some((product) => {
+  const current = candidates.filter((product) => !["archived", "closed", "failed", "merged"].includes(product.status));
+  const primary = current.filter((product) => product.isPrimary);
+  const readyForReview = current.filter((product) => product.status === "ready_for_review");
+  const approvalCandidates = primary.length ? primary : readyForReview.length ? readyForReview : current;
+  const matches = approvalCandidates.length > 0 && approvalCandidates.every((product) => {
     const metadata = product.metadata ?? {};
     const repository = metadata.repo ?? metadata.repository;
     const branch = metadata.branch ?? metadata.headRef;
