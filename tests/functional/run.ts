@@ -306,7 +306,7 @@ try {
 
   await db.insert(tables.companies).values({ id: companyId, name: "Isolated council package qualification", issuePrefix: "CPQ", defaultResponsibleUserId: userId });
   await db.insert(tables.companyMemberships).values({ companyId, principalType: "user", principalId: userId, membershipRole: "owner", status: "active" });
-  await db.insert(tables.companyMemberships).values({ companyId, principalType: "user", principalId: intruderUserId, membershipRole: "viewer", status: "active" });
+  await db.insert(tables.companyMemberships).values({ companyId, principalType: "user", principalId: intruderUserId, membershipRole: "admin", status: "active" });
   await db.insert(tables.instanceUserRoles).values({ userId, role: "instance_admin" });
   await db.insert(tables.companies).values({ id: foreignCompanyId, name: "Foreign Council fixture", issuePrefix: "FCQ", defaultResponsibleUserId: userId });
   await db.insert(tables.companyMemberships).values({ companyId: foreignCompanyId, principalType: "user", principalId: userId, membershipRole: "owner", status: "active" });
