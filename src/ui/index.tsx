@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import {
+  useHostContext,
   usePluginAction,
   usePluginData,
   type PluginPageProps,
@@ -151,6 +152,7 @@ function AgentChecklist({
 }
 
 export function CouncilRostersPage({ context }: PluginPageProps) {
+  const hostContext = useHostContext();
   const [selectedId, setSelectedId] = useState("");
   const params = useMemo(() => ({ ...(selectedId ? { rosterId: selectedId } : {}) }), [selectedId]);
   const { data, loading, error, refresh } = usePluginData<RosterData>("council-rosters", params);
@@ -168,7 +170,7 @@ export function CouncilRostersPage({ context }: PluginPageProps) {
   const [notice, setNotice] = useState<string | null>(null);
   const alertRef = useRef<HTMLDivElement>(null);
 
-  const authorized = Boolean(context.userId && data?.ownerUserId && context.userId === data.ownerUserId);
+  const authorized = Boolean(hostContext.userId && data?.ownerUserId && hostContext.userId === data.ownerUserId);
   const selected = data?.selected ?? null;
   const teams = data?.rosters.filter((roster) => roster.revision.kind === "team") ?? [];
   const councils = data?.rosters.filter((roster) => roster.revision.kind === "council") ?? [];
