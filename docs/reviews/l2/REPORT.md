@@ -2,7 +2,7 @@
 
 Date: 2026-09-30 (Europe/Paris)
 
-Runtime-tested candidate: `99680880876a824de69499fcee7344870602f4fe` on `codex/council-l2`
+Runtime-tested candidate: `b1132f596eb6d9befda4e102d94b5a4ec7003265` on `codex/council-l2`
 
 Base: `bfa921000c0743aff17d2c1e48eff6bb9ca365cf` (`origin/main`, merged S1)
 
@@ -33,9 +33,9 @@ This closes only the local Step A implementation slice. It does not close L1, L2
 ## Runtime evidence
 
 - Trace: `docs/reviews/l2/evidence/functional.json`
-- Trace SHA-256: `13bd496f6825a32a75596ffa7be95c118c07fea2df8180f79a372bdd2a06c235`
-- Candidate source archive SHA-256: `8b26eef6200784cc07a07ff71618da6b6809d3abafab29a4bad43253871c5ce4`
-- Built distribution SHA-256: `d0124e2668bc90ad9d91853f3a27b7b2facb3663b21af189ce145dd1a248db20`
+- Trace SHA-256: `d1794dd48ea84d892eba81f13079a9ee54be8dd3f848102d2ccf33502db55e28`
+- Candidate source archive SHA-256: `617083b84ef28783ff1858282459345d5bc4b73c07c5dc7bfc163a16a2660954`
+- Built distribution SHA-256: `7dd843226d66d9726ddb88ced8b89e2fa8182ec34f526bfc913dd45bee84cde5`
 
 The replay installed the exact clean candidate on a fresh authenticated/private Paperclip application and embedded PostgreSQL database. It passed owner/intruder mutation and list/detail read authorization, structured missing-roster refusals, idempotent create and identity conflict, replay after revision/retirement/restart, competing mission CAS with one winner, three create-versus-suspend contentions, deterministic create-before-suspend persistence and suspend-before-create refusal, pinned revision survival, refusal of retired-roster selection for a new mission, and complete inspection readback after plugin/application restart. It also reran the inherited S1/browser and earlier bounded decision paths. All 31 named results passed. All fixtures were synthetic, no model was invoked, credentials were omitted from evidence, and the isolated app/database/runtime were cleaned.
 
@@ -51,18 +51,18 @@ git diff --check
 # Prepare an isolated clean Paperclip checkout at the pinned host revision and
 # link only its existing node_modules directories, as in the S1 replay.
 COREPACK_HOME=/tmp/council-l2-corepack \
-COUNCIL_PACKAGE_EXPECTED_COMMIT=99680880876a824de69499fcee7344870602f4fe \
+COUNCIL_PACKAGE_EXPECTED_COMMIT=b1132f596eb6d9befda4e102d94b5a4ec7003265 \
 PAPERCLIP_TEST_HOST_ROOT=/tmp/<isolated-host>/paperclip \
 PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH=/home/davy-lp/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell \
 COUNCIL_PACKAGE_EVIDENCE_PATH="$PWD/docs/reviews/l2/evidence/functional.json" \
 corepack pnpm test:functional
 ```
 
-Expected: typecheck/build succeed; 7 test files and 49 tests pass; functional output ends with `L2 STEP A MISSION PERSISTENCE VALIDATED`; all 31 named mission/package results are `PASS`; host/candidate cleanliness is true.
+Expected: typecheck/build succeed; 7 test files and 50 tests pass; functional output ends with `L2 STEP A MISSION PERSISTENCE VALIDATED`; all 31 named mission/package results are `PASS`; host/candidate cleanliness is true.
 
 ## Independent-review remediation
 
-The first independent review rejected candidate `36b43076` on two Step A defects: mission creation checked active/current roster heads before a separate insert, leaving a lifecycle race, and board reads exposed mission aggregates to a non-owner company user. Candidate `4ee1930c` resolved both. The PR review loop then found that an identical create retry consulted mutable admission state before its persisted receipt, roster-domain errors escaped the mission API boundary, and a duplicate already in flight could still miss a receipt committed during mutable admission. Candidate `99680880` performs initial and error-path identity readback without weakening new-create validation, translates typed roster errors, and strengthens ordered lifecycle plus restart coverage. The exact installed replay passed after these corrections. Earlier failed or superseded runs remain diagnostic history and are not closure proof.
+The first independent review rejected candidate `36b43076` on two Step A defects: mission creation checked active/current roster heads before a separate insert, leaving a lifecycle race, and board reads exposed mission aggregates to a non-owner company user. Candidate `4ee1930c` resolved both. The PR review loop then found that an identical create retry consulted mutable admission state before its persisted receipt, roster-domain errors escaped the mission API boundary, and a duplicate already in flight could still miss a receipt committed during mutable admission. Candidate `99680880` added initial and error-path identity readback. Candidate `b1132f59` makes that identity readback a single deterministic database snapshot, preserves the original admission error when fallback storage lookup fails, and retains the strengthened ordered lifecycle plus restart coverage. The exact installed replay passed after these corrections. Earlier failed or superseded runs remain diagnostic history and are not closure proof.
 
 ## Status handoff
 
@@ -82,7 +82,7 @@ The smallest next action is an explicit owner decision on G4 followed by technic
 [Proof Gate Output V1]
 Date de reference: 2026-09-30 (Europe/Paris)
 Proof ID: paperclip-council-l2-step-a-2026-09-30
-Subject: Bounded local Step A mission persistence at candidate 99680880876a824de69499fcee7344870602f4fe
+Subject: Bounded local Step A mission persistence at candidate b1132f596eb6d9befda4e102d94b5a4ec7003265
 Status: pass
 Summary: The exact clean candidate provides replayably verified private mission persistence, immutable roster-revision pinning, owner and scope guards, command identity/CAS, explicit G4 blocking and restart survival without activation or dispatch.
 Categories: functional, quality, compliance, documentation, operations

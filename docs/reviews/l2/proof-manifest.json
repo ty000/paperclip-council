@@ -1,7 +1,7 @@
 {
   "schema_version": "proof-manifest.v1",
   "proof_id": "paperclip-council-l2-step-a-2026-09-30",
-  "subject": "Bounded local Step A mission persistence at candidate 99680880876a824de69499fcee7344870602f4fe against Paperclip 61b3fd57a695614dc4a37e2303f426a34a9795cf",
+  "subject": "Bounded local Step A mission persistence at candidate b1132f596eb6d9befda4e102d94b5a4ec7003265 against Paperclip 61b3fd57a695614dc4a37e2303f426a34a9795cf",
   "status": "pass",
   "summary": "The exact clean candidate provides replayably verified plugin-private draft mission persistence, immutable roster-revision pinning, configured-owner mutation/read guards, atomic active/current roster selection, idempotent command identity, CAS conflict handling, explicit G4 blocking and restart survival. It closes only Step A; L1 active-mission proof, the rest of L2, G3, G4 and activation remain open.",
   "categories": [
@@ -18,7 +18,7 @@
       "kind": "runtime-observation",
       "location": "docs/reviews/l2/evidence/functional.json",
       "replayable": true,
-      "notes": "SHA-256 13bd496f6825a32a75596ffa7be95c118c07fea2df8180f79a372bdd2a06c235; exact candidate and clean pinned host; real install/migrations/auth/plugin SQL/restart; structured roster refusals, initial receipt replay, replay after mutable lifecycle changes, intruder read refusals, three contention attempts and both ordered lifecycle outcomes; 31 results pass; synthetic fixtures; no model calls. Error-path receipt readback is covered by deterministic unit tests; this installed replay is non-regression evidence for that path, not a forced concurrent same-identity proof."
+      "notes": "SHA-256 d1794dd48ea84d892eba81f13079a9ee54be8dd3f848102d2ccf33502db55e28; exact candidate and clean pinned host; real install/migrations/auth/plugin SQL/restart; structured roster refusals, initial receipt replay, replay after mutable lifecycle changes, intruder read refusals, three contention attempts and both ordered lifecycle outcomes; 31 results pass; synthetic fixtures; no model calls. Error-path receipt readback is covered by deterministic unit tests; this installed replay is non-regression evidence for that path, not a forced concurrent same-identity proof."
     },
     {
       "id": "unit-type-build",
@@ -55,7 +55,7 @@
   ],
   "replay": {
     "preconditions": [
-      "Council checkout is on clean candidate 99680880876a824de69499fcee7344870602f4fe.",
+      "Council checkout is on clean candidate b1132f596eb6d9befda4e102d94b5a4ec7003265.",
       "PAPERCLIP_TEST_HOST_ROOT is a clean isolated checkout at 61b3fd57a695614dc4a37e2303f426a34a9795cf with existing dependency directories linked read-only from the qualified host checkout.",
       "Node satisfies >=24.11.0, cached pnpm dependencies are available, and loopback plus fresh embedded PostgreSQL are permitted.",
       "No provider/model call, durable target mutation, credential change, push, PR or external delivery is authorized."
@@ -67,10 +67,10 @@
       "COREPACK_HOME=/tmp/council-l2-corepack corepack pnpm build",
       "git diff --check",
       "Prepare the clean detached Paperclip host clone and dependency links described in docs/reviews/l2/REPORT.md.",
-      "COREPACK_HOME=/tmp/council-l2-corepack COUNCIL_PACKAGE_EXPECTED_COMMIT=99680880876a824de69499fcee7344870602f4fe PAPERCLIP_TEST_HOST_ROOT=/tmp/<isolated-host>/paperclip PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH=/home/davy-lp/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell COUNCIL_PACKAGE_EVIDENCE_PATH=$PWD/docs/reviews/l2/evidence/functional.json corepack pnpm test:functional"
+      "COREPACK_HOME=/tmp/council-l2-corepack COUNCIL_PACKAGE_EXPECTED_COMMIT=b1132f596eb6d9befda4e102d94b5a4ec7003265 PAPERCLIP_TEST_HOST_ROOT=/tmp/<isolated-host>/paperclip PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH=/home/davy-lp/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell COUNCIL_PACKAGE_EVIDENCE_PATH=$PWD/docs/reviews/l2/evidence/functional.json corepack pnpm test:functional"
     ],
     "expected_artifacts": [
-      "Successful typecheck/build, 7 passing test files and 49 passing tests.",
+      "Successful typecheck/build, 7 passing test files and 50 passing tests.",
       "docs/reviews/l2/evidence/functional.json with exact clean candidate, clean exact host, outcome L2 STEP A MISSION PERSISTENCE VALIDATED and all named results PASS.",
       "Owner-only list/detail readback, structured missing-roster refusal, receipt replay after roster revision/retirement/restart, three real contentions, both ordered lifecycle outcomes, and complete persisted inspection equality after restart.",
       "Isolated application, embedded database and temporary runtime cleaned by the harness."
