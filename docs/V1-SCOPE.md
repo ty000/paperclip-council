@@ -1,6 +1,6 @@
 # Paperclip Council — V1 scope
 
-Version 0.2 — September 30, 2026. Product framing for implementation; no deployed capability is asserted.
+Version 0.3 — September 30, 2026. Product framing for implementation; no deployed capability is asserted.
 
 Authority: [PRD 0.4](PRD.md), especially §6.3 and C01–C11, C16–C18. Technical realization: [TAD](TAD.md). Delivery sequence: [implementation plan](IMPLEMENTATION-PLAN.md).
 
@@ -22,6 +22,12 @@ The scope decision is confirmed by the September 30 request. The defaults below 
 | Result type | Software mission delivering a Git commit and accessible evidence; other artifact-only approval contracts deferred | Initial technical scope |
 | Runtime | One explicitly selected WSL-native Paperclip company/project; company isolation still enforced | Initial qualification scope |
 | Human interface | Minimal plugin page and issue detail summary inside Paperclip | Design default; accessibility qualification pending |
+
+### Nominal-first delivery milestone
+
+The owner now prioritizes an 80/20 path to representative end-to-end use. Deliver one supported software-mission profile through contribution, integration, ordinary correction, specialist synthesis and confirmed acceptance, with minimal inspection. Exercise all nine prepared profile types across relevant generic cases and record their usefulness, overlap and observed cost; no compulsory full committee per mission. Bring that narrow real-agent evaluation forward instead of completing all failure and lifecycle variants first. The [sprint plan](SPRINT-PLAN.md) defines N1–N4 and subsequent decision/hardening lots.
+
+This is an intermediate milestone within V1. Full release acceptance in §8, the existing mandate and DEC-G3-01/DEC-G4-01 remain in force. A deferred case stops safely and remains visible; automation for its recovery can follow later. A new restriction that prevents representative use or a relaxation of those contracts needs a specific owner decision, not an implicit “80/20” waiver.
 
 ## 2. Domain vocabulary
 

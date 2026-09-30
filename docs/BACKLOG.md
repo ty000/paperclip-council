@@ -1,6 +1,6 @@
 # Paperclip Council — V1 product backlog
 
-Version 0.2 — September 30, 2026. Proposed delivery order; no item is declared implemented or qualified by this document.
+Version 0.3 — September 30, 2026. Nominal-first delivery order; no item is declared implemented or qualified by this document.
 
 Product authority: [PRD 0.4](PRD.md), especially §6.3 and C01–C11, C16–C18; [V1 scope](V1-SCOPE.md). Architecture: [TAD](TAD.md). Technical lots: [implementation plan](IMPLEMENTATION-PLAN.md). Selected work and technical dependencies: [sprint plan](SPRINT-PLAN.md).
 
@@ -8,7 +8,9 @@ Product authority: [PRD 0.4](PRD.md), especially §6.3 and C01–C11, C16–C18;
 
 Every item below belongs to the **selected first usable release V1**. H1/H2 remain roadmap horizons, and L0–L6 remain technical delivery lots, not additional product releases. Team configuration and the single-reviewer journey are useful intermediate demonstrations; neither closes V1. Required V1 scope is not reduced because a host contract is missing.
 
-The first increment is owner configuration of teams and councils (B01). Then establish governed integrated work and correction/acceptance, before multidisciplinary opinions and appeal. Inspection and resumption grow alongside those journeys; they are not postponed wholesale until the end. All eight items are required for V1, but only the B01 slice is selected for Sprint 1.
+The configuration slice and draft-mission persistence are already delivered; their reports retain their exact proof limits. The owner's current 80/20 direction selects a **nominal end-to-end milestone**: integrated team work, ordinary correction/acceptance, relevant specialist opinions and a representative real-agent campaign covering all nine prepared profile types on relevant questions. Build these slices across B01–B08 before completing every variant of an individual item. Inspection and safe stopping accompany each slice.
+
+This milestone brings a narrow L6-style evaluation forward. It does not declare full L6 or V1 complete, remove required acceptance criteria, or reinterpret accepted G3/G4 policy. Complete remaining V1 cases in explicit follow-up lots; reconsider scope only through a recorded owner decision. The [sprint plan](SPRINT-PLAN.md) owns the new execution order N1–N4 and the follow-up register.
 
 The dependencies below are **product capabilities**. SDK access, migrations, contract probes and package work are technical dependencies in the sprint plan, not standalone product backlog items. Acceptance criteria describe expected behavior, not tests already passed.
 
@@ -78,7 +80,24 @@ The dependencies below are **product capabilities**. SDK access, migrations, con
 - **Acceptance:** keep pinned roster and mandate revisions; explicit replacement names actor/reason and invalidates affected opinions. Roster suspension prevents new use while preserving active missions. Mission suspension/cancellation stops new dependent dispatch, reports in-flight effects and preserves history. Restart or duplicate delivery cannot silently produce another approval; unresolved effects remain uncertain with a next action. No global pause of a shared agent or automatic deletion.
 - **Evidence:** A04, A18–A22 across the actual supported persistence/authentication paths.
 
-## 3. Coverage and release closure
+## 3. Nominal milestone and later coverage
+
+All slices below inherit V1 and their existing PRD parents. They are delivery priorities, not extra product backlog items or completed claims.
+
+| Product item | Nominal milestone | After the first end-to-end run |
+| --- | --- | --- |
+| B01 — configuration | Reuse existing rosters; prove active-mission revision pinning | Live member replacement and extended lifecycle combinations |
+| B02 — integrated result | Two bounded contributions, one lead and one verified integrated Git candidate | Richer dependency graphs and concurrent mission scheduling |
+| B03 — review | Exact-candidate review, one ordinary correction/resubmission, confirmed native effect | Lost-response reconciliation and wider interruption variants |
+| B04 — mandate and limits | Existing owner authority, qualified G4 admission for the selected operating profile, stop on reserved decisions or unknowns | Bound owner-response continuation and broader operational profiles |
+| B05 — perspectives | At least two relevant attributed opinions per collective case, all seven specialties evaluated across the campaign, and one accountable synthesis | Replacement and late-opinion variants; broader selection policies |
+| B06 — appeal | An unresolved dispute stops with an explicit owner destination | Implement and qualify the one-level appeal required for full V1 |
+| B07 — inspection | One understandable mission summary: candidate, contributions, opinions, effect, usage/unknowns and next actor | Complete lifecycle/history inspection and usability coverage |
+| B08 — continuity | Durable state, single-effect command handling, stop new work on suspension/uncertainty | Assisted resumption, replacement and complete interruption qualification |
+
+An unsupported case must stop with preserved state and a next actor. Deferral never means accepting a missing opinion, ignoring a failed integration, retrying an uncertain mutation, forgetting unsettled usage, or silently changing a mandate. Record concrete discoveries in the sprint plan's follow-up register; hypothetical improvements do not block the nominal milestone.
+
+## 4. Coverage and release closure
 
 | PRD requirement | Accountable backlog item(s) |
 | --- | --- |
@@ -94,7 +113,7 @@ The dependencies below are **product capabilities**. SDK access, migrations, con
 
 V1 closure requires these capabilities together and the applicable A01–A11, operational A16, A17–A22 scenarios. Deterministic tests establish rules; representative actual-agent missions establish judgment and coordination within their recorded limits. A package build, installation or a prototype probe cannot close a product item on its own.
 
-## 4. Explicitly deferred
+## 5. Explicitly deferred beyond V1
 
 C12–C15, A12–A15 and the learning portion of A16 remain beyond V1: cross-mission memory, knowledge adoption/retrieval, learning evaluation and automatic process changes. Also deferred: automatic agent provisioning, recursive councils, a separate execution engine, broad compatibility, generalized artifact approval and external merge/deployment control. Same-mission persistence and recovery remain required now.
 
