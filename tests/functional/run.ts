@@ -37,6 +37,11 @@ const root = resolve(hostRootInput);
 const expectedHostCommit = "61b3fd57a695614dc4a37e2303f426a34a9795cf";
 const hostCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
 assert.equal(hostCommit, expectedHostCommit, `functional host must be Paperclip ${expectedHostCommit}`);
+const hostStatus = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], {
+  cwd: root,
+  encoding: "utf8",
+}).trim();
+assert.equal(hostStatus, "", "functional host tracked files must match the exact host commit");
 const hostImport = (path: string) => import(pathToFileURL(resolve(root, path)).href);
 const qualificationId = randomUUID();
 const runtime = await mkdtemp(resolve(tmpdir(), "paperclip-council-package-"));
@@ -55,6 +60,8 @@ Object.assign(process.env, {
   PAPERCLIP_LOG_LEVEL: "warn",
   PAPERCLIP_UI_DEV_MIDDLEWARE: "false",
   PAPERCLIP_TELEMETRY_ENABLED: "false",
+  PAPERCLIP_STORAGE_PROVIDER: "local_disk",
+  PAPERCLIP_STORAGE_LOCAL_DIR: resolve(runtime, "storage"),
   OTEL_SDK_DISABLED: "true",
   NODE_ENV: "test",
 });
@@ -72,12 +79,13 @@ const requireServer = createRequire(resolve(root, "server/package.json"));
 const { eq } = requireServer("drizzle-orm");
 const evidence: Record<string, any> = {
   schemaVersion: 1,
-  proofId: "paperclip-council-package-functional-2026-09-29",
+  proofId: "paperclip-council-s1-configuration-2026-09-30",
   startedAt: new Date().toISOString(),
   head: hostCommit,
+  hostTrackedFilesClean: hostStatus === "",
   branch: execFileSync("git", ["branch", "--show-current"], { cwd: root, encoding: "utf8" }).trim(),
   node: process.version,
-  command: "COUNCIL_PACKAGE_EXPECTED_COMMIT=<candidate-sha> PAPERCLIP_TEST_HOST_ROOT=<checkout> pnpm test:functional",
+  command: "COUNCIL_PACKAGE_EXPECTED_COMMIT=<candidate-sha> PAPERCLIP_TEST_HOST_ROOT=<checkout> PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH=<chromium> pnpm test:functional",
   candidate: {
     commit: candidateCommit,
     branch: candidateBranch,
@@ -107,12 +115,14 @@ let server: Server | undefined;
 let workerManager: any;
 let baseUrl = "";
 let cookie = "";
+let intruderCookie = "";
 let tables: any;
 let issueId: string | undefined;
 const companyId = randomUUID();
 const projectId = randomUUID();
 const executorId = randomUUID();
 const councilId = randomUUID();
+const foreignCompanyId = randomUUID();
 const agentTokens = new Map<string, { token: string; keyId: string; runId: string; agentId: string }>();
 
 async function safeSnapshot() {
@@ -129,6 +139,9 @@ async function safeSnapshot() {
 }
 
 function redactedResponse(method: string, path: string, value: any) {
+  if (path.startsWith("/_plugins/")) {
+    return { installedUiBundle: typeof value === "string", byteLength: typeof value === "string" ? Buffer.byteLength(value) : null };
+  }
   if (path.startsWith("/api/auth/")) {
     return { user: value?.user ? { id: value.user.id, email: value.user.email } : null };
   }
@@ -144,6 +157,7 @@ function redactedResponse(method: string, path: string, value: any) {
 async function request(actor: string, method: string, path: string, body?: unknown) {
   const headers: Record<string, string> = { "content-type": "application/json", origin: baseUrl };
   if (actor === "human") headers.cookie = cookie;
+  if (actor === "intruder") headers.cookie = intruderCookie;
   const agent = agentTokens.get(actor);
   if (agent) {
     headers.authorization = `Bearer ${agent.token}`;
@@ -241,8 +255,8 @@ try {
     port: address.port,
   };
   const auth = createBetterAuthInstance(db, authConfig, [baseUrl]);
-  const opts = () => ({
-    uiMode: "none" as any,
+  const opts = (uiMode: "none" | "vite-dev" = "none") => ({
+    uiMode,
     serverPort: address.port,
     storageService: createStorageService(createLocalDiskStorageProvider(resolve(runtime, "storage"))),
     deploymentMode: "authenticated" as const,
@@ -281,9 +295,27 @@ try {
   const userId = signin.body.user.id;
   evidence.configuration.humanUserId = userId;
 
-  await db.insert(tables.companies).values({ id: companyId, name: "Isolated council package qualification", issuePrefix: "CPQ" });
+  const intruderPassword = randomBytes(24).toString("hex");
+  assert.equal((await request("anonymous", "POST", "/api/auth/sign-up/email", {
+    email: "council-package-intruder@example.test",
+    password: intruderPassword,
+    name: "Council Package Intruder",
+  })).status, 200);
+  const intruderSignin = await request("anonymous", "POST", "/api/auth/sign-in/email", {
+    email: "council-package-intruder@example.test",
+    password: intruderPassword,
+  });
+  assert.equal(intruderSignin.status, 200);
+  intruderCookie = intruderSignin.headers.getSetCookie().map((value) => value.split(";", 1)[0]).join("; ");
+  const intruderUserId = intruderSignin.body.user.id;
+  evidence.configuration.intruderUserId = intruderUserId;
+
+  await db.insert(tables.companies).values({ id: companyId, name: "Isolated council package qualification", issuePrefix: "CPQ", defaultResponsibleUserId: userId });
   await db.insert(tables.companyMemberships).values({ companyId, principalType: "user", principalId: userId, membershipRole: "owner", status: "active" });
+  await db.insert(tables.companyMemberships).values({ companyId, principalType: "user", principalId: intruderUserId, membershipRole: "admin", status: "active" });
   await db.insert(tables.instanceUserRoles).values({ userId, role: "instance_admin" });
+  await db.insert(tables.companies).values({ id: foreignCompanyId, name: "Foreign Council fixture", issuePrefix: "FCQ", defaultResponsibleUserId: userId });
+  await db.insert(tables.companyMemberships).values({ companyId: foreignCompanyId, principalType: "user", principalId: userId, membershipRole: "owner", status: "active" });
   await db.insert(tables.projects).values({ id: projectId, companyId, name: "Council package fixture" });
   for (const [actor, id] of [["executor", executorId], ["council", councilId]] as const) {
     await db.insert(tables.agents).values({
@@ -339,7 +371,7 @@ try {
 
   await closeApp();
   workerManager = createPluginWorkerManager();
-  app = await createApp(db, opts());
+  app = await createApp(db, opts("vite-dev"));
   server = createServer(app);
   await new Promise<void>((resolveListen, reject) => {
     server!.once("error", reject);
@@ -348,6 +380,262 @@ try {
   await app.locals.bundledPluginsStartup;
   assert(workerManager.isRunning(pluginId), "installed package worker must load after restart");
   evidence.results.installation = "PASS";
+
+  const rosterBase = `/api/plugins/${pluginId}/api/companies/${companyId}/rosters`;
+  const teamDraft = {
+    kind: "team",
+    name: "Delivery team",
+    projectId,
+    members: [{ agentId: executorId, responsibilities: ["integration_lead"] }],
+    integrationLeadAgentId: executorId,
+    finalReviewerAgentId: null,
+    requiredPerspectives: [],
+  };
+  const councilDraft = {
+    kind: "council",
+    name: "Release council",
+    projectId,
+    members: [{ agentId: councilId, responsibilities: ["final_reviewer"] }],
+    integrationLeadAgentId: null,
+    finalReviewerAgentId: councilId,
+    requiredPerspectives: [],
+  };
+
+  const unauthorizedBefore = await request("human", "GET", `${rosterBase}?companyId=${companyId}`);
+  assert.equal(unauthorizedBefore.status, 200);
+  assert.deepEqual(unauthorizedBefore.body.rosters, []);
+  const unauthorizedCreate = await request("intruder", "POST", rosterBase, {
+    companyId,
+    ownerUserId: userId,
+    command: "create",
+    roster: teamDraft,
+  });
+  assert.equal(unauthorizedCreate.status, 403);
+  assert.equal(unauthorizedCreate.body.code, "owner_required");
+  const afterUnauthorized = await request("human", "GET", `${rosterBase}?companyId=${companyId}`);
+  assert.deepEqual(afterUnauthorized.body.rosters, []);
+  evidence.results.ownerAuthorityNoMutation = "PASS";
+
+  const teamCreate = await request("human", "POST", rosterBase, { companyId, command: "create", roster: teamDraft });
+  const councilCreate = await request("human", "POST", rosterBase, { companyId, command: "create", roster: councilDraft });
+  assert.equal(teamCreate.status, 201);
+  assert.equal(councilCreate.status, 201);
+  const teamRosterId = teamCreate.body.head.rosterId;
+  const councilRosterId = councilCreate.body.head.rosterId;
+  assert.equal(teamCreate.body.head.publishedRevision, teamCreate.body.revision.revision);
+  assert.equal(councilCreate.body.head.publishedRevision, councilCreate.body.revision.revision);
+
+  const validation = await request("human", "POST", rosterBase, {
+    companyId,
+    command: "validate-pair",
+    teamRosterId,
+    councilRosterId,
+  });
+  assert.equal(validation.status, 200);
+  assert.equal(validation.body.eligible, true);
+  assert(validation.body.prerequisites.some((item: any) => item.code === "decision_reconciliation" && item.status === "unsupported"));
+  const asymmetricStaleActivation = await request("human", "POST", rosterBase, {
+    companyId,
+    command: "activate-pair",
+    teamRosterId,
+    teamExpectedVersion: 1,
+    councilRosterId,
+    councilExpectedVersion: 999,
+  });
+  assert.equal(asymmetricStaleActivation.status, 409);
+  const teamAfterStaleActivation = await request("human", "GET", `${rosterBase}/${teamRosterId}?companyId=${companyId}`);
+  const councilAfterStaleActivation = await request("human", "GET", `${rosterBase}/${councilRosterId}?companyId=${companyId}`);
+  assert.deepEqual(
+    [teamAfterStaleActivation.body.roster.head.lifecycle, teamAfterStaleActivation.body.roster.head.version],
+    ["draft", 1],
+  );
+  assert.deepEqual(
+    [councilAfterStaleActivation.body.roster.head.lifecycle, councilAfterStaleActivation.body.roster.head.version],
+    ["draft", 1],
+  );
+  evidence.results.atomicPairActivationNoPartialMutation = "PASS";
+  const activation = await request("human", "POST", rosterBase, {
+    companyId,
+    command: "activate-pair",
+    teamRosterId,
+    teamExpectedVersion: 1,
+    councilRosterId,
+    councilExpectedVersion: 1,
+  });
+  assert.equal(activation.status, 200);
+  assert.equal(activation.body.team.head.lifecycle, "active");
+  assert.equal(activation.body.council.head.lifecycle, "active");
+  assert.equal(activation.body.missionActivation, "unavailable");
+  evidence.results.createValidateActivate = "PASS";
+
+  const competingRevisions = await Promise.all([
+    request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
+      companyId, command: "revise", expectedVersion: 2,
+      roster: { ...teamDraft, name: "Delivery team revision A" },
+    }),
+    request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
+      companyId, command: "revise", expectedVersion: 2,
+      roster: { ...teamDraft, name: "Delivery team revision B" },
+    }),
+  ]);
+  assert.deepEqual(competingRevisions.map((result) => result.status).sort(), [200, 409]);
+  const winningRevision = competingRevisions.find((result) => result.status === 200)!.body.roster;
+  const conflictingRevision = competingRevisions.find((result) => result.status === 409)!.body.details;
+  assert.equal(conflictingRevision.outcome, "conflict");
+  assert.notEqual(conflictingRevision.orphanedRevision, winningRevision.head.publishedRevision);
+  const teamRead = await request("human", "GET", `${rosterBase}/${teamRosterId}?companyId=${companyId}`);
+  assert.equal(teamRead.status, 200);
+  assert.equal(teamRead.body.history.length, 3);
+  const originalRevision = teamRead.body.history.find((item: any) => item.revision === teamCreate.body.revision.revision);
+  assert.equal(originalRevision.name, "Delivery team");
+  assert.deepEqual(originalRevision.content, teamDraft.members ? {
+    members: teamDraft.members,
+    integrationLeadAgentId: executorId,
+    finalReviewerAgentId: null,
+    requiredPerspectives: [],
+  } : null);
+  evidence.results.concurrentPublicationAndImmutability = "PASS";
+
+  const reactivate = await request("human", "POST", rosterBase, {
+    companyId,
+    command: "activate-pair",
+    teamRosterId,
+    teamExpectedVersion: winningRevision.head.version,
+    councilRosterId,
+    councilExpectedVersion: activation.body.council.head.version,
+  });
+  assert.equal(reactivate.status, 200);
+  const suspend = await request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
+    companyId, command: "suspend", expectedVersion: reactivate.body.team.head.version,
+  });
+  assert.equal(suspend.status, 200);
+  assert.equal(suspend.body.head.lifecycle, "suspended");
+  const staleSuspend = await request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
+    companyId, command: "suspend", expectedVersion: reactivate.body.team.head.version,
+  });
+  assert.equal(staleSuspend.status, 409);
+  const afterStale = await request("human", "GET", `${rosterBase}/${teamRosterId}?companyId=${companyId}`);
+  assert.equal(afterStale.body.roster.head.lifecycle, "suspended");
+  assert.equal(afterStale.body.roster.head.version, suspend.body.head.version);
+  const retired = await request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
+    companyId, command: "retire", expectedVersion: suspend.body.head.version,
+  });
+  assert.equal(retired.status, 200);
+  assert.equal(retired.body.head.lifecycle, "retired");
+  assert.equal((await request("human", "GET", `${rosterBase}/${teamRosterId}?companyId=${companyId}`)).body.history.length, 3);
+  evidence.results.reviseSuspendRetireAndStaleNoMutation = "PASS";
+
+  const foreignBase = `/api/plugins/${pluginId}/api/companies/${foreignCompanyId}/rosters`;
+  const foreignList = await request("human", "GET", `${foreignBase}?companyId=${foreignCompanyId}`);
+  assert.equal(foreignList.status, 200);
+  assert.deepEqual(foreignList.body.rosters, []);
+  const foreignWrite = await request("human", "POST", `${foreignBase}/${teamRosterId}/commands`, {
+    companyId: foreignCompanyId,
+    command: "revise",
+    expectedVersion: retired.body.head.version,
+    roster: { ...teamDraft, projectId: null, name: "Cross-company overwrite" },
+  });
+  assert.equal(foreignWrite.status, 404);
+  const ownReadAfterForeign = await request("human", "GET", `${rosterBase}/${teamRosterId}?companyId=${companyId}`);
+  assert.equal(ownReadAfterForeign.body.roster.revision.name, winningRevision.revision.name);
+  evidence.results.interCompanyIsolation = "PASS";
+
+  const bridgeData = await request("human", "POST", `/api/plugins/${pluginId}/bridge/data`, {
+    key: "council-rosters",
+    companyId,
+    params: { rosterId: teamRosterId },
+  });
+  assert.equal(bridgeData.status, 200);
+  assert.equal(bridgeData.body.data.selected.head.rosterId, teamRosterId);
+  assert.equal(bridgeData.body.data.ownerUserId, userId);
+  const uiBundle = await request("human", "GET", `/_plugins/${pluginId}/ui/index.js?companyId=${companyId}`);
+  assert.equal(uiBundle.status, 200);
+  assert.match(uiBundle.body, /CouncilRostersPage|Council rosters/);
+  evidence.results.installedUiBundleAndAuthenticatedBridge = "PASS";
+
+  const { chromium } = requireServer("@playwright/test");
+  const playwrightExecutablePath = process.env.PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH;
+  const browser = await chromium.launch({
+    headless: true,
+    ...(playwrightExecutablePath ? { executablePath: playwrightExecutablePath } : {}),
+  });
+  evidence.configuration.playwrightExecutable = playwrightExecutablePath ?? "Playwright-managed default";
+  try {
+    const addSessionCookies = async (browserContext: any, rawCookie: string) => {
+      await browserContext.addCookies(rawCookie.split("; ").map((part) => {
+        const separator = part.indexOf("=");
+        return { name: part.slice(0, separator), value: part.slice(separator + 1), url: baseUrl };
+      }));
+    };
+    const ownerContext = await browser.newContext({ viewport: { width: 1180, height: 820 } });
+    await addSessionCookies(ownerContext, cookie);
+    const ownerPage = await ownerContext.newPage();
+    await ownerPage.goto(`${baseUrl}/CPQ/council-rosters`, { waitUntil: "networkidle" });
+    await ownerPage.getByRole("heading", { name: "Council rosters" }).waitFor();
+    await ownerPage.getByRole("button", { name: "New roster" }).focus();
+    await ownerPage.keyboard.press("Enter");
+    await ownerPage.getByLabel("Name").fill("Browser-created team");
+    await ownerPage.getByLabel("Integration lead").selectOption(executorId);
+    await ownerPage.getByRole("button", { name: "Create draft" }).click();
+    await ownerPage.getByText("Draft roster created.").waitFor();
+    await ownerPage.getByText("Browser-created team").first().waitFor();
+    const screenshotPath = process.env.COUNCIL_UI_SCREENSHOT_PATH ?? resolve(packageRoot, "artifacts", "ui-page.png");
+    await mkdir(dirname(screenshotPath), { recursive: true });
+    await ownerPage.screenshot({ path: screenshotPath, fullPage: true });
+    evidence.configuration.uiScreenshot = screenshotPath;
+
+    const browserCreatedList = await request("human", "GET", `${rosterBase}?companyId=${companyId}`);
+    const browserCreated = browserCreatedList.body.rosters.find((entry: any) => entry.revision.name === "Browser-created team");
+    assert(browserCreated);
+    const concurrentBrowserRevision = await request("human", "POST", `${rosterBase}/${browserCreated.head.rosterId}/commands`, {
+      companyId,
+      command: "revise",
+      expectedVersion: browserCreated.head.version,
+      roster: { ...teamDraft, name: "Concurrent browser revision" },
+    });
+    assert.equal(concurrentBrowserRevision.status, 200);
+    await ownerPage.getByLabel("Name").fill("Stale browser revision");
+    await ownerPage.getByRole("button", { name: "Publish revision" }).click();
+    await ownerPage.getByRole("alert").filter({ hasText: "stale" }).waitFor();
+    await ownerContext.close();
+
+    const loadingContext = await browser.newContext({ viewport: { width: 760, height: 760 } });
+    await addSessionCookies(loadingContext, cookie);
+    const loadingPage = await loadingContext.newPage();
+    await loadingPage.route("**/api/plugins/*/data/council-rosters", async (route) => {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 500));
+      await route.continue();
+    });
+    const loadingNavigation = loadingPage.goto(`${baseUrl}/FCQ/council-rosters`, { waitUntil: "domcontentloaded" });
+    await loadingPage.getByText("Loading Council roster configuration…").waitFor();
+    await loadingNavigation;
+    await loadingPage.getByText("No rosters yet. Create the first team or council below.").waitFor();
+    await loadingContext.close();
+
+    const errorContext = await browser.newContext({ viewport: { width: 760, height: 760 } });
+    await addSessionCookies(errorContext, cookie);
+    const errorPage = await errorContext.newPage();
+    await errorPage.route("**/api/plugins/*/data/council-rosters", (route) => route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "Injected UI load failure" }),
+    }));
+    await errorPage.goto(`${baseUrl}/CPQ/council-rosters`, { waitUntil: "domcontentloaded" });
+    await errorPage.getByRole("alert").filter({ hasText: "Council configuration could not load" }).waitFor();
+    await errorContext.close();
+
+    const intruderContext = await browser.newContext({ viewport: { width: 760, height: 760 } });
+    await addSessionCookies(intruderContext, intruderCookie);
+    const intruderPage = await intruderContext.newPage();
+    await intruderPage.goto(`${baseUrl}/CPQ/council-rosters`, { waitUntil: "networkidle" });
+    await intruderPage.getByText("Status: read only").waitFor();
+    assert.equal(await intruderPage.getByRole("button", { name: "Create draft" }).isDisabled(), true);
+    await intruderContext.close();
+    evidence.results.installedBrowserPageAndAuthenticatedAction = "PASS";
+    evidence.results.installedBrowserStates = "PASS";
+  } finally {
+    await browser.close();
+  }
 
   const policy = {
     mode: "normal",
@@ -369,6 +657,52 @@ try {
   });
   assert.equal(created.status, 201);
   issueId = created.body.id;
+
+  const foundationPath = `/api/plugins/${pluginId}/api/issues/${issueId}/foundation-probe`;
+  const competingCas = await Promise.all([
+    request("human", "POST", foundationPath, {
+      action: "cas", probeId: "l0-cas", expectedVersion: 0, payload: { contender: "a" },
+    }),
+    request("human", "POST", foundationPath, {
+      action: "cas", probeId: "l0-cas", expectedVersion: 0, payload: { contender: "b" },
+    }),
+  ]);
+  assert.deepEqual(competingCas.map((result) => result.status).sort(), [200, 409]);
+  const casWinner = competingCas.find((result) => result.status === 200)!.body.probe;
+  const casConflict = competingCas.find((result) => result.status === 409)!.body.probe;
+  assert.equal(casWinner.version, 1);
+  assert.deepEqual(casConflict, casWinner);
+  evidence.results.migrationAndCompetingCas = "PASS";
+
+  await freshRun("council");
+  const ownerRequest = await request("council", "POST", foundationPath, {
+    action: "owner-request",
+    ownerUserId: userId,
+    idempotencyKey: `l0-owner-${qualificationId}`,
+    prompt: "Continue the bounded L0 owner-response probe?",
+  });
+  assert.equal(ownerRequest.status, 201);
+  assert.equal(ownerRequest.body.status, "pending");
+  assert.equal(ownerRequest.body.addresseeUserId, userId);
+  assert.equal(ownerRequest.body.effectiveResolverPolicy, "human_only");
+  const pendingOwner = await request("council", "POST", foundationPath, {
+    action: "owner-inspect", interactionId: ownerRequest.body.id,
+  });
+  assert.equal(pendingOwner.status, 200);
+  assert.equal(pendingOwner.body.status, "pending");
+  assert.equal(pendingOwner.body.resolvedByUserId, null);
+  const ownerResponse = await request("human", "POST", foundationPath, {
+    action: "owner-respond", interactionId: ownerRequest.body.id, decision: "accept",
+  });
+  assert.equal(ownerResponse.status, 200);
+  assert.equal(ownerResponse.body.applied, true);
+  assert.equal(ownerResponse.body.interaction.status, "accepted");
+  assert.equal(ownerResponse.body.interaction.resolvedByUserId, userId);
+  const resolvedOwner = await request("council", "POST", foundationPath, {
+    action: "owner-inspect", interactionId: ownerRequest.body.id,
+  });
+  assert.equal(resolvedOwner.body.resolvedByUserId, userId);
+  evidence.results.ownerWaitAndAttributedResponse = "PASS";
 
   await checkoutExecutor("in_progress");
   const v1 = await request("executor", "PATCH", `/api/issues/${issueId}`, {
@@ -423,10 +757,12 @@ try {
   const bundlePath = resolve(runtime, "candidate.bundle");
   const candidateRepository = resolve(runtime, "candidate.git");
   const candidateRef = "refs/heads/candidate";
+  const baseRef = "refs/heads/base";
   execFileSync("git", ["clone", "--bare", "--shared", packageRoot, candidateRepository]);
   execFileSync("git", ["update-ref", candidateRef, approvedCommit], { cwd: candidateRepository });
+  execFileSync("git", ["update-ref", baseRef, baseCommit], { cwd: candidateRepository });
   assert.equal(execFileSync("git", ["rev-parse", candidateRef], { cwd: candidateRepository, encoding: "utf8" }).trim(), approvedCommit);
-  execFileSync("git", ["bundle", "create", bundlePath, candidateRef, `^${baseCommit}`], { cwd: candidateRepository });
+  execFileSync("git", ["bundle", "create", bundlePath, candidateRef, baseRef], { cwd: candidateRepository });
   execFileSync("git", ["bundle", "verify", bundlePath], { cwd: candidateRepository });
   const bundleBytes = await readFile(bundlePath);
   const bundleSha256 = createHash("sha256").update(bundleBytes).digest("hex");
@@ -440,6 +776,19 @@ try {
   assert.equal(uploadResponse.status, 201, `bundle upload: ${JSON.stringify(uploaded)}`);
   assert.equal(uploaded.sha256, bundleSha256);
   evidence.configuration.fixtureBundle = { attachmentId: uploaded.id, sha256: bundleSha256, source: "git bundle of approved extraction commit" };
+
+  const candidateVerification = await request("human", "POST", foundationPath, {
+    action: "candidate",
+    attachmentId: uploaded.id,
+    expectedSha256: bundleSha256,
+    baseCommit,
+    candidateCommit: approvedCommit,
+  });
+  assert.equal(candidateVerification.status, 200);
+  assert.equal(candidateVerification.body.sha256, bundleSha256);
+  assert.equal(candidateVerification.body.relationship, "base-is-ancestor");
+  assert.equal(candidateVerification.body.isolatedInspection, true);
+  evidence.results.attachmentBytesAndGitCandidate = "PASS";
 
   const candidateProduct = await request("human", "POST", `/api/issues/${issueId}/work-products`, {
     type: "commit", provider: "github", title: "Approved extraction candidate",
@@ -496,7 +845,7 @@ try {
     replacementAndRevocation: "documented-only",
     reason: "the required package journey used native ephemeral keys; durable key mutation was not requested",
   };
-  evidence.outcome = "PACKAGE LOCAL INTEGRATION VALIDATED";
+  evidence.outcome = "SPRINT 1 CONFIGURATION INCREMENT VALIDATED";
 } catch (error) {
   evidence.outcome = "NON-CONCLUSIVE OR BLOCKED";
   evidence.error = error instanceof Error

@@ -1,0 +1,86 @@
+{
+  "schema_version": "proof-manifest.v1",
+  "proof_id": "paperclip-council-l0-2026-09-30",
+  "subject": "Paperclip Council L0 foundation runtime candidate 7fcf5c7716c71905b60b2fbe2ac89955353a334a against Paperclip 61b3fd57a695614dc4a37e2303f426a34a9795cf",
+  "status": "partial",
+  "summary": "Build, typecheck, unit tests, real plugin migration/CAS, bounded attachment-byte and Git-bundle inspection, addressed fixture-human wait/response, and existing native decision flow pass; contractual owner binding, canonical uncertain-decision readback, and aggregate budget reservation remain blocked.",
+  "categories": [
+    "functional",
+    "quality",
+    "compliance",
+    "documentation",
+    "operations"
+  ],
+  "evidence": [
+    {
+      "id": "implementation-candidate",
+      "category": "quality",
+      "kind": "git-commit",
+      "location": "939c49ad4b170652f4b1adc1f85c87a8a7ab5082",
+      "replayable": true,
+      "notes": "Implementation commit on codex/council-l0, based on origin/main 4cf7127880f4847a46cf1fdefa5acd5de5593206; runtime-tested candidate 7fcf5c7716c71905b60b2fbe2ac89955353a334a adds only the initial L0 report."
+    },
+    {
+      "id": "unit-and-build",
+      "category": "quality",
+      "kind": "automated-test",
+      "location": "tests/foundation-probe.spec.ts",
+      "replayable": true,
+      "notes": "pnpm typecheck, pnpm test (30/30), and pnpm build passed."
+    },
+    {
+      "id": "isolated-runtime-trace",
+      "category": "functional",
+      "kind": "runtime-observation",
+      "location": "artifacts/functional.json",
+      "replayable": true,
+      "notes": "Git-ignored redacted trace, SHA-256 ef6b7f9f880a472477a16a8d9437fb447ef8b2a8183c6b0e35a78661515eaa08; exact candidate 7fcf5c7716c71905b60b2fbe2ac89955353a334a; synthetic fixture preparation; no model calls."
+    },
+    {
+      "id": "functional-harness",
+      "category": "operations",
+      "kind": "automated-test",
+      "location": "tests/functional/run.ts",
+      "replayable": true,
+      "notes": "Creates and cleans a fresh authenticated/private Paperclip instance and verifies the exact archived candidate."
+    },
+    {
+      "id": "l0-review",
+      "category": "documentation",
+      "kind": "document",
+      "location": "docs/reviews/l0/REPORT.md",
+      "replayable": false,
+      "notes": "Findings-first boundary report; not used alone as runtime proof."
+    }
+  ],
+  "replay": {
+    "preconditions": [
+      "Council checkout is on clean runtime candidate 7fcf5c7716c71905b60b2fbe2ac89955353a334a.",
+      "Paperclip host checkout resolves to 61b3fd57a695614dc4a37e2303f426a34a9795cf and its tracked source relevant to the harness is unchanged.",
+      "Node is at least 24.11.0 and pnpm 9.15.4 is available.",
+      "Loopback listeners and a fresh embedded PostgreSQL test cluster are permitted."
+    ],
+    "steps": [
+      "pnpm install --frozen-lockfile",
+      "pnpm typecheck",
+      "pnpm test",
+      "pnpm build",
+      "COUNCIL_PACKAGE_EXPECTED_COMMIT=7fcf5c7716c71905b60b2fbe2ac89955353a334a PAPERCLIP_TEST_HOST_ROOT=/home/davy-lp/workspace/paperclip pnpm test:functional"
+    ],
+    "expected_artifacts": [
+      "30 passing unit tests and successful typecheck/build output.",
+      "artifacts/functional.json with outcome PACKAGE LOCAL INTEGRATION VALIDATED and all listed results PASS.",
+      "A cleaned temporary application, database cluster and runtime directory."
+    ]
+  },
+  "closure": {
+    "decision": "keep-open",
+    "rationale": "L0 mandatory migration/CAS and G2 pass, but configured-owner binding, G3 canonical uncertain-response decision readback and G4 aggregate reservation/runtime exposure remain blocking gaps, so final closure is not allowed.",
+    "next_required_actions": [
+      "Provide and qualify a supported canonical execution-decision readback by lastDecisionId before L3 reconciliation claims.",
+      "Define and qualify atomic Council task/period reservation plus native runtime exposure bounds, or explicitly narrow the L2 limit guarantee.",
+      "Bind addressed human interactions to the configured mission owner and exact mandate/submission revision before claiming owner continuation."
+    ]
+  },
+  "generated_at": "2026-09-30T07:20:00+02:00"
+}
