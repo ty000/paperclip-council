@@ -255,6 +255,8 @@ describe("Council mission contracts", () => {
     expect(result.receipt).toEqual(row.aggregate.commandReceipts[0]);
     expect(result.mission.aggregate).toEqual(row.aggregate);
     expect(result.mission.version).toBe(1);
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query.mock.calls[0]?.[0]).toContain("(mission_id = $2 OR root_issue_id = $3)");
     expect(admissionRead).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
   });
@@ -276,7 +278,7 @@ describe("Council mission contracts", () => {
       outcome: "replayed",
       receipt: row.aggregate.commandReceipts[0],
     });
-    expect(staged.query).toHaveBeenCalledTimes(4);
+    expect(staged.query).toHaveBeenCalledTimes(2);
     expect(staged.execute).not.toHaveBeenCalled();
   });
 
@@ -305,7 +307,7 @@ describe("Council mission contracts", () => {
     const rejection = expect(pending).rejects.toMatchObject({ status: 409, code });
     staged.exposeMissionAndFailAdmission();
     await rejection;
-    expect(staged.query).toHaveBeenCalledTimes(4);
+    expect(staged.query).toHaveBeenCalledTimes(2);
     expect(staged.execute).not.toHaveBeenCalled();
   });
 
@@ -321,8 +323,33 @@ describe("Council mission contracts", () => {
     const rejection = expect(pending).rejects.toBe(unexpected);
     staged.failAdmission();
     await rejection;
-    expect(staged.query).toHaveBeenCalledTimes(4);
+    expect(staged.query).toHaveBeenCalledTimes(2);
     expect(staged.execute).not.toHaveBeenCalled();
+  });
+
+  it("preserves the original admission error when fallback identity readback fails", async () => {
+    const admissionError = new RosterError(409, "roster_selection_changed", "Roster selection changed");
+    const readbackError = new Error("Mission storage unavailable during fallback");
+    let identityReads = 0;
+    const ctx = {
+      companies: { get: async () => ({ id: ids.company, defaultResponsibleUserId: "owner-1" }) },
+      issues: { get: async () => { throw admissionError; } },
+      db: {
+        namespace: "plugin_private_paperclip_council_test",
+        query: vi.fn(async () => {
+          identityReads += 1;
+          if (identityReads === 1) return [];
+          throw readbackError;
+        }),
+        execute: vi.fn(),
+      },
+    } as unknown as PluginContext;
+    await expect(executeMissionCommand(ctx, {
+      companyId: ids.company,
+      actorUserId: "owner-1",
+      body: createInput(),
+    })).rejects.toBe(admissionError);
+    expect(identityReads).toBe(2);
   });
 
   it.each([
@@ -335,7 +362,7 @@ describe("Council mission contracts", () => {
     const row = storedMissionRow();
     const query = vi.fn(async (sql: string, values: unknown[]) => {
       if (!sql.includes(".missions")) throw new Error("Unexpected roster lookup");
-      const matches = sql.includes("AND mission_id =") ? values[1] === row.mission_id : values[1] === row.root_issue_id;
+      const matches = values[1] === row.mission_id || values[2] === row.root_issue_id;
       return matches ? [row] : [];
     });
     const execute = vi.fn();

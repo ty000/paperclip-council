@@ -292,23 +292,20 @@ export async function getMission(ctx: PluginContext, companyId: string, missionI
   return rows[0] ? parseMissionRow(rows[0]) : null;
 }
 
-async function getMissionByRootIssue(ctx: PluginContext, companyId: string, rootIssueId: string) {
-  const rows = await ctx.db.query<MissionRow>(
-    `SELECT ${selectColumns} FROM ${table(ctx)} WHERE company_id = $1 AND root_issue_id = $2`,
-    [companyId, rootIssueId],
-  );
-  return rows[0] ? parseMissionRow(rows[0]) : null;
-}
-
 async function getMissionByIdentity(
   ctx: PluginContext,
   companyId: string,
   missionId: string,
   rootIssueId: string,
 ) {
-  const mission = await getMission(ctx, companyId, missionId);
-  const missionForRootIssue = await getMissionByRootIssue(ctx, companyId, rootIssueId);
-  return mission ?? missionForRootIssue;
+  const rows = await ctx.db.query<MissionRow>(
+    `SELECT ${selectColumns} FROM ${table(ctx)}
+      WHERE company_id = $1 AND (mission_id = $2 OR root_issue_id = $3)
+      ORDER BY CASE WHEN mission_id = $2 THEN 0 ELSE 1 END
+      LIMIT 1`,
+    [companyId, missionId, rootIssueId],
+  );
+  return rows[0] ? parseMissionRow(rows[0]) : null;
 }
 
 export async function listMissions(ctx: PluginContext, companyId: string): Promise<MissionRecord[]> {
@@ -438,7 +435,8 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
   const payloadHash = canonicalPayloadHash(create);
   const existing = await getMissionByIdentity(ctx, companyId, create.missionId, create.rootIssueId);
   if (existing) return existingCreationResult(existing, create.commandId, ownerUserId, payloadHash);
-  let aggregate: MissionAggregate;
+  let team: RosterSnapshot;
+  let council: RosterSnapshot;
   try {
     const issue = await ctx.issues.get(create.rootIssueId, companyId);
     if (!issue || issue.companyId !== companyId) throw new MissionError(404, "root_issue_not_found", "Root issue not found in this company");
@@ -462,13 +460,20 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
         throw new MissionError(422, "project_scope_mismatch", "Roster project restriction does not match the mission project");
       }
     }
-    const at = new Date().toISOString();
-    aggregate = buildMissionAggregate({ create, companyId, ownerUserId, team: validation.team, council: validation.council, payloadHash, at });
+    team = validation.team;
+    council = validation.council;
   } catch (error) {
-    const appeared = await getMissionByIdentity(ctx, companyId, create.missionId, create.rootIssueId);
+    let appeared: MissionRecord | null = null;
+    try {
+      appeared = await getMissionByIdentity(ctx, companyId, create.missionId, create.rootIssueId);
+    } catch {
+      throw error;
+    }
     if (appeared) return existingCreationResult(appeared, create.commandId, ownerUserId, payloadHash);
     throw error;
   }
+  const at = new Date().toISOString();
+  const aggregate = buildMissionAggregate({ create, companyId, ownerUserId, team, council, payloadHash, at });
   const insert = await ctx.db.execute(
     missionInsertSql(ctx),
     [companyId, create.missionId, create.rootIssueId, create.projectId, ownerUserId,
