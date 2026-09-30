@@ -239,6 +239,38 @@ describe("G4 admission envelopes", () => {
     });
   });
 
+  it("preserves cumulative known usage through an unknown observation", async () => {
+    const store = admissionStore();
+    await configureAdmission(store.context(), knownConfiguration());
+    const input = reservation({ requestedUnits: 20 });
+    await reserveAdmission(store.context(), input);
+    const known = await settleAdmission(store.context(), {
+      commandId: randomUUID(), companyId, periodKey: input.periodKey, reservationId: input.reservationId,
+      usage: { status: "known", source: "fixture", units: 4 },
+      remainingExposure: { status: "known", source: "fixture", units: 5 }, expectedVersion: 2,
+    });
+    expect(known.envelope.allowance).toMatchObject({ knownUsageUnits: 4 });
+    const unknown = await settleAdmission(store.context(), {
+      commandId: randomUUID(), companyId, periodKey: input.periodKey, reservationId: input.reservationId,
+      usage: { status: "unknown", reason: "Billing readback unavailable" },
+      remainingExposure: { status: "unknown", reason: "Work may still run" }, expectedVersion: known.envelope.version,
+    });
+    expect(unknown.reservation).toMatchObject({ lastKnownUsageUnits: 4, usage: { status: "unknown" } });
+    await expect(settleAdmission(store.context(), {
+      commandId: randomUUID(), companyId, periodKey: input.periodKey, reservationId: input.reservationId,
+      usage: { status: "known", source: "fixture", units: 3 },
+      remainingExposure: { status: "known", source: "fixture", units: 0 }, expectedVersion: unknown.envelope.version,
+    })).rejects.toMatchObject({ status: 422, code: "usage_regression" });
+    const reconciled = await settleAdmission(store.context(), {
+      commandId: randomUUID(), companyId, periodKey: input.periodKey, reservationId: input.reservationId,
+      usage: { status: "known", source: "fixture", units: 4 },
+      remainingExposure: { status: "known", source: "fixture", units: 0 }, expectedVersion: unknown.envelope.version,
+    });
+    expect(reconciled.envelope.allowance).toMatchObject({ knownUsageUnits: 4 });
+    expect(reconciled.envelope.accountedUnits).toBe(4);
+    expect(reconciled.reservation).toMatchObject({ lastKnownUsageUnits: 4, status: "settled" });
+  });
+
   it("keeps a known nonzero unsettled reservation inside the concurrency limit", async () => {
     const store = admissionStore();
     await configureAdmission(store.context(), knownConfiguration({

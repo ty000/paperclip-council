@@ -17,7 +17,7 @@ vi.mock("../src/integration.js", async (importOriginal) => {
   return { ...actual, verifyIntegratedCandidate: vi.fn() };
 });
 
-import { readAdmission, reserveAdmission, settleAdmission } from "../src/admission.js";
+import { AdmissionError, readAdmission, reserveAdmission, settleAdmission } from "../src/admission.js";
 import { verifyIntegratedCandidate } from "../src/integration.js";
 import { executeN1BoardCommand, handleN1AgentApi } from "../src/n1-missions.js";
 import type { MissionAggregate } from "../src/missions.js";
@@ -375,7 +375,7 @@ describe("N1 mission transitions", () => {
     }));
   });
 
-  it("rejects a stale activation before reserving and releases an unused reservation after a CAS race", async () => {
+  it("rejects a stale activation before reserving and conservatively retains a reservation after a CAS race", async () => {
     const h = harness();
     const body = {
       command: "activate", commandId: randomUUID(), expectedVersion: 2,
@@ -399,11 +399,22 @@ describe("N1 mission transitions", () => {
       companyId: id.company, missionId: id.mission, actorUserId: id.owner,
       body: { ...body, expectedVersion: 1 },
     })).rejects.toMatchObject({ status: 409, code: "version_conflict" });
-    expect(settleAdmission).toHaveBeenCalledWith(h.ctx, expect.objectContaining({
-      reservationId: body.reservationId, expectedVersion: 5,
-      usage: expect.objectContaining({ status: "known", units: 0 }),
-      remainingExposure: expect.objectContaining({ status: "known", units: 0 }),
-    }));
+    expect(settleAdmission).not.toHaveBeenCalled();
+  });
+
+  it("does not release a shared reservation when identical activations race", async () => {
+    const h = harness();
+    const body = {
+      command: "activate", commandId: randomUUID(), expectedVersion: 1,
+      periodKey: "fixture-2026-09", reservationId: randomUUID(), requestedUnits: 3,
+    };
+    const results = await Promise.allSettled([0, 1].map(() => executeN1BoardCommand(h.ctx, {
+      companyId: id.company, missionId: id.mission, actorUserId: id.owner, body,
+    })));
+    expect(results.filter((item) => item.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((item) => item.status === "rejected")).toHaveLength(1);
+    expect(h.row().aggregate.n1).toMatchObject({ activationReservationId: body.reservationId });
+    expect(settleAdmission).not.toHaveBeenCalled();
   });
 
   it("refuses a manually started lead run without a confirmed dispatch identity", async () => {
@@ -417,7 +428,7 @@ describe("N1 mission transitions", () => {
     expect(h.assertCheckoutOwner).not.toHaveBeenCalled();
   });
 
-  it("does not reserve for stale child dispatch and reconciles a pre-effect CAS race", async () => {
+  it("does not reserve for stale child dispatch and retains a reservation after a pre-effect CAS race", async () => {
     const value = activeAggregate();
     value.n1 = {
       ...(value.n1 as object),
@@ -443,10 +454,24 @@ describe("N1 mission transitions", () => {
       { agentId: id.lead, runId: id.leadRun }, id.root), h.ctx);
     expect(raced).toMatchObject({ status: 409, body: { code: "version_conflict" } });
     expect(h.requestWakeup).not.toHaveBeenCalled();
-    expect(settleAdmission).toHaveBeenCalledWith(h.ctx, expect.objectContaining({
-      reservationId: body.reservationId,
-      usage: expect.objectContaining({ status: "known", units: 0 }),
-    }));
+    expect(settleAdmission).not.toHaveBeenCalled();
+  });
+
+  it("returns structured admission refusals from child dispatch without claiming an effect", async () => {
+    const value = activeAggregate();
+    value.n1 = { ...(value.n1 as object), contributions: [{ ...plan[0], issueState: "confirmed", childIssueId: id.childA }] };
+    const h = harness(value);
+    h.issues.set(id.childA, nativeIssue({ id: id.childA, parentId: id.root, assigneeAgentId: id.contributorA, status: "backlog" }));
+    for (const [status, code] of [[422, "admission_blocked"], [409, "version_conflict"]] as const) {
+      vi.mocked(reserveAdmission).mockRejectedValueOnce(new AdmissionError(status, code, "Admission refused", { currentVersion: 7 }));
+      const result = await handleN1AgentApi(agentRequest({
+        command: "dispatch", commandId: randomUUID(), expectedVersion: 1,
+        contributionId: id.contributionA, reservationId: randomUUID(), requestedUnits: 3,
+      }, { agentId: id.lead, runId: id.leadRun }, id.root), h.ctx);
+      expect(result).toMatchObject({ status, body: { code, details: { currentVersion: 7 } } });
+    }
+    expect(h.execute).not.toHaveBeenCalled();
+    expect(h.requestWakeup).not.toHaveBeenCalled();
   });
 
   it("accepts a two-owner plan only from the checked-out integration lead and rejects overlapping ownership", async () => {
@@ -612,6 +637,15 @@ describe("N1 mission transitions", () => {
     });
 
     h.issues.set(id.childA, nativeIssue({ id: id.childA, parentId: id.root, assigneeAgentId: id.contributorA, status: "done" }));
+    const beforeStalePublish = h.row();
+    const stalePublish = await handleN1AgentApi(agentRequest({
+      command: "publish", commandId: randomUUID(), expectedVersion: 1,
+      attachmentId: randomUUID(), baseCommit: "0".repeat(40),
+      candidateCommit: "c".repeat(40), expectedSha256: "d".repeat(64),
+    }, { agentId: id.lead, runId: id.leadRun }, id.root), h.ctx);
+    expect(stalePublish).toMatchObject({ status: 409, body: { code: "version_conflict" } });
+    expect(h.row()).toEqual(beforeStalePublish);
+    expect(verifyIntegratedCandidate).not.toHaveBeenCalled();
     vi.mocked(verifyIntegratedCandidate).mockRejectedValueOnce(new Error("candidate omits contribution B"));
     const publish = await handleN1AgentApi(agentRequest({
       command: "publish",

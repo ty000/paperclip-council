@@ -158,19 +158,6 @@ function requireFreshCommand(mission: MissionRecord, body: Record<string, unknow
   }
 }
 
-async function releaseUnusedReservation(
-  ctx: PluginContext, companyId: string, periodKey: string, reservationId: string,
-): Promise<void> {
-  const envelope = await readAdmission(ctx, { companyId, periodKey });
-  const reserved = envelope?.reservations.find((item) => item.reservationId === reservationId);
-  if (!envelope || reserved?.status !== "reserved") return;
-  await settleAdmission(ctx, {
-    commandId: randomUUID(), companyId, periodKey, reservationId, expectedVersion: envelope.version,
-    usage: { status: "known", source: "Council pre-effect mission CAS refusal", units: 0 },
-    remainingExposure: { status: "known", source: "Council pre-effect mission CAS refusal", units: 0 },
-  });
-}
-
 async function owner(ctx: PluginContext, mission: MissionRecord, actorUserId: string | null) {
   const company = await ctx.companies.get(mission.companyId);
   if (!company || company.id !== mission.companyId || !company.defaultResponsibleUserId) {
@@ -470,9 +457,8 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
   try {
     return await commandCas(ctx, mission, input.body, "user", input.actorUserId!, next);
   } catch (error) {
-    if (error instanceof MissionError && error.code === "version_conflict") {
-      try { await releaseUnusedReservation(ctx, mission.companyId, periodKey, reservationId); } catch { /* Remain conservatively reserved. */ }
-    }
+    // Another command may have adopted the same reservation before the mission CAS.
+    // Retain it until ownership is reconciled; a zero-usage settlement could release a live launch.
     throw error;
   }
 }
@@ -709,9 +695,8 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       try {
         claim = await commandCas(ctx, mission, body, "agent", actor.agentId, next);
       } catch (error) {
-        if (error instanceof MissionError && error.code === "version_conflict") {
-          try { await releaseUnusedReservation(ctx, mission.companyId, state.periodKey, reservationId); } catch { /* Remain conservatively reserved. */ }
-        }
+        // A concurrent request can win the mission CAS using this reservation.
+        // Keep the allowance reserved until its actual effect is reconciled.
         throw error;
       }
       if (claim.outcome !== "applied") return { status: 200, body: claim };
@@ -783,6 +768,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
     }
     if (body.command === "publish") {
       const actor = await lead(ctx, mission, input);
+      requireFreshCommand(mission, body);
       if (state.candidate) throw new MissionError(409, "candidate_exists", "Integrated candidate already published");
       if (state.contributions.length !== 2 || state.contributions.some((slot) =>
         !slot.commit || !slot.childIssueId || !slot.authorRunId || slot.dispatchState !== "requested" || !slot.dispatchReservationId)) {
@@ -837,7 +823,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
     }
     throw new MissionError(400, "unknown_command", "Unknown N1 agent command");
   } catch (error) {
-    if (error instanceof MissionError) {
+    if (error instanceof MissionError || error instanceof AdmissionError) {
       return { status: error.status, body: { error: error.message, code: error.code, details: error.details } };
     }
     throw error;

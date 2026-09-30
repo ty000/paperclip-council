@@ -1018,7 +1018,7 @@ try {
   assert.equal(reconciledAdmission.body.reservation.status, "settled");
   assert.equal(reconciledAdmission.body.envelope.status, "admissible");
   assert.equal(reconciledAdmission.body.envelope.availablePeriodUnits, 96);
-  const waitingActivation = await request("human", "POST", `${missionBase}/${waitingFixture.missionId}/commands`, {
+  const waitingActivationBody = {
     companyId,
     command: "activate",
     commandId: randomUUID(),
@@ -1026,16 +1026,23 @@ try {
     periodKey: n1PeriodKey,
     reservationId: randomUUID(),
     requestedUnits: 10,
-  });
-  assert.equal(waitingActivation.status, 200);
+  };
+  const waitingActivationAttempts = await Promise.all([0, 1].map(() => request(
+    "human", "POST", `${missionBase}/${waitingFixture.missionId}/commands`, waitingActivationBody,
+  )));
+  assert(waitingActivationAttempts.some((result) => result.status === 200));
+  assert(waitingActivationAttempts.every((result) => [200, 409].includes(result.status)));
+  const waitingActivation = waitingActivationAttempts.find((result) => result.status === 200)!;
   assert.equal(waitingActivation.body.mission.aggregate.control.status, "active");
   const admissionAfterCapacityReuse = await request("human", "GET", `${admissionPath}?companyId=${companyId}&periodKey=${encodeURIComponent(n1PeriodKey)}`);
   assert.equal(admissionAfterCapacityReuse.status, 200);
   assert.equal(admissionAfterCapacityReuse.body.envelope.reservations.length, 2);
   assert.equal(admissionAfterCapacityReuse.body.envelope.reservations[0].status, "settled");
   assert.equal(admissionAfterCapacityReuse.body.envelope.reservations[1].status, "reserved");
+  assert.equal(admissionAfterCapacityReuse.body.envelope.reservations[1].reservationId, waitingActivationBody.reservationId);
   assert.equal(admissionAfterCapacityReuse.body.envelope.availablePeriodUnits, 86);
   evidence.results.n1AdmissionKnownSettlementRestoresCapacity = "PASS";
+  evidence.results.n1SharedReservationRetainedOnActivationReplay = "PASS";
 
   const rootStarted = await request("human", "PATCH", `/api/issues/${activeFixture.rootIssueId}`, { status: "in_progress" });
   assert.equal(rootStarted.status, 200);

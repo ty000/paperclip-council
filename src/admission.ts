@@ -63,6 +63,7 @@ export type AdmissionReservation = {
   reservedAt: string;
   updatedAt: string;
   usage: AdmissionUsage | null;
+  lastKnownUsageUnits: number;
   remainingExposure: AdmissionRemainingExposure;
   settlementReceipts: AdmissionCommandReceipt[];
 };
@@ -321,6 +322,11 @@ function parseDocument(value: unknown): AdmissionDocument {
   const document = value as AdmissionDocument;
   if (document.schemaVersion !== 1 || !Array.isArray(document.reservations) || !Array.isArray(document.commandReceipts)) {
     throw new Error("Unsupported admission document");
+  }
+  for (const reservation of document.reservations) {
+    if (!Number.isSafeInteger(reservation.lastKnownUsageUnits) || reservation.lastKnownUsageUnits < 0) {
+      throw new Error("Admission reservation usage baseline is missing or invalid");
+    }
   }
   return document;
 }
@@ -592,6 +598,7 @@ export async function reserveAdmission(ctx: PluginContext, input: AdmissionReser
     reservedAt: at,
     updatedAt: at,
     usage: null,
+    lastKnownUsageUnits: 0,
     remainingExposure: { status: "known", source: "admission reservation", units: binding.requestedUnits },
     settlementReceipts: [],
   };
@@ -638,7 +645,7 @@ export async function settleAdmission(ctx: PluginContext, input: AdmissionSettle
   }
   if (current.version !== expectedVersion) throw new AdmissionError(409, "version_conflict", "Admission version is stale", { current });
 
-  const previousKnownUsage = existing.usage?.status === "known" ? existing.usage.units : 0;
+  const previousKnownUsage = existing.lastKnownUsageUnits;
   if (parsed.usage.status === "known" && parsed.usage.units < previousKnownUsage) {
     throw new AdmissionError(422, "usage_regression", "Cumulative reservation usage cannot decrease");
   }
@@ -655,6 +662,7 @@ export async function settleAdmission(ctx: PluginContext, input: AdmissionSettle
     status: settled ? "settled" : "unsettled",
     updatedAt: at,
     usage: parsed.usage,
+    lastKnownUsageUnits: parsed.usage.status === "known" ? parsed.usage.units : previousKnownUsage,
     remainingExposure: parsed.remainingExposure,
     settlementReceipts: [...existing.settlementReceipts, {
       commandId: parsed.commandId,

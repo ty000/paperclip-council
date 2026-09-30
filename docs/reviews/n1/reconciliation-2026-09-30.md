@@ -10,7 +10,13 @@ The worker keeps the receipt API and bridge from PR #14 alongside N1 admission a
 
 ## L03 boundary for joint reconciliation
 
-The uncheckpointed L03 checkout currently documents a governance migration also numbered 005, a Council 0.5.0 package, and result application through the same receipt path with `receiptRef` as `operationId`. N1 now uses the 005 filename and 0.5.0 version for its own additive admission. These namespace/version collisions require a joint decision after L03's checkpoint; this PR neither imports L03 governance code nor claims compatibility with its current worktree. The plugin migration registry uses full filenames, so the different proposed filenames are distinct registry keys, but two independently named 005 migrations would obscure release order. L03's consultation and result state are likewise outside the N1 mission aggregate and are not exercised by N1 tests.
+The separately maintained L03 checkout documents a governance migration also numbered 005, a Council 0.5.0 package, and result application through the same receipt path with `receiptRef` as `operationId`. N1 now uses the 005 filename and 0.5.0 version for its own additive admission. These namespace/version collisions require a joint decision after L03's checkpoint; this PR neither imports L03 governance code nor claims compatibility with it. The plugin migration registry uses full filenames, so the different proposed filenames are distinct registry keys, but two independently named 005 migrations would obscure release order.
+
+Other joint decisions remain open: N1 owner `start-lead` and L03 reviewer `decide-approach: proceed` both describe root wakeup authority; N1 company/period usage reservations and L03 mission counters/consultation grants need one accounting contract; and N1's integrated bundle identity has no qualified bridge to L03's exact result, evidence, native manifest and verdict receipt identity. No L03 compatibility test is claimed here.
+
+## Independent review and corrections
+
+The independent source review of the first reconciled candidate found four material defects. The follow-up candidate retains a reservation on mission CAS loss because a winning request may have adopted it; unknown usage retains the last accounted cumulative amount; a stale publish command is rejected before failed-verification persistence; and child dispatch returns structured admission refusals. Focused regressions and the installed shared-reservation replay cover these corrections. A conservative reservation may remain stranded after a genuine losing CAS until explicit reconciliation; the safe release ownership contract remains an N1/G4 follow-up.
 
 ## Proof boundary
 
