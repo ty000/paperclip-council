@@ -61,6 +61,17 @@ Confirm the target diagnostics before installation. Local plugins are trusted
 code. This repository is not published by this extraction, and GitHub repository
 installation is not a first-class Paperclip workflow.
 
+## Continuous integration
+
+The `Council CI` check runs on every branch push and pull request. It installs
+the frozen pnpm lockfile, then runs typechecking, unit tests (with at most two
+Vitest workers), and the package build concurrently in one Linux job. Each
+command reports its own status and duration, and any failure fails the job.
+
+This fast check does not run `pnpm test:functional`. The functional replay needs
+a pinned Paperclip host checkout, Chromium, an authenticated local instance, and
+an embedded PostgreSQL test cluster; it remains a separate qualification step.
+
 ## Configuration and secret references
 
 Create a company-scoped configuration with Paperclip's plugin configuration API:
