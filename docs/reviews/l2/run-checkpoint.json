@@ -17,7 +17,7 @@
   ],
   "budgets": ["No explicit attempt or token budget declared."],
   "known_facts": [
-    "origin/main bfa921000c0743aff17d2c1e48eff6bb9ca365cf contains merged S1 reports and implementation.",
+    "origin/main 2cc12cdad643afb78dd9b7cbcd384f2501c8595f is the effective post-rebase base and contains historical S1 base bfa921000c0743aff17d2c1e48eff6bb9ca365cf plus the fast parallel Council CI.",
     "Git base gate passed on clean branch codex/council-l2 tracking origin/main.",
     "COUNCIL-L2-MISSIONS prewrite migration gate passed with no findings.",
     "S1 report keeps L1 partial and mission activation unavailable.",
@@ -41,7 +41,7 @@
     "Independent reviewers: initial/targeted Step A reviews completed; PR-loop local correctness, test/regression and migration/docs reviews completed; current-head global re-review remains pending."
   ],
   "evidence_collected": [
-    "Git base gate replay command reported pass at bfa921000c0743aff17d2c1e48eff6bb9ca365cf.",
+    "The historical Git base gate passed at bfa921000c0743aff17d2c1e48eff6bb9ca365cf; the final branch was rebased cleanly onto 2cc12cdad643afb78dd9b7cbcd384f2501c8595f and requalified.",
     "docs/reviews/l2/prewrite-migration-contract.json validated by prewrite_migration_gate.py with status pass.",
     "docs/reviews/l2/evidence/functional.json SHA-256 a4319d560035dbd98bb5c2ded7048d7b1e731447cd385a7b3361950229d28cd2; outcome L2 STEP A MISSION PERSISTENCE VALIDATED with 31 passing results on rebased candidate cdd989f0072676777840ab9fc701a9b84ca90dca.",
     "Targeted independent re-review closed both prior material findings, found no new material issue, and accepted close-final for the bounded Step A only."

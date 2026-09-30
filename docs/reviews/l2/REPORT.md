@@ -4,7 +4,7 @@ Date: 2026-09-30 (Europe/Paris)
 
 Runtime-tested candidate: `cdd989f0072676777840ab9fc701a9b84ca90dca` on `codex/council-l2`
 
-Base: `bfa921000c0743aff17d2c1e48eff6bb9ca365cf` (`origin/main`, merged S1)
+Base effective post-rebase: `2cc12cdad643afb78dd9b7cbcd384f2501c8595f` (`origin/main`); base historique S1: `bfa921000c0743aff17d2c1e48eff6bb9ca365cf`
 
 Host: isolated clean checkout of `/home/davy-lp/workspace/paperclip` at `61b3fd57a695614dc4a37e2303f426a34a9795cf`; SDK/shared `2026.916.1`
 
