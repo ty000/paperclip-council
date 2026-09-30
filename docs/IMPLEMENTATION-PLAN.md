@@ -1,6 +1,6 @@
 # Paperclip Council — V1 implementation lots
 
-Version 0.1 — September 30, 2026. Proposed execution sequence, not a schedule, issued tickets or implemented backlog.
+Version 0.2 — September 30, 2026. Technical delivery sequence, not a calendar or issued tickets. Product decomposition: [V1 backlog](BACKLOG.md). Selected next increment: [sprint plan](SPRINT-PLAN.md).
 
 Product parents: [PRD](PRD.md) C01–C11, C16–C18 and [V1 scope](V1-SCOPE.md). Architecture: [TAD](TAD.md) D01–D10. Memory/learning C12–C15 remain deferred. This plan does not authorize instance changes, credentials, provider runs, external publication, merge or deployment.
 
@@ -41,4 +41,6 @@ Release closure requires selected scenarios, complete requirement traceability a
 
 Before L6/live activation, supply the actual WSL instance/company/project, designated human owner, eligible execution/review agents and credentials through native secret management, task/period budget policy, correction/elapsed limits, accessible Git/evidence location and representative tasks. Missing values leave activation pending without blocking bounded earlier code work.
 
-The next implementation task is L0. Its output is a verified current code/document base and a short pass/fail record for the host contract seams, followed by L1 when those dependencies are supported. This is an implementation plan, not a generated agent/run prompt or authorization to launch live agents.
+The local L0 candidate now reports PARTIAL / keep-open: persistence and narrow bundle verification pass; canonical uncertain-decision readback, aggregate budget/runtime exposure and contractual owner continuation remain unqualified. Exact candidate identities and source limits are recorded in the [sprint baseline](SPRINT-PLAN.md#1-baseline-and-entry-status). This is not a claim that L0 has merged into main or that its runtime was rerun for this document.
+
+The next proposed increment is the configuration-only slice of L1 (Sprint 1), after selecting a reviewed base containing L0. Completing it does not close the L1 active-mission pinning criterion: verify that criterion when the first L2 mission is persisted, before dependent dispatch. G3/G4 block their dependent L2/L3 behaviors, not all roster work. The [sprint plan](SPRINT-PLAN.md) records those dependencies without weakening the PRD mandate or starting L1–L6. This is an implementation plan, not an authorization to launch live agents.
