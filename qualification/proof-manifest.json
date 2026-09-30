@@ -26,9 +26,9 @@
       "id": "migration-precontrol",
       "category": "compliance",
       "kind": "document-only",
-      "location": "docs/reviews/n1/admission-prewrite.md",
+      "location": "docs/reviews/n1/reconciliation-2026-09-30.md",
       "replayable": false,
-      "notes": "Applied baseline migration checksums and existing data were inspected before the additive 004 write; the document is not runtime proof."
+      "notes": "The historical admission prewrite and new 004/005 source checksums were reconciled against merged PR #14; the document is not runtime proof."
     }
   ],
   "replay": {
