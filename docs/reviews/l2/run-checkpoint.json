@@ -21,7 +21,7 @@
     "Git base gate passed on clean branch codex/council-l2 tracking origin/main.",
     "COUNCIL-L2-MISSIONS prewrite migration gate passed with no findings.",
     "S1 report keeps L1 partial and mission activation unavailable.",
-    "Runtime candidate 36b43076c262e60bfe3e63affb0da72a55c08952 passed real installed mission storage, auth, CAS, roster-lifecycle pinning and restart checks on clean host 61b3fd57a695614dc4a37e2303f426a34a9795cf."
+    "Runtime candidate 4ee1930cd8616670c0d9b69e25ebbeda87d2ce14 passed real installed mission storage, owner-only reads, atomic lifecycle selection races, CAS, roster-lifecycle pinning and restart checks on clean host 61b3fd57a695614dc4a37e2303f426a34a9795cf."
   ],
   "decisions": [
     "Use the native implementation meta-flow, not the historical V3 phase topology.",
@@ -34,25 +34,25 @@
   ],
   "open_risks": [
     "An active-mission acceptance criterion may remain partial because G4 forbids activation or dispatch.",
-    "Independent review may identify a material implementation or evidence defect requiring correction and targeted replay."
+    "The initial independent review findings were remediated; targeted re-review may still identify a material residual defect."
   ],
   "owners": [
     "Primary writer: current root Codex task.",
-    "Independent reviewer: to be assigned against the committed review packet."
+    "Independent reviewer: initial consolidated review completed; same reviewer targeted re-review pending."
   ],
   "evidence_collected": [
     "Git base gate replay command reported pass at bfa921000c0743aff17d2c1e48eff6bb9ca365cf.",
     "docs/reviews/l2/prewrite-migration-contract.json validated by prewrite_migration_gate.py with status pass.",
-    "docs/reviews/l2/evidence/functional.json SHA-256 f5c505c75956bd0affce7749cfe4dad254aa9518f06112682b3d7e7cb08bec07; outcome L2 STEP A MISSION PERSISTENCE VALIDATED."
+    "docs/reviews/l2/evidence/functional.json SHA-256 f9d6d3826d0abf389b8e88468c0ca1fba5ecfd903bbb47335e6b4fe6da75de7d; outcome L2 STEP A MISSION PERSISTENCE VALIDATED on candidate 4ee1930cd8616670c0d9b69e25ebbeda87d2ce14."
   ],
   "files_touched": [
     "docs/reviews/l2/prewrite-migration-contract.json: created control descriptor.",
     "docs/reviews/l2/run-checkpoint.json: refreshed living checkpoint source.",
-    "migrations/003_missions.sql, src/missions.ts, manifest/worker/index, tests: committed in 36b43076c262e60bfe3e63affb0da72a55c08952.",
+    "Initial implementation committed in 36b43076c262e60bfe3e63affb0da72a55c08952; atomic selection/read-auth remediation and race coverage committed through 4ee1930cd8616670c0d9b69e25ebbeda87d2ce14.",
     "docs/reviews/l2/evidence/functional.json, REPORT.md, proof-manifest.json, alignment-manifest.json: prepared review packet."
   ],
-  "next_action": "Validate report/manifests, commit the review packet, then launch one independent consolidated review.",
-  "next_checkpoint": "After independent review and any material correction/replay, before final handoff.",
+  "next_action": "Validate and commit the corrected proof packet, then request targeted re-review of the two material findings.",
+  "next_checkpoint": "After targeted re-review, before final handoff.",
   "volatile_state": [
     "Re-check worktree cleanliness and HEAD before runtime proof and review.",
     "Re-check Paperclip host commit and tracked cleanliness in the isolated clone used by the harness.",

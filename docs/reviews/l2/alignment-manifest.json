@@ -1,5 +1,5 @@
 {
-  "claim": "Candidate 36b43076c262e60bfe3e63affb0da72a55c08952 implements only the G4-independent Step A mission slice: company/project/root-scoped draft mission persistence with a configured owner, exact immutable team/council revision references, accountable roles, mandate and declared limits, idempotent command receipts, CAS updates, minimal readiness inspection and explicit non-executability. It does not claim active-mission proof, dispatch, contribution integration, L2 completion, G3/G4 closure, L3-L5 behavior or V1 completion.",
+  "claim": "Candidate 4ee1930cd8616670c0d9b69e25ebbeda87d2ce14 implements only the G4-independent Step A mission slice: company/project/root-scoped draft mission persistence with configured-owner mutation and inspection authority, atomically selected active/current immutable team/council revisions, accountable roles, mandate and declared limits, idempotent command receipts, CAS updates, minimal readiness inspection and explicit non-executability. It does not claim active-mission proof, dispatch, contribution integration, L2 completion, G3/G4 closure, L3-L5 behavior or V1 completion.",
   "files_inspected": [
     "docs/V1-SCOPE.md",
     "docs/TAD.md",
