@@ -24,7 +24,7 @@ export type RosterContent = {
 export type RosterRevision = {
   companyId: string;
   rosterId: string;
-  revision: number;
+  revision: string;
   kind: RosterKind;
   name: string;
   projectId: string | null;
@@ -36,7 +36,7 @@ export type RosterRevision = {
 export type RosterHead = {
   companyId: string;
   rosterId: string;
-  publishedRevision: number;
+  publishedRevision: string;
   lifecycle: RosterLifecycle;
   version: number;
   auditEntries: Array<Record<string, unknown>>;
@@ -67,7 +67,7 @@ export type RosterPairValidation = {
 type RevisionRow = {
   company_id: string;
   roster_id: string;
-  revision: string | number;
+  revision: string;
   kind: RosterKind;
   name: string;
   project_id: string | null;
@@ -79,7 +79,7 @@ type RevisionRow = {
 type HeadRow = {
   company_id: string;
   roster_id: string;
-  published_revision: string | number;
+  published_revision: string;
   lifecycle: RosterLifecycle;
   version: string | number;
   audit_entries: unknown;
@@ -203,7 +203,7 @@ function parseRevision(row: RevisionRow): RosterRevision {
   return {
     companyId: row.company_id,
     rosterId: row.roster_id,
-    revision: safeInteger(row.revision, "roster revision"),
+    revision: row.revision,
     kind: row.kind,
     name: row.name,
     projectId: row.project_id,
@@ -217,7 +217,7 @@ function parseHead(row: HeadRow): RosterHead {
   return {
     companyId: row.company_id,
     rosterId: row.roster_id,
-    publishedRevision: safeInteger(row.published_revision, "published revision"),
+    publishedRevision: row.published_revision,
     lifecycle: row.lifecycle,
     version: safeInteger(row.version, "head version"),
     auditEntries: Array.isArray(row.audit_entries) ? row.audit_entries as Array<Record<string, unknown>> : [],
@@ -287,10 +287,10 @@ async function insertRevision(
 ): Promise<RosterRevision> {
   const rows = await ctx.db.query<RevisionRow>(
     `INSERT INTO ${table(ctx, "roster_revisions")}
-      (company_id, roster_id, kind, name, project_id, content, created_by_user_id)
-      VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+      (company_id, roster_id, revision, kind, name, project_id, content, created_by_user_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
       RETURNING company_id, roster_id, revision, kind, name, project_id, content, created_by_user_id, created_at`,
-    [companyId, rosterId, draft.kind, draft.name, draft.projectId, JSON.stringify(draft.content), actorUserId],
+    [companyId, rosterId, randomUUID(), draft.kind, draft.name, draft.projectId, JSON.stringify(draft.content), actorUserId],
   );
   if (!rows[0]) throw new Error("Roster revision insert returned no row");
   return parseRevision(rows[0]);
@@ -329,7 +329,7 @@ export async function reviseRoster(
     actorUserId: string;
     draft: ReturnType<typeof parseRosterDraft>;
   },
-): Promise<{ outcome: "applied" | "conflict"; roster: RosterSnapshot; orphanedRevision?: number }> {
+): Promise<{ outcome: "applied" | "conflict"; roster: RosterSnapshot; orphanedRevision?: string }> {
   const before = await getRoster(ctx, input.companyId, input.rosterId);
   if (!before) throw new RosterError(404, "roster_not_found", "Roster not found");
   if (before.head.lifecycle === "retired") {

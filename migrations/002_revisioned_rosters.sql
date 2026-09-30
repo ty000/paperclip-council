@@ -1,9 +1,7 @@
-CREATE SEQUENCE plugin_private_paperclip_council_270061461e.roster_revision_number_seq;
-
 CREATE TABLE plugin_private_paperclip_council_270061461e.roster_revisions (
   company_id uuid NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
   roster_id uuid NOT NULL,
-  revision bigint NOT NULL DEFAULT nextval('plugin_private_paperclip_council_270061461e.roster_revision_number_seq'),
+  revision uuid NOT NULL,
   kind text NOT NULL CHECK (kind IN ('team', 'council')),
   name text NOT NULL CHECK (length(btrim(name)) BETWEEN 1 AND 120),
   project_id uuid REFERENCES public.projects(id) ON DELETE RESTRICT,
@@ -16,7 +14,7 @@ CREATE TABLE plugin_private_paperclip_council_270061461e.roster_revisions (
 CREATE TABLE plugin_private_paperclip_council_270061461e.roster_heads (
   company_id uuid NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
   roster_id uuid NOT NULL,
-  published_revision bigint NOT NULL,
+  published_revision uuid NOT NULL,
   lifecycle text NOT NULL DEFAULT 'draft' CHECK (lifecycle IN ('draft', 'active', 'suspended', 'retired')),
   version bigint NOT NULL DEFAULT 1 CHECK (version >= 1),
   audit_entries jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(audit_entries) = 'array'),

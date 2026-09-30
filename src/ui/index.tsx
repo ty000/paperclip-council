@@ -10,7 +10,7 @@ type ProjectRecord = { id: string; name: string; archivedAt?: string | null };
 type Member = { agentId: string; responsibilities: string[] };
 type Revision = {
   rosterId: string;
-  revision: number;
+  revision: string;
   kind: "team" | "council";
   name: string;
   projectId: string | null;
@@ -26,7 +26,7 @@ type Revision = {
 type Snapshot = {
   head: {
     rosterId: string;
-    publishedRevision: number;
+    publishedRevision: string;
     lifecycle: "draft" | "active" | "suspended" | "retired";
     version: number;
     updatedAt: string;
