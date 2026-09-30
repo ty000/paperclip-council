@@ -47,6 +47,34 @@ describe("repo-owned Paperclip qualification host", () => {
       dependenciesInstalled: false, runtimeReady: false,
     });
     expect(inspectHost(target, fixture.commit, ownedRoot)).toMatchObject({ prepared: true });
+    expect((await readdir(ownedRoot)).filter((name) => name.startsWith("paperclip.partial-"))).toEqual([]);
+  });
+
+  it("does not reuse or clean a predictable legacy staging directory", async () => {
+    const fixture = await fixtureRepository();
+    const ownedRoot = await mkdtemp(resolve(tmpdir(), "paperclip-owned-root-"));
+    temporaryRoots.push(ownedRoot);
+    const target = resolve(ownedRoot, "paperclip");
+    const legacyStagingName = `paperclip.partial-${process.pid}`;
+    const legacyStaging = resolve(ownedRoot, legacyStagingName);
+    const sentinel = resolve(legacyStaging, "sentinel.txt");
+    await mkdir(legacyStaging);
+    await writeFile(sentinel, "must remain untouched\n");
+
+    await expect(materializeHost({
+      source: resolve(fixture.root, "missing-source"),
+      target,
+      expectedCommit: fixture.commit,
+      install: false,
+      allowedRoot: ownedRoot,
+    })).rejects.toThrow();
+
+    expect(await readFile(sentinel, "utf8")).toBe("must remain untouched\n");
+    expect(await readdir(legacyStaging)).toEqual(["sentinel.txt"]);
+    expect((await readdir(ownedRoot)).filter((name) => name.startsWith("paperclip.partial-"))).toEqual([
+      legacyStagingName,
+    ]);
+    expect(await readdir(ownedRoot)).not.toContain("paperclip");
   });
 
   it("refuses a foreign marker or a different source identity", async () => {

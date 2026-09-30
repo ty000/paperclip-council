@@ -16,7 +16,7 @@ import {
   writeFileSync,
   writeSync,
 } from "node:fs";
-import { mkdir, rename, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -275,8 +275,10 @@ export async function materializeHost({
     if (!install) return current;
   } else {
     await mkdir(dirname(absoluteTarget), { recursive: true });
-    const partialTarget = assertOwnedTarget(`${absoluteTarget}.partial-${process.pid}`, allowedRoot);
+    const partialPrefix = assertOwnedTarget(`${absoluteTarget}.partial-`, allowedRoot);
+    const reservedPartialTarget = await mkdtemp(partialPrefix);
     try {
+      const partialTarget = assertOwnedTarget(reservedPartialTarget, allowedRoot);
       run("git", ["clone", "--no-checkout", source, partialTarget]);
       run("git", ["-C", partialTarget, "checkout", "--detach", expectedCommit]);
       const trackedStatus = git(partialTarget, ["status", "--porcelain", "--untracked-files=no"]);
@@ -290,7 +292,7 @@ export async function materializeHost({
       });
       await rename(partialTarget, absoluteTarget);
     } catch (error) {
-      await rm(partialTarget, { recursive: true, force: true });
+      await rm(reservedPartialTarget, { recursive: true, force: true });
       throw error;
     }
   }
