@@ -10,7 +10,7 @@ Every item below belongs to the **selected first usable release V1**. H1/H2 rema
 
 The configuration slice and draft-mission persistence are already delivered; their reports retain their exact proof limits. The owner's current 80/20 direction selects a **nominal end-to-end milestone**: integrated team work, ordinary correction/acceptance, relevant specialist opinions and a representative real-agent campaign covering all nine prepared profile types on relevant questions. Build these slices across B01–B08 before completing every variant of an individual item. Inspection and safe stopping accompany each slice.
 
-This milestone brings a narrow L6-style evaluation forward. It does not declare full L6 or V1 complete, remove required acceptance criteria, or reinterpret accepted G3/G4 policy. Complete remaining V1 cases in explicit follow-up lots; reconsider scope only through a recorded owner decision. The [sprint plan](SPRINT-PLAN.md) owns the new execution order N1–N4 and the follow-up register.
+This milestone brings a narrow L6-style evaluation forward. It does not declare full L6 or V1 complete, remove required acceptance criteria, or reinterpret accepted G3/G4 policy. Complete remaining V1 cases in explicit follow-up lots; reconsider scope only through a recorded owner decision. The [sprint plan](SPRINT-PLAN.md) owns the N1→N6 execution order: N1–N4 remain foundations, followed by required N5/M1 and N6/M2 lots without widening work already bounded, alongside the follow-up register.
 
 The dependencies below are **product capabilities**. SDK access, migrations, contract probes and package work are technical dependencies in the sprint plan, not standalone product backlog items. Acceptance criteria describe expected behavior, not tests already passed.
 

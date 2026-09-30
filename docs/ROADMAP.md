@@ -41,6 +41,8 @@ Horizons express usable capabilities, not technical layers to deliver separately
 
 **Implementation gate.** Establish this workflow before enabling the selected H2 mechanisms. Compare overhead with simpler supervision, and fix resumption or consumption problems before expanding a particular live mission. No arbitrary number of validation campaigns is imposed.
 
+<a id="4-h2--proportionate-multidisciplinary-council"></a>
+
 ## 4. H2 — Multidisciplinary delivery and coordination
 
 **Value.** Avoid decisions that are technically defensible but offer no product value, insufficient corrections, and disproportionate scope extensions.

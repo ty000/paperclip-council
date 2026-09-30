@@ -10,7 +10,7 @@ Inspected main: `cbe8e54ffa4e3c857424b44518b75d38de45d28b`. Configuration (PR #6
 
 Delivered is not operationally complete: L1 active-mission pinning and L2 dispatch/integration remain open; G3/G4 technical qualification remains open; profiles are not configured or running agents. The pre-L3 infrastructure did not complete L2. No historical runtime replay proves this planning revision or future candidates.
 
-**Owner direction:** prioritize a generic end-to-end path, collect concrete exceptions during implementation, and schedule subsequent hardening/decision work. Also maximize the diversity of agent types exercised so their usefulness can be assessed during those generic missions. N1–N4 supersede the old sequential sprint outline for execution, without deleting full-V1 acceptance criteria.
+**Owner direction:** prioritize a generic end-to-end path, collect concrete exceptions during implementation, and schedule subsequent hardening/decision work. Also maximize the diversity of agent types exercised so their usefulness can be assessed during those generic missions. N1→N6 supersedes the old sequential sprint outline for execution: N1–N4 remain foundations, N5 completes M1 and N6 demonstrates M2, without widening already bounded lots or deleting full-V1 acceptance criteria.
 
 The nominal milestone is an early, narrow L6-style evaluation. Full L6/V1 closure still requires the remaining mandatory cases; report these two milestones separately.
 
