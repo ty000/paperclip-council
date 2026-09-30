@@ -1,0 +1,27 @@
+{
+  "claim": "Paperclip Council candidate 67c98af638315f10305a21d3005c0f300537aa18 implements only Sprint 1 S1-01 through S1-03: revisioned team and council configuration, configured-owner authorization, eligibility and lifecycle controls, and an installed minimal configuration page, while preserving the documented boundary that L1 remains partial and mission activation, G3/G4 completion, L2 dispatch and V1 closure are unavailable.",
+  "files_inspected": [
+    "docs/SPRINT-PLAN.md",
+    "docs/V1-SCOPE.md",
+    "docs/TAD.md",
+    "docs/reviews/l0/REPORT.md",
+    "migrations/002_revisioned_rosters.sql",
+    "src/rosters.ts",
+    "src/manifest.ts",
+    "src/ui/index.tsx",
+    "tests/rosters.spec.ts",
+    "tests/functional/run.ts",
+    "docs/reviews/s1/evidence/functional.json",
+    "docs/reviews/s1/FRONTEND-QA.md",
+    "docs/reviews/s1/REPORT.md"
+  ],
+  "tests_or_checks": [
+    "COREPACK_HOME=/tmp/council-s1-corepack pnpm typecheck",
+    "COREPACK_HOME=/tmp/council-s1-corepack pnpm test",
+    "COREPACK_HOME=/tmp/council-s1-corepack pnpm build",
+    "exact-candidate isolated functional replay recorded in docs/reviews/s1/evidence/functional.json",
+    "installed Chromium page journey and state coverage recorded by tests/functional/run.ts",
+    "git diff --check"
+  ],
+  "findings": []
+}
