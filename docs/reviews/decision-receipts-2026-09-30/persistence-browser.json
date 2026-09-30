@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "completedAt": "2026-09-30T21:06:34.258Z",
+  "candidate": "808b879c205881a7f199f3d44a75175951a5ff77",
+  "workingTreeDiff": false,
+  "proofClass": "real isolated PostgreSQL and browser; synthetic native HTTP server and SDK transport",
+  "noProviderCalls": true,
+  "hostSourceWrites": false,
+  "results": {
+    "additiveMigrationAndHostSqlGuards": "PASS",
+    "nominalAndTwentyConcurrentDuplicates": "PASS",
+    "contentAndTargetConflict": "PASS",
+    "authorizationAndNoFallback": "PASS (native HTTP errors conservatively held)",
+    "lostSuccessMalformedAndNewKeyHold": "PASS",
+    "processKillAfterSendAndRestart": "PASS",
+    "ownerAuditAndPersistentRenderedOperator": "PASS (real browser, synthetic SDK transport)",
+    "lateOriginalResponseRetainsHumanHistory": "PASS",
+    "companyIsolation": "PASS"
+  }
+}
