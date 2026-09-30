@@ -7,6 +7,7 @@ import {
 import type { CouncilDecisionPayload } from "./contracts.js";
 import { emitCouncilDecision, parseCouncilConfig } from "./decision-adapter.js";
 import { ApprovalPreflightError, verifyApprovalCandidate } from "./delivery-manifest.js";
+import { handleFoundationProbe } from "./foundation-probe.js";
 
 let ctx: PluginContext;
 
@@ -79,13 +80,23 @@ export async function handleDecision(input: PluginApiRequestInput, context: Plug
   };
 }
 
+export async function handlePluginRequest(input: PluginApiRequestInput, context: PluginContext = ctx) {
+  if (input.routeKey === "decision") return handleDecision(input, context);
+  if (input.routeKey !== "foundation-probe") {
+    return { status: 404, body: { error: "Unknown route" } };
+  }
+  try {
+    const config = parseCouncilConfig(await context.config.get(input.companyId));
+    return await handleFoundationProbe(input, context, config);
+  } catch (error) {
+    return { status: 422, body: { error: error instanceof Error ? error.message : String(error) } };
+  }
+}
+
 const plugin = definePlugin({
   async setup(context) { ctx = context; },
   async onHealth() { return { status: "ok", message: "Council decision adapter ready" }; },
-  async onApiRequest(input) {
-    if (input.routeKey !== "decision") return { status: 404, body: { error: "Unknown route" } };
-    return handleDecision(input);
-  },
+  async onApiRequest(input) { return handlePluginRequest(input); },
 });
 
 export default plugin;

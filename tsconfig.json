@@ -6,6 +6,7 @@
     "lib": ["ES2023", "DOM"],
     "strict": true,
     "skipLibCheck": true,
+    "types": ["node"],
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,

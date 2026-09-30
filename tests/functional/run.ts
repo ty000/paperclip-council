@@ -55,6 +55,8 @@ Object.assign(process.env, {
   PAPERCLIP_LOG_LEVEL: "warn",
   PAPERCLIP_UI_DEV_MIDDLEWARE: "false",
   PAPERCLIP_TELEMETRY_ENABLED: "false",
+  PAPERCLIP_STORAGE_PROVIDER: "local_disk",
+  PAPERCLIP_STORAGE_LOCAL_DIR: resolve(runtime, "storage"),
   OTEL_SDK_DISABLED: "true",
   NODE_ENV: "test",
 });
@@ -72,7 +74,7 @@ const requireServer = createRequire(resolve(root, "server/package.json"));
 const { eq } = requireServer("drizzle-orm");
 const evidence: Record<string, any> = {
   schemaVersion: 1,
-  proofId: "paperclip-council-package-functional-2026-09-29",
+  proofId: "paperclip-council-l0-functional-2026-09-30",
   startedAt: new Date().toISOString(),
   head: hostCommit,
   branch: execFileSync("git", ["branch", "--show-current"], { cwd: root, encoding: "utf8" }).trim(),
@@ -370,6 +372,52 @@ try {
   assert.equal(created.status, 201);
   issueId = created.body.id;
 
+  const foundationPath = `/api/plugins/${pluginId}/api/issues/${issueId}/foundation-probe`;
+  const competingCas = await Promise.all([
+    request("human", "POST", foundationPath, {
+      action: "cas", probeId: "l0-cas", expectedVersion: 0, payload: { contender: "a" },
+    }),
+    request("human", "POST", foundationPath, {
+      action: "cas", probeId: "l0-cas", expectedVersion: 0, payload: { contender: "b" },
+    }),
+  ]);
+  assert.deepEqual(competingCas.map((result) => result.status).sort(), [200, 409]);
+  const casWinner = competingCas.find((result) => result.status === 200)!.body.probe;
+  const casConflict = competingCas.find((result) => result.status === 409)!.body.probe;
+  assert.equal(casWinner.version, 1);
+  assert.deepEqual(casConflict, casWinner);
+  evidence.results.migrationAndCompetingCas = "PASS";
+
+  await freshRun("council");
+  const ownerRequest = await request("council", "POST", foundationPath, {
+    action: "owner-request",
+    ownerUserId: userId,
+    idempotencyKey: `l0-owner-${qualificationId}`,
+    prompt: "Continue the bounded L0 owner-response probe?",
+  });
+  assert.equal(ownerRequest.status, 201);
+  assert.equal(ownerRequest.body.status, "pending");
+  assert.equal(ownerRequest.body.addresseeUserId, userId);
+  assert.equal(ownerRequest.body.effectiveResolverPolicy, "human_only");
+  const pendingOwner = await request("council", "POST", foundationPath, {
+    action: "owner-inspect", interactionId: ownerRequest.body.id,
+  });
+  assert.equal(pendingOwner.status, 200);
+  assert.equal(pendingOwner.body.status, "pending");
+  assert.equal(pendingOwner.body.resolvedByUserId, null);
+  const ownerResponse = await request("human", "POST", foundationPath, {
+    action: "owner-respond", interactionId: ownerRequest.body.id, decision: "accept",
+  });
+  assert.equal(ownerResponse.status, 200);
+  assert.equal(ownerResponse.body.applied, true);
+  assert.equal(ownerResponse.body.interaction.status, "accepted");
+  assert.equal(ownerResponse.body.interaction.resolvedByUserId, userId);
+  const resolvedOwner = await request("council", "POST", foundationPath, {
+    action: "owner-inspect", interactionId: ownerRequest.body.id,
+  });
+  assert.equal(resolvedOwner.body.resolvedByUserId, userId);
+  evidence.results.ownerWaitAndAttributedResponse = "PASS";
+
   await checkoutExecutor("in_progress");
   const v1 = await request("executor", "PATCH", `/api/issues/${issueId}`, {
     status: "done",
@@ -423,10 +471,12 @@ try {
   const bundlePath = resolve(runtime, "candidate.bundle");
   const candidateRepository = resolve(runtime, "candidate.git");
   const candidateRef = "refs/heads/candidate";
+  const baseRef = "refs/heads/base";
   execFileSync("git", ["clone", "--bare", "--shared", packageRoot, candidateRepository]);
   execFileSync("git", ["update-ref", candidateRef, approvedCommit], { cwd: candidateRepository });
+  execFileSync("git", ["update-ref", baseRef, baseCommit], { cwd: candidateRepository });
   assert.equal(execFileSync("git", ["rev-parse", candidateRef], { cwd: candidateRepository, encoding: "utf8" }).trim(), approvedCommit);
-  execFileSync("git", ["bundle", "create", bundlePath, candidateRef, `^${baseCommit}`], { cwd: candidateRepository });
+  execFileSync("git", ["bundle", "create", bundlePath, candidateRef, baseRef], { cwd: candidateRepository });
   execFileSync("git", ["bundle", "verify", bundlePath], { cwd: candidateRepository });
   const bundleBytes = await readFile(bundlePath);
   const bundleSha256 = createHash("sha256").update(bundleBytes).digest("hex");
@@ -440,6 +490,19 @@ try {
   assert.equal(uploadResponse.status, 201, `bundle upload: ${JSON.stringify(uploaded)}`);
   assert.equal(uploaded.sha256, bundleSha256);
   evidence.configuration.fixtureBundle = { attachmentId: uploaded.id, sha256: bundleSha256, source: "git bundle of approved extraction commit" };
+
+  const candidateVerification = await request("human", "POST", foundationPath, {
+    action: "candidate",
+    attachmentId: uploaded.id,
+    expectedSha256: bundleSha256,
+    baseCommit,
+    candidateCommit: approvedCommit,
+  });
+  assert.equal(candidateVerification.status, 200);
+  assert.equal(candidateVerification.body.sha256, bundleSha256);
+  assert.equal(candidateVerification.body.relationship, "base-is-ancestor");
+  assert.equal(candidateVerification.body.isolatedInspection, true);
+  evidence.results.attachmentBytesAndGitCandidate = "PASS";
 
   const candidateProduct = await request("human", "POST", `/api/issues/${issueId}/work-products`, {
     type: "commit", provider: "github", title: "Approved extraction candidate",

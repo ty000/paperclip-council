@@ -1,12 +1,13 @@
 {
   "name": "@paperclipai/plugin-council",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Agent-led review decisions for Paperclip workflows",
   "type": "module",
   "private": true,
   "packageManager": "pnpm@9.15.4",
   "files": [
     "dist",
+    "migrations",
     "README.md",
     "LICENSE"
   ],
