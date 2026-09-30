@@ -21,7 +21,7 @@
     "Git base gate passed on clean branch codex/council-l2 tracking origin/main.",
     "COUNCIL-L2-MISSIONS prewrite migration gate passed with no findings.",
     "S1 report keeps L1 partial and mission activation unavailable.",
-    "Runtime candidate 579649a72fac95485412f40679a5dc83501f66dc passed real installed mission storage, owner-only reads, structured roster refusals, recorded-result replay after mutable lifecycle changes, atomic lifecycle selection contentions and ordered outcomes, CAS, roster-lifecycle pinning and complete restart inspection on clean host 61b3fd57a695614dc4a37e2303f426a34a9795cf."
+    "Runtime candidate 99680880876a824de69499fcee7344870602f4fe passed real installed mission storage, owner-only reads, structured roster refusals, initial and error-path recorded-result readback, replay after mutable lifecycle changes, atomic lifecycle selection contentions and ordered outcomes, CAS, roster-lifecycle pinning and complete restart inspection on clean host 61b3fd57a695614dc4a37e2303f426a34a9795cf."
   ],
   "decisions": [
     "Use the native implementation meta-flow, not the historical V3 phase topology.",
@@ -43,13 +43,13 @@
   "evidence_collected": [
     "Git base gate replay command reported pass at bfa921000c0743aff17d2c1e48eff6bb9ca365cf.",
     "docs/reviews/l2/prewrite-migration-contract.json validated by prewrite_migration_gate.py with status pass.",
-    "docs/reviews/l2/evidence/functional.json SHA-256 f0c395e74579e943038faf67e2f9daaa85bf6cf042b84245099e4a89d395b966; outcome L2 STEP A MISSION PERSISTENCE VALIDATED with 31 passing results on candidate 579649a72fac95485412f40679a5dc83501f66dc.",
+    "docs/reviews/l2/evidence/functional.json SHA-256 13bd496f6825a32a75596ffa7be95c118c07fea2df8180f79a372bdd2a06c235; outcome L2 STEP A MISSION PERSISTENCE VALIDATED with 31 passing results on candidate 99680880876a824de69499fcee7344870602f4fe.",
     "Targeted independent re-review closed both prior material findings, found no new material issue, and accepted close-final for the bounded Step A only."
   ],
   "files_touched": [
     "docs/reviews/l2/prewrite-migration-contract.json: created control descriptor.",
     "docs/reviews/l2/run-checkpoint.json: refreshed living checkpoint source.",
-    "Initial implementation committed in 36b43076c262e60bfe3e63affb0da72a55c08952; atomic selection/read-auth remediation and race coverage committed through 4ee1930cd8616670c0d9b69e25ebbeda87d2ce14; PR-loop replay/error-boundary remediation committed in 579649a72fac95485412f40679a5dc83501f66dc.",
+    "Initial implementation committed in 36b43076c262e60bfe3e63affb0da72a55c08952; atomic selection/read-auth remediation and race coverage committed through 4ee1930cd8616670c0d9b69e25ebbeda87d2ce14; PR-loop replay/error-boundary remediation committed in 579649a72fac95485412f40679a5dc83501f66dc; concurrent persisted-result readback committed in 99680880876a824de69499fcee7344870602f4fe.",
     "docs/reviews/l2/evidence/functional.json, REPORT.md, proof-manifest.json, alignment-manifest.json: prepared review packet."
   ],
   "next_action": "Commit and publish the refreshed exact-candidate evidence, then request current-head review if the GitHub Codex quota permits.",
