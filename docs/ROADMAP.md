@@ -1,7 +1,7 @@
 # Paperclip Council — Product Roadmap
 
 Status: V1 scope selected (H1 + H2 + team lifecycle); later horizons remain conditional.
-Document version: 0.2 — September 30, 2026.
+Document version: 0.3 — September 30, 2026.
 Product reference: [PRD](PRD.md).
 
 This roadmap describes potential major evolutions, their value, their product dependencies, and the observations needed to decide what comes next. It is neither a schedule, a technical backlog, nor a commitment to deliver every horizon.
@@ -107,7 +107,19 @@ Possible directions include reusable mandate profiles, other work contexts, or a
 - PRD scenarios are reused and extended only for new or changed behavior; their presence in this document does not mean they are already automated.
 - An absent need, excessive cost, or unfavorable evidence may lead to a horizon being deferred, narrowed, or abandoned with a rationale.
 
-## 10. Reviewing the roadmap
+## 10. Candidate improvements following G3/G4
+
+The owner approved the minimal G3 readback direction and prudent G4 control policy on September 30, 2026; see [DEC-G3-01 / DEC-G4-01](G3-G4-DECISIONS.md). Their required qualification stays in V1. The following stronger capabilities are **proposals to evaluate after the minimum**, not implementation commitments, new V1 exit criteria, or an authorization to expand the current lots. They are independent of the deferred memory/learning horizons.
+
+| Candidate | User value beyond the minimum | Dependency and reason to revisit | Evidence needed before commitment |
+| --- | --- | --- | --- |
+| R-G4-01 — Guaranteed end-to-end monetary ceiling | Owner can rely on a strict task/period cap including already-running calls | Requires provider/runtime enforceable exposure bounds, not only Council counters; revisit when available or actual overruns justify the work | Concurrent missions, late charging, cancellation and restart cannot exceed the authorized ceiling on the explicitly supported profiles |
+| R-G3-01 — Native idempotent decision submission | More uncertain requests can recover automatically without an operator | Requires a host-owned idempotency contract tied to actor, intent and payload; revisit if minimal readback leaves frequent unresolved cases | Duplicate/late requests cannot create another decision/effect; conflicting payloads are refused and original attribution remains intact |
+| R-OPS-01 — Guided recovery with explicit consequences | Owner resolves ambiguous application or usage without reconstructing low-level logs | Basic unknown state and next action remain V1; a richer recovery assistant is conditional on observed operator friction, not a new generic console | Owner identifies the pending effect and safe action, without fabricating native acceptance or releasing unsettled reservations |
+
+No cost savings, universal compatibility or fully autonomous recovery is claimed by listing these candidates. Select one only for a demonstrated need and qualify its own contract; reject or defer it when the extra scope is not justified.
+
+## 11. Reviewing the roadmap
 
 The owner revises priorities based on outcomes from the use cases undertaken, encountered blockers, and new needs. A review may also be triggered by a significant Paperclip change or disproportionate supervision overhead. Its frequency is not set without actual usage.
 
