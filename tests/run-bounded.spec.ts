@@ -106,4 +106,29 @@ describe("bounded qualification launcher", () => {
     expect(process.listenerCount("SIGINT")).toBe(initialSigintListeners);
     expect(process.listenerCount("SIGTERM")).toBe(initialSigtermListeners);
   });
+
+  it("preserves the runtime when a successful leader has an undrained group", async () => {
+    const cleaned: string[] = [];
+    let processCleanupCalls = 0;
+
+    const failure = await withOwnedQualificationRuntime(async () => {
+      await runProcessGroup(process.execPath, ["-e", "process.exit(0)"], {
+        timeoutMs: 5_000,
+        terminationGraceMs: 25,
+        waitForExit: async () => { throw new ProcessGroupDrainError(7331, 25); },
+        onFailure: async () => { processCleanupCalls += 1; },
+      });
+    }, {
+      createRuntime: () => "/tmp/exact-success-undrained-runtime",
+      cleanupRuntime: (runtime: string) => { cleaned.push(runtime); },
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "PROCESS_GROUP_DRAIN_TIMEOUT",
+      processGroupId: 7331,
+      preservedRuntime: "/tmp/exact-success-undrained-runtime",
+    });
+    expect(processCleanupCalls).toBe(0);
+    expect(cleaned).toEqual([]);
+  });
 });

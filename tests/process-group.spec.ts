@@ -177,6 +177,82 @@ describe("bounded qualification process groups", () => {
     }
   });
 
+  it("rejects a successful leader whose process group does not drain", async () => {
+    const root = await mkdtemp(resolve(tmpdir(), "council-process-group-success-undrained-"));
+    roots.push(root);
+    const leaderPidPath = resolve(root, "leader.pid");
+    const descendantPidPath = resolve(root, "descendant.pid");
+    const initialSigintListeners = process.listenerCount("SIGINT");
+    const initialSigtermListeners = process.listenerCount("SIGTERM");
+    let cleanupCalls = 0;
+    let leaderPid: number | undefined;
+    let descendantPid: number | undefined;
+    const leaderScript = `
+      const { spawn } = require("node:child_process");
+      const { writeFileSync } = require("node:fs");
+      const [leaderPidPath, descendantPidPath] = process.argv.slice(1);
+      const descendant = spawn(process.execPath, ["-e", "setInterval(() => {}, 1_000)"], { stdio: "ignore" });
+      writeFileSync(leaderPidPath, String(process.pid));
+      writeFileSync(descendantPidPath, String(descendant.pid));
+      process.exit(0);
+    `;
+
+    try {
+      const failure = await runProcessGroup(process.execPath, [
+        "-e", leaderScript, leaderPidPath, descendantPidPath,
+      ], {
+        timeoutMs: 5_000,
+        terminationGraceMs: 25,
+        onFailure: async () => { cleanupCalls += 1; },
+      }).catch((error: unknown) => error);
+
+      leaderPid = Number(readFileSync(leaderPidPath, "utf8"));
+      descendantPid = Number(readFileSync(descendantPidPath, "utf8"));
+      expect(failure).toMatchObject({
+        code: "PROCESS_GROUP_DRAIN_TIMEOUT",
+        processGroupId: leaderPid,
+        timeoutMs: 100,
+      });
+      expect(cleanupCalls).toBe(0);
+      expect(processIsRunning(descendantPid)).toBe(true);
+      expect(process.listenerCount("SIGINT")).toBe(initialSigintListeners);
+      expect(process.listenerCount("SIGTERM")).toBe(initialSigtermListeners);
+    } finally {
+      if (leaderPid) {
+        try { process.kill(-leaderPid, "SIGKILL"); } catch { /* External fixture cleanup. */ }
+      }
+      if (descendantPid) {
+        for (let attempt = 0; attempt < 50 && processIsRunning(descendantPid); attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        expect(processIsRunning(descendantPid)).toBe(false);
+      }
+    }
+  });
+
+  it("does not report success when cancellation arrives during the success drain", async () => {
+    const initialSigintListeners = process.listenerCount("SIGINT");
+    const initialSigtermListeners = process.listenerCount("SIGTERM");
+    let drainCalls = 0;
+    let cleanupCalls = 0;
+
+    await expect(runProcessGroup(process.execPath, ["-e", "process.exit(0)"], {
+      timeoutMs: 5_000,
+      terminationGraceMs: 1,
+      signal: () => undefined,
+      waitForExit: async () => {
+        drainCalls += 1;
+        if (drainCalls === 1) process.emit("SIGTERM");
+      },
+      onFailure: async () => { cleanupCalls += 1; },
+    })).rejects.toThrow(/cancelled by SIGTERM/);
+
+    expect(drainCalls).toBe(2);
+    expect(cleanupCalls).toBe(1);
+    expect(process.listenerCount("SIGINT")).toBe(initialSigintListeners);
+    expect(process.listenerCount("SIGTERM")).toBe(initialSigtermListeners);
+  });
+
   it("converges spawn errors through exactly one cleanup and restores signal listeners", async () => {
     const root = await mkdtemp(resolve(tmpdir(), "council-process-group-spawn-error-"));
     roots.push(root);

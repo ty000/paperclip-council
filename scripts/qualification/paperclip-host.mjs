@@ -16,7 +16,7 @@ import {
   writeFileSync,
   writeSync,
 } from "node:fs";
-import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -46,6 +46,17 @@ function git(root, args) {
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function directoryIdentity(path) {
+  const status = lstatSync(path, { throwIfNoEntry: false });
+  if (!status || status.isSymbolicLink() || !status.isDirectory()) return null;
+  return { device: status.dev, inode: status.ino };
+}
+
+function hasDirectoryIdentity(path, identity) {
+  const current = directoryIdentity(path);
+  return current?.device === identity.device && current?.inode === identity.inode;
 }
 
 function markerPathFor(hostRoot) {
@@ -259,12 +270,53 @@ export function inspectHost(
   };
 }
 
+async function materializeFreshHost({ absoluteTarget, source, expectedCommit, clone }) {
+  await mkdir(absoluteTarget);
+  const reservedTargetIdentity = directoryIdentity(absoluteTarget);
+  if (!reservedTargetIdentity) throw new Error(`Qualification host target reservation is not a regular directory: ${absoluteTarget}`);
+  let reservationDescriptor;
+  try {
+    reservationDescriptor = openSync(
+      absoluteTarget,
+      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+    );
+    const reservationStatus = fstatSync(reservationDescriptor);
+    if (reservationStatus.dev !== reservedTargetIdentity.device || reservationStatus.ino !== reservedTargetIdentity.inode) {
+      throw new Error(`Qualification host target identity changed during reservation: ${absoluteTarget}`);
+    }
+    await clone(source, absoluteTarget);
+    run("git", ["-C", absoluteTarget, "checkout", "--detach", expectedCommit]);
+    const trackedStatus = git(absoluteTarget, ["status", "--porcelain", "--untracked-files=no"]);
+    if (trackedStatus !== "") throw new Error("Fresh Paperclip host checkout is unexpectedly dirty");
+    createMarker(absoluteTarget, {
+      schemaVersion: 1,
+      environmentClass: "local-sandbox",
+      expectedCommit,
+      source: defaultPaperclipSource,
+      materializedFrom: source,
+    });
+  } catch (error) {
+    if (hasDirectoryIdentity(absoluteTarget, reservedTargetIdentity)) {
+      await rm(absoluteTarget, { recursive: true, force: true });
+    } else if (existsSync(absoluteTarget)) {
+      throw new AggregateError(
+        [error],
+        `Qualification host target identity changed; refusing cleanup: ${absoluteTarget}`,
+      );
+    }
+    throw error;
+  } finally {
+    if (reservationDescriptor !== undefined) closeSync(reservationDescriptor);
+  }
+}
+
 export async function materializeHost({
   source = defaultPaperclipSource,
   target = defaultHostRoot,
   expectedCommit = expectedPaperclipCommit,
   install = true,
   allowedRoot = runtimeRoot,
+  clone = (cloneSource, cloneTarget) => run("git", ["clone", "--no-checkout", cloneSource, cloneTarget]),
 } = {}) {
   const absoluteTarget = assertOwnedTarget(target, allowedRoot);
   if (existsSync(absoluteTarget)) {
@@ -275,26 +327,7 @@ export async function materializeHost({
     if (!install) return current;
   } else {
     await mkdir(dirname(absoluteTarget), { recursive: true });
-    const partialPrefix = assertOwnedTarget(`${absoluteTarget}.partial-`, allowedRoot);
-    const reservedPartialTarget = await mkdtemp(partialPrefix);
-    try {
-      const partialTarget = assertOwnedTarget(reservedPartialTarget, allowedRoot);
-      run("git", ["clone", "--no-checkout", source, partialTarget]);
-      run("git", ["-C", partialTarget, "checkout", "--detach", expectedCommit]);
-      const trackedStatus = git(partialTarget, ["status", "--porcelain", "--untracked-files=no"]);
-      if (trackedStatus !== "") throw new Error("Fresh Paperclip host checkout is unexpectedly dirty");
-      createMarker(partialTarget, {
-        schemaVersion: 1,
-        environmentClass: "local-sandbox",
-        expectedCommit,
-        source: defaultPaperclipSource,
-        materializedFrom: source,
-      });
-      await rename(partialTarget, absoluteTarget);
-    } catch (error) {
-      await rm(reservedPartialTarget, { recursive: true, force: true });
-      throw error;
-    }
+    await materializeFreshHost({ absoluteTarget, source, expectedCommit, clone });
   }
 
   if (install) {

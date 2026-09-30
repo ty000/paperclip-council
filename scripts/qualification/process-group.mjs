@@ -13,8 +13,8 @@ export class ProcessGroupDrainError extends Error {
   constructor(processGroupId, timeoutMs, cause) {
     const boundedTimeoutMs = Math.max(timeoutMs, 100);
     super(cause
-      ? `Could not prove process group ${processGroupId} drained after SIGKILL: ${cause.message ?? String(cause)}`
-      : `Process group ${processGroupId} did not drain within ${boundedTimeoutMs} ms after SIGKILL`);
+      ? `Could not prove process group ${processGroupId} drained: ${cause.message ?? String(cause)}`
+      : `Process group ${processGroupId} did not drain within ${boundedTimeoutMs} ms`);
     this.name = "ProcessGroupDrainError";
     this.code = cause ? "PROCESS_GROUP_DRAIN_FAILED" : "PROCESS_GROUP_DRAIN_TIMEOUT";
     this.processGroupId = processGroupId;
@@ -131,10 +131,21 @@ export function runProcessGroup(command, args, {
       if (settled) return;
       if (code === 0 && !terminationReason) {
         clearTimeout(forceTimer);
-        settled = true;
-        removeSignalListeners();
-        resolve();
-        return;
+        try {
+          await waitForExit(processGroupId, terminationGraceMs);
+        } catch (error) {
+          const drainError = isProcessGroupDrainError(error)
+            ? error
+            : new ProcessGroupDrainError(processGroupId, terminationGraceMs, error);
+          rejectOnce(drainError, { unrefChild: true });
+          return;
+        }
+        if (!terminationReason) {
+          settled = true;
+          removeSignalListeners();
+          resolve();
+          return;
+        }
       }
       if (!terminationReason) terminate(`exited ${code ?? signal}`);
       await forced;

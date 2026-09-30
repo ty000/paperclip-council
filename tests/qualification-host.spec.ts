@@ -77,6 +77,50 @@ describe("repo-owned Paperclip qualification host", () => {
     expect(await readdir(ownedRoot)).not.toContain("paperclip");
   });
 
+  it("refuses a concurrently reserved empty final target without replacing it", async () => {
+    const fixture = await fixtureRepository();
+    const ownedRoot = await mkdtemp(resolve(tmpdir(), "paperclip-owned-root-"));
+    temporaryRoots.push(ownedRoot);
+    const target = resolve(ownedRoot, "paperclip");
+    await mkdir(target);
+
+    await expect(materializeHost({
+      source: fixture.root,
+      target,
+      expectedCommit: fixture.commit,
+      install: false,
+      allowedRoot: ownedRoot,
+    })).rejects.toThrow(/not an owned clean/);
+
+    expect(await readdir(target)).toEqual([]);
+  });
+
+  it("does not clean a replacement when the reserved target identity changes", async () => {
+    const fixture = await fixtureRepository();
+    const ownedRoot = await mkdtemp(resolve(tmpdir(), "paperclip-owned-root-"));
+    temporaryRoots.push(ownedRoot);
+    const target = resolve(ownedRoot, "paperclip");
+    const sentinel = resolve(target, "replacement-sentinel.txt");
+    const cloneFailure = new Error("injected clone failure after replacement");
+
+    await expect(materializeHost({
+      source: fixture.root,
+      target,
+      expectedCommit: fixture.commit,
+      install: false,
+      allowedRoot: ownedRoot,
+      clone: async (_source: string, reservedTarget: string) => {
+        await rm(reservedTarget, { recursive: true });
+        await mkdir(reservedTarget);
+        await writeFile(sentinel, "replacement must survive\n");
+        throw cloneFailure;
+      },
+    })).rejects.toThrow(/identity changed; refusing cleanup/);
+
+    expect(await readFile(sentinel, "utf8")).toBe("replacement must survive\n");
+    expect(await readdir(target)).toEqual(["replacement-sentinel.txt"]);
+  });
+
   it("refuses a foreign marker or a different source identity", async () => {
     const fixture = await fixtureRepository();
     const ownedRoot = await mkdtemp(resolve(tmpdir(), "paperclip-owned-root-"));
