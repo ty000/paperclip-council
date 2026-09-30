@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 // @ts-expect-error The runtime qualification CLI is intentionally plain ESM.
-import { assertOwnedTarget, inspectHost, materializeHost } from "../scripts/qualification/paperclip-host.mjs";
+import { assertOwnedTarget, inspectHost, materializeHost, updateMarker } from "../scripts/qualification/paperclip-host.mjs";
 
 const temporaryRoots: string[] = [];
 
@@ -103,6 +103,30 @@ describe("repo-owned Paperclip qualification host", () => {
       source: fixture.root, target, expectedCommit: fixture.commit, install: true, allowedRoot: ownedRoot,
     })).rejects.toThrow(/ownership marker.*symbolic link/);
     expect(await readFile(externalMarker, "utf8")).toBe(externalMarkerBytes);
+  });
+
+  it("atomically replaces a hard-linked ownership marker without mutating the external inode", async () => {
+    const fixture = await fixtureRepository();
+    const ownedRoot = await mkdtemp(resolve(tmpdir(), "paperclip-owned-root-"));
+    const externalRoot = await mkdtemp(resolve(tmpdir(), "paperclip-external-root-"));
+    temporaryRoots.push(ownedRoot, externalRoot);
+    const target = resolve(ownedRoot, "paperclip");
+    await materializeHost({
+      source: fixture.root, target, expectedCommit: fixture.commit, install: false, allowedRoot: ownedRoot,
+    });
+    const markerPath = resolve(target, ".paperclip-council-owned.json");
+    const externalMarker = resolve(externalRoot, "external-marker.json");
+    const originalMarkerBytes = await readFile(markerPath, "utf8");
+    await link(markerPath, externalMarker);
+
+    updateMarker(target, { regressionUpdate: "preserved external hard link" });
+
+    expect(await readFile(externalMarker, "utf8")).toBe(originalMarkerBytes);
+    expect(JSON.parse(await readFile(markerPath, "utf8"))).toMatchObject({
+      regressionUpdate: "preserved external hard link",
+    });
+    expect((await stat(markerPath)).mode & 0o777).toBe(0o600);
+    expect((await readdir(target)).filter((name) => name.startsWith(".paperclip-council-owned.json.tmp-"))).toEqual([]);
   });
 
   it("refuses an existing checkout at another commit", async () => {

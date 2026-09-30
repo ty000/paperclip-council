@@ -1,15 +1,18 @@
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
   constants,
   existsSync,
+  fchmodSync,
   fstatSync,
-  ftruncateSync,
+  fsyncSync,
   lstatSync,
   openSync,
   readFileSync,
   realpathSync,
+  renameSync,
+  unlinkSync,
   writeFileSync,
   writeSync,
 } from "node:fs";
@@ -162,16 +165,37 @@ function prepareHostBuild(hostRoot) {
   return { command: ["corepack", "pnpm", ...hostBuild.arguments], requiredOutputs: hostBuild.requiredOutputs };
 }
 
-function updateMarker(hostRoot, values) {
+export function updateMarker(hostRoot, values) {
   const markerPath = markerPathFor(hostRoot);
-  const descriptor = openRegularMarker(markerPath, constants.O_RDWR);
+  const marker = readMarker(hostRoot);
+  const serializedMarker = `${JSON.stringify({ ...marker, ...values }, null, 2)}\n`;
+  const temporaryMarkerPath = `${markerPath}.tmp-${process.pid}-${randomUUID()}`;
+  let descriptor;
   try {
-    const marker = JSON.parse(readFileSync(descriptor, "utf8"));
-    const serializedMarker = `${JSON.stringify({ ...marker, ...values }, null, 2)}\n`;
-    ftruncateSync(descriptor, 0);
-    writeSync(descriptor, serializedMarker, 0, "utf8");
-  } finally {
-    closeSync(descriptor);
+    descriptor = openSync(
+      temporaryMarkerPath,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      0o600,
+    );
+    if (!fstatSync(descriptor).isFile()) {
+      throw new Error(`Qualification host temporary ownership marker must be a regular file: ${temporaryMarkerPath}`);
+    }
+    fchmodSync(descriptor, 0o600);
+    writeFileSync(descriptor, serializedMarker, "utf8");
+    fsyncSync(descriptor);
+    const completedDescriptor = descriptor;
+    descriptor = undefined;
+    closeSync(completedDescriptor);
+    assertRegularMarker(markerPath);
+    renameSync(temporaryMarkerPath, markerPath);
+  } catch (error) {
+    if (descriptor !== undefined) closeSync(descriptor);
+    try {
+      unlinkSync(temporaryMarkerPath);
+    } catch (cleanupError) {
+      if (cleanupError?.code !== "ENOENT") throw new AggregateError([error, cleanupError], "Ownership marker update and cleanup failed");
+    }
+    throw error;
   }
 }
 
