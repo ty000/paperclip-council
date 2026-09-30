@@ -6,7 +6,9 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
 const { resolveAuditBase, validateAuditResult } = createRequire(import.meta.url)("../scripts/ci/run-static-audit.mjs");
+const temporaryRoots: string[] = [];
 const repo = mkdtempSync(join(tmpdir(), "council-static-audit-ci-"));
+temporaryRoots.push(repo);
 const git = (...args: string[]) => execFileSync("git", [
   "-c", "user.name=Static audit fixture", "-c", "user.email=fixture@example.test", ...args,
 ], { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -16,7 +18,31 @@ const base = git("rev-parse", "HEAD");
 git("update-ref", "refs/remotes/origin/main", base);
 git("commit", "--allow-empty", "-m", "candidate fixture");
 const head = git("rev-parse", "HEAD");
-afterAll(() => rmSync(repo, { recursive: true, force: true }));
+afterAll(() => temporaryRoots.forEach((root) => rmSync(root, { recursive: true, force: true })));
+
+function rewrittenPushFixture() {
+  const root = mkdtempSync(join(tmpdir(), "council-static-audit-push-"));
+  temporaryRoots.push(root);
+  const remote = join(root, "remote.git");
+  const source = join(root, "source");
+  const checkout = join(root, "checkout");
+  execFileSync("git", ["init", "--bare", "--quiet", remote]);
+  execFileSync("git", ["init", "--quiet", "--initial-branch=main", source]);
+  const fixtureGit = (...args: string[]) => execFileSync("git", [
+    "-c", "user.name=Static audit fixture", "-c", "user.email=fixture@example.test", "-C", source, ...args,
+  ], { encoding: "utf8" }).trim();
+  fixtureGit("commit", "--allow-empty", "-m", "common base");
+  const commonBase = fixtureGit("rev-parse", "HEAD");
+  fixtureGit("commit", "--allow-empty", "-m", "old tip");
+  const oldTip = fixtureGit("rev-parse", "HEAD");
+  fixtureGit("branch", "legacy");
+  fixtureGit("reset", "--hard", commonBase);
+  fixtureGit("commit", "--allow-empty", "-m", "new tip");
+  fixtureGit("remote", "add", "origin", remote);
+  fixtureGit("push", "--quiet", "origin", "main", "legacy");
+  execFileSync("git", ["clone", "--quiet", "--single-branch", "--branch=main", `file://${remote}`, checkout]);
+  return { checkout, oldTip };
+}
 
 const passing = {
   schema_version: "static-code-audit-gate.v1",
@@ -71,6 +97,12 @@ describe("explicit static audit comparison base", () => {
     expect(resolveAuditBase(repo, undefined, "push", {
       before: "0".repeat(40), repository: { default_branch: "main" },
     })).toBe(base);
+  });
+
+  it("fetches the exact push-before SHA when a rewritten runner does not have it", () => {
+    const fixture = rewrittenPushFixture();
+    expect(() => execFileSync("git", ["-C", fixture.checkout, "cat-file", "-e", `${fixture.oldTip}^{commit}`])).toThrow();
+    expect(resolveAuditBase(fixture.checkout, undefined, "push", { before: fixture.oldTip })).toBe(fixture.oldTip);
   });
 
   it("refuses absent or invalid history instead of silently producing an empty diff", () => {

@@ -27,11 +27,25 @@ function newBranchBase(repo, event) {
   return git(repo, ["merge-base", "HEAD", `refs/remotes/origin/${branch}`]);
 }
 
+function ensureCommitAvailable(repo, commit) {
+  try {
+    resolveCommit(repo, commit);
+  } catch {
+    git(repo, ["fetch", "--no-tags", "origin", commit]);
+  }
+}
+
+function pushBase(repo, event) {
+  const before = eventSha(event?.before, "Push before");
+  if (/^0+$/.test(before)) return newBranchBase(repo, event);
+  ensureCommitAvailable(repo, before);
+  return before;
+}
+
 function eventBase(repo, eventName, event) {
   if (eventName === "pull_request") return eventSha(event?.pull_request?.base?.sha, "Pull request base");
-  if (eventName !== "push") throw new Error("An explicit --base-ref is required outside pull_request/push CI events");
-  const before = eventSha(event?.before, "Push before");
-  return /^0+$/.test(before) ? newBranchBase(repo, event) : before;
+  if (eventName === "push") return pushBase(repo, event);
+  throw new Error("An explicit --base-ref is required outside pull_request/push CI events");
 }
 
 function resolveCommit(repo, base) {
