@@ -1,7 +1,7 @@
 {
   "name": "@paperclipai/plugin-council",
-  "version": "0.2.0",
-  "description": "Revisioned Council roster configuration and bounded review decisions for Paperclip workflows",
+  "version": "0.3.0",
+  "description": "Revisioned Council rosters, pinned draft missions, and bounded review decisions for Paperclip workflows",
   "type": "module",
   "private": true,
   "packageManager": "pnpm@9.15.4",

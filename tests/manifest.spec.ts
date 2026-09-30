@@ -3,7 +3,7 @@ import { pluginManifestV1Schema } from "@paperclipai/shared";
 import manifest from "../src/manifest.js";
 
 describe("paperclip council manifest", () => {
-  it("preserves L0 routes and declares the Sprint 1 roster API and page", () => {
+  it("preserves earlier routes and declares the mission persistence API", () => {
     const parsed = pluginManifestV1Schema.parse(manifest);
     expect(parsed.apiRoutes).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -25,6 +25,16 @@ describe("paperclip council manifest", () => {
         routeKey: "roster-command",
         auth: "board",
         path: "/companies/:companyId/rosters/:rosterId/commands",
+      }),
+      expect.objectContaining({
+        routeKey: "missions-command",
+        auth: "board",
+        path: "/companies/:companyId/missions",
+      }),
+      expect.objectContaining({
+        routeKey: "mission-read",
+        auth: "board",
+        path: "/companies/:companyId/missions/:missionId",
       }),
     ]));
     expect(parsed.database).toEqual(expect.objectContaining({

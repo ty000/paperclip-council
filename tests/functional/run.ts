@@ -79,7 +79,7 @@ const requireServer = createRequire(resolve(root, "server/package.json"));
 const { eq } = requireServer("drizzle-orm");
 const evidence: Record<string, any> = {
   schemaVersion: 1,
-  proofId: "paperclip-council-s1-configuration-2026-09-30",
+  proofId: "paperclip-council-l2-step-a-2026-09-30",
   startedAt: new Date().toISOString(),
   head: hostCommit,
   hostTrackedFilesClean: hostStatus === "",
@@ -118,6 +118,7 @@ let cookie = "";
 let intruderCookie = "";
 let tables: any;
 let issueId: string | undefined;
+let missionRootIssueId: string | undefined;
 const companyId = randomUUID();
 const projectId = randomUUID();
 const executorId = randomUUID();
@@ -468,6 +469,90 @@ try {
   assert.equal(activation.body.missionActivation, "unavailable");
   evidence.results.createValidateActivate = "PASS";
 
+  const missionRoot = await request("human", "POST", `/api/companies/${companyId}/issues`, {
+    title: "Council L2 mission persistence fixture",
+    description: "Synthetic persisted mission only; dispatch is intentionally disabled while G4 remains open.",
+    projectId,
+    status: "backlog",
+    assigneeAgentId: executorId,
+  });
+  assert.equal(missionRoot.status, 201);
+  missionRootIssueId = missionRoot.body.id;
+  const missionId = randomUUID();
+  const createCommandId = randomUUID();
+  const missionBase = `/api/plugins/${pluginId}/api/companies/${companyId}/missions`;
+  const initialMandate = {
+    objective: "Persist exact roster revisions without dispatch",
+    acceptanceCriteria: ["Pinned revisions survive roster changes and plugin restart"],
+    commitments: ["Do not dispatch while G4 remains open"],
+    limits: {
+      taskPolicy: "No provider calls in this bounded fixture",
+      periodPolicy: "No provider calls in this bounded fixture period",
+      correctionLimit: 2,
+      elapsedMinutes: 60,
+    },
+  };
+  const missionCreateBody = {
+    companyId,
+    command: "create",
+    commandId: createCommandId,
+    missionId,
+    rootIssueId: missionRootIssueId,
+    projectId,
+    teamRosterId,
+    teamRevision: activation.body.team.revision.revision,
+    councilRosterId,
+    councilRevision: activation.body.council.revision.revision,
+    mandate: initialMandate,
+  };
+  const unauthorizedMission = await request("intruder", "POST", missionBase, missionCreateBody);
+  assert.equal(unauthorizedMission.status, 403);
+  assert.equal(unauthorizedMission.body.code, "owner_required");
+  const missionCreate = await request("human", "POST", missionBase, missionCreateBody);
+  assert.equal(missionCreate.status, 201);
+  assert.equal(missionCreate.body.outcome, "applied");
+  assert.equal(missionCreate.body.mission.version, 1);
+  assert.equal(missionCreate.body.inspection.state.recorded, true);
+  assert.equal(missionCreate.body.inspection.state.compositionsPinned, true);
+  assert.equal(missionCreate.body.inspection.state.executable, false);
+  assert(missionCreate.body.inspection.prerequisites.some(
+    (item: any) => item.code === "runtime_budget_exposure" && item.status === "unsupported",
+  ));
+  const missionReplay = await request("human", "POST", missionBase, missionCreateBody);
+  assert.equal(missionReplay.status, 200);
+  assert.equal(missionReplay.body.outcome, "replayed");
+  assert.equal(missionReplay.body.mission.version, 1);
+  const identityConflict = await request("human", "POST", missionBase, {
+    ...missionCreateBody,
+    mandate: { ...initialMandate, objective: "Conflicting retry payload" },
+  });
+  assert.equal(identityConflict.status, 409);
+  assert.equal(identityConflict.body.code, "command_identity_conflict");
+  evidence.results.missionOwnerIdentityAndIdempotentCreate = "PASS";
+
+  const missionCommandPath = `${missionBase}/${missionId}/commands`;
+  const competingMandates = await Promise.all([
+    request("human", "POST", missionCommandPath, {
+      companyId,
+      command: "update-mandate",
+      commandId: randomUUID(),
+      expectedVersion: 1,
+      mandate: { ...initialMandate, objective: "Concurrent mandate A" },
+    }),
+    request("human", "POST", missionCommandPath, {
+      companyId,
+      command: "update-mandate",
+      commandId: randomUUID(),
+      expectedVersion: 1,
+      mandate: { ...initialMandate, objective: "Concurrent mandate B" },
+    }),
+  ]);
+  assert.deepEqual(competingMandates.map((result) => result.status).sort(), [200, 409]);
+  const winningMandate = competingMandates.find((result) => result.status === 200)!.body;
+  assert.equal(winningMandate.outcome, "applied");
+  assert.equal(winningMandate.mission.version, 2);
+  evidence.results.missionCommandCasNoLostUpdate = "PASS";
+
   const competingRevisions = await Promise.all([
     request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
       companyId, command: "revise", expectedVersion: 2,
@@ -524,6 +609,51 @@ try {
   assert.equal(retired.body.head.lifecycle, "retired");
   assert.equal((await request("human", "GET", `${rosterBase}/${teamRosterId}?companyId=${companyId}`)).body.history.length, 3);
   evidence.results.reviseSuspendRetireAndStaleNoMutation = "PASS";
+
+  const pinnedMission = await request("human", "GET", `${missionBase}/${missionId}?companyId=${companyId}`);
+  assert.equal(pinnedMission.status, 200);
+  assert.equal(pinnedMission.body.mission.version, 2);
+  assert.equal(pinnedMission.body.mission.teamRevision, teamCreate.body.revision.revision);
+  assert.equal(pinnedMission.body.mission.councilRevision, councilCreate.body.revision.revision);
+  assert.equal(pinnedMission.body.mission.aggregate.compositions.team.name, "Delivery team");
+  assert.equal(pinnedMission.body.mission.aggregate.compositions.team.revision, teamCreate.body.revision.revision);
+  assert.equal(pinnedMission.body.state.executable, false);
+  evidence.results.missionPinsSurviveRosterRevisionSuspensionRetirement = "PASS";
+
+  const unavailableRoot = await request("human", "POST", `/api/companies/${companyId}/issues`, {
+    title: "Retired roster selection refusal fixture",
+    description: "Synthetic fixture only.",
+    projectId,
+    status: "backlog",
+    assigneeAgentId: executorId,
+  });
+  assert.equal(unavailableRoot.status, 201);
+  const unavailableSelection = await request("human", "POST", missionBase, {
+    ...missionCreateBody,
+    commandId: randomUUID(),
+    missionId: randomUUID(),
+    rootIssueId: unavailableRoot.body.id,
+    teamRevision: winningRevision.revision.revision,
+  });
+  assert.equal(unavailableSelection.status, 422);
+  assert.equal(unavailableSelection.body.code, "roster_pair_ineligible");
+  evidence.results.retiredRosterRejectedForNewMission = "PASS";
+
+  await closeApp();
+  workerManager = createPluginWorkerManager();
+  app = await createApp(db, opts("vite-dev"));
+  server = createServer(app);
+  await new Promise<void>((resolveListen, reject) => {
+    server!.once("error", reject);
+    server!.listen(address.port, "127.0.0.1", resolveListen);
+  });
+  await app.locals.bundledPluginsStartup;
+  assert(workerManager.isRunning(pluginId), "installed package worker must reload after mission persistence restart");
+  const missionAfterRestart = await request("human", "GET", `${missionBase}/${missionId}?companyId=${companyId}`);
+  assert.equal(missionAfterRestart.status, 200);
+  assert.equal(missionAfterRestart.body.mission.teamRevision, teamCreate.body.revision.revision);
+  assert.equal(missionAfterRestart.body.mission.version, 2);
+  evidence.results.missionPersistenceAfterRestart = "PASS";
 
   const foreignBase = `/api/plugins/${pluginId}/api/companies/${foreignCompanyId}/rosters`;
   const foreignList = await request("human", "GET", `${foreignBase}?companyId=${foreignCompanyId}`);
@@ -845,7 +975,7 @@ try {
     replacementAndRevocation: "documented-only",
     reason: "the required package journey used native ephemeral keys; durable key mutation was not requested",
   };
-  evidence.outcome = "SPRINT 1 CONFIGURATION INCREMENT VALIDATED";
+  evidence.outcome = "L2 STEP A MISSION PERSISTENCE VALIDATED";
 } catch (error) {
   evidence.outcome = "NON-CONCLUSIVE OR BLOCKED";
   evidence.error = error instanceof Error
