@@ -44,8 +44,8 @@ It then creates a fresh authenticated instance and embedded PostgreSQL test
 cluster, installs that isolated build through Paperclip's normal local-plugin
 lifecycle, and replays V1 → changes requested → V2 → missing manifest refusal →
 manifest and bundle preparation → acceptance. Its bundle is made from the exact
-PR #2 extraction commit, which must still be available as
-`origin/codex/extract-council-plugin` in this repository.
+pinned PR #2 extraction commit, which must still be available in the local
+repository used to launch the replay; no remote branch is required.
 Its agents, issues, policies, and heartbeat runs are explicitly synthetic test
 preparation. Executor and Council are distinct agents, and each decision uses a
 fresh active run. The isolated instance and database are removed afterward.
