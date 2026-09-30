@@ -22,7 +22,7 @@
     "environmentClass": "local-sandbox",
     "workspacePath": ".paperclip/qualification/paperclip",
     "runtimeLifecycle": "ephemeral-per-run",
-    "providers": "disabled",
+    "providers": "no model or provider execution invoked by the harness",
     "sourcePolicy": "repo-owned-pinned-clone"
   },
   "integratedRecipe": {

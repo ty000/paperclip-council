@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -100,10 +100,21 @@ export function assertOwnedTarget(target, allowedRoot = runtimeRoot) {
   if (!pathFromRoot || pathFromRoot.startsWith("..") || isAbsolute(pathFromRoot)) {
     throw new Error(`Qualification host target must be a child of ${absoluteRoot}`);
   }
+  for (const [label, candidate] of [["root", absoluteRoot], ["target", absoluteTarget]]) {
+    let existing = candidate;
+    while (!existsSync(existing) && dirname(existing) !== existing) existing = dirname(existing);
+    if (existsSync(existing) && realpathSync(existing) !== existing) {
+      throw new Error(`Qualification host ${label} has a symbolic-link redirection: ${candidate}`);
+    }
+  }
   return absoluteTarget;
 }
 
-export function inspectHost(target, expectedCommit = expectedPaperclipCommit, allowedRoot = runtimeRoot) {
+export function inspectHost(
+  target,
+  expectedCommit = expectedPaperclipCommit,
+  allowedRoot = runtimeRoot,
+) {
   const absoluteTarget = assertOwnedTarget(target, allowedRoot);
   if (!existsSync(resolve(absoluteTarget, ".git"))) {
     return { prepared: false, target: absoluteTarget, expectedCommit };
@@ -112,6 +123,10 @@ export function inspectHost(target, expectedCommit = expectedPaperclipCommit, al
   const trackedStatus = git(absoluteTarget, ["status", "--porcelain", "--untracked-files=no"]);
   const markerPath = resolve(absoluteTarget, ownershipMarkerName);
   const marker = existsSync(markerPath) ? JSON.parse(readFileSync(markerPath, "utf8")) : null;
+  const owned = marker?.schemaVersion === 1
+    && marker?.environmentClass === "local-sandbox"
+    && marker?.expectedCommit === expectedCommit
+    && marker?.source === defaultPaperclipSource;
   const dependencyPreparation = marker?.dependencyPreparation ?? null;
   const dependencyPreparationValid = dependencyPreparation?.mode === "validated-lock-metadata-repair"
     && dependencyPreparation.originalSha256 === lockfileRepair.originalSha256
@@ -126,12 +141,12 @@ export function inspectHost(target, expectedCommit = expectedPaperclipCommit, al
       return existsSync(outputPath) && sha256(readFileSync(outputPath)) === expectedSha256;
     });
   return {
-    prepared: head === expectedCommit && trackedStatus === "" && marker?.expectedCommit === expectedCommit,
+    prepared: head === expectedCommit && trackedStatus === "" && owned,
     target: absoluteTarget,
     expectedCommit,
     head,
     trackedClean: trackedStatus === "",
-    owned: marker?.environmentClass === "local-sandbox",
+    owned,
     dependencyPreparation,
     dependenciesInstalled: dependencyPreparationValid && existsSync(resolve(absoluteTarget, "node_modules")),
     hostBuildPreparation,
@@ -165,7 +180,8 @@ export async function materializeHost({
         schemaVersion: 1,
         environmentClass: "local-sandbox",
         expectedCommit,
-        source,
+        source: defaultPaperclipSource,
+        materializedFrom: source,
       }, null, 2)}\n`);
       await rename(partialTarget, absoluteTarget);
     } catch (error) {
@@ -203,11 +219,12 @@ function parseArguments(argumentsList) {
 async function main() {
   const options = parseArguments(process.argv.slice(2));
   const target = options.target ?? defaultHostRoot;
+  const source = options.source ?? process.env.PAPERCLIP_QUALIFICATION_SOURCE ?? defaultPaperclipSource;
   let result;
   if (options.command === "prepare") {
-    result = await materializeHost({ source: options.source, target, install: options.install });
+    result = await materializeHost({ source, target, install: options.install });
   } else if (options.command === "status" || options.command === "verify") {
-    result = inspectHost(target);
+    result = inspectHost(target, expectedPaperclipCommit, runtimeRoot);
     if (options.command === "verify" && (!result.prepared || !result.runtimeReady)) process.exitCode = 1;
   } else if (options.command === "path") {
     console.log(assertOwnedTarget(target));

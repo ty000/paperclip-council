@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -47,6 +47,35 @@ describe("repo-owned Paperclip qualification host", () => {
       dependenciesInstalled: false, runtimeReady: false,
     });
     expect(inspectHost(target, fixture.commit, ownedRoot)).toMatchObject({ prepared: true });
+  });
+
+  it("refuses a foreign marker or a different source identity", async () => {
+    const fixture = await fixtureRepository();
+    const ownedRoot = await mkdtemp(resolve(tmpdir(), "paperclip-owned-root-"));
+    temporaryRoots.push(ownedRoot);
+    const target = resolve(ownedRoot, "paperclip");
+    await materializeHost({
+      source: fixture.root, target, expectedCommit: fixture.commit, install: false, allowedRoot: ownedRoot,
+    });
+    const markerPath = resolve(target, ".paperclip-council-owned.json");
+    const marker = JSON.parse(await readFile(markerPath, "utf8"));
+    await writeFile(markerPath, `${JSON.stringify({ ...marker, source: "https://example.invalid/foreign.git" })}\n`);
+    await expect(materializeHost({
+      source: fixture.root, target, expectedCommit: fixture.commit, install: false, allowedRoot: ownedRoot,
+    })).rejects.toThrow(/not an owned clean/);
+    await writeFile(markerPath, `${JSON.stringify({ ...marker, environmentClass: "integrated-recipe" })}\n`);
+    await expect(materializeHost({
+      source: fixture.root, target, expectedCommit: fixture.commit, install: false, allowedRoot: ownedRoot,
+    })).rejects.toThrow(/not an owned clean/);
+  });
+
+  it("refuses a symlink that redirects a target outside the owned root", async () => {
+    const ownedRoot = await mkdtemp(resolve(tmpdir(), "paperclip-owned-root-"));
+    const externalRoot = await mkdtemp(resolve(tmpdir(), "paperclip-external-root-"));
+    temporaryRoots.push(ownedRoot, externalRoot);
+    await mkdir(resolve(externalRoot, "checkout"));
+    await symlink(resolve(externalRoot, "checkout"), resolve(ownedRoot, "paperclip"));
+    expect(() => assertOwnedTarget(resolve(ownedRoot, "paperclip"), ownedRoot)).toThrow(/symbolic-link/);
   });
 
   it("refuses an existing checkout at another commit", async () => {

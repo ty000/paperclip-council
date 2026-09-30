@@ -44,9 +44,11 @@ harness. That harness owns a fresh `PAPERCLIP_HOME`, instance ID, storage,
 listener and embedded PostgreSQL cluster for one run and removes them afterward.
 The bounded launcher also installs Chromium into the ignored repo-owned
 qualification cache and rejects any final evidence whose candidate SHA or
-verdict does not match the committed candidate. Providers and models remain
-disabled. The host checkout and browser cache are reusable; the runtime instance
-is intentionally ephemeral.
+verdict does not match the committed candidate. The harness invokes no model or
+provider execution; inherited process variables are not evidence of provider
+activation. The host checkout and browser cache are reusable; the runtime
+instance is intentionally ephemeral. `qualification/proof-manifest.json`
+records the replay contract and claim limits; generated evidence remains local.
 
 The launcher has five-minute browser-install and fifteen-minute functional-run
 deadlines. It manages Playwright browser archives, not operating-system
