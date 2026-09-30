@@ -300,6 +300,17 @@ async function getMissionByRootIssue(ctx: PluginContext, companyId: string, root
   return rows[0] ? parseMissionRow(rows[0]) : null;
 }
 
+async function getMissionByIdentity(
+  ctx: PluginContext,
+  companyId: string,
+  missionId: string,
+  rootIssueId: string,
+) {
+  const mission = await getMission(ctx, companyId, missionId);
+  const missionForRootIssue = await getMissionByRootIssue(ctx, companyId, rootIssueId);
+  return mission ?? missionForRootIssue;
+}
+
 export async function listMissions(ctx: PluginContext, companyId: string): Promise<MissionRecord[]> {
   const rows = await ctx.db.query<MissionRow>(
     `SELECT ${selectColumns} FROM ${table(ctx)} WHERE company_id = $1 ORDER BY updated_at DESC, mission_id LIMIT ${MAX_LIST_ITEMS}`,
@@ -425,41 +436,46 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
   const ownerUserId = await requireOwner(ctx, companyId, actorUserId);
   const create = parseMissionCreateInput(body);
   const payloadHash = canonicalPayloadHash(create);
-  const existing = await getMission(ctx, companyId, create.missionId)
-    ?? await getMissionByRootIssue(ctx, companyId, create.rootIssueId);
+  const existing = await getMissionByIdentity(ctx, companyId, create.missionId, create.rootIssueId);
   if (existing) return existingCreationResult(existing, create.commandId, ownerUserId, payloadHash);
-  const issue = await ctx.issues.get(create.rootIssueId, companyId);
-  if (!issue || issue.companyId !== companyId) throw new MissionError(404, "root_issue_not_found", "Root issue not found in this company");
-  if (issue.parentId) throw new MissionError(422, "root_issue_required", "Mission issue must be a root issue");
-  if (issue.projectId !== create.projectId) throw new MissionError(422, "project_scope_mismatch", "Mission project must match the root issue project");
-  const project = await ctx.projects.get(create.projectId, companyId);
-  if (!project || project.companyId !== companyId || project.archivedAt) {
-    throw new MissionError(422, "project_incompatible", "Mission project is unavailable or belongs to another company");
-  }
-  const validation = await validateRosterPair(ctx, companyId, create.teamRosterId, create.councilRosterId);
-  if (!validation.eligible) throw new MissionError(422, "roster_pair_ineligible", "Roster pair is not eligible", validation.errors);
-  if (validation.team.head.lifecycle !== "active" || validation.council.head.lifecycle !== "active") {
-    throw new MissionError(409, "active_rosters_required", "New missions require active team and council roster heads");
-  }
-  if (validation.team.head.publishedRevision !== create.teamRevision
-      || validation.council.head.publishedRevision !== create.councilRevision) {
-    throw new MissionError(409, "roster_revision_not_current", "New missions must select the current published active revisions");
-  }
-  for (const roster of [validation.team, validation.council]) {
-    if (roster.revision.projectId && roster.revision.projectId !== create.projectId) {
-      throw new MissionError(422, "project_scope_mismatch", "Roster project restriction does not match the mission project");
+  let aggregate: MissionAggregate;
+  try {
+    const issue = await ctx.issues.get(create.rootIssueId, companyId);
+    if (!issue || issue.companyId !== companyId) throw new MissionError(404, "root_issue_not_found", "Root issue not found in this company");
+    if (issue.parentId) throw new MissionError(422, "root_issue_required", "Mission issue must be a root issue");
+    if (issue.projectId !== create.projectId) throw new MissionError(422, "project_scope_mismatch", "Mission project must match the root issue project");
+    const project = await ctx.projects.get(create.projectId, companyId);
+    if (!project || project.companyId !== companyId || project.archivedAt) {
+      throw new MissionError(422, "project_incompatible", "Mission project is unavailable or belongs to another company");
     }
+    const validation = await validateRosterPair(ctx, companyId, create.teamRosterId, create.councilRosterId);
+    if (!validation.eligible) throw new MissionError(422, "roster_pair_ineligible", "Roster pair is not eligible", validation.errors);
+    if (validation.team.head.lifecycle !== "active" || validation.council.head.lifecycle !== "active") {
+      throw new MissionError(409, "active_rosters_required", "New missions require active team and council roster heads");
+    }
+    if (validation.team.head.publishedRevision !== create.teamRevision
+        || validation.council.head.publishedRevision !== create.councilRevision) {
+      throw new MissionError(409, "roster_revision_not_current", "New missions must select the current published active revisions");
+    }
+    for (const roster of [validation.team, validation.council]) {
+      if (roster.revision.projectId && roster.revision.projectId !== create.projectId) {
+        throw new MissionError(422, "project_scope_mismatch", "Roster project restriction does not match the mission project");
+      }
+    }
+    const at = new Date().toISOString();
+    aggregate = buildMissionAggregate({ create, companyId, ownerUserId, team: validation.team, council: validation.council, payloadHash, at });
+  } catch (error) {
+    const appeared = await getMissionByIdentity(ctx, companyId, create.missionId, create.rootIssueId);
+    if (appeared) return existingCreationResult(appeared, create.commandId, ownerUserId, payloadHash);
+    throw error;
   }
-  const at = new Date().toISOString();
-  const aggregate = buildMissionAggregate({ create, companyId, ownerUserId, team: validation.team, council: validation.council, payloadHash, at });
   const insert = await ctx.db.execute(
     missionInsertSql(ctx),
     [companyId, create.missionId, create.rootIssueId, create.projectId, ownerUserId,
       create.teamRosterId, create.teamRevision, create.councilRosterId, create.councilRevision,
       JSON.stringify(aggregate)],
   );
-  const mission = await getMission(ctx, companyId, create.missionId)
-    ?? await getMissionByRootIssue(ctx, companyId, create.rootIssueId);
+  const mission = await getMissionByIdentity(ctx, companyId, create.missionId, create.rootIssueId);
   if (!mission) {
     throw new MissionError(
       409,

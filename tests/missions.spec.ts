@@ -130,6 +130,40 @@ function createRequest() {
   };
 }
 
+function stageAdmissionFailure(admissionError: unknown, appearingMission: ReturnType<typeof storedMissionRow> | null) {
+  let exposeMission = false;
+  let signalAdmissionStarted!: () => void;
+  let releaseAdmission!: () => void;
+  const admissionStarted = new Promise<void>((resolve) => { signalAdmissionStarted = resolve; });
+  const admissionBlocked = new Promise<void>((resolve) => { releaseAdmission = resolve; });
+  const query = vi.fn(async () => exposeMission && appearingMission ? [appearingMission] : []);
+  const execute = vi.fn();
+  const ctx = {
+    companies: { get: async () => ({ id: ids.company, defaultResponsibleUserId: "owner-1" }) },
+    issues: {
+      get: vi.fn(async () => {
+        signalAdmissionStarted();
+        await admissionBlocked;
+        throw admissionError;
+      }),
+    },
+    db: { namespace: "plugin_private_paperclip_council_test", query, execute },
+  } as unknown as PluginContext;
+  return {
+    ctx,
+    query,
+    execute,
+    admissionStarted,
+    exposeMissionAndFailAdmission() {
+      exposeMission = true;
+      releaseAdmission();
+    },
+    failAdmission() {
+      releaseAdmission();
+    },
+  };
+}
+
 describe("Council mission contracts", () => {
   it("normalizes create input and rejects absent limit declarations", () => {
     const body = {
@@ -223,6 +257,72 @@ describe("Council mission contracts", () => {
     expect(result.mission.version).toBe(1);
     expect(admissionRead).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("replays a matching creation that appears while mutable admission is in flight", async () => {
+    const row = storedMissionRow();
+    const staged = stageAdmissionFailure(
+      new RosterError(409, "roster_selection_changed", "Roster selection changed"),
+      row,
+    );
+    const pending = executeMissionCommand(staged.ctx, {
+      companyId: ids.company,
+      actorUserId: "owner-1",
+      body: createInput(),
+    });
+    await staged.admissionStarted;
+    staged.exposeMissionAndFailAdmission();
+    await expect(pending).resolves.toMatchObject({
+      outcome: "replayed",
+      receipt: row.aggregate.commandReceipts[0],
+    });
+    expect(staged.query).toHaveBeenCalledTimes(4);
+    expect(staged.execute).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      name: "changed payload",
+      body: { ...createInput(), mandate: { ...mandate, objective: "Different objective" } },
+      code: "command_identity_conflict",
+    },
+    {
+      name: "different command on an occupied identity",
+      body: { ...createInput(), commandId: randomUUID() },
+      code: "mission_exists",
+    },
+  ])("rejects $name when a mission appears while mutable admission is in flight", async ({ body, code }) => {
+    const staged = stageAdmissionFailure(
+      new RosterError(409, "roster_selection_changed", "Roster selection changed"),
+      storedMissionRow(),
+    );
+    const pending = executeMissionCommand(staged.ctx, {
+      companyId: ids.company,
+      actorUserId: "owner-1",
+      body,
+    });
+    await staged.admissionStarted;
+    const rejection = expect(pending).rejects.toMatchObject({ status: 409, code });
+    staged.exposeMissionAndFailAdmission();
+    await rejection;
+    expect(staged.query).toHaveBeenCalledTimes(4);
+    expect(staged.execute).not.toHaveBeenCalled();
+  });
+
+  it("rethrows the exact unexpected admission error when both fallback identity reads remain empty", async () => {
+    const unexpected = new Error("Admission dependency unavailable");
+    const staged = stageAdmissionFailure(unexpected, null);
+    const pending = executeMissionCommand(staged.ctx, {
+      companyId: ids.company,
+      actorUserId: "owner-1",
+      body: createInput(),
+    });
+    await staged.admissionStarted;
+    const rejection = expect(pending).rejects.toBe(unexpected);
+    staged.failAdmission();
+    await rejection;
+    expect(staged.query).toHaveBeenCalledTimes(4);
+    expect(staged.execute).not.toHaveBeenCalled();
   });
 
   it.each([
