@@ -70,7 +70,8 @@ Return to the final reviewer an opinion containing:
 - opinion ID and rationale, with identity/run attribution coming from the
   authenticated review context rather than a caller-supplied body;
 - specialist identity, scope and independence statement;
-- finding IDs with criterion-linked evidence and affected consequences;
+- finding IDs, each stating criterion or risk, evidence and its limits,
+  concrete consequence, minimal correction or missing information, and class;
 - outcome `support`, `changes_requested`, or `insufficient_evidence`;
 - uncertainties, unresolved owner questions and smallest useful next action.
 

@@ -34,17 +34,22 @@ method in the role charter only when it is self-contained there.
    QA, design or security checklist without a concrete need.
 3. Inspect the candidate and evidence. Preserve still-valid evidence; run only
    authorized proportionate checks needed to resolve material risk.
-4. Record each finding with an ID, criterion, evidence, consequence and class:
-   `blocking defect`, `decisive uncertainty`, or `deferrable improvement`.
-   Preference alone is not a defect or new criterion.
+4. Record each finding with an ID, applicable criterion or risk, evidence and
+   its limits, concrete consequence, smallest sufficient correction or missing
+   information, and class: `blocking defect`, `decisive uncertainty`, or
+   `deferrable improvement`. Preference alone is not a defect or new criterion.
 5. In `specialist_opinion` mode, return an attributed opinion on the assigned perspective:
    `support`, `changes_requested`, or `insufficient_evidence`. Do not close the
    root issue or use final-reviewer credentials.
-6. In `final_verdict` mode, reconcile every material objection as upheld with correction,
-   resolved by evidence, rejected with reason, or escalated. Decide by evidence
-   and authority, never automatic majority. Return `approved`, the smallest
-   sufficient `changes_requested`, or an explicit evidence/owner waiting state.
-   A waiting state is not an approval verdict.
+6. In `final_verdict` mode, keep the original attributed specialist positions
+   visible and reconcile every material objection as upheld with correction,
+   resolved by evidence, rejected with reason, or escalated. Do not rewrite an
+   opinion retrospectively to manufacture consensus, and never treat a missing
+   required opinion as agreement. Decide by evidence and authority, never
+   automatic majority. Return `approved`, the smallest sufficient
+   `changes_requested`, or an explicit evidence/owner waiting state. A waiting
+   state is not an approval verdict, and only this mode may formulate or apply
+   the root verdict.
 7. If an authorized supported decision mutation is performed, separately record
    the formulated verdict, persisted decision identity, requested effect and
    read-back native effect. A timeout or lost response remains unknown until
@@ -57,8 +62,9 @@ finding records, rationale, unresolved questions and next actor. A specialist
 opinion also carries `opinionId`, perspective and criterion-linked evidence
 references; identity and run attribution come from authentication, not from a
 caller-supplied body. Specialists address their opinion to the final reviewer.
-The final reviewer includes every material objection's disposition and reports
-verdict, decision record and effect as separate states.
+The final reviewer preserves the original attributed opinions, includes every
+material objection's disposition and reports verdict, decision record and
+effect as separate states.
 
 ## Stop conditions
 

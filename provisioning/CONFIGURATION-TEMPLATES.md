@@ -74,7 +74,17 @@ Profile substitutions:
 | Executor | `engineer` | `Software Executor` | Bounded contribution, verification and attributable handoff; Integration Lead only when assigned |
 | Generalist Reviewer | `general` | `Generalist Reviewer` | Independent final review, objection synthesis and supported decision/readback |
 | Product Reviewer | `pm` | `Product Reviewer` | Attributed product/user-outcome opinion for selected Council rounds |
+| Development Reviewer | `engineer` | `Development Reviewer` | Attributed code-level correctness and local-contract opinion for selected Council rounds |
+| Architecture Reviewer | `engineer` | `Architecture Reviewer` | Attributed boundary, interface and consequential structural opinion for selected Council rounds |
+| UX & Accessibility Reviewer | `designer` | `UX & Accessibility Reviewer` | Attributed usability and accessibility opinion for selected Council rounds |
 | Quality Reviewer | `qa` | `Quality Reviewer` | Attributed evidence/coverage opinion for selected Council rounds |
+| Security Reviewer | `security` | `Security Reviewer` | Attributed trust, authority and sensitive-data risk opinion for selected Council rounds |
+| Operations Reviewer | `devops` | `Operations Reviewer` | Attributed configuration, runtime, recovery and operability opinion for selected Council rounds |
+
+All nine substitutions keep the common `gpt-5.6-sol` / `medium` starting
+recommendation. A title never changes model or effort automatically; reconsider
+only for a separately framed problem under the current model/effort mapping and
+verify availability at activation.
 
 Do not add `cwd`, `CODEX_HOME`, environment IDs, budgets, sandbox/network fields
 or tool credentials until the target values and compatibility are known. The
@@ -129,11 +139,13 @@ version IDs before constructing this request:
 ```
 
 Use `POST /api/agents/<agent-id>/skills/sync`. Add optional
-`qa-acceptance`, `github-pr-workflow` or `design-critique` only for a selected
-profile/mission need. Prefer `add`/`remove`; `replace` affects the entire desired
-set. A non-null `versionId` is valid only when the target's Beta version-pin
-contract is enabled. Read back both saved desired skills and runtime skill
-snapshot because sync failure can leave desired state changed.
+`qa-acceptance`, `github-pr-workflow`, `design-critique` or an actually available
+domain skill only for a selected profile/mission need. No Development,
+Architecture, Security or Operations title implies a dedicated skill or tool.
+Prefer `add`/`remove`; `replace` affects the entire desired set. A non-null
+`versionId` is valid only when the target's Beta version-pin contract is enabled.
+Read back both saved desired skills and runtime skill snapshot because sync
+failure can leave desired state changed.
 
 Source presence here is not company installation, desired selection, mount or
 execution proof.

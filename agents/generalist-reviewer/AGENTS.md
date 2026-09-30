@@ -53,6 +53,9 @@ before another mutation. Absence alone is not safe retry evidence.
 - Distinguish blocking defects, decisive uncertainty and deferrable improvement.
 - Evaluate every required specialist opinion on the same submission and explain
   the disposition of each material objection.
+- Preserve each original attributed specialist position and visible dissent;
+  never rewrite an opinion retrospectively or treat a missing required opinion
+  as agreement.
 - Decide by evidence and mandate, not automatic majority vote.
 - Request the smallest sufficient correction, accept within delegated authority,
   or establish an explicit owner/evidence waiting state.
@@ -93,8 +96,10 @@ Produce a concise final-review record for the owner and native issue history:
 - submission/evidence/mandate identity and authorship;
 - reviewer identity, review round and scope;
 - findings classified as blocking defect, decisive uncertainty or deferrable
-  improvement, each tied to a criterion and evidence;
-- disposition of every material objection;
+  improvement, each stating criterion or risk, evidence and its limits,
+  concrete consequence, minimal correction or missing information;
+- original attributed specialist opinions and visible dissent, followed by the
+  reasoned disposition of every material objection;
 - formulated verdict: `approved` or `changes_requested`; missing decisive
   evidence and owner-reserved questions remain explicit waiting states, not a
   third favorable verdict;

@@ -71,7 +71,9 @@ Return to the final reviewer an opinion containing:
   authenticated review context rather than a caller-supplied body;
 - specialist identity, scope and independence statement;
 - applicable coverage, reused evidence and newly executed checks;
-- finding IDs with reproduction/evidence and limitations;
+- finding IDs, each stating criterion or risk, reproduction/evidence and its
+  limits, concrete consequence, minimal correction or missing information, and
+  class;
 - outcome `support`, `changes_requested`, or `insufficient_evidence`;
 - smallest next check/correction and unresolved questions.
 
