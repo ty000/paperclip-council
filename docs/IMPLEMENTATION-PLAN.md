@@ -1,16 +1,29 @@
 # Paperclip Council — V1 implementation lots
 
-Version 0.3 — September 30, 2026. Technical delivery sequence, not a calendar or issued tickets. Product decomposition: [V1 backlog](BACKLOG.md). Selected next increment: [sprint plan](SPRINT-PLAN.md).
+Version 0.4 — September 30, 2026. Technical coverage lots, not a calendar or issued tickets. Product decomposition: [V1 backlog](BACKLOG.md). Selected next increment: [sprint plan](SPRINT-PLAN.md).
 
 Product parents: [PRD](PRD.md) C01–C11, C16–C18 and [V1 scope](V1-SCOPE.md). Architecture: [TAD](TAD.md) D01–D10. Memory/learning C12–C15 remain deferred. This plan does not authorize instance changes, credentials, provider runs, external publication, merge or deployment.
 
+## Current execution order — nominal first
+
+The owner selected an 80/20 route to the first representative end-to-end run. [Sprint plan N1–N4](SPRINT-PLAN.md#3-nominal-delivery-lots) is now the execution order; L0–L6 below remain coverage and full-closure definitions. Their original dependencies describe completed capabilities, not a requirement to finish every variant before implementing the next nominal slice.
+
+| Current lot | Coverage drawn from L0–L6 | Observable delivery |
+| --- | --- | --- |
+| N1 — integrated team result | Remaining L1 pinning, L2 nominal path, mandatory G4 for its operating profile | Two contributions produce one identified, checked candidate |
+| N2 — correction and acceptance | L3 nominal path plus minimal L5 inspection | One separate reviewer requests a correction and confirms acceptance of the new candidate |
+| N3 — specialist synthesis | L4 opinion path plus minimal L5 inspection | Relevant required perspectives inform one attributable final verdict; support all prepared specialist types |
+| N4 — representative run | Early, narrow L6 evaluation across N1–N3 | Selected real agents complete the supported journey; all nine profile types receive an initial evidence-based usefulness assessment |
+
+Ordinary-path evidence is still required: candidate/actor checks, actual supported plugin/native effects and G4 admission cannot be replaced by mocks. G3 recovery is deferred only where an uncertain effect is durably stopped and never blindly retried; any G3 read needed to establish nominal acceptance remains in N2. Budget settlement/restart safety necessary for G4 remains in N1. Automatic recovery, appeal and expanded lifecycle handling follow N4 in explicit lots. N4 success does not close L3–L6 or V1 wholesale.
+
 ## 1. Entry and evidence rules
 
-Start from main containing this documentary change and the existing extraction, manifest gate and current-candidate fix (publication code baseline `9d7d0e0`). When continuing an older implementation worktree, reconcile it with that base before coding; do not reintroduce an older adapter by replaying historical extraction commits. Preserve unrelated changes and the historical integration review. Confirm the resulting branch, exact host/SDK versions and existing package checks. Do not recreate an adapter already present in S8, discard its preflight tests or treat its reported qualification as fresh proof.
+Start from current main; this planning pass inspected `cbe8e54ffa4e3c857424b44518b75d38de45d28b`, including roster configuration, draft missions, qualification infrastructure and agent profiles. The extraction, manifest gate and current-candidate fix are already integrated. When continuing an older implementation worktree, reconcile it with that base before coding; do not reintroduce an older adapter by replaying historical extraction commits. Preserve unrelated changes and the historical integration review. Confirm the resulting branch, exact host/SDK versions and existing package checks. Do not recreate an adapter already present in S8, discard its preflight tests or treat its reported qualification as fresh proof.
 
 Each lot ends with an inspectable behavior and scoped evidence. A failing dependency keeps dependent claims open. Unit tests may isolate rules; qualification of plugin/API/authentication/persistence must use the actual supported path. Agent reasoning, startup authentication and runtime availability cannot be proven by synthetic fixtures. Record PASS, FAIL or NOT EXECUTED by claim and explain manual recovery.
 
-## 2. Delivery sequence
+## 2. Technical coverage and full-lot exits
 
 | Lot / user outcome | Product parent and architecture | Implementation scope and dependency | Exit proof |
 | --- | --- | --- | --- |
