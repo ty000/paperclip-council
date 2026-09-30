@@ -81,8 +81,8 @@ Once these checks pass, stop. Defer cosmetic polish, generic abstractions, hypot
 
 These are sequencing envelopes, not detailed committed sprints. Slice the next one only after the preceding result and relevant dependency decisions are known. No calendar or automatic continuation is implied.
 
-## 6. Ready for the next implementation task
+## 6. Historical Sprint 1 dispatch instruction and current selection boundary
 
-The next bounded implementation request should target **Sprint 1 / S1-01–S1-03 only**, name the selected L0-containing base and exact worktree, use the [backlog](BACKLOG.md) and TAD as authorities, and retain the stop condition above. Concrete live agents, budgets and owner-account setup are activation inputs, not values to invent during this documentary pass.
+The original next bounded implementation request targeted **Sprint 1 / S1-01–S1-03 only**. That instruction is historical; use the candidate-specific reports under `docs/reviews/s1/` for its delivered status and do not restart it from this baseline. Select the next bounded lot from the current dependency table and later-increment outline, with an exact base and worktree, without imposing an order between the independent G3 and G4 qualification work. Concrete live agents, budgets and owner-account setup remain activation inputs, not values to invent during this documentary pass.
 
 This document creates no external tickets and launches no implementation, provider run, publication, merge or deployment. G3/G4 follow-up is conditional scoped work; an unresolved guarantee does not authorize expanding L0 or this configuration sprint.

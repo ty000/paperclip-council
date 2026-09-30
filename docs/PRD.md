@@ -42,7 +42,7 @@ Paperclip Council is an extension of Paperclip. Its own scope covers supervision
 
 The product relies on platform services to organize work and execute agents. The exact technical division of responsibilities must be verified in the TAD. This positioning does not assume that Paperclip already provides every required capability.
 
-The reviewed Paperclip baseline provides agent identities, execution runs, issue review stages and decision history. Council connects the mandate, identified submission, evidence, verdict and verified effect. The actors and acceptance paths covered by supervision must be declared when it is enabled; the availability of a platform capability does not demonstrate its integration into Council.
+The reviewed Paperclip baseline provides agent identities, execution runs, issue review stages and native decision records. Council connects the mandate, identified submission, evidence, verdict and verified effect. Supported company-scoped readback of the decision details needed for uncertain-application reconciliation remains an open G3 dependency. The actors and acceptance paths covered by supervision must be declared when it is enabled; the availability of a platform capability does not demonstrate its integration into Council.
 
 ### Included in the vision
 
