@@ -37,6 +37,11 @@ const root = resolve(hostRootInput);
 const expectedHostCommit = "61b3fd57a695614dc4a37e2303f426a34a9795cf";
 const hostCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
 assert.equal(hostCommit, expectedHostCommit, `functional host must be Paperclip ${expectedHostCommit}`);
+const hostStatus = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], {
+  cwd: root,
+  encoding: "utf8",
+}).trim();
+assert.equal(hostStatus, "", "functional host tracked files must match the exact host commit");
 const hostImport = (path: string) => import(pathToFileURL(resolve(root, path)).href);
 const qualificationId = randomUUID();
 const runtime = await mkdtemp(resolve(tmpdir(), "paperclip-council-package-"));
@@ -77,6 +82,7 @@ const evidence: Record<string, any> = {
   proofId: "paperclip-council-s1-configuration-2026-09-30",
   startedAt: new Date().toISOString(),
   head: hostCommit,
+  hostTrackedFilesClean: hostStatus === "",
   branch: execFileSync("git", ["branch", "--show-current"], { cwd: root, encoding: "utf8" }).trim(),
   node: process.version,
   command: "COUNCIL_PACKAGE_EXPECTED_COMMIT=<candidate-sha> PAPERCLIP_TEST_HOST_ROOT=<checkout> PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH=<chromium> pnpm test:functional",
