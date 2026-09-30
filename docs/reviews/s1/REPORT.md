@@ -2,7 +2,7 @@
 
 Date: 2026-09-30 (Europe/Paris)
 
-Runtime-tested candidate: `bbfecc39c93f4a6a395f3447ff5b6f3233fb23b9` on `codex/council-s1`
+Runtime-tested candidate: `fd4661dc3d3c665f5a2819b62abfb5db856c5fdd` on `codex/council-s1`
 
 Documentary base: `b1c76d34b1c0166c6cf675089dce877c6f88b693` (`origin/main`)
 
@@ -35,10 +35,10 @@ The larger statuses remain unchanged: **L1 is partial** until an active mission 
 
 ## Evidence and frontend QA
 
-- Structured runtime trace: `docs/reviews/s1/evidence/functional.json`, SHA-256 `fcf5e6fb61ead3b3b68ef166d62d40be8194ed53403e495946722b8f908bfea1`.
-- Installed-page capture: `docs/reviews/s1/evidence/ui-page.png`, SHA-256 `2f1abf9ae6a8559ae2401aa205c8d36e00bdda44b34c67a43fecc58329ee5955`.
+- Structured runtime trace: `docs/reviews/s1/evidence/functional.json`, SHA-256 `6e5df8e7ef1e8cea4a7060dd7ea57b105a2a21b5af62d7d003fdd3fc3cf4cc41`.
+- Installed-page capture: `docs/reviews/s1/evidence/ui-page.png`, SHA-256 `b3c957348dff337295f34c7ec253e5fbbb38b793a5e07c0a8c2158dce834a4b6`.
 - Frontend QA detail: `docs/reviews/s1/FRONTEND-QA.md`.
-- The trace records candidate source archive SHA-256 `8b4126b8bda93e64e7caa141aa47dc3e960abb4f8faf218272a201b8b75b68db` and built distribution SHA-256 `eb4dae3f2d6fc2f704b524c6378adcc054f916598cded92137ae5447a9382598`.
+- The trace records candidate source archive SHA-256 `287265a994916943b510bfa449f2dbcb8d7e8e06ef7033ef17b7aa3ced5ca75e` and built distribution SHA-256 `eb4dae3f2d6fc2f704b524c6378adcc054f916598cded92137ae5447a9382598`.
 - The host source was a clean local clone of `/home/davy-lp/workspace/paperclip` checked out detached at the exact pinned commit. The harness records `hostTrackedFilesClean: true` and now fails before runtime if tracked host files differ from that commit.
 - All actors, companies, projects, rosters and issues in the replay are synthetic fixtures. The run uses no model. Ephemeral agent credentials are not serialized in evidence and the isolated app/database/runtime are removed afterward.
 
@@ -64,7 +64,7 @@ done < <(find /home/davy-lp/workspace/paperclip -path '*/node_modules' -prune -p
 ln -s /home/davy-lp/workspace/paperclip/node_modules "$COUNCIL_HOST_PROOF_DIR/paperclip/node_modules"
 
 COREPACK_HOME=/tmp/council-s1-corepack \
-COUNCIL_PACKAGE_EXPECTED_COMMIT=bbfecc39c93f4a6a395f3447ff5b6f3233fb23b9 \
+COUNCIL_PACKAGE_EXPECTED_COMMIT=fd4661dc3d3c665f5a2819b62abfb5db856c5fdd \
 PAPERCLIP_TEST_HOST_ROOT="$COUNCIL_HOST_PROOF_DIR/paperclip" \
 PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH=/home/davy-lp/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell \
 COUNCIL_PACKAGE_EVIDENCE_PATH="$PWD/docs/reviews/s1/evidence/functional.json" \
@@ -77,7 +77,7 @@ Expected: typecheck/build succeed; 6 test files and 32 tests pass; functional ou
 
 ## Independent-review remediation
 
-The first independent review correctly rejected the earlier candidate: pair activation could update one current head before discovering that the other expected version was stale, and the replay accepted a dirty host checkout. Candidate `bbfecc3` remedies both findings. Activation now locks and counts both eligible heads inside the single permitted `UPDATE` statement before mutation; the real-host replay asserts an asymmetric `409` leaves both heads at draft/version 1. The harness also rejects tracked host drift, and the successful replay used a clean detached clone of the exact host commit. The initial failure evidence remains outside the repository as diagnostic history and is not closure proof.
+The first independent review correctly rejected the earlier candidate: pair activation could update one current head before discovering that the other expected version was stale, and the replay accepted a dirty host checkout. The rebased candidate `fd4661d` contains both remediations. Activation now locks and counts both eligible heads inside the single permitted `UPDATE` statement before mutation; the real-host replay asserts an asymmetric `409` leaves both heads at draft/version 1. The harness also rejects tracked host drift, and the successful post-rebase replay used a clean detached clone of the exact host commit. The initial failure evidence remains outside the repository as diagnostic history and is not closure proof.
 
 ## Deferrals and next minimum
 
