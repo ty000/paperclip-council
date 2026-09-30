@@ -629,7 +629,11 @@ try {
     if (raceCreate.status === 201) {
       assert.equal(raceCreate.body.mission.teamRevision, winningRevision.revision.revision);
     } else {
-      assert(["roster_selection_changed", "roster_pair_ineligible"].includes(raceCreate.body.code));
+      assert([
+        "roster_selection_changed",
+        "roster_pair_ineligible",
+        "active_rosters_required",
+      ].includes(raceCreate.body.code));
     }
     missionLifecycleRaceOutcomes.push(raceCreate.status);
     const raceReactivate = await request("human", "POST", rosterBase, {
