@@ -13,7 +13,22 @@ import type {
 } from "./l03-types.js";
 
 const SHA256 = /^[0-9a-f]{64}$/;
+const GIT_OID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+const OPERATION_ID = /^[A-Za-z0-9._:-]{1,128}$/;
 const REQUIRED_EXECUTIVE_METHOD = { id: "paperclip-executive.council-reserved-opinion", version: "1.0.0" } as const;
+const COMMAND_TYPES = new Set([
+  "acknowledge-uncertainty",
+  "submit-approach",
+  "reserve-consultation",
+  "grant-consultation-admission",
+  "record-consultation-observation",
+  "decide-approach",
+  "claim-direction-effect",
+  "record-direction-effect",
+  "submit-result",
+  "decide-result",
+  "record-result-effect",
+]);
 
 export class L03Error extends Error {
   constructor(
@@ -37,7 +52,7 @@ function stable(value: unknown): unknown {
   return value;
 }
 
-export function canonicalJson(value: unknown): string {
+function canonicalJson(value: unknown): string {
   return JSON.stringify(stable(value));
 }
 
@@ -59,11 +74,23 @@ function unique(values: string[], label: string): void {
   assert(values.length === new Set(values).size, 422, "duplicate_reference", `${label} contains duplicate references`);
 }
 
+function nonEmpty(value: unknown, label: string): asserts value is string {
+  assert(typeof value === "string" && value.trim().length > 0, 422, "required_text_missing", `${label} must be a non-empty string`);
+}
+
+function memberOf(value: unknown, allowed: readonly string[], code: string, label: string): void {
+  assert(typeof value === "string" && allowed.includes(value), 422, code, `${label} is invalid`);
+}
+
 function requireHash(value: string, label: string): void {
   assert(SHA256.test(value), 422, "invalid_hash", `${label} must be a lowercase SHA-256 hex digest`);
 }
 
-function validateAuthority(state: L03Governance, facts: L03TransitionFacts, expectedVersion: number): void {
+function requireGitOid(value: string, label: string): void {
+  assert(GIT_OID.test(value), 422, "invalid_git_oid", `${label} must be a lowercase 40- or 64-character Git object ID`);
+}
+
+function validateAuthority(state: L03Governance, facts: L03TransitionFacts, expectedVersion: number, allowExpired = false): void {
   assert(state.version === expectedVersion, 409, "version_conflict", "L03 governance version is stale", { currentVersion: state.version });
   assert(facts.actor.companyId === state.companyId, 403, "company_scope_mismatch", "Actor company does not match governance company");
   const current = facts.current;
@@ -75,7 +102,20 @@ function validateAuthority(state: L03Governance, facts: L03TransitionFacts, expe
   assert(current.councilAgentId === state.authority.councilAgentId, 409, "council_actor_changed", "Pinned Council actor changed");
   assert(current.executivePluginActorId === state.authority.executivePluginActorId, 409, "executive_actor_changed", "Pinned Executive plugin actor changed");
   assert(current.expiresAt === state.authority.expiresAt, 409, "expiry_changed", "Governance expiry changed");
-  assert(validDate(facts.now, "now") <= validDate(state.authority.expiresAt, "authority.expiresAt"), 409, "mandate_expired", "Governance mandate has expired");
+  if (!allowExpired) {
+    assert(validDate(facts.now, "now") <= validDate(state.authority.expiresAt, "authority.expiresAt"), 409, "mandate_expired", "Governance mandate has expired");
+  }
+}
+
+export function assertCurrentL03(state: L03Governance, facts: L03TransitionFacts): void {
+  validateAuthority(state, facts, state.version);
+  const actor = facts.actor;
+  const known = actor.actorType === "user"
+    ? (actor.userId ?? actor.actorId) === state.authority.ownerUserId
+    : actor.actorType === "agent"
+      ? [state.authority.executorAgentId, state.authority.finalReviewerAgentId, state.authority.councilAgentId].includes(actor.actorId)
+      : actor.actorId === state.authority.executivePluginActorId;
+  assert(known, 403, "actor_not_authorized", "Actor is not part of the current L03 authority");
 }
 
 function requireActor(state: L03Governance, facts: L03TransitionFacts, role: "owner" | "executor" | "reviewer" | "council" | "executive-plugin"): void {
@@ -117,6 +157,21 @@ function assertCriterionRefs(state: L03Governance, refs: string[], label: string
   assert(refs.length > 0 && refs.every((ref) => criteria.has(ref)), 422, "criterion_reference_invalid", `${label} must be a non-empty subset of ticket criteria`);
 }
 
+function assertEvidenceSubset(refs: string[], allowed: string[], label: string): void {
+  unique(refs, label);
+  const allowedSet = new Set(allowed);
+  assert(refs.every((ref) => allowedSet.has(ref)), 422, "evidence_reference_out_of_scope", `${label} contains evidence outside the governed subject`);
+}
+
+function appendRef(refs: string[], ref: string): string[] {
+  return refs.includes(ref) ? refs : [...refs, ref];
+}
+
+function assertNewReceiptRef(state: L03Governance, ref: string): void {
+  assert(OPERATION_ID.test(ref), 422, "receipt_reference_invalid", "Decision receiptRef must be a 1..128 character operation identity");
+  assert(!state.receiptRefs.includes(ref), 409, "receipt_reference_reused", "Decision receiptRef is already bound in this mission");
+}
+
 function activeApproach(state: L03Governance): L03Approach {
   const approach = state.approaches.find((entry) => entry.approachId === state.activeApproachId);
   assert(approach, 409, "active_approach_missing", "Active approach is missing");
@@ -137,11 +192,18 @@ function verifySlot(state: L03Governance, slot: ReservedConsultationSlot): void 
 }
 
 function validateFindings(state: L03Governance, findings: CouncilOpinionFinding[]): void {
+  assert(Array.isArray(findings), 422, "findings_invalid", "findings must be an array");
   unique(findings.map((finding) => finding.id), "findings[].id");
   for (const finding of findings) {
+    nonEmpty(finding.id, "finding.id");
+    memberOf(finding.class, ["must_fix", "useful_now", "defer"], "finding_class_invalid", "finding.class");
+    assert(Array.isArray(finding.evidenceRefs), 422, "finding_evidence_invalid", "finding.evidenceRefs must be an array");
     assertCriterionRefs(state, [finding.criterionRef], "finding.criterionRef");
     unique(finding.evidenceRefs, `finding ${finding.id} evidenceRefs`);
-    assert(finding.reasons.trim().length > 0 && finding.smallestUsefulAction.trim().length > 0, 422, "finding_incomplete", "Each finding requires reasons and a smallest useful action");
+    assert(Array.isArray(finding.reasons) && finding.reasons.length > 0
+      && finding.reasons.every((reason) => typeof reason === "string" && reason.trim().length > 0)
+      && typeof finding.smallestUsefulAction === "string" && finding.smallestUsefulAction.trim().length > 0,
+    422, "finding_incomplete", "Each finding requires reasons and a smallest useful action");
   }
 }
 
@@ -149,37 +211,47 @@ function validateResult(state: L03Governance, result: Omit<L03Result, "sequence"
   assert(result.authorAgentId === state.authority.executorAgentId, 403, "result_author_invalid", "Result author must be the pinned executor");
   assert(result.rootIssueId === state.ticket.issueId, 422, "result_root_issue_mismatch", "Result root issue must match the governed ticket");
   assert(result.segmentIssueId.length > 0 && result.repository.length > 0 && result.attachmentId.length > 0, 422, "result_subject_incomplete", "Result requires segment issue, repository and attachment identities");
-  requireHash(result.baseCommit, "result.baseCommit");
-  requireHash(result.candidateCommit, "result.candidateCommit");
+  requireGitOid(result.baseCommit, "result.baseCommit");
+  requireGitOid(result.candidateCommit, "result.candidateCommit");
   requireHash(result.sha256, "result.sha256");
   requireHash(result.artifactSetHash, "result.artifactSetHash");
-  assert(result.artifacts.length > 0, 422, "result_artifacts_missing", "Result requires at least one byte-verified artifact");
+  assert(result.artifacts.length === 1, 422, "result_artifacts_invalid", "Result requires exactly one verified candidate attachment");
   for (const artifact of result.artifacts) {
     requireHash(artifact.sha256, "artifact.sha256");
     assert(artifact.ref.length > 0 && artifact.byteVerificationRef.length > 0, 422, "artifact_verification_missing", "Each artifact requires a reference and byte-verification reference");
   }
+  const artifact = result.artifacts[0]!;
+  const verifiedEvidenceRef = `attachment:${result.attachmentId}#sha256:${result.sha256}`;
+  assert(artifact.ref === verifiedEvidenceRef && artifact.byteVerificationRef === verifiedEvidenceRef && artifact.sha256 === result.sha256,
+    422, "result_artifact_subject_mismatch", "Result artifact must identify the verified candidate attachment and digest");
+  assert(result.artifactSetHash === canonicalSha256(result.artifacts), 422, "artifact_set_hash_mismatch", "artifactSetHash must be the canonical digest of the immutable artifacts array");
   assertCriterionRefs(state, result.criterionRefs, "result.criterionRefs");
   unique(result.evidenceRefs, "result.evidenceRefs");
+  assert(result.evidenceRefs.includes(verifiedEvidenceRef),
+    422, "verified_evidence_reference_missing", "Result evidence must include the verified candidate attachment digest reference");
 }
 
 function matchingEffect(decisionId: string, facts: L03TransitionFacts, attemptId?: string): L03ActualEffect {
   const effect = facts.actualEffectObservation;
   assert(effect?.status === "confirmed" && effect.decisionId === decisionId, 409, "actual_effect_required", "A matching confirmed actual-effect observation is required before advancing");
-  if (attemptId) assert(effect.attemptId === attemptId, 409, "execution_attempt_mismatch", "Actual effect does not match the claimed execution attempt");
+  if (attemptId) assert((effect.attemptId ?? effect.receiptRef) === attemptId, 409, "execution_attempt_mismatch", "Actual effect does not match the claimed execution attempt");
   assert(effect.observationRef.length > 0 && effect.receiptRef.length > 0, 422, "actual_effect_reference_missing", "Actual effect requires observation and retained receipt references");
   return effect;
 }
 
-export function initialL03Governance(input: L03CreateInput, facts: L03TransitionFacts): L03Governance {
+export function initialL03Governance(input: L03CreateInput, facts: L03TransitionFacts, requiredPerspectives: string[] = []): L03Governance {
   assert(input.companyId === facts.current.companyId && input.missionId === facts.current.missionId, 422, "mission_identity_mismatch", "Admission input does not match the current mission");
   assert(input.expectedMissionVersion === facts.current.missionVersion && input.mandateRevision === facts.current.mandateRevision, 409, "mandate_changed", "Admission requires the exact current mission and mandate revision");
   assert(input.executorAgentId === facts.current.executorAgentId && input.finalReviewerAgentId === facts.current.finalReviewerAgentId, 409, "pinned_roles_changed", "Admission roles do not match current mission authority");
+  assert(input.councilAgentId === input.finalReviewerAgentId && facts.current.councilAgentId === facts.current.finalReviewerAgentId,
+    422, "council_reviewer_must_match", "The pinned Council actor must be the final reviewer that applies governed effects");
   assert(input.councilAgentId === facts.current.councilAgentId && input.executivePluginActorId === facts.current.executivePluginActorId, 409, "plugin_actor_changed", "Admission plugin actors do not match current authority");
   assert(input.executorAgentId !== input.finalReviewerAgentId, 422, "reviewer_must_be_distinct", "Final reviewer must be distinct from executor");
   assert(facts.actor.actorType === "user" && (facts.actor.userId ?? facts.actor.actorId) === facts.current.ownerUserId, 403, "owner_required", "Configured owner must admit L03 governance");
   assert(input.ticket.issueId.length > 0 && input.ticket.criteria.length > 0, 422, "ticket_context_incomplete", "Ticket identity and criteria are required");
   unique(input.ticket.criteria.map((criterion) => criterion.id), "ticket.criteria[].id");
   unique(input.ticket.exclusions, "ticket.exclusions");
+  unique(requiredPerspectives, "requiredPerspectives");
   requireHash(input.ticket.sourceHash, "ticket.sourceHash");
   requireHash(input.ticket.suppliedContext.sourceHash, "ticket.suppliedContext.sourceHash");
   assert(input.expiresAt === facts.current.expiresAt && validDate(facts.now, "now") < validDate(input.expiresAt, "expiresAt"), 422, "expiry_invalid", "Admission expiry must be current and in the future");
@@ -204,6 +276,7 @@ export function initialL03Governance(input: L03CreateInput, facts: L03Transition
     mandateRevision: input.mandateRevision,
     authority: { ...facts.current },
     ticket: structuredClone(input.ticket),
+    requiredPerspectives: [...requiredPerspectives],
     phase: "awaiting_approach",
     counters,
     approaches: [],
@@ -213,13 +286,34 @@ export function initialL03Governance(input: L03CreateInput, facts: L03Transition
     results: [],
     resultDecisions: [],
     openMustFixFindingIds: [],
+    uncertaintyAcknowledgements: [],
     receiptRefs: [],
     journal: [{ action: "l03_governance_admitted", actorId: facts.actor.actorId, at: facts.now }],
   };
 }
 
 export function transitionL03(state: L03Governance, command: L03Command, facts: L03TransitionFacts): L03Governance {
-  validateAuthority(state, facts, command.expectedVersion);
+  const commandType = (command as { type?: unknown } | null)?.type;
+  assert(typeof commandType === "string" && COMMAND_TYPES.has(commandType), 422, "command_type_invalid", "L03 command type is invalid");
+  validateAuthority(state, facts, command.expectedVersion, command.type === "acknowledge-uncertainty");
+  if (command.type === "acknowledge-uncertainty") {
+    requireActor(state, facts, "owner");
+    nonEmpty(command.reference, "uncertainty.reference");
+    nonEmpty(command.note, "uncertainty.note");
+    memberOf(command.disposition, ["acknowledge", "abandon"], "uncertainty_disposition_invalid", "uncertainty.disposition");
+    const uncertainDirection = state.approachDirections.some((decision) => decision.executionAttempt?.attemptId === command.reference && !decision.actualEffect);
+    const uncertainConsultation = state.consultationSlots.some((slot) => slot.observations.some((observation) => observation.observedEventRef === command.reference && observation.status === "outcome_unknown"));
+    assert(uncertainDirection || uncertainConsultation, 422, "uncertainty_reference_invalid", "Reference must identify an unresolved direction attempt or outcome_unknown consultation");
+    assert(!state.uncertaintyAcknowledgements.some((entry) => entry.reference === command.reference), 409, "uncertainty_already_acknowledged", "Uncertainty already has a human disposition");
+    const uncertaintyAcknowledgements = [...state.uncertaintyAcknowledgements, {
+      reference: command.reference,
+      note: command.note.trim(),
+      disposition: command.disposition,
+      actorUserId: state.authority.ownerUserId,
+      recordedAt: facts.now,
+    }];
+    return next(state, facts, { uncertaintyAcknowledgements }, "uncertainty_acknowledged", command.reference);
+  }
   if (command.type === "submit-approach") {
     requireActor(state, facts, "executor");
     assert(state.phase === "awaiting_approach" || state.phase === "approach_revision_required", 409, "phase_conflict", "Approach cannot be submitted in the current phase");
@@ -243,8 +337,15 @@ export function transitionL03(state: L03Governance, command: L03Command, facts: 
 
   if (command.type === "reserve-consultation") {
     requireActor(state, facts, "council");
+    assert(typeof command.required === "boolean", 422, "reservation_required_invalid", "Reservation required flag must be boolean");
+    memberOf(command.costExposure?.status, ["known", "unknown"], "cost_exposure_status_invalid", "costExposure.status");
+    nonEmpty(command.costExposure?.reference, "costExposure.reference");
     assert(state.phase === "collecting_approach_opinions" && command.subjectApproachId === activeApproach(state).approachId, 409, "consultation_subject_invalid", "Consultation must target the active approach while opinions are collected");
+    const approach = activeApproach(state);
     verifySlot(state, command.reservation);
+    assert(command.reservation.context.sourceRef === approach.contentRef && command.reservation.context.sourceHash === approach.contentHash,
+      422, "reservation_context_mismatch", "Reservation context must identify the exact active approach content");
+    assertEvidenceSubset(command.reservation.evidenceRefs, approach.evidenceRefs, "reservation.evidenceRefs");
     assert(!state.consultationSlots.some((entry) => entry.slot.slotId === command.reservation.slotId || entry.slot.reservationId === command.reservation.reservationId), 409, "reservation_identity_reused", "Slot and reservation identities must be unique");
     assert(validDate(command.reservation.expiresAt, "reservation.expiresAt") > validDate(facts.now, "now"), 422, "reservation_expired", "Reservation must expire in the future");
     let counters = consumeCounter(state, "consultation");
@@ -253,7 +354,7 @@ export function transitionL03(state: L03Governance, command: L03Command, facts: 
       assert(command.costExposure.reference.length > 0, 422, "unknown_exposure_reference_missing", "Unknown cost exposure requires a durable reference");
       counters = { ...counters, unknownCostExposureRefs: [...counters.unknownCostExposureRefs, command.costExposure.reference] };
     }
-    return next(state, facts, { counters, consultationSlots: [...state.consultationSlots, { slot: structuredClone(command.reservation), subjectApproachId: command.subjectApproachId, required: command.required, reservationEventRef: command.reservationEventRef, costExposure: structuredClone(command.costExposure), admissionGrant: null, admissionGrantConsumedAt: null, observations: [], contribution: null }] }, "consultation_reserved", command.reservation.reservationId);
+    return next(state, facts, { counters, consultationSlots: [...state.consultationSlots, { slot: structuredClone(command.reservation), subjectApproachId: command.subjectApproachId, required: command.required, reservationEventRef: command.reservationEventRef, costExposure: structuredClone(command.costExposure), admissionRequest: null, admissionGrant: null, admissionGrantConsumedAt: null, observations: [], contribution: null }] }, "consultation_reserved", command.reservation.reservationId);
   }
 
   if (command.type === "grant-consultation-admission") {
@@ -262,23 +363,31 @@ export function transitionL03(state: L03Governance, command: L03Command, facts: 
     const index = state.consultationSlots.findIndex((entry) => entry.slot.slotId === command.request.slotId && entry.slot.reservationId === command.request.reservationId);
     assert(index >= 0, 404, "reservation_not_found", "Consultation reservation was not found");
     const entry = state.consultationSlots[index]!;
+    assert(command.request.missionId === state.missionId && command.request.requestId.trim().length > 0
+      && command.request.observedReservationEventId.trim().length > 0,
+    422, "admission_request_invalid", "Admission request must identify the current mission, request and observed host event");
     assert(entry.subjectApproachId === activeApproach(state).approachId && entry.slot.reservationVersion === command.request.reservationVersion, 409, "reservation_stale", "Consultation reservation is stale or targets another approach");
-    assert(entry.reservationEventRef === command.request.observedReservationEventId, 422, "reservation_event_mismatch", "Admission request did not observe the canonical reservation event");
     assert(canonicalSha256(entry.slot) === command.request.observedReservationHash && command.slotHash === command.request.observedReservationHash, 422, "reservation_hash_mismatch", "Admission request does not match the canonical reserved slot bytes");
-    assert(!entry.contribution && !entry.admissionGrant, 409, "reservation_already_admitted", "Reservation already has an admission grant or contribution");
+    assert(!entry.contribution, 409, "reservation_already_contributed", "Reservation already has a contribution");
+    if (entry.admissionGrant) {
+      assert(entry.admissionRequest && canonicalSha256(entry.admissionRequest) === canonicalSha256(command.request), 409, "admission_request_conflict", "Reservation already has a grant for a different admission request");
+      return state;
+    }
     assert(validDate(command.request.requestedAt, "request.requestedAt") <= validDate(facts.now, "now"), 422, "admission_request_from_future", "Admission request cannot be from the future");
     const grantLifetime = validDate(command.grantExpiresAt, "grantExpiresAt") - validDate(facts.now, "now");
     assert(grantLifetime > 0 && grantLifetime <= 60_000, 422, "grant_expiry_invalid", "Admission grant must be fresh and expire within 60 seconds");
     assert(validDate(command.grantExpiresAt, "grantExpiresAt") <= validDate(entry.slot.expiresAt, "slot.expiresAt"), 422, "grant_outlives_reservation", "Admission grant cannot outlive its reservation");
     const admissionGrant = { schemaVersion: "council-opinion-admission-grant.v1" as const, requestId: command.request.requestId, grantId: command.grantId, grantedAt: facts.now, expiresAt: command.grantExpiresAt, slot: structuredClone(entry.slot), slotHash: command.slotHash };
-    const consultationSlots = state.consultationSlots.with(index, { ...entry, admissionGrant });
+    const consultationSlots = state.consultationSlots.with(index, { ...entry, admissionRequest: structuredClone(command.request), admissionGrant });
     return next(state, facts, { consultationSlots }, "consultation_admission_granted", command.grantId);
   }
 
   if (command.type === "record-consultation-observation") {
     requireActor(state, facts, "executive-plugin");
-    assert(state.phase === "collecting_approach_opinions", 409, "phase_conflict", "Consultation observations are not accepted in the current phase");
+    assert(state.phase === "collecting_approach_opinions" || state.phase === "awaiting_approach_direction", 409, "phase_conflict", "Consultation observations are not accepted in the current phase");
     const observation = command.observation;
+    assert(observation?.schemaVersion === "council-reserved-opinion-observed.v1", 422, "observation_schema_invalid", "Consultation observation schema is invalid");
+    memberOf(observation.status, ["completed", "failed", "outcome_unknown"], "observation_status_invalid", "observation.status");
     const index = state.consultationSlots.findIndex((entry) => entry.slot.slotId === observation.slotId && entry.slot.reservationId === observation.reservationId);
     assert(index >= 0, 404, "reservation_not_found", "Consultation reservation was not found");
     const entry = state.consultationSlots[index]!;
@@ -297,9 +406,17 @@ export function transitionL03(state: L03Governance, command: L03Command, facts: 
     assert(validDate(observation.observedAt, "observation.observedAt") <= validDate(facts.now, "now"), 422, "observation_from_future", "Observation cannot be from the future");
     if (observation.status === "completed") {
       assert(observation.opinion && observation.profile && observation.sessionId && observation.runId && observation.error === null, 422, "completed_observation_incomplete", "Completed observation requires profile, session, run and opinion with no error");
-      assert(canonicalSha256(observation.profile) === canonicalSha256(entry.slot.profile), 422, "reservation_profile_mismatch", "Completed observation profile does not match the reserved packaged profile");
+      assert(observation.opinion.schemaVersion === "council-reserved-opinion.v1", 422, "opinion_schema_invalid", "Council opinion schema is invalid");
+      memberOf(observation.opinion.recommendation, ["proceed", "revise", "refuse", "escalate"], "opinion_recommendation_invalid", "opinion.recommendation");
+      nonEmpty(observation.opinion.summary, "opinion.summary");
+      assert(Array.isArray(observation.opinion.limitations) && Array.isArray(observation.opinion.dissent), 422, "opinion_narrative_invalid", "Opinion limitations and dissent must be arrays");
+      assert(observation.profile.id === entry.slot.profile.id
+        && observation.profile.version === entry.slot.profile.version
+        && observation.profile.sourceHash === entry.slot.profile.sourceHash,
+      422, "reservation_profile_mismatch", "Completed observation profile identity does not match the reserved packaged profile");
       validateFindings(state, observation.opinion.findings);
       assert(observation.opinion.findings.every((finding) => entry.slot.criterionRefs.includes(finding.criterionRef)), 422, "opinion_reference_out_of_scope", "Opinion finding references a criterion outside its reserved slot");
+      for (const finding of observation.opinion.findings) assertEvidenceSubset(finding.evidenceRefs, entry.slot.evidenceRefs, `finding ${finding.id} evidenceRefs`);
     } else {
       assert(observation.opinion === null && observation.error?.trim(), 422, "noncompleted_observation_invalid", "Failed or unknown observation must carry an error and no opinion");
     }
@@ -318,7 +435,9 @@ export function transitionL03(state: L03Governance, command: L03Command, facts: 
       contribution,
     });
     const requiredForApproach = consultationSlots.filter((slot) => slot.subjectApproachId === activeApproach(state).approachId && slot.required);
-    const ready = requiredForApproach.length > 0 && requiredForApproach.every((slot) => slot.contribution);
+    const ready = requiredForApproach.length > 0
+      && requiredForApproach.every((slot) => slot.contribution)
+      && state.requiredPerspectives.every((perspective) => requiredForApproach.some((slot) => slot.slot.profile.id === perspective && slot.contribution));
     const releasesReservation = observation.status !== "outcome_unknown";
     const counters = releasesReservation
       ? { ...state.counters, consultation: { ...state.counters.consultation, activeReservations: state.counters.consultation.activeReservations - 1 } }
@@ -326,40 +445,33 @@ export function transitionL03(state: L03Governance, command: L03Command, facts: 
     return next(state, facts, { counters, consultationSlots, phase: ready ? "awaiting_approach_direction" : state.phase }, `consultation_${observation.status}`, observation.observedEventRef);
   }
 
-  if (command.type === "record-opinion") {
-    requireActor(state, facts, "executive-plugin");
-    assert(state.phase === "collecting_approach_opinions", 409, "phase_conflict", "Opinions are not accepted in the current phase");
-    const index = state.consultationSlots.findIndex((entry) => entry.slot.slotId === command.slotId && entry.slot.reservationId === command.reservationId);
-    assert(index >= 0, 404, "reservation_not_found", "Consultation reservation was not found");
-    const entry = state.consultationSlots[index]!;
-    assert(entry.slot.reservationVersion === command.reservationVersion && entry.slot.reservedExecutiveAgentId === command.executiveAgentId, 409, "reservation_binding_mismatch", "Opinion does not match the exact reservation version and Executive agent");
-    const grant = entry.admissionGrant;
-    assert(grant && grant.requestId === command.requestId && grant.grantId === command.grantId, 409, "admission_grant_mismatch", "Opinion does not match the persisted admission grant");
-    assert(!entry.admissionGrantConsumedAt && !entry.contribution, 409, "admission_grant_consumed", "Admission grant is one-shot and was already consumed");
-    assert(validDate(facts.now, "now") <= validDate(grant.expiresAt, "grant.expiresAt"), 409, "admission_grant_expired", "Admission grant expired before opinion recording");
-    validateFindings(state, command.opinion.findings);
-    assert(command.opinion.findings.every((finding) => entry.slot.criterionRefs.includes(finding.criterionRef)), 422, "opinion_reference_out_of_scope", "Opinion finding references a criterion outside its reserved slot");
-    const consultationSlots = state.consultationSlots.with(index, { ...entry, admissionGrantConsumedAt: facts.now, contribution: { requestId: command.requestId, grantId: command.grantId, executiveAgentId: command.executiveAgentId, observedEventRef: command.observedEventRef, opinion: structuredClone(command.opinion), recordedAt: facts.now } });
-    const requiredForApproach = consultationSlots.filter((slot) => slot.subjectApproachId === activeApproach(state).approachId && slot.required);
-    const ready = requiredForApproach.length > 0 && requiredForApproach.every((slot) => slot.contribution);
-    const counters = { ...state.counters, consultation: { ...state.counters.consultation, activeReservations: state.counters.consultation.activeReservations - 1 } };
-    return next(state, facts, { counters, consultationSlots, phase: ready ? "awaiting_approach_direction" : state.phase }, "opinion_recorded", command.observedEventRef);
-  }
-
   if (command.type === "decide-approach") {
     requireActor(state, facts, "reviewer");
+    nonEmpty(command.decisionId, "direction.decisionId");
+    nonEmpty(command.rationale, "direction.rationale");
+    memberOf(command.verdict, ["proceed", "revise", "refuse", "escalate"], "direction_verdict_invalid", "direction.verdict");
     assert(command.approachId === activeApproach(state).approachId, 409, "approach_subject_stale", "Direction must target the active approach");
     const required = state.consultationSlots.filter((slot) => slot.subjectApproachId === command.approachId && slot.required);
     assert(required.length > 0 && required.every((slot) => slot.contribution), 409, "required_contribution_missing", "Every required consultation slot must contribute before direction");
+    assert(state.requiredPerspectives.every((perspective) => required.some((slot) => slot.slot.profile.id === perspective && slot.contribution)),
+      409, "required_perspective_missing", "Every pinned required perspective must have a completed required opinion on the active approach");
     assert(state.phase === "awaiting_approach_direction", 409, "phase_conflict", "Approach direction is not open in the current phase");
     assert(!state.approachDirections.some((decision) => decision.decisionId === command.decisionId), 409, "decision_identity_reused", "Decision identity is immutable and already exists");
-    const findings = required.flatMap((slot) => slot.contribution?.opinion.findings ?? []);
+    const findings = state.consultationSlots
+      .filter((slot) => slot.subjectApproachId === command.approachId && slot.contribution)
+      .flatMap((slot) => slot.contribution?.opinion.findings ?? []);
     const knownIds = new Set(findings.map((finding) => finding.id));
     unique(command.findingIds, "direction.findingIds");
     assert(command.findingIds.every((id) => knownIds.has(id)), 422, "direction_finding_unknown", "Direction references an unknown attributed finding");
     if (command.verdict === "revise") assert(command.findingIds.some((id) => findings.find((finding) => finding.id === id)?.class === "must_fix"), 422, "revision_requires_must_fix", "Approach revision requires at least one must-fix finding");
+    assertNewReceiptRef(state, command.receiptRef);
     const decision = { decisionId: command.decisionId, approachId: command.approachId, reviewerAgentId: facts.actor.actorId, verdict: command.verdict, rationale: command.rationale, findingIds: [...command.findingIds], receiptRef: command.receiptRef, decidedAt: facts.now, executionAttempt: null, actualEffect: null };
-    return next(state, facts, { approachDirections: [...state.approachDirections, decision], receiptRefs: [...state.receiptRefs, command.receiptRef], phase: "awaiting_direction_effect" }, "approach_direction_recorded", command.decisionId);
+    const phase = command.verdict === "proceed" ? "awaiting_direction_effect"
+      : command.verdict === "revise" ? "approach_revision_required"
+        : command.verdict === "refuse" ? "refused" : "escalated";
+    const openMustFixFindingIds = command.verdict === "revise"
+      ? command.findingIds.filter((id) => findings.find((finding) => finding.id === id)?.class === "must_fix") : [];
+    return next(state, facts, { approachDirections: [...state.approachDirections, decision], receiptRefs: appendRef(state.receiptRefs, command.receiptRef), openMustFixFindingIds, phase }, "approach_direction_recorded", command.decisionId);
   }
 
   if (command.type === "claim-direction-effect") {
@@ -384,10 +496,8 @@ export function transitionL03(state: L03Governance, command: L03Command, facts: 
     assert(decision.executionAttempt, 409, "execution_attempt_required", "Direction effect must be claimed before the native call");
     const effect = matchingEffect(command.decisionId, facts, decision.executionAttempt.attemptId);
     const directions = state.approachDirections.with(index, { ...decision, actualEffect: effect });
-    const phase = decision.verdict === "proceed" ? "executing" : decision.verdict === "revise" ? "approach_revision_required" : decision.verdict === "refuse" ? "refused" : "escalated";
-    const findings = state.consultationSlots.flatMap((slot) => slot.contribution?.opinion.findings ?? []);
-    const openMustFixFindingIds = decision.verdict === "revise" ? decision.findingIds.filter((id) => findings.find((finding) => finding.id === id)?.class === "must_fix") : [];
-    return next(state, facts, { approachDirections: directions, receiptRefs: [...state.receiptRefs, effect.receiptRef], openMustFixFindingIds, phase }, "approach_direction_effect_confirmed", effect.observationRef);
+    assert(decision.verdict === "proceed", 409, "direction_effect_not_applicable", "Only a proceed direction can hold a native execution attempt");
+    return next(state, facts, { approachDirections: directions, receiptRefs: appendRef(state.receiptRefs, effect.receiptRef), phase: "executing" }, "approach_direction_effect_confirmed", effect.observationRef);
   }
 
   if (command.type === "submit-result") {
@@ -411,15 +521,22 @@ export function transitionL03(state: L03Governance, command: L03Command, facts: 
 
   if (command.type === "decide-result") {
     requireActor(state, facts, "reviewer");
+    nonEmpty(command.decisionId, "resultDecision.decisionId");
+    nonEmpty(command.rationale, "resultDecision.rationale");
+    memberOf(command.verdict, ["accept", "revise", "refuse", "escalate"], "result_verdict_invalid", "resultDecision.verdict");
     assert(state.phase === "awaiting_result_review", 409, "phase_conflict", "Result review is not open");
     const result = state.results.at(-1);
     assert(result && result.resultId === command.resultId, 409, "result_subject_stale", "Decision must target the latest immutable result");
     assert(!state.resultDecisions.some((decision) => decision.decisionId === command.decisionId), 409, "decision_identity_reused", "Decision identity is immutable and already exists");
     validateFindings(state, command.findings);
+    for (const finding of command.findings) assertEvidenceSubset(finding.evidenceRefs, result.evidenceRefs, `finding ${finding.id} evidenceRefs`);
     const mustFix = command.findings.filter((finding) => finding.class === "must_fix");
     assert(command.verdict !== "revise" || mustFix.length > 0, 422, "optional_findings_cannot_force_revision", "Optional findings cannot force a correction cycle");
+    assertNewReceiptRef(state, command.receiptRef);
     const decision = { decisionId: command.decisionId, resultId: command.resultId, reviewerAgentId: facts.actor.actorId, verdict: command.verdict, rationale: command.rationale, findings: structuredClone(command.findings), receiptRef: command.receiptRef, decidedAt: facts.now, actualEffect: null };
-    return next(state, facts, { resultDecisions: [...state.resultDecisions, decision], receiptRefs: [...state.receiptRefs, command.receiptRef], phase: "awaiting_result_effect" }, "result_decision_recorded", command.decisionId);
+    const phase = command.verdict === "accept" || command.verdict === "revise" ? "awaiting_result_effect"
+      : command.verdict === "refuse" ? "refused" : "escalated";
+    return next(state, facts, { resultDecisions: [...state.resultDecisions, decision], receiptRefs: appendRef(state.receiptRefs, command.receiptRef), phase }, "result_decision_recorded", command.decisionId);
   }
 
   requireActor(state, facts, "council");
@@ -439,6 +556,6 @@ export function transitionL03(state: L03Governance, command: L03Command, facts: 
     openMustFixFindingIds = decision.findings.filter((finding) => finding.class === "must_fix").map((finding) => finding.id);
     phase = state.counters.correction.admitted >= state.counters.correction.limit ? "limit_exhausted" : "result_correction_required";
   }
-  return next(state, facts, { resultDecisions: decisions, receiptRefs: [...state.receiptRefs, effect.receiptRef], openMustFixFindingIds, phase }, "result_decision_effect_confirmed", effect.observationRef);
+  return next(state, facts, { resultDecisions: decisions, receiptRefs: appendRef(state.receiptRefs, effect.receiptRef), openMustFixFindingIds, phase }, "result_decision_effect_confirmed", effect.observationRef);
 }
 

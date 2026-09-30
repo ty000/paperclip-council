@@ -5,7 +5,7 @@ export const PLUGIN_ID = "private.paperclip-council";
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
-  version: "0.4.0",
+  version: "0.5.0",
   displayName: "Paperclip Council",
   description: "Private Council integration with revisioned rosters, pinned draft missions, and explicit Paperclip review decisions.",
   author: "Local Paperclip integration",

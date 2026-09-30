@@ -51,13 +51,7 @@ export type L03AdmissionCounters = {
   unknownCostExposureRefs: string[];
 };
 
-export type ReservationLocator = {
-  reservationId: string;
-  missionId: string;
-  slotId: string;
-  reservationVersion: number;
-  councilAgentId: string;
-};
+
 
 export type ReservedConsultationSlot = {
   companyId: string;
@@ -104,7 +98,7 @@ export type CouncilOpinionFinding = {
   class: "must_fix" | "useful_now" | "defer";
   criterionRef: string;
   evidenceRefs: string[];
-  reasons: string;
+  reasons: string[];
   smallestUsefulAction: string;
 };
 
@@ -115,6 +109,15 @@ export type CouncilOpinion = {
   findings: CouncilOpinionFinding[];
   limitations: string[];
   dissent: string[];
+};
+
+export type PackagedProfileSnapshot = {
+  id: string;
+  version: string;
+  sourceHash: Sha256;
+  instructionsSource: string;
+  catalogVersion: string;
+  loadedProfileProof: "not_observed";
 };
 
 export type CouncilOpinionObservation = {
@@ -129,7 +132,7 @@ export type CouncilOpinionObservation = {
   slotId: string;
   slotHash: Sha256;
   executiveAgentId: string;
-  profile: ReservedConsultationSlot["profile"] | null;
+  profile: PackagedProfileSnapshot | null;
   method: ReservedConsultationSlot["method"];
   sessionId: string | null;
   runId: string | null;
@@ -144,6 +147,7 @@ export type ConsultationSlot = {
   required: boolean;
   reservationEventRef: string;
   costExposure: { status: "known"; reference: string } | { status: "unknown"; reference: string };
+  admissionRequest: CouncilOpinionAdmissionRequest | null;
   admissionGrant: CouncilOpinionAdmissionGrant | null;
   admissionGrantConsumedAt: string | null;
   observations: CouncilOpinionObservation[];
@@ -254,6 +258,7 @@ export type L03Governance = {
   mandateRevision: number;
   authority: L03AuthoritySnapshot;
   ticket: L03TicketContext;
+  requiredPerspectives: string[];
   phase: L03Phase;
   counters: L03AdmissionCounters;
   approaches: L03Approach[];
@@ -263,6 +268,13 @@ export type L03Governance = {
   results: L03Result[];
   resultDecisions: L03ResultDecision[];
   openMustFixFindingIds: string[];
+  uncertaintyAcknowledgements: Array<{
+    reference: string;
+    note: string;
+    disposition: "acknowledge" | "abandon";
+    actorUserId: string;
+    recordedAt: string;
+  }>;
   receiptRefs: string[];
   journal: Array<{ action: string; actorId: string; at: string; ref?: string }>;
 };
@@ -284,11 +296,11 @@ export type L03CreateInput = {
 type CommandBase = { expectedVersion: number };
 
 export type L03Command =
+  | (CommandBase & { type: "acknowledge-uncertainty"; reference: string; note: string; disposition: "acknowledge" | "abandon" })
   | (CommandBase & { type: "submit-approach"; approach: Omit<L03Approach, "sequence" | "submittedAt"> })
   | (CommandBase & { type: "reserve-consultation"; subjectApproachId: string; reservation: ReservedConsultationSlot; required: boolean; reservationEventRef: string; costExposure: ConsultationSlot["costExposure"] })
   | (CommandBase & { type: "grant-consultation-admission"; request: CouncilOpinionAdmissionRequest; grantId: string; grantExpiresAt: string; slotHash: Sha256 })
   | (CommandBase & { type: "record-consultation-observation"; observation: CouncilOpinionObservation })
-  | (CommandBase & { type: "record-opinion"; slotId: string; reservationId: string; reservationVersion: number; requestId: string; grantId: string; executiveAgentId: string; observedEventRef: string; opinion: CouncilOpinion })
   | (CommandBase & { type: "decide-approach"; decisionId: string; approachId: string; verdict: L03Direction["verdict"]; rationale: string; findingIds: string[]; receiptRef: string })
   | (CommandBase & { type: "claim-direction-effect"; decisionId: string; attemptId: string })
   | (CommandBase & { type: "record-direction-effect"; decisionId: string })

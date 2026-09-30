@@ -2,6 +2,7 @@
   "entry": [
     "src/ui/index.tsx",
     "tests/receipts/crash-child.ts",
-    "tests/receipts/ui-fixture.tsx"
+    "tests/receipts/ui-fixture.tsx",
+    "tests/persistence/l03-postgres.integration.ts"
   ]
 }

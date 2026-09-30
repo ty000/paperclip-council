@@ -2,22 +2,15 @@ import { createHash, randomUUID } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext, PluginEvent } from "@paperclipai/plugin-sdk";
 import { canonicalSha256, L03Error } from "./l03.js";
 import { L03GovernanceService, L03GovernanceStore } from "./l03-store.js";
-import type { L03Actor, L03Command, L03CreateInput, L03Governance, CouncilOpinionAdmissionRequest, CouncilOpinion } from "./l03-types.js";
-import { verifyL03Content } from "./l03-content.js";
+import type { L03Actor, L03Command, L03CreateInput, L03Governance, CouncilOpinionAdmissionRequest, CouncilOpinionObservation } from "./l03-types.js";
+import { ApprovalPreflightError } from "./delivery-manifest.js";
+import { verifyL03Content, verifyL03Evidence } from "./l03-content.js";
 import { getMission } from "./missions.js";
+import { executeCouncilDecision, DecisionReceiptError, listDecisionReceipts, findDecisionReplay } from "./decision-receipts.js";
 import { parseCouncilConfig } from "./decision-adapter.js";
 
 const EXECUTIVE = "paperclip-executive.executive";
-const INTERNAL = new Set(["grant-consultation-admission", "record-opinion", "claim-direction-effect", "record-direction-effect", "record-result-effect"]);
-
-/** The retained Council receipt implementation is the sole result mutation owner. */
-export type L03ReceiptConsumer = {
-  execute(ctx: PluginContext, input: {
-    companyId: string; issueId: string; operationId: string; actorAgentId: string;
-    runId: string; verdict: "approved" | "changes_requested";
-    approvedCommit?: string; justification: string; resultReference: string;
-  }): Promise<{ receipt: { state: string; operationId: string; nativeObservation: { usable: boolean; body: unknown; observedAt: string } | null } }>;
-};
+const INTERNAL = new Set(["grant-consultation-admission", "record-opinion", "record-consultation-observation", "claim-direction-effect", "record-direction-effect", "record-result-effect"]);
 
 function actor(input: PluginApiRequestInput): L03Actor {
   if (input.actor.actorType !== "user" && input.actor.actorType !== "agent") throw new L03Error(403, "authenticated_actor_required", "A native user or agent identity is required");
@@ -46,7 +39,7 @@ function nextAction(g: L03Governance): string {
   return next[g.phase];
 }
 
-export function inspectL03(governance: L03Governance) {
+function inspectL03(governance: L03Governance) {
   const decision = governance.resultDecisions.at(-1) ?? governance.approachDirections.at(-1);
   const observation = decision?.actualEffect;
   return { governance, nextAction: nextAction(governance), application: {
@@ -75,7 +68,7 @@ export async function isL03GovernedIssue(ctx: PluginContext, companyId: string, 
   return rows.length > 0;
 }
 
-export function createL03Runtime(ctx: PluginContext, receipts: L03ReceiptConsumer | null) {
+export function createL03Runtime(ctx: PluginContext) {
   const service = new L03GovernanceService(ctx);
   const store = new L03GovernanceStore(ctx);
   const read = async (companyId: string, missionId: string) => {
@@ -84,7 +77,11 @@ export function createL03Runtime(ctx: PluginContext, receipts: L03ReceiptConsume
     return g;
   };
   async function list(companyId: string) {
-    return { missions: (await store.list(companyId)).map(inspectL03) };
+    const receipts = await listDecisionReceipts(ctx, companyId);
+    return { missions: (await store.list(companyId)).map(g => ({
+      ...inspectL03(g),
+      receipts: receipts.filter(r => g.receiptRefs.includes(r.operationId)),
+    })) };
   }
   async function release(g: L03Governance, a: L03Actor, runId: string, decisionId: string) {
     const approach = g.approaches.find(p => p.approachId === g.activeApproachId);
@@ -99,8 +96,11 @@ export function createL03Runtime(ctx: PluginContext, receipts: L03ReceiptConsume
       || runtime?.heartbeat?.maxConcurrentRuns !== 1 || !runtime.heartbeat.maxDailyRuns) {
       throw new L03Error(409, "execution_controls_missing", "Executor requires a positive timeout, concurrency one and a finite daily run cap");
     }
+    const hold = (await listDecisionReceipts(ctx, g.companyId)).find(r => r.issueId === g.ticket.issueId && r.state === "indeterminate");
+    if (hold) throw new L03Error(409, "issue_decision_indeterminate", "An uncertain retained Council receipt blocks execution for this issue");
     const attemptId = randomUUID();
     const claimed = await service.apply(g.companyId, g.missionId, a, { type: "claim-direction-effect", expectedVersion: g.version, decisionId, attemptId });
+    await service.assertCurrent(g.companyId, g.missionId, a);
     // No catch/retry can release this reservation. A missing response remains blocked.
     const observation = await ctx.issues.requestWakeup(issue.id, g.companyId, {
       reason: `L03 approach ${approach.approachId}; decision ${decisionId}; attempt ${attemptId}`,
@@ -113,17 +113,19 @@ export function createL03Runtime(ctx: PluginContext, receipts: L03ReceiptConsume
     });
   }
   async function applyResult(g: L03Governance, a: L03Actor, runId: string) {
-    if (!receipts) throw new L03Error(409, "receipt_dependency_unavailable", "The retained merged Council receipt dependency is not integrated");
     const decision = g.resultDecisions.at(-1);
     const result = g.results.at(-1);
     if (!decision || !result || !["accept", "revise"].includes(decision.verdict)) return g;
     await verifyL03Content(ctx, g.companyId, { ...result, issueId: result.segmentIssueId });
     const config = parseCouncilConfig(await ctx.config.get(g.companyId));
     if (config.councilAgentId !== a.actorId) throw new L03Error(403, "reviewer_config_changed", "Configured native Council actor differs from the final reviewer");
-    const observed = await receipts.execute(ctx, {
+    const current = await service.assertCurrent(g.companyId, g.missionId, a);
+    if (current.version !== g.version) throw new L03Error(409, "governance_changed", "Governance changed before native application");
+    const issue = await ctx.issues.get(result.segmentIssueId, g.companyId);
+    if (!issue || issue.status !== "in_review" || issue.assigneeAgentId !== a.actorId) throw new L03Error(409, "review_target_changed", "Exact result issue is not pending this reviewer");
+    const observed = await executeCouncilDecision(ctx, config, {
       companyId: g.companyId, issueId: result.segmentIssueId, operationId: decision.receiptRef,
-      actorAgentId: a.actorId, runId, verdict: decision.verdict === "accept" ? "approved" : "changes_requested",
-      ...(decision.verdict === "accept" ? { approvedCommit: result.candidateCommit } : {}),
+      actorAgentId: a.actorId, runId, ...(decision.verdict === "accept" ? { verdict: "approved" as const, approvedCommit: result.candidateCommit } : { verdict: "changes_requested" as const }),
       justification: decision.rationale, resultReference: `l03:${g.missionId}:${result.resultId}:${result.candidateCommit}`,
     });
     if (observed.receipt.state !== "native_observed" || !observed.receipt.nativeObservation?.usable) return g;
@@ -138,12 +140,40 @@ export function createL03Runtime(ctx: PluginContext, receipts: L03ReceiptConsume
     const body = input.body as Record<string, unknown>;
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new L03Error(400, "invalid_command", "Command must be an object");
     if (input.routeKey === "l03-create") {
+      if (body.councilAgentId !== body.finalReviewerAgentId || body.executivePluginActorId !== EXECUTIVE) throw new L03Error(422, "actor_binding_invalid", "L03 requires one configured final Council reviewer and the installed Executive plugin");
+      const config = parseCouncilConfig(await ctx.config.get(input.companyId));
+      if (config.councilAgentId !== body.finalReviewerAgentId) throw new L03Error(409, "reviewer_config_mismatch", "Native Council configuration must identify the final reviewer");
+      const ticket = (body as unknown as L03CreateInput).ticket;
+      const contentHash = createHash("sha256").update(ticket.suppliedContext.content).digest("hex");
+      if (ticket.sourceHash !== contentHash || ticket.suppliedContext.sourceHash !== contentHash) throw new L03Error(422, "context_hash_mismatch", "Ticket hashes must bind the supplied context snapshot");
       const created = await service.create({ ...body, companyId: input.companyId } as L03CreateInput, a);
       return inspectL03(created);
     }
     if (!missionId) throw new L03Error(400, "mission_required", "Mission ID is required");
-    let before = await read(input.companyId, missionId);
+    const before = await read(input.companyId, missionId);
+    if (body.type === "reconcile-result-observation") {
+      await service.assertCurrent(input.companyId, missionId, a);
+      if (a.actorType !== "agent" || a.actorId !== before.authority.councilAgentId) throw new L03Error(403, "council_required", "Configured Council actor required");
+      const decision = before.resultDecisions.at(-1); const result = before.results.at(-1);
+      if (!decision || !result) throw new L03Error(409, "result_decision_missing", "No stored result decision");
+      if (!["accept", "revise"].includes(decision.verdict)) return inspectL03(before);
+      const config = parseCouncilConfig(await ctx.config.get(input.companyId));
+      if (config.councilAgentId !== a.actorId) throw new L03Error(403, "reviewer_config_changed", "Configured reviewer changed");
+      const replay = await findDecisionReplay(ctx, config, {
+        companyId: input.companyId, issueId: result.segmentIssueId, operationId: decision.receiptRef,
+        actorAgentId: a.actorId, runId: input.actor.runId!,
+        ...(decision.verdict === "accept" ? { verdict: "approved" as const, approvedCommit: result.candidateCommit } : { verdict: "changes_requested" as const }),
+        justification: decision.rationale, resultReference: `l03:${before.missionId}:${result.resultId}:${result.candidateCommit}`,
+      });
+      const receipt = replay?.receipt;
+      // Read only: absence or uncertainty never causes another native attempt.
+      if (!receipt || receipt.state !== "native_observed" || !receipt.nativeObservation?.usable || decision.actualEffect) return inspectL03(before);
+      return inspectL03(await service.apply(input.companyId, missionId, a, { type: "record-result-effect", expectedVersion: before.version, decisionId: decision.decisionId }, {
+        actualEffectObservation: { decisionId: decision.decisionId, status: "confirmed", receiptRef: receipt.operationId, observationRef: `council:receipt:${receipt.operationId}`, observedAt: receipt.nativeObservation.observedAt },
+      }));
+    }
     if (body.type === "reemit-reservation") {
+      await service.assertCurrent(input.companyId, missionId, a);
       const mission = await getMission(ctx, input.companyId, missionId);
       if (!mission || (a.actorId !== before.authority.councilAgentId && a.userId !== before.authority.ownerUserId)) throw new L03Error(403, "council_or_owner_required", "Council or owner required");
       if (mission.version !== before.missionVersion || Date.parse(before.authority.expiresAt) <= Date.now()) throw new L03Error(409, "mandate_changed", "Mandate is no longer current");
@@ -154,10 +184,23 @@ export function createL03Runtime(ctx: PluginContext, receipts: L03ReceiptConsume
     }
     if (INTERNAL.has(String(body.type))) throw new L03Error(403, "internal_observation_only", "Native observations are never accepted from request JSON");
     const cmd = body as unknown as L03Command;
-    if (cmd.type === "submit-approach") await readApproach(ctx, before, cmd.approach.contentRef, cmd.approach.contentHash);
-    if (cmd.type === "submit-result") await verifyL03Content(ctx, input.companyId, { ...cmd.result, issueId: cmd.result.segmentIssueId });
+    if (cmd.type === "submit-approach") {
+      await readApproach(ctx, before, cmd.approach.contentRef, cmd.approach.contentHash);
+      await verifyL03Evidence(ctx, input.companyId, before.ticket.issueId, cmd.approach.evidenceRefs);
+    }
+    if (cmd.type === "reserve-consultation") {
+      const approach = before.approaches.find(p => p.approachId === before.activeApproachId);
+      if (!approach || cmd.reservation.context.sourceRef !== approach.contentRef || cmd.reservation.context.sourceHash !== approach.contentHash) throw new L03Error(422, "consultation_context_mismatch", "Consultation must reference the exact current approach");
+      const doc = await readApproach(ctx, before, approach.contentRef, approach.contentHash);
+      if (doc.body !== cmd.reservation.context.content || !cmd.reservation.evidenceRefs.every(ref => approach.evidenceRefs.includes(ref))) throw new L03Error(422, "consultation_evidence_mismatch", "Consultation context or evidence differs from the current approach");
+      await verifyL03Evidence(ctx, input.companyId, before.ticket.issueId, cmd.reservation.evidenceRefs);
+    }
+    if (cmd.type === "submit-result") {
+      // V1 releases the root issue as its bounded segment; arbitrary sibling issues are not authorized.
+      if (cmd.result.segmentIssueId !== before.ticket.issueId) throw new L03Error(422, "segment_not_authorized", "Result must target the released issue");
+      await verifyL03Content(ctx, input.companyId, { ...cmd.result, issueId: cmd.result.segmentIssueId });
+    }
     if (cmd.type === "decide-result") {
-      if (!receipts && ["accept", "revise"].includes(cmd.verdict)) throw new L03Error(409, "receipt_dependency_unavailable", "Retained Council receipts are required before applying result decisions");
       const result = before.results.find(r => r.resultId === cmd.resultId);
       if (result) await verifyL03Content(ctx, input.companyId, { ...result, issueId: result.segmentIssueId });
     }
@@ -173,7 +216,9 @@ export function createL03Runtime(ctx: PluginContext, receipts: L03ReceiptConsume
       if (input.routeKey === "l03-list") return { status: 200, body: await list(input.companyId) };
       return { status: 200, body: await command(input) };
     } catch (error) {
-      if (error instanceof L03Error) return { status: error.status, body: { error: error.message, code: error.code } };
+      if (error instanceof ApprovalPreflightError) return { status: error.status, body: { error: error.message, code: "content_preflight_failed" } };
+      if (error instanceof TypeError) return { status: 422, body: { error: "Malformed L03 command", code: "invalid_command" } };
+      if (error instanceof L03Error || error instanceof DecisionReceiptError) return { status: error.status, body: { error: error.message, code: error.code } };
       throw error;
     }
   }
@@ -195,15 +240,13 @@ export function createL03Runtime(ctx: PluginContext, receipts: L03ReceiptConsume
   }
   async function observed(event: PluginEvent) {
     const a = pluginActor(event);
-    const p = event.payload as { missionId: string; slotId: string; reservationId: string; reservationVersion: number; requestId: string; grantId: string; executiveAgentId: string; status: string; opinion: CouncilOpinion | null };
-    if (p.status !== "completed" || !p.opinion) return; // The outstanding reservation and its exposure remain durable.
-    const before = await read(event.companyId, p.missionId);
-    const existing = before.consultationSlots.find(s => s.slot.reservationId === p.reservationId)?.contribution;
-    if (existing) return; // Preserve first attributed result; no extra admission or model call.
-    await service.apply(event.companyId, p.missionId, a, { type: "record-opinion", expectedVersion: before.version,
-      slotId: p.slotId, reservationId: p.reservationId, reservationVersion: p.reservationVersion,
-      requestId: p.requestId, grantId: p.grantId, executiveAgentId: p.executiveAgentId, observedEventRef: event.eventId, opinion: p.opinion });
+    const observation = event.payload as CouncilOpinionObservation;
+    const before = await read(event.companyId, observation.missionId);
+    await service.apply(event.companyId, observation.missionId, a, {
+      type: "record-consultation-observation", expectedVersion: before.version, observation,
+    });
   }
+
   function register() {
     ctx.data.register("council-l03", async params => {
       if (typeof params.companyId !== "string") throw new L03Error(403, "company_required", "Host company scope required");

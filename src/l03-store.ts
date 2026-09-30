@@ -1,6 +1,6 @@
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { getMission } from "./missions.js";
-import { initialL03Governance, L03Error, transitionL03 } from "./l03.js";
+import { assertCurrentL03, initialL03Governance, L03Error, transitionL03 } from "./l03.js";
 import type {
   L03Actor,
   L03ActualEffect,
@@ -143,18 +143,38 @@ export class L03GovernanceService {
     return await this.store.list(companyId);
   }
 
+  private async requireOperationalAgent(agentId: string, companyId: string, label: string): Promise<void> {
+    const agent = await this.ctx.agents.get(agentId, companyId);
+    if (!agent || agent.id !== agentId || agent.companyId !== companyId) {
+      throw new L03Error(409, "pinned_actor_unavailable", `${label} no longer resolves in the current company`);
+    }
+    if (!(["active", "idle", "running"] as string[]).includes(agent.status)) {
+      throw new L03Error(409, "pinned_actor_not_operational", `${label} is ${agent.status} and cannot receive new L03 work`);
+    }
+  }
+
   private async currentAuthority(state: Pick<L03Governance, "companyId" | "missionId" | "authority">): Promise<L03AuthoritySnapshot> {
     const company = await this.ctx.companies.get(state.companyId);
     if (!company || company.id !== state.companyId) throw new L03Error(404, "company_not_found", "Company not found");
+    if (company.status !== "active") throw new L03Error(409, "company_not_active", "Company must be active for L03 mutation");
     if (!company.defaultResponsibleUserId) throw new L03Error(422, "owner_not_configured", "Company owner is not configured");
     const mission = await getMission(this.ctx, state.companyId, state.missionId);
     if (!mission) throw new L03Error(404, "mission_not_found", "Mission not found");
+    const issue = await this.ctx.issues.get(mission.rootIssueId, state.companyId);
+    if (!issue || issue.id !== mission.rootIssueId || issue.companyId !== state.companyId
+      || issue.projectId !== mission.projectId || issue.parentId) {
+      throw new L03Error(409, "ticket_scope_changed", "Current native root issue no longer matches the mission company and project");
+    }
     const [executor, reviewer, council] = await Promise.all([
       this.ctx.agents.get(state.authority.executorAgentId, state.companyId),
       this.ctx.agents.get(state.authority.finalReviewerAgentId, state.companyId),
       this.ctx.agents.get(state.authority.councilAgentId, state.companyId),
     ]);
-    if (!executor || !reviewer || !council) throw new L03Error(409, "pinned_actor_unavailable", "A pinned L03 actor no longer resolves in the current company");
+    if (!executor || executor.companyId !== state.companyId
+      || !reviewer || reviewer.companyId !== state.companyId
+      || !council || council.companyId !== state.companyId) {
+      throw new L03Error(409, "pinned_actor_unavailable", "A pinned L03 actor no longer resolves in the current company");
+    }
     return {
       ...state.authority,
       companyId: state.companyId,
@@ -162,11 +182,25 @@ export class L03GovernanceService {
       missionVersion: mission.version,
       mandateRevision: mission.version,
       ownerUserId: company.defaultResponsibleUserId,
+      executorAgentId: mission.aggregate.responsibilities.integrationLeadAgentId,
       finalReviewerAgentId: mission.aggregate.responsibilities.finalReviewerAgentId,
+      councilAgentId: mission.aggregate.responsibilities.finalReviewerAgentId,
     };
   }
 
+  async assertCurrent(companyId: string, missionId: string, actor: L03Actor): Promise<L03Governance> {
+    const state = await this.store.get(companyId, missionId);
+    if (!state) throw new L03Error(404, "governance_not_found", "L03 governance not found");
+    const current = await this.currentAuthority(state);
+    assertCurrentL03(state, { now: new Date().toISOString(), actor, current });
+    if (actor.actorType === "agent") await this.requireOperationalAgent(actor.actorId, companyId, "Current L03 actor");
+    return state;
+  }
+
   async create(input: L03CreateInput, actor: L03Actor): Promise<L03Governance> {
+    if (input.councilAgentId !== input.finalReviewerAgentId) {
+      throw new L03Error(422, "council_reviewer_must_match", "Council actor must be the mission final reviewer");
+    }
     const authoritySeed: L03AuthoritySnapshot = {
       companyId: input.companyId,
       missionId: input.missionId,
@@ -183,7 +217,27 @@ export class L03GovernanceService {
     if (current.executorAgentId !== input.executorAgentId || current.finalReviewerAgentId !== input.finalReviewerAgentId) {
       throw new L03Error(409, "pinned_roles_changed", "Requested executor or reviewer does not match current mission authority");
     }
-    const state = initialL03Governance(input, { now: new Date().toISOString(), actor, current });
+    const mission = await getMission(this.ctx, input.companyId, input.missionId);
+    if (!mission) throw new L03Error(404, "mission_not_found", "Mission not found");
+    if (input.ticket.issueId !== mission.rootIssueId) {
+      throw new L03Error(422, "ticket_identity_mismatch", "L03 ticket must be the mission root issue");
+    }
+    const issue = await this.ctx.issues.get(input.ticket.issueId, input.companyId);
+    if (!issue || issue.companyId !== input.companyId || issue.id !== mission.rootIssueId
+      || issue.projectId !== mission.projectId || issue.parentId) {
+      throw new L03Error(409, "ticket_scope_changed", "Current native issue no longer matches the mission company, project and root identity");
+    }
+    const criterionTexts = input.ticket.criteria.map((criterion) => criterion.text);
+    if (JSON.stringify(criterionTexts) !== JSON.stringify(mission.aggregate.mandate.acceptanceCriteria)) {
+      throw new L03Error(422, "criteria_mismatch", "L03 criteria must preserve the current mission mandate acceptance criteria exactly");
+    }
+    for (const [agentId, label] of [[input.executorAgentId, "Executor"], [input.finalReviewerAgentId, "Final reviewer"], [input.councilAgentId, "Council actor"]] as const) {
+      const agent = await this.ctx.agents.get(agentId, input.companyId);
+      if (!agent || agent.companyId !== input.companyId || ["terminated", "pending_approval"].includes(agent.status)) {
+        throw new L03Error(409, "pinned_actor_unavailable", `${label} cannot be pinned for L03 preparation`);
+      }
+    }
+    const state = initialL03Governance(input, { now: new Date().toISOString(), actor, current }, mission.aggregate.responsibilities.requiredPerspectives);
     return await this.store.create(state);
   }
 
@@ -197,12 +251,30 @@ export class L03GovernanceService {
     const before = await this.store.get(companyId, missionId);
     if (!before) throw new L03Error(404, "governance_not_found", "L03 governance not found");
     const current = await this.currentAuthority(before);
+    if (actor.actorType === "agent") await this.requireOperationalAgent(actor.actorId, companyId, "Current L03 actor");
+    if (command.type === "reserve-consultation") {
+      await this.requireOperationalAgent(command.reservation.reservedExecutiveAgentId, companyId, "Reserved Executive agent");
+      const mission = await getMission(this.ctx, companyId, missionId);
+      if (!mission) throw new L03Error(404, "mission_not_found", "Mission not found");
+      const member = mission.aggregate.compositions.council.members.find((candidate) => candidate.agentId === command.reservation.reservedExecutiveAgentId);
+      if (!member || !member.responsibilities.includes(command.reservation.profile.id)
+        || command.reservation.reservedExecutiveAgentId === before.authority.executorAgentId) {
+        throw new L03Error(422, "reservation_profile_not_pinned", "Reserved Executive agent and profile must be a distinct pinned Council member responsibility");
+      }
+    }
+    if (command.type === "grant-consultation-admission") {
+      const slot = before.consultationSlots.find((entry) => entry.slot.reservationId === command.request.reservationId
+        && entry.slot.slotId === command.request.slotId);
+      if (!slot) throw new L03Error(404, "reservation_not_found", "Consultation reservation was not found");
+      await this.requireOperationalAgent(slot.slot.reservedExecutiveAgentId, companyId, "Reserved Executive agent");
+    }
     const after = transitionL03(before, command, {
       now: new Date().toISOString(),
       actor,
       current,
       actualEffectObservation: trusted.actualEffectObservation,
     });
+    if (after === before) return before;
     return await this.store.compareAndSwap(before, after);
   }
 }

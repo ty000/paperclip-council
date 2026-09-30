@@ -134,7 +134,7 @@ export async function handleDecision(
 }
 
 export async function handlePluginRequest(input: PluginApiRequestInput, context: PluginContext = ctx) {
-  if (input.routeKey.startsWith("l03-")) return (context === ctx ? l03 : createL03Runtime(context, null)).api(input);
+  if (input.routeKey.startsWith("l03-")) return (context === ctx ? l03 : createL03Runtime(context)).api(input);
   if (input.routeKey === "decision") return handleDecision(input, context);
   if (input.routeKey.startsWith("council-decision")) return handleDecisionReceiptApi(input, context);
   if (input.routeKey.startsWith("roster")) return handleRosterApi(input, context);
@@ -155,7 +155,7 @@ const plugin = definePlugin({
     ctx = context;
     registerRosterBridge(context);
     registerDecisionReceiptBridge(context);
-    l03 = createL03Runtime(context, null);
+    l03 = createL03Runtime(context);
     l03.register();
   },
   async onHealth() { return { status: "ok", message: "Council decision adapter ready" }; },
