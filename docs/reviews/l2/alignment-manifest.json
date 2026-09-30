@@ -1,0 +1,29 @@
+{
+  "claim": "Candidate 36b43076c262e60bfe3e63affb0da72a55c08952 implements only the G4-independent Step A mission slice: company/project/root-scoped draft mission persistence with a configured owner, exact immutable team/council revision references, accountable roles, mandate and declared limits, idempotent command receipts, CAS updates, minimal readiness inspection and explicit non-executability. It does not claim active-mission proof, dispatch, contribution integration, L2 completion, G3/G4 closure, L3-L5 behavior or V1 completion.",
+  "files_inspected": [
+    "docs/V1-SCOPE.md",
+    "docs/TAD.md",
+    "docs/BACKLOG.md",
+    "docs/SPRINT-PLAN.md",
+    "docs/IMPLEMENTATION-PLAN.md",
+    "docs/reviews/s1/REPORT.md",
+    "migrations/003_missions.sql",
+    "src/missions.ts",
+    "src/manifest.ts",
+    "src/worker.ts",
+    "tests/missions.spec.ts",
+    "tests/functional/run.ts",
+    "docs/reviews/l2/evidence/functional.json",
+    "docs/reviews/l2/REPORT.md"
+  ],
+  "tests_or_checks": [
+    "prewrite_migration_gate.py docs/reviews/l2/prewrite-migration-contract.json",
+    "COREPACK_HOME=/tmp/council-l2-corepack corepack pnpm typecheck",
+    "COREPACK_HOME=/tmp/council-l2-corepack corepack pnpm test",
+    "COREPACK_HOME=/tmp/council-l2-corepack corepack pnpm build",
+    "git diff --check",
+    "exact-candidate isolated functional replay recorded in docs/reviews/l2/evidence/functional.json",
+    "credential-oriented scan of the structured runtime trace"
+  ],
+  "findings": []
+}
