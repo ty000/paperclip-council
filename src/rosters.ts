@@ -493,13 +493,15 @@ async function transitionRoster(
   ctx: PluginContext,
   input: { companyId: string; rosterId: string; expectedVersion: number; actorUserId: string; target: "suspended" | "retired" },
 ): Promise<RosterSnapshot> {
-  const allowed = input.target === "suspended" ? ["active"] : ["draft", "active", "suspended"];
+  const lifecycleGuard = input.target === "suspended"
+    ? "lifecycle = 'active'"
+    : "lifecycle IN ('draft', 'active', 'suspended')";
   const audit = auditEntry(input.target, input.actorUserId);
   const update = await ctx.db.execute(
     `UPDATE ${table(ctx, "roster_heads")}
       SET lifecycle = $1, version = version + 1, audit_entries = audit_entries || $2::jsonb, updated_at = now()
-      WHERE company_id = $3 AND roster_id = $4 AND version = $5 AND lifecycle = ANY($6::text[])`,
-    [input.target, JSON.stringify([audit]), input.companyId, input.rosterId, input.expectedVersion, allowed],
+      WHERE company_id = $3 AND roster_id = $4 AND version = $5 AND ${lifecycleGuard}`,
+    [input.target, JSON.stringify([audit]), input.companyId, input.rosterId, input.expectedVersion],
   );
   const roster = await getRoster(ctx, input.companyId, input.rosterId);
   if (!roster) throw new RosterError(404, "roster_not_found", "Roster not found");

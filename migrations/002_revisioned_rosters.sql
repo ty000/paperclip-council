@@ -26,8 +26,8 @@ CREATE TABLE plugin_private_paperclip_council_270061461e.roster_heads (
     ON DELETE RESTRICT
 );
 
-CREATE INDEX plugin_private_paperclip_council_270061461e_roster_revisions_history_idx
+CREATE INDEX plugin_private_paperclip_council_270061461e.roster_history_idx
   ON plugin_private_paperclip_council_270061461e.roster_revisions(company_id, roster_id, revision DESC);
 
-CREATE INDEX plugin_private_paperclip_council_270061461e_roster_heads_lifecycle_idx
+CREATE INDEX plugin_private_paperclip_council_270061461e.roster_lifecycle_idx
   ON plugin_private_paperclip_council_270061461e.roster_heads(company_id, lifecycle, updated_at DESC);
