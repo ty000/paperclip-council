@@ -79,7 +79,7 @@ const requireServer = createRequire(resolve(root, "server/package.json"));
 const { eq } = requireServer("drizzle-orm");
 const evidence: Record<string, any> = {
   schemaVersion: 1,
-  proofId: "paperclip-council-s1-configuration-2026-09-30",
+  proofId: "paperclip-council-l2-step-a-2026-09-30",
   startedAt: new Date().toISOString(),
   head: hostCommit,
   hostTrackedFilesClean: hostStatus === "",
@@ -118,6 +118,7 @@ let cookie = "";
 let intruderCookie = "";
 let tables: any;
 let issueId: string | undefined;
+let missionRootIssueId: string | undefined;
 const companyId = randomUUID();
 const projectId = randomUUID();
 const executorId = randomUUID();
@@ -468,6 +469,113 @@ try {
   assert.equal(activation.body.missionActivation, "unavailable");
   evidence.results.createValidateActivate = "PASS";
 
+  const missionRoot = await request("human", "POST", `/api/companies/${companyId}/issues`, {
+    title: "Council L2 mission persistence fixture",
+    description: "Synthetic persisted mission only; dispatch is intentionally disabled while G4 remains open.",
+    projectId,
+    status: "backlog",
+    assigneeAgentId: executorId,
+  });
+  assert.equal(missionRoot.status, 201);
+  missionRootIssueId = missionRoot.body.id;
+  const missionId = randomUUID();
+  const createCommandId = randomUUID();
+  const missionBase = `/api/plugins/${pluginId}/api/companies/${companyId}/missions`;
+  const initialMandate = {
+    objective: "Persist exact roster revisions without dispatch",
+    acceptanceCriteria: ["Pinned revisions survive roster changes and plugin restart"],
+    commitments: ["Do not dispatch while G4 remains open"],
+    limits: {
+      taskPolicy: "No provider calls in this bounded fixture",
+      periodPolicy: "No provider calls in this bounded fixture period",
+      correctionLimit: 2,
+      elapsedMinutes: 60,
+    },
+  };
+  const missionCreateBody = {
+    companyId,
+    command: "create",
+    commandId: createCommandId,
+    missionId,
+    rootIssueId: missionRootIssueId,
+    projectId,
+    teamRosterId,
+    teamRevision: activation.body.team.revision.revision,
+    councilRosterId,
+    councilRevision: activation.body.council.revision.revision,
+    mandate: initialMandate,
+  };
+  const unauthorizedMission = await request("intruder", "POST", missionBase, missionCreateBody);
+  assert.equal(unauthorizedMission.status, 403);
+  assert.equal(unauthorizedMission.body.code, "owner_required");
+  for (const missingRosterField of ["teamRosterId", "councilRosterId"]) {
+    const missingRosterMissionId = randomUUID();
+    const missingRoster = await request("human", "POST", missionBase, {
+      ...missionCreateBody,
+      missionId: missingRosterMissionId,
+      [missingRosterField]: randomUUID(),
+    });
+    assert.equal(missingRoster.status, 404);
+    assert.equal(missingRoster.body.code, "roster_not_found");
+    const absentMission = await request("human", "GET", `${missionBase}/${missingRosterMissionId}?companyId=${companyId}`);
+    assert.equal(absentMission.status, 404);
+    assert.equal(absentMission.body.code, "mission_not_found");
+  }
+  evidence.results.missingRosterStructuredRefusal = "PASS";
+  const missionCreate = await request("human", "POST", missionBase, missionCreateBody);
+  assert.equal(missionCreate.status, 201);
+  assert.equal(missionCreate.body.outcome, "applied");
+  assert.equal(missionCreate.body.mission.version, 1);
+  assert.equal(missionCreate.body.inspection.state.recorded, true);
+  assert.equal(missionCreate.body.inspection.state.compositionsPinned, true);
+  assert.equal(missionCreate.body.inspection.state.executable, false);
+  assert(missionCreate.body.inspection.prerequisites.some(
+    (item: any) => item.code === "runtime_budget_exposure" && item.status === "unsupported",
+  ));
+  const unauthorizedMissionList = await request("intruder", "GET", `${missionBase}?companyId=${companyId}`);
+  assert.equal(unauthorizedMissionList.status, 403);
+  assert.equal(unauthorizedMissionList.body.code, "owner_required");
+  const unauthorizedMissionRead = await request("intruder", "GET", `${missionBase}/${missionId}?companyId=${companyId}`);
+  assert.equal(unauthorizedMissionRead.status, 403);
+  assert.equal(unauthorizedMissionRead.body.code, "owner_required");
+  const ownerMissionList = await request("human", "GET", `${missionBase}?companyId=${companyId}`);
+  assert.equal(ownerMissionList.status, 200);
+  assert.equal(ownerMissionList.body.missions.length, 1);
+  const missionReplay = await request("human", "POST", missionBase, missionCreateBody);
+  assert.equal(missionReplay.status, 200);
+  assert.equal(missionReplay.body.outcome, "replayed");
+  assert.equal(missionReplay.body.mission.version, 1);
+  const identityConflict = await request("human", "POST", missionBase, {
+    ...missionCreateBody,
+    mandate: { ...initialMandate, objective: "Conflicting retry payload" },
+  });
+  assert.equal(identityConflict.status, 409);
+  assert.equal(identityConflict.body.code, "command_identity_conflict");
+  evidence.results.missionOwnerIdentityReadScopeAndIdempotentCreate = "PASS";
+
+  const missionCommandPath = `${missionBase}/${missionId}/commands`;
+  const competingMandates = await Promise.all([
+    request("human", "POST", missionCommandPath, {
+      companyId,
+      command: "update-mandate",
+      commandId: randomUUID(),
+      expectedVersion: 1,
+      mandate: { ...initialMandate, objective: "Concurrent mandate A" },
+    }),
+    request("human", "POST", missionCommandPath, {
+      companyId,
+      command: "update-mandate",
+      commandId: randomUUID(),
+      expectedVersion: 1,
+      mandate: { ...initialMandate, objective: "Concurrent mandate B" },
+    }),
+  ]);
+  assert.deepEqual(competingMandates.map((result) => result.status).sort(), [200, 409]);
+  const winningMandate = competingMandates.find((result) => result.status === 200)!.body;
+  assert.equal(winningMandate.outcome, "applied");
+  assert.equal(winningMandate.mission.version, 2);
+  evidence.results.missionCommandCasNoLostUpdate = "PASS";
+
   const competingRevisions = await Promise.all([
     request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
       companyId, command: "revise", expectedVersion: 2,
@@ -495,6 +603,12 @@ try {
     requiredPerspectives: [],
   } : null);
   evidence.results.concurrentPublicationAndImmutability = "PASS";
+  const replayAfterRevision = await request("human", "POST", missionBase, missionCreateBody);
+  assert.equal(replayAfterRevision.status, 200);
+  assert.equal(replayAfterRevision.body.outcome, "replayed");
+  assert.deepEqual(replayAfterRevision.body.receipt, missionCreate.body.receipt);
+  assert.deepEqual(replayAfterRevision.body.mission, winningMandate.mission);
+  evidence.results.missionCreateReplayAfterRosterRevision = "PASS";
 
   const reactivate = await request("human", "POST", rosterBase, {
     companyId,
@@ -505,13 +619,116 @@ try {
     councilExpectedVersion: activation.body.council.head.version,
   });
   assert.equal(reactivate.status, 200);
+  let currentPair = reactivate.body;
+  const missionLifecycleRaceOutcomes: number[] = [];
+  for (let raceIndex = 0; raceIndex < 3; raceIndex += 1) {
+    const raceRoot = await request("human", "POST", `/api/companies/${companyId}/issues`, {
+      title: `Mission lifecycle race fixture ${raceIndex + 1}`,
+      description: "Synthetic create-versus-suspend race; no dispatch.",
+      projectId,
+      status: "backlog",
+      assigneeAgentId: executorId,
+    });
+    assert.equal(raceRoot.status, 201);
+    const [raceCreate, raceSuspend] = await Promise.all([
+      request("human", "POST", missionBase, {
+        ...missionCreateBody,
+        commandId: randomUUID(),
+        missionId: randomUUID(),
+        rootIssueId: raceRoot.body.id,
+        teamRevision: winningRevision.revision.revision,
+      }),
+      request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
+        companyId,
+        command: "suspend",
+        expectedVersion: currentPair.team.head.version,
+      }),
+    ]);
+    assert.equal(raceSuspend.status, 200);
+    assert([201, 409, 422].includes(raceCreate.status), `unexpected race create status ${raceCreate.status}`);
+    if (raceCreate.status === 201) {
+      assert.equal(raceCreate.body.mission.teamRevision, winningRevision.revision.revision);
+    } else {
+      assert([
+        "roster_selection_changed",
+        "roster_pair_ineligible",
+        "active_rosters_required",
+      ].includes(raceCreate.body.code));
+    }
+    missionLifecycleRaceOutcomes.push(raceCreate.status);
+    const raceReactivate = await request("human", "POST", rosterBase, {
+      companyId,
+      command: "activate-pair",
+      teamRosterId,
+      teamExpectedVersion: raceSuspend.body.head.version,
+      councilRosterId,
+      councilExpectedVersion: currentPair.council.head.version,
+    });
+    assert.equal(raceReactivate.status, 200);
+    currentPair = raceReactivate.body;
+  }
+  evidence.results.missionCreationVsLifecycleRace = "PASS";
+  evidence.missionLifecycleRace = {
+    attempts: missionLifecycleRaceOutcomes.length,
+    createStatuses: missionLifecycleRaceOutcomes,
+    invariant: "create serialized before suspension or refused after selection changed",
+  };
+  const orderedRoot = await request("human", "POST", `/api/companies/${companyId}/issues`, {
+    title: "Mission create-before-suspend fixture",
+    description: "Deterministic public API ordering; no dispatch.",
+    projectId,
+    status: "backlog",
+    assigneeAgentId: executorId,
+  });
+  assert.equal(orderedRoot.status, 201);
+  const orderedCreateBody = {
+    ...missionCreateBody,
+    commandId: randomUUID(),
+    missionId: randomUUID(),
+    rootIssueId: orderedRoot.body.id,
+    teamRevision: winningRevision.revision.revision,
+  };
+  const orderedCreate = await request("human", "POST", missionBase, orderedCreateBody);
+  assert.equal(orderedCreate.status, 201);
+  assert.equal(orderedCreate.body.outcome, "applied");
   const suspend = await request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
-    companyId, command: "suspend", expectedVersion: reactivate.body.team.head.version,
+    companyId, command: "suspend", expectedVersion: currentPair.team.head.version,
   });
   assert.equal(suspend.status, 200);
   assert.equal(suspend.body.head.lifecycle, "suspended");
+  const orderedRead = await request("human", "GET", `${missionBase}/${orderedCreateBody.missionId}?companyId=${companyId}`);
+  assert.equal(orderedRead.status, 200);
+  assert.deepEqual(orderedRead.body.mission, orderedCreate.body.mission);
+  const orderedReplay = await request("human", "POST", missionBase, orderedCreateBody);
+  assert.equal(orderedReplay.status, 200);
+  assert.equal(orderedReplay.body.outcome, "replayed");
+  assert.deepEqual(orderedReplay.body.receipt, orderedCreate.body.receipt);
+  assert.deepEqual(orderedReplay.body.mission, orderedCreate.body.mission);
+  evidence.results.missionCreateBeforeSuspensionPersistsAndReplays = "PASS";
+
+  const suspendedRoot = await request("human", "POST", `/api/companies/${companyId}/issues`, {
+    title: "Mission suspend-before-create fixture",
+    description: "Deterministic public API ordering; no dispatch.",
+    projectId,
+    status: "backlog",
+    assigneeAgentId: executorId,
+  });
+  assert.equal(suspendedRoot.status, 201);
+  const suspendedMissionId = randomUUID();
+  const suspendedCreate = await request("human", "POST", missionBase, {
+    ...orderedCreateBody,
+    commandId: randomUUID(),
+    missionId: suspendedMissionId,
+    rootIssueId: suspendedRoot.body.id,
+  });
+  assert.equal(suspendedCreate.status, 409);
+  assert.equal(suspendedCreate.body.code, "active_rosters_required");
+  const suspendedRead = await request("human", "GET", `${missionBase}/${suspendedMissionId}?companyId=${companyId}`);
+  assert.equal(suspendedRead.status, 404);
+  assert.equal(suspendedRead.body.code, "mission_not_found");
+  evidence.results.missionSuspensionBeforeCreateRefusesPersistence = "PASS";
   const staleSuspend = await request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
-    companyId, command: "suspend", expectedVersion: reactivate.body.team.head.version,
+    companyId, command: "suspend", expectedVersion: currentPair.team.head.version,
   });
   assert.equal(staleSuspend.status, 409);
   const afterStale = await request("human", "GET", `${rosterBase}/${teamRosterId}?companyId=${companyId}`);
@@ -524,6 +741,62 @@ try {
   assert.equal(retired.body.head.lifecycle, "retired");
   assert.equal((await request("human", "GET", `${rosterBase}/${teamRosterId}?companyId=${companyId}`)).body.history.length, 3);
   evidence.results.reviseSuspendRetireAndStaleNoMutation = "PASS";
+
+  const pinnedMission = await request("human", "GET", `${missionBase}/${missionId}?companyId=${companyId}`);
+  assert.equal(pinnedMission.status, 200);
+  assert.equal(pinnedMission.body.mission.version, 2);
+  assert.equal(pinnedMission.body.mission.teamRevision, teamCreate.body.revision.revision);
+  assert.equal(pinnedMission.body.mission.councilRevision, councilCreate.body.revision.revision);
+  assert.equal(pinnedMission.body.mission.aggregate.compositions.team.name, "Delivery team");
+  assert.equal(pinnedMission.body.mission.aggregate.compositions.team.revision, teamCreate.body.revision.revision);
+  assert.equal(pinnedMission.body.state.executable, false);
+  evidence.results.missionPinsSurviveRosterRevisionSuspensionRetirement = "PASS";
+  const replayAfterRetirement = await request("human", "POST", missionBase, missionCreateBody);
+  assert.equal(replayAfterRetirement.status, 200);
+  assert.equal(replayAfterRetirement.body.outcome, "replayed");
+  assert.deepEqual(replayAfterRetirement.body.receipt, missionCreate.body.receipt);
+  assert.deepEqual(replayAfterRetirement.body.mission, pinnedMission.body.mission);
+  assert.equal(replayAfterRetirement.body.mission.aggregate.commandReceipts.length, 2);
+  evidence.results.missionCreateReplayAfterRosterRetirement = "PASS";
+
+  const unavailableRoot = await request("human", "POST", `/api/companies/${companyId}/issues`, {
+    title: "Retired roster selection refusal fixture",
+    description: "Synthetic fixture only.",
+    projectId,
+    status: "backlog",
+    assigneeAgentId: executorId,
+  });
+  assert.equal(unavailableRoot.status, 201);
+  const unavailableSelection = await request("human", "POST", missionBase, {
+    ...missionCreateBody,
+    commandId: randomUUID(),
+    missionId: randomUUID(),
+    rootIssueId: unavailableRoot.body.id,
+    teamRevision: winningRevision.revision.revision,
+  });
+  assert.equal(unavailableSelection.status, 422);
+  assert.equal(unavailableSelection.body.code, "roster_pair_ineligible");
+  evidence.results.retiredRosterRejectedForNewMission = "PASS";
+
+  await closeApp();
+  workerManager = createPluginWorkerManager();
+  app = await createApp(db, opts("vite-dev"));
+  server = createServer(app);
+  await new Promise<void>((resolveListen, reject) => {
+    server!.once("error", reject);
+    server!.listen(address.port, "127.0.0.1", resolveListen);
+  });
+  await app.locals.bundledPluginsStartup;
+  assert(workerManager.isRunning(pluginId), "installed package worker must reload after mission persistence restart");
+  const missionAfterRestart = await request("human", "GET", `${missionBase}/${missionId}?companyId=${companyId}`);
+  assert.equal(missionAfterRestart.status, 200);
+  assert.deepEqual(missionAfterRestart.body, pinnedMission.body);
+  const replayAfterRestart = await request("human", "POST", missionBase, missionCreateBody);
+  assert.equal(replayAfterRestart.status, 200);
+  assert.equal(replayAfterRestart.body.outcome, "replayed");
+  assert.deepEqual(replayAfterRestart.body.receipt, missionCreate.body.receipt);
+  assert.deepEqual(replayAfterRestart.body.mission, pinnedMission.body.mission);
+  evidence.results.missionPersistenceAfterRestart = "PASS";
 
   const foreignBase = `/api/plugins/${pluginId}/api/companies/${foreignCompanyId}/rosters`;
   const foreignList = await request("human", "GET", `${foreignBase}?companyId=${foreignCompanyId}`);
@@ -845,7 +1118,7 @@ try {
     replacementAndRevocation: "documented-only",
     reason: "the required package journey used native ephemeral keys; durable key mutation was not requested",
   };
-  evidence.outcome = "SPRINT 1 CONFIGURATION INCREMENT VALIDATED";
+  evidence.outcome = "L2 STEP A MISSION PERSISTENCE VALIDATED";
 } catch (error) {
   evidence.outcome = "NON-CONCLUSIVE OR BLOCKED";
   evidence.error = error instanceof Error

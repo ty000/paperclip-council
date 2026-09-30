@@ -1,0 +1,62 @@
+{
+  "objective": "Close the independent L1 mission-revision pinning remainder and implement only the G4-independent portion of L2.",
+  "current_gate": "Publish the PR-loop remediation evidence and complete current-head review gates.",
+  "mandate": {
+    "current": "Local code, tests, additive private migration, coherent commits, isolated host proof, PR creation, bounded PR-head remediation publication and review-loop operations are authorized; merge, durable deployment, real-agent provisioning, credential changes, paid provider calls, host writes, and external delivery remain excluded.",
+    "superseded_instructions": []
+  },
+  "stop_conditions": [
+    "Deliver and prove the G4-independent Step A, report L2 partial if G4 remains open, and stop before L3.",
+    "Stop if origin/main lacks merged S1 or if a required host change is discovered."
+  ],
+  "hard_constraints": [
+    "Use branch codex/council-l2 in the isolated durable Council worktree.",
+    "Keep Paperclip host read-only and pinned to commit 61b3fd57a695614dc4a37e2303f426a34a9795cf for runtime proof.",
+    "Do not dispatch while G4 remains open; do not implement L3, L4, L5, participant replacement, a generic event bus, event store, or workflow engine.",
+    "Use one writer and obtain one independent findings-first review before closure."
+  ],
+  "budgets": ["No explicit attempt or token budget declared."],
+  "known_facts": [
+    "origin/main 2cc12cdad643afb78dd9b7cbcd384f2501c8595f is the effective post-rebase base and contains historical S1 base bfa921000c0743aff17d2c1e48eff6bb9ca365cf plus the fast parallel Council CI.",
+    "Git base gate passed on clean branch codex/council-l2 tracking origin/main.",
+    "COUNCIL-L2-MISSIONS prewrite migration gate passed with no findings.",
+    "S1 report keeps L1 partial and mission activation unavailable.",
+    "Rebased runtime candidate cdd989f0072676777840ab9fc701a9b84ca90dca passed real installed mission storage, owner-only reads, structured roster refusals, initial receipt replay, replay after mutable lifecycle changes, atomic lifecycle selection contentions and ordered outcomes, CAS, roster-lifecycle pinning and complete restart inspection on clean host 61b3fd57a695614dc4a37e2303f426a34a9795cf; deterministic unit tests cover concurrent error-path recorded-result readback."
+  ],
+  "decisions": [
+    "Use the native implementation meta-flow, not the historical V3 phase topology.",
+    "Implement Step A only unless an explicit G4 owner decision and runtime contract become available during this run."
+  ],
+  "unknowns": [
+    "G3 canonical readback remains unresolved and is out of the Step A path.",
+    "G4 task/period limits, in-flight consumption, and human authorization contract remain unresolved.",
+    "No G4 owner decision or runtime contract was received; UI was not modified because board API inspection is the minimal Step A surface."
+  ],
+  "open_risks": [
+    "An active-mission acceptance criterion may remain partial because G4 forbids activation or dispatch.",
+    "The PR review loop found and remediated recorded-result replay ordering, typed roster-error translation and regression-depth gaps; GitHub Codex review is unavailable because the connector reported exhausted review quota."
+  ],
+  "owners": [
+    "Primary writer: current root Codex task.",
+    "Independent reviewers: initial/targeted Step A reviews completed; PR-loop local correctness, test/regression and migration/docs reviews completed; current-head global re-review remains pending."
+  ],
+  "evidence_collected": [
+    "The historical Git base gate passed at bfa921000c0743aff17d2c1e48eff6bb9ca365cf; the final branch was rebased cleanly onto 2cc12cdad643afb78dd9b7cbcd384f2501c8595f and requalified.",
+    "docs/reviews/l2/prewrite-migration-contract.json validated by prewrite_migration_gate.py with status pass.",
+    "docs/reviews/l2/evidence/functional.json SHA-256 a4319d560035dbd98bb5c2ded7048d7b1e731447cd385a7b3361950229d28cd2; outcome L2 STEP A MISSION PERSISTENCE VALIDATED with 31 passing results on rebased candidate cdd989f0072676777840ab9fc701a9b84ca90dca.",
+    "Targeted independent re-review closed both prior material findings, found no new material issue, and accepted close-final for the bounded Step A only."
+  ],
+  "files_touched": [
+    "docs/reviews/l2/prewrite-migration-contract.json: created control descriptor.",
+    "docs/reviews/l2/run-checkpoint.json: refreshed living checkpoint source.",
+    "Initial implementation committed in 36b43076c262e60bfe3e63affb0da72a55c08952; atomic selection/read-auth remediation and race coverage committed through 4ee1930cd8616670c0d9b69e25ebbeda87d2ce14; PR-loop replay/error-boundary remediation committed in 579649a72fac95485412f40679a5dc83501f66dc; concurrent persisted-result readback committed in 99680880876a824de69499fcee7344870602f4fe; atomic identity readback and proof-layer clarification committed through b1132f596eb6d9befda4e102d94b5a4ec7003265.",
+    "docs/reviews/l2/evidence/functional.json, REPORT.md, proof-manifest.json, alignment-manifest.json: prepared review packet."
+  ],
+  "next_action": "Commit and publish the refreshed exact-candidate evidence, then request current-head review if the GitHub Codex quota permits.",
+  "next_checkpoint": "After PR-head publication and current-head local/global review readback.",
+  "volatile_state": [
+    "Re-check worktree cleanliness and HEAD before runtime proof and review.",
+    "Re-check Paperclip host commit and tracked cleanliness in the isolated clone used by the harness.",
+    "No G4 decision has been received in this task."
+  ]
+}

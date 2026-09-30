@@ -8,6 +8,7 @@ export {
   verifyCandidateAttachment,
 } from "./foundation-probe.js";
 export * from "./rosters.js";
+export * from "./missions.js";
 export type {
   CouncilConfig,
   CouncilDecisionInput,

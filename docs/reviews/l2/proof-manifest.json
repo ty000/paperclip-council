@@ -1,0 +1,89 @@
+{
+  "schema_version": "proof-manifest.v1",
+  "proof_id": "paperclip-council-l2-step-a-2026-09-30",
+  "subject": "Bounded local Step A mission persistence at candidate cdd989f0072676777840ab9fc701a9b84ca90dca against Paperclip 61b3fd57a695614dc4a37e2303f426a34a9795cf",
+  "status": "pass",
+  "summary": "The exact clean candidate provides replayably verified plugin-private draft mission persistence, immutable roster-revision pinning, configured-owner mutation/read guards, atomic active/current roster selection, idempotent command identity, CAS conflict handling, explicit G4 blocking and restart survival. It closes only Step A; L1 active-mission proof, the rest of L2, G3, G4 and activation remain open.",
+  "categories": [
+    "functional",
+    "quality",
+    "compliance",
+    "documentation",
+    "operations"
+  ],
+  "evidence": [
+    {
+      "id": "exact-candidate-runtime-trace",
+      "category": "functional",
+      "kind": "runtime-observation",
+      "location": "docs/reviews/l2/evidence/functional.json",
+      "replayable": true,
+      "notes": "SHA-256 a4319d560035dbd98bb5c2ded7048d7b1e731447cd385a7b3361950229d28cd2; exact rebased candidate and clean pinned host; real install/migrations/auth/plugin SQL/restart; structured roster refusals, initial receipt replay, replay after mutable lifecycle changes, intruder read refusals, three contention attempts and both ordered lifecycle outcomes; 31 results pass; synthetic fixtures; no model calls. Error-path receipt readback is covered by deterministic unit tests; this installed replay is non-regression evidence for that path, not a forced concurrent same-identity proof."
+    },
+    {
+      "id": "unit-type-build",
+      "category": "quality",
+      "kind": "automated-test",
+      "location": "tests/missions.spec.ts",
+      "replayable": true,
+      "notes": "Typecheck and build succeed; Vitest reports 7 passing files and 50 passing tests, including deterministic concurrent error-path receipt readback and preservation of the original admission error when fallback storage readback fails."
+    },
+    {
+      "id": "private-mission-migration",
+      "category": "compliance",
+      "kind": "source-contract",
+      "location": "migrations/003_missions.sql",
+      "replayable": true,
+      "notes": "Additive plugin-private table with company/root uniqueness and immutable roster-revision foreign keys; applied through the real install path after retained S1 migrations."
+    },
+    {
+      "id": "prewrite-migration-gate",
+      "category": "compliance",
+      "kind": "command-output",
+      "location": "docs/reviews/l2/prewrite-migration-contract.json",
+      "replayable": true,
+      "notes": "The required COUNCIL-L2-MISSIONS prewrite contract validated with status pass and no findings before product writes; this is not runtime migration proof."
+    },
+    {
+      "id": "bounded-review-report",
+      "category": "documentation",
+      "kind": "document-only",
+      "location": "docs/reviews/l2/REPORT.md",
+      "replayable": false,
+      "notes": "Findings-first scope/status report; supporting documentation, not used alone as runtime proof."
+    }
+  ],
+  "replay": {
+    "preconditions": [
+      "Council checkout is on clean rebased candidate cdd989f0072676777840ab9fc701a9b84ca90dca.",
+      "PAPERCLIP_TEST_HOST_ROOT is a clean isolated checkout at 61b3fd57a695614dc4a37e2303f426a34a9795cf with existing dependency directories linked read-only from the qualified host checkout.",
+      "Node satisfies >=24.11.0, cached pnpm dependencies are available, and loopback plus fresh embedded PostgreSQL are permitted.",
+      "No provider/model call, durable target mutation, credential change, push, PR or external delivery is authorized."
+    ],
+    "steps": [
+      "COREPACK_HOME=/tmp/council-l2-corepack corepack pnpm install --offline --frozen-lockfile",
+      "COREPACK_HOME=/tmp/council-l2-corepack corepack pnpm typecheck",
+      "COREPACK_HOME=/tmp/council-l2-corepack corepack pnpm test",
+      "COREPACK_HOME=/tmp/council-l2-corepack corepack pnpm build",
+      "git diff --check",
+      "Prepare the clean detached Paperclip host clone and dependency links described in docs/reviews/l2/REPORT.md.",
+      "COREPACK_HOME=/tmp/council-l2-corepack COUNCIL_PACKAGE_EXPECTED_COMMIT=cdd989f0072676777840ab9fc701a9b84ca90dca PAPERCLIP_TEST_HOST_ROOT=/tmp/<isolated-host>/paperclip PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH=/home/davy-lp/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell COUNCIL_PACKAGE_EVIDENCE_PATH=$PWD/docs/reviews/l2/evidence/functional.json corepack pnpm test:functional"
+    ],
+    "expected_artifacts": [
+      "Successful typecheck/build, 7 passing test files and 50 passing tests.",
+      "docs/reviews/l2/evidence/functional.json with exact clean candidate, clean exact host, outcome L2 STEP A MISSION PERSISTENCE VALIDATED and all named results PASS.",
+      "Owner-only list/detail readback, structured missing-roster refusal, receipt replay after roster revision/retirement/restart, three real contentions, both ordered lifecycle outcomes, and complete persisted inspection equality after restart.",
+      "Isolated application, embedded database and temporary runtime cleaned by the harness."
+    ]
+  },
+  "closure": {
+    "decision": "close-final",
+    "rationale": "The bounded Step A persistence slice has replayable API/auth/plugin/database/restart evidence and no remaining criterion inside its intentionally non-effectful scope. This decision does not close L1, L2, G3, G4, activation or V1.",
+    "next_required_actions": [
+      "Obtain an explicit owner decision for G4 and qualify its task/period reservation plus in-flight exposure behavior before any activation or dispatch.",
+      "After G4 is applicable, implement the remaining L2 contribution graph, correlated native child effects, integration blocking and candidate publication, then stop before L3.",
+      "Retain G3 as open until a supported canonical uncertain-decision readback contract passes its own replay."
+    ]
+  },
+  "generated_at": "2026-09-30T17:17:14+02:00"
+}

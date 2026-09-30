@@ -8,6 +8,7 @@ import type { CouncilDecisionPayload } from "./contracts.js";
 import { emitCouncilDecision, parseCouncilConfig } from "./decision-adapter.js";
 import { ApprovalPreflightError, verifyApprovalCandidate } from "./delivery-manifest.js";
 import { handleFoundationProbe } from "./foundation-probe.js";
+import { handleMissionApi } from "./missions.js";
 import { handleRosterApi, registerRosterBridge } from "./rosters.js";
 
 let ctx: PluginContext;
@@ -84,6 +85,7 @@ export async function handleDecision(input: PluginApiRequestInput, context: Plug
 export async function handlePluginRequest(input: PluginApiRequestInput, context: PluginContext = ctx) {
   if (input.routeKey === "decision") return handleDecision(input, context);
   if (input.routeKey.startsWith("roster")) return handleRosterApi(input, context);
+  if (input.routeKey.startsWith("mission")) return handleMissionApi(input, context);
   if (input.routeKey !== "foundation-probe") {
     return { status: 404, body: { error: "Unknown route" } };
   }
