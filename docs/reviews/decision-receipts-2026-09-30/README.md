@@ -34,3 +34,24 @@ remain intact, including their historical links; the audit's pre-existing
 See [the compact L03 handoff](../../L03-RECEIPTS-HANDOFF.md) for reusable pieces,
 introduced contracts and remaining L03 work. No additional feature was added
 following the coordination stop/scope instruction.
+
+## Reconciliation onto current main
+
+PR #14 was rebased onto `ad685bf0aefda889eb5420637832059e889fff38`
+(PR #13 product orchestration documentation). Six documentary conflicts retain
+the new scope/roles/versions and DEC-G3-02 together. The rebased validation
+candidate is `7bb9b3a1555c2e81f601b355b9a40723e55ad9fb`; subsequent changes
+only record this reconciliation evidence.
+
+All tracked non-`docs/` inputs are byte-identical to runtime candidate
+`808b879c205881a7f199f3d44a75175951a5ff77`, including source, migrations,
+tests and build configuration. The [rebase validation](rebase-validation.json)
+records a replayable manifest hash and fresh 104-test, typecheck, build and
+explicit-base static-audit results. An initial audit invocation without a base
+was refused, then correctly rerun with the new base.
+
+The PostgreSQL/browser and unchanged-host proofs above remain historical runs
+on their original candidate; they were not repeated for these documentation-only
+changes. No new runtime, provider, deployment or full-L03 proof is claimed.
+The earlier GitHub Codex review request was refused by quota; no bot review
+executed and no retry was attempted.

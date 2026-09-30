@@ -1,0 +1,61 @@
+{
+  "date": "2026-09-30T21:20:33.710587+00:00",
+  "scope": "PR #14 documentation-only rebase reconciliation",
+  "base": "ad685bf0aefda889eb5420637832059e889fff38",
+  "candidate": "7bb9b3a1555c2e81f601b355b9a40723e55ad9fb",
+  "historicalRuntimeCandidate": "808b879c205881a7f199f3d44a75175951a5ff77",
+  "nonDocsTrackedManifest": {
+    "format": "git ls-tree -rz, docs/ records excluded, NUL delimited",
+    "sha256": "6f1f2a414c802ae2f4e122348f936032c1089bfc718a6089fd0b0f93eab67c79",
+    "matchesHistoricalRuntime": true
+  },
+  "conflicts": [
+    "docs/BACKLOG.md",
+    "docs/IMPLEMENTATION-PLAN.md",
+    "docs/PRD.md",
+    "docs/ROADMAP.md",
+    "docs/SPRINT-PLAN.md",
+    "docs/V1-SCOPE.md"
+  ],
+  "resolution": "Retain PR #13 scope, roles and document versions with DEC-G3-02 plugin-only receipt policy. No runtime changes.",
+  "migrationPrewrite": {
+    "applicability": "not-applicable",
+    "reason": "Reconciliation changes documentation only; source, migration files, tests and configuration match the historical runtime candidate."
+  },
+  "checks": [
+    {
+      "command": "pnpm test",
+      "result": "pass",
+      "testFiles": 13,
+      "tests": 104
+    },
+    {
+      "command": "pnpm typecheck",
+      "result": "pass"
+    },
+    {
+      "command": "pnpm build",
+      "result": "pass"
+    },
+    {
+      "command": "pnpm audit:static",
+      "result": "refused",
+      "reason": "Explicit base required outside CI; corrected below."
+    },
+    {
+      "command": "pnpm audit:static --base-ref ad685bf0aefda889eb5420637832059e889fff38",
+      "result": "pass",
+      "blockingFindings": 0
+    },
+    {
+      "command": "git diff --check origin/main...HEAD",
+      "result": "pass"
+    }
+  ],
+  "notRerun": [
+    "PostgreSQL/browser receipt fault proof",
+    "unchanged-host functional proof"
+  ],
+  "notRerunReason": "Historical evidence remains attributed to 808b879; all non-docs tracked input bytes are identical. These historical proofs are not presented as new executions.",
+  "githubReview": "Existing request refused by quota; no executed bot review and no retry."
+}
