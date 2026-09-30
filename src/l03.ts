@@ -143,6 +143,12 @@ function consumeCounter(state: L03Governance, kind: "approach" | "result" | "con
   } as L03AdmissionCounters;
 }
 
+function reserveCorrection(state: L03Governance, kind: "approach" | "result"): L03AdmissionCounters {
+  assert(state.counters.correction.admitted < state.counters.correction.limit, 409, "correction_limit_reached", "Correction limit is exhausted; no further work is authorized");
+  const counters = consumeCounter(state, kind);
+  return { ...counters, correction: { ...counters.correction, admitted: counters.correction.admitted + 1 } };
+}
+
 function journal(state: L03Governance, facts: L03TransitionFacts, action: string, ref?: string) {
   return [...state.journal, { action, actorId: facts.actor.actorId, at: facts.now, ...(ref ? { ref } : {}) }];
 }
@@ -325,13 +331,13 @@ export function transitionL03(state: L03Governance, command: L03Command, facts: 
     if (state.phase === "approach_revision_required") {
       assert(prior && command.approach.supersedesApproachId === prior.approachId, 422, "approach_supersession_invalid", "Revised approach must use a new identity and supersede the preceding approach");
       assert(state.openMustFixFindingIds.every((id) => command.approach.addressesFindingIds.includes(id)), 422, "must_fix_not_addressed", "Revised approach must address every mandatory finding");
-      assert(state.counters.correction.admitted < state.counters.correction.limit, 409, "correction_limit_reached", "Correction limit is exhausted");
+
     } else {
       assert(command.approach.supersedesApproachId === null && command.approach.addressesFindingIds.length === 0, 422, "initial_approach_identity_invalid", "Initial approach cannot supersede or address a prior finding");
     }
     const approach: L03Approach = { ...structuredClone(command.approach), sequence: state.approaches.length + 1, submittedAt: facts.now };
-    let counters = consumeCounter(state, "approach");
-    if (state.phase === "approach_revision_required") counters = { ...counters, correction: { ...counters.correction, admitted: counters.correction.admitted + 1 } };
+    const counters = state.phase === "approach_revision_required" ? state.counters : consumeCounter(state, "approach");
+    assert(counters.approach.admitted > state.approaches.length, 409, "approach_admission_missing", "No reserved approach admission remains");
     return next(state, facts, { counters, approaches: [...state.approaches, approach], activeApproachId: approach.approachId, phase: "collecting_approach_opinions", openMustFixFindingIds: [] }, "approach_submitted", approach.approachId);
   }
 
@@ -471,7 +477,7 @@ export function transitionL03(state: L03Governance, command: L03Command, facts: 
         : command.verdict === "refuse" ? "refused" : "escalated";
     const openMustFixFindingIds = command.verdict === "revise"
       ? command.findingIds.filter((id) => findings.find((finding) => finding.id === id)?.class === "must_fix") : [];
-    return next(state, facts, { approachDirections: [...state.approachDirections, decision], receiptRefs: appendRef(state.receiptRefs, command.receiptRef), openMustFixFindingIds, phase }, "approach_direction_recorded", command.decisionId);
+    return next(state, facts, { counters: command.verdict === "revise" ? reserveCorrection(state, "approach") : state.counters, approachDirections: [...state.approachDirections, decision], receiptRefs: appendRef(state.receiptRefs, command.receiptRef), openMustFixFindingIds, phase }, "approach_direction_recorded", command.decisionId);
   }
 
   if (command.type === "claim-direction-effect") {
@@ -483,7 +489,7 @@ export function transitionL03(state: L03Governance, command: L03Command, facts: 
     assert(!decision.executionAttempt && !decision.actualEffect, 409, "execution_attempt_already_claimed", "Direction effect already has an immutable execution attempt");
     assert(command.attemptId.trim().length > 0, 422, "execution_attempt_missing", "Direction effect attempt identity is required");
     const directions = state.approachDirections.with(index, { ...decision, executionAttempt: { attemptId: command.attemptId, claimedAt: facts.now } });
-    return next(state, facts, { approachDirections: directions }, "direction_effect_claimed", command.attemptId);
+    return next(state, facts, { counters: consumeCounter(state, "result"), approachDirections: directions }, "direction_effect_claimed", command.attemptId);
   }
 
   if (command.type === "record-direction-effect") {
@@ -509,13 +515,13 @@ export function transitionL03(state: L03Governance, command: L03Command, facts: 
     if (state.phase === "result_correction_required") {
       assert(prior && command.result.supersedesResultId === prior.resultId, 422, "result_supersession_invalid", "Corrected result must supersede the preceding result");
       assert(state.openMustFixFindingIds.every((id) => command.result.addressesFindingIds.includes(id)), 422, "must_fix_not_addressed", "Corrected result must address every mandatory finding");
-      assert(state.counters.correction.admitted < state.counters.correction.limit, 409, "correction_limit_reached", "Correction limit is exhausted");
+
     } else {
       assert(command.result.supersedesResultId === null && command.result.addressesFindingIds.length === 0, 422, "initial_result_identity_invalid", "Initial result cannot supersede or address a prior finding");
     }
     const result: L03Result = { ...structuredClone(command.result), sequence: state.results.length + 1, submittedAt: facts.now };
-    let counters = consumeCounter(state, "result");
-    if (state.phase === "result_correction_required") counters = { ...counters, correction: { ...counters.correction, admitted: counters.correction.admitted + 1 } };
+    const counters = state.counters;
+    assert(counters.result.admitted > state.results.length, 409, "result_admission_missing", "No reserved result admission remains");
     return next(state, facts, { counters, results: [...state.results, result], openMustFixFindingIds: [], phase: "awaiting_result_review" }, "result_submitted", result.resultId);
   }
 
@@ -536,7 +542,7 @@ export function transitionL03(state: L03Governance, command: L03Command, facts: 
     const decision = { decisionId: command.decisionId, resultId: command.resultId, reviewerAgentId: facts.actor.actorId, verdict: command.verdict, rationale: command.rationale, findings: structuredClone(command.findings), receiptRef: command.receiptRef, decidedAt: facts.now, actualEffect: null };
     const phase = command.verdict === "accept" || command.verdict === "revise" ? "awaiting_result_effect"
       : command.verdict === "refuse" ? "refused" : "escalated";
-    return next(state, facts, { resultDecisions: [...state.resultDecisions, decision], receiptRefs: appendRef(state.receiptRefs, command.receiptRef), phase }, "result_decision_recorded", command.decisionId);
+    return next(state, facts, { counters: command.verdict === "revise" ? reserveCorrection(state, "result") : state.counters, resultDecisions: [...state.resultDecisions, decision], receiptRefs: appendRef(state.receiptRefs, command.receiptRef), phase }, "result_decision_recorded", command.decisionId);
   }
 
   requireActor(state, facts, "council");
@@ -554,7 +560,7 @@ export function transitionL03(state: L03Governance, command: L03Command, facts: 
   else if (decision.verdict === "escalate") phase = "escalated";
   else {
     openMustFixFindingIds = decision.findings.filter((finding) => finding.class === "must_fix").map((finding) => finding.id);
-    phase = state.counters.correction.admitted >= state.counters.correction.limit ? "limit_exhausted" : "result_correction_required";
+    phase = "result_correction_required";
   }
   return next(state, facts, { resultDecisions: decisions, receiptRefs: appendRef(state.receiptRefs, effect.receiptRef), openMustFixFindingIds, phase }, "result_decision_effect_confirmed", effect.observationRef);
 }

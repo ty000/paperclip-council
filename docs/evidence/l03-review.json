@@ -1,0 +1,64 @@
+{
+  "schema_version": "l03-independent-review.v1",
+  "basis": "Current two worktree integration diffs; source review plus bounded rereview after batches2 and3",
+  "reviewer": "independent /root/integration_review",
+  "source_findings": [
+    {
+      "id": "L03-IR-001",
+      "status": "resolved"
+    },
+    {
+      "id": "L03-IR-002",
+      "status": "resolved"
+    },
+    {
+      "id": "L03-IR-003",
+      "status": "resolved"
+    },
+    {
+      "id": "L03-IR-004",
+      "status": "resolved"
+    },
+    {
+      "id": "L03-IR-005",
+      "status": "resolved"
+    },
+    {
+      "id": "L03-IR-006",
+      "status": "resolved"
+    },
+    {
+      "id": "L03-IR-007",
+      "status": "resolved"
+    },
+    {
+      "id": "L03-RR-001",
+      "status": "resolved",
+      "evidence": "docs/L03-REAL-CAMPAIGN.md"
+    },
+    {
+      "id": "L03-RR-002",
+      "status": "resolved",
+      "evidence": "docs/L03-REAL-CAMPAIGN.md"
+    }
+  ],
+  "remaining_p1_p2": [],
+  "residuals": [
+    {
+      "id": "PG001",
+      "status": "documented_native_limit",
+      "detail": "Standard native agent API keys accept a run header; no public SDK live-run lookup. Signed run JWT binds its run ID. Do not claim equivalence."
+    },
+    {
+      "id": "EVENT-ACK",
+      "status": "documented_native_limit",
+      "detail": "Native event delivery is not durable subscriber acknowledgement. Missing observations block dependent work."
+    }
+  ],
+  "checks": {
+    "diff_check": "pass",
+    "built_hash_readback": "pass",
+    "suite_rerun_by_reviewer": false
+  },
+  "qualification": "Executive host attempt3 exposed terminal callback invocation scope failure. Source fix and fresh integrated qualification pending. This report is the bounded source rereview, not final runtime readiness."
+}

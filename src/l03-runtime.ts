@@ -83,19 +83,24 @@ export function createL03Runtime(ctx: PluginContext) {
       receipts: receipts.filter(r => g.receiptRefs.includes(r.operationId)),
     })) };
   }
+  async function requireExecutorControls(g: L03Governance) {
+    const agent = await ctx.agents.get(g.authority.executorAgentId, g.companyId);
+    const config = agent?.adapterConfig as Record<string, unknown> | undefined;
+    const runtime = agent?.runtimeConfig as { heartbeat?: { maxConcurrentRuns?: number; maxDailyRuns?: number; maxDailyCostCents?: number; wakeOnDemand?: boolean } } | undefined;
+    if (!agent || !["idle", "running", "active"].includes(agent.status) || !config || typeof config.timeoutSec !== "number" || !Number.isFinite(config.timeoutSec) || config.timeoutSec <= 0
+      || runtime?.heartbeat?.wakeOnDemand !== true || runtime.heartbeat.maxConcurrentRuns !== 1
+      || !Number.isSafeInteger(runtime.heartbeat.maxDailyRuns) || (runtime.heartbeat.maxDailyRuns ?? 0) <= 0
+      || !Number.isSafeInteger(runtime.heartbeat.maxDailyCostCents) || (runtime.heartbeat.maxDailyCostCents ?? 0) <= 0) {
+      throw new L03Error(409, "execution_controls_missing", "Executor requires a positive timeout, explicit on-demand wake, concurrency one and finite daily run/cost thresholds");
+    }
+  }
   async function release(g: L03Governance, a: L03Actor, runId: string, decisionId: string) {
     const approach = g.approaches.find(p => p.approachId === g.activeApproachId);
     if (!approach) throw new L03Error(409, "approach_missing", "No current approach exists");
     await readApproach(ctx, g, approach.contentRef, approach.contentHash);
     const issue = await ctx.issues.get(g.ticket.issueId, g.companyId);
     if (!issue || issue.companyId !== g.companyId || issue.assigneeAgentId !== g.authority.executorAgentId) throw new L03Error(409, "segment_assignee_changed", "Bounded issue is no longer assigned to the pinned executor");
-    const agent = await ctx.agents.get(g.authority.executorAgentId, g.companyId);
-    const config = agent?.adapterConfig as Record<string, unknown> | undefined;
-    const runtime = agent?.runtimeConfig as { heartbeat?: { maxConcurrentRuns?: number; maxDailyRuns?: number } } | undefined;
-    if (!config || typeof config.timeoutSec !== "number" || config.timeoutSec <= 0
-      || runtime?.heartbeat?.maxConcurrentRuns !== 1 || !runtime.heartbeat.maxDailyRuns) {
-      throw new L03Error(409, "execution_controls_missing", "Executor requires a positive timeout, concurrency one and a finite daily run cap");
-    }
+    await requireExecutorControls(g);
     const hold = (await listDecisionReceipts(ctx, g.companyId)).find(r => r.issueId === g.ticket.issueId && r.state === "indeterminate");
     if (hold) throw new L03Error(409, "issue_decision_indeterminate", "An uncertain retained Council receipt blocks execution for this issue");
     const attemptId = randomUUID();
@@ -117,6 +122,7 @@ export function createL03Runtime(ctx: PluginContext) {
     const result = g.results.at(-1);
     if (!decision || !result || !["accept", "revise"].includes(decision.verdict)) return g;
     await verifyL03Content(ctx, g.companyId, { ...result, issueId: result.segmentIssueId });
+    if (decision.verdict === "revise") await requireExecutorControls(g);
     const config = parseCouncilConfig(await ctx.config.get(g.companyId));
     if (config.councilAgentId !== a.actorId) throw new L03Error(403, "reviewer_config_changed", "Configured native Council actor differs from the final reviewer");
     const current = await service.assertCurrent(g.companyId, g.missionId, a);
@@ -226,25 +232,37 @@ export function createL03Runtime(ctx: PluginContext) {
     if (event.actorType !== "plugin" || event.actorId !== EXECUTIVE || !event.companyId) throw new L03Error(403, "executive_plugin_required", "Only the host-authenticated Executive plugin can import contributions");
     return { actorType: "plugin", actorId: EXECUTIVE, companyId: event.companyId };
   }
+  async function eventMutation(companyId: string, missionId: string, a: L03Actor, command: (g: L03Governance) => L03Command) {
+    // Host event notifications overlap and have no subscriber acknowledgement.
+    // Retry only stale local persistence. Never retry a native send or change event identity.
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const before = await read(companyId, missionId);
+      try { return await service.apply(companyId, missionId, a, command(before)); }
+      catch (error) {
+        if (!(error instanceof L03Error) || !["version_conflict", "version_or_mandate_conflict"].includes(error.code) || attempt === 7) throw error;
+      }
+    }
+    throw new Error("Unreachable bounded event retry");
+  }
   async function admission(event: PluginEvent) {
     const a = pluginActor(event); const request = event.payload as CouncilOpinionAdmissionRequest;
-    const before = await read(event.companyId, request.missionId);
-    const slot = before.consultationSlots.find(s => s.slot.reservationId === request.reservationId);
-    if (!slot) throw new L03Error(404, "reservation_missing", "Reservation not found");
-    const g = await service.apply(event.companyId, before.missionId, a, {
-      type: "grant-consultation-admission", expectedVersion: before.version, request, grantId: randomUUID(),
-      grantExpiresAt: new Date(Math.min(Date.now() + 45_000, Date.parse(slot.slot.expiresAt))).toISOString(), slotHash: canonicalSha256(slot.slot),
+    const grantId = randomUUID();
+    const g = await eventMutation(event.companyId, request.missionId, a, before => {
+      const slot = before.consultationSlots.find(s => s.slot.reservationId === request.reservationId);
+      if (!slot) throw new L03Error(404, "reservation_missing", "Reservation not found");
+      return {
+        type: "grant-consultation-admission", expectedVersion: before.version, request, grantId,
+        grantExpiresAt: new Date(Math.min(Date.now() + 45_000, Date.parse(slot.slot.expiresAt))).toISOString(), slotHash: canonicalSha256(slot.slot),
+      };
     });
     const grant = g.consultationSlots.find(s => s.slot.reservationId === request.reservationId)?.admissionGrant;
     if (grant) await ctx.events.emit("opinion-slot-admission-granted.v1", event.companyId, grant);
   }
   async function observed(event: PluginEvent) {
-    const a = pluginActor(event);
-    const observation = event.payload as CouncilOpinionObservation;
-    const before = await read(event.companyId, observation.missionId);
-    await service.apply(event.companyId, observation.missionId, a, {
+    const a = pluginActor(event); const observation = event.payload as CouncilOpinionObservation;
+    await eventMutation(event.companyId, observation.missionId, a, before => ({
       type: "record-consultation-observation", expectedVersion: before.version, observation,
-    });
+    }));
   }
 
   function register() {

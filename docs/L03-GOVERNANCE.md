@@ -28,7 +28,7 @@ The supported V1 artifact set contains exactly the verified Git bundle:
 
 ## Uncertainty and limits
 
-Private additive migration 005 stores the governance aggregate and atomic CAS counters; migration 004 remains the sole result-application receipt journal. Approach, result and consultation counters consume one persistent mission allowance. Corrections consume their separate limit and the corresponding submission allowance. Restart, session replacement and new actors do not replenish them. Unknown cost exposure remains visible; observed native billing controls are not a guaranteed future-spend ceiling.
+Private additive migration 005 stores the governance aggregate and atomic CAS counters; migration 004 remains the sole result-application receipt journal. Approach, result and consultation counters consume one persistent mission allowance. Corrections reserve their separate limit and the next approach/result allowance when a revision is authorized, before any native corrective wake. The first result allowance is reserved before the execution wake; returning the result does not consume it twice. Restart, session replacement and new actors do not replenish them. Unknown cost exposure remains visible; observed native billing controls are not a guaranteed future-spend ceiling.
 
 A lost execution wake response leaves its claimed attempt blocked. A failed/unknown opinion remains distinguishable from missing or completed advice. `acknowledge-uncertainty` records the company owner's note and disposition for an uncertain direction or consultation, without releasing work. Retained receipt acknowledgement/abandonment uses the existing receipt operator surface and never clears its hold.
 
@@ -37,3 +37,7 @@ If receipt storage succeeded but recording its confirmed observation in governan
 ## Qualification boundaries
 
 Automated domain, content, authorization and isolated PostgreSQL tests are separate from installed-host qualification. Executive's `scripts/qualify-l03-host.mjs` exercises real installed plugin paths with provider-free native test agents; it does not establish real advisor usefulness. The seven real catalogue profiles are provisioned separately and remain paused until approval of `docs/L03-REAL-CAMPAIGN.md` in Executive. Effective runtime profile/skill loading and useful model output require that campaign. See Executive's final L03 evidence report for the exact candidate hashes and unresolved proof obligations.
+
+## Native run attribution
+
+Paperclip authenticates the agent identity. Signed run JWTs also bind the run ID; long-lived agent API keys instead pass a caller-supplied run header into plugin context. L03 requires that ID but the SDK exposes no live-run lookup for independent verification of the latter path. Do not describe standard-key run attribution as cryptographically bound or necessarily live. Qualification must retain real native run readbacks. This host-contract limitation is separate from pinned reviewer authorization and does not require or authorize a Paperclip change.
