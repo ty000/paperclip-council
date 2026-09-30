@@ -35,7 +35,6 @@ export function runProcessGroup(command, args, {
         signalProcessGroup(child, "SIGKILL");
         forceComplete();
       }, terminationGraceMs);
-      forceTimer.unref();
     };
     const timeout = setTimeout(() => terminate(`timed out after ${timeoutMs} ms`), timeoutMs);
     timeout.unref();

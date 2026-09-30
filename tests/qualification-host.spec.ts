@@ -78,6 +78,33 @@ describe("repo-owned Paperclip qualification host", () => {
     expect(() => assertOwnedTarget(resolve(ownedRoot, "paperclip"), ownedRoot)).toThrow(/symbolic-link/);
   });
 
+  it("refuses a symlinked ownership marker without overwriting its external target", async () => {
+    const fixture = await fixtureRepository();
+    const ownedRoot = await mkdtemp(resolve(tmpdir(), "paperclip-owned-root-"));
+    const externalRoot = await mkdtemp(resolve(tmpdir(), "paperclip-external-root-"));
+    temporaryRoots.push(ownedRoot, externalRoot);
+    const target = resolve(ownedRoot, "paperclip");
+    await materializeHost({
+      source: fixture.root, target, expectedCommit: fixture.commit, install: false, allowedRoot: ownedRoot,
+    });
+    const markerPath = resolve(target, ".paperclip-council-owned.json");
+    const externalMarker = resolve(externalRoot, "external-marker.json");
+    const originalMarker = JSON.parse(await readFile(markerPath, "utf8"));
+    const externalMarkerBytes = `${JSON.stringify({
+      ...originalMarker,
+      testSentinel: "external marker must remain unchanged",
+    }, null, 2)}\n`;
+    await writeFile(externalMarker, externalMarkerBytes);
+    await rm(markerPath);
+    await symlink(externalMarker, markerPath);
+
+    expect(() => inspectHost(target, fixture.commit, ownedRoot)).toThrow(/ownership marker.*symbolic link/);
+    await expect(materializeHost({
+      source: fixture.root, target, expectedCommit: fixture.commit, install: true, allowedRoot: ownedRoot,
+    })).rejects.toThrow(/ownership marker.*symbolic link/);
+    expect(await readFile(externalMarker, "utf8")).toBe(externalMarkerBytes);
+  });
+
   it("refuses an existing checkout at another commit", async () => {
     const fixture = await fixtureRepository();
     const ownedRoot = await mkdtemp(resolve(tmpdir(), "paperclip-owned-root-"));

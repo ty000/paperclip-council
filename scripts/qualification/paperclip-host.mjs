@@ -1,7 +1,19 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import {
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  ftruncateSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
+import { mkdir, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,6 +43,69 @@ function git(root, args) {
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function markerPathFor(hostRoot) {
+  return resolve(hostRoot, ownershipMarkerName);
+}
+
+function assertRegularMarker(markerPath, { allowMissing = false } = {}) {
+  const markerStatus = lstatSync(markerPath, { throwIfNoEntry: false });
+  if (!markerStatus) {
+    if (allowMissing) return false;
+    throw new Error(`Qualification host ownership marker is missing: ${markerPath}`);
+  }
+  if (markerStatus.isSymbolicLink() || !markerStatus.isFile()) {
+    throw new Error(`Qualification host ownership marker must be a regular file, not a symbolic link: ${markerPath}`);
+  }
+  return true;
+}
+
+function openRegularMarker(markerPath, flags) {
+  assertRegularMarker(markerPath);
+  let descriptor;
+  try {
+    descriptor = openSync(markerPath, flags | constants.O_NOFOLLOW);
+    if (!fstatSync(descriptor).isFile()) {
+      throw new Error(`Qualification host ownership marker must remain a regular file: ${markerPath}`);
+    }
+    return descriptor;
+  } catch (error) {
+    if (descriptor !== undefined) closeSync(descriptor);
+    if (error?.code === "ELOOP") {
+      throw new Error(`Qualification host ownership marker must not be a symbolic link: ${markerPath}`);
+    }
+    throw error;
+  }
+}
+
+function readMarker(hostRoot) {
+  const markerPath = markerPathFor(hostRoot);
+  if (!assertRegularMarker(markerPath, { allowMissing: true })) return null;
+  const descriptor = openRegularMarker(markerPath, constants.O_RDONLY);
+  try {
+    return JSON.parse(readFileSync(descriptor, "utf8"));
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function createMarker(hostRoot, marker) {
+  const markerPath = markerPathFor(hostRoot);
+  if (lstatSync(markerPath, { throwIfNoEntry: false })) {
+    assertRegularMarker(markerPath);
+    throw new Error(`Fresh qualification host already contains an ownership marker: ${markerPath}`);
+  }
+  const descriptor = openSync(
+    markerPath,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+    0o600,
+  );
+  try {
+    writeSync(descriptor, `${JSON.stringify(marker, null, 2)}\n`);
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 function prepareDependencies(hostRoot) {
@@ -88,9 +163,16 @@ function prepareHostBuild(hostRoot) {
 }
 
 function updateMarker(hostRoot, values) {
-  const markerPath = resolve(hostRoot, ownershipMarkerName);
-  const marker = JSON.parse(readFileSync(markerPath, "utf8"));
-  writeFileSync(markerPath, `${JSON.stringify({ ...marker, ...values }, null, 2)}\n`);
+  const markerPath = markerPathFor(hostRoot);
+  const descriptor = openRegularMarker(markerPath, constants.O_RDWR);
+  try {
+    const marker = JSON.parse(readFileSync(descriptor, "utf8"));
+    const serializedMarker = `${JSON.stringify({ ...marker, ...values }, null, 2)}\n`;
+    ftruncateSync(descriptor, 0);
+    writeSync(descriptor, serializedMarker, 0, "utf8");
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 export function assertOwnedTarget(target, allowedRoot = runtimeRoot) {
@@ -121,8 +203,7 @@ export function inspectHost(
   }
   const head = git(absoluteTarget, ["rev-parse", "HEAD"]);
   const trackedStatus = git(absoluteTarget, ["status", "--porcelain", "--untracked-files=no"]);
-  const markerPath = resolve(absoluteTarget, ownershipMarkerName);
-  const marker = existsSync(markerPath) ? JSON.parse(readFileSync(markerPath, "utf8")) : null;
+  const marker = readMarker(absoluteTarget);
   const owned = marker?.schemaVersion === 1
     && marker?.environmentClass === "local-sandbox"
     && marker?.expectedCommit === expectedCommit
@@ -176,13 +257,13 @@ export async function materializeHost({
       run("git", ["-C", partialTarget, "checkout", "--detach", expectedCommit]);
       const trackedStatus = git(partialTarget, ["status", "--porcelain", "--untracked-files=no"]);
       if (trackedStatus !== "") throw new Error("Fresh Paperclip host checkout is unexpectedly dirty");
-      await writeFile(resolve(partialTarget, ownershipMarkerName), `${JSON.stringify({
+      createMarker(partialTarget, {
         schemaVersion: 1,
         environmentClass: "local-sandbox",
         expectedCommit,
         source: defaultPaperclipSource,
         materializedFrom: source,
-      }, null, 2)}\n`);
+      });
       await rename(partialTarget, absoluteTarget);
     } catch (error) {
       await rm(partialTarget, { recursive: true, force: true });
