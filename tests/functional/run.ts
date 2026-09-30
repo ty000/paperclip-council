@@ -95,8 +95,9 @@ const evidence: Record<string, any> = {
     distSha256: preparedCandidate.distSha256,
   },
   configuration: {
+    environmentClass: "local-sandbox",
     database: "fresh embedded PostgreSQL test cluster",
-    deploymentMode: "authenticated/private",
+    runtimeMode: "ephemeral authenticated/private qualification instance",
     models: "none",
     fixtureBoundary: "agents, issues, policies, and heartbeat runs are synthetic test preparation",
     credentials: "agent keys created by native board API; council token transferred directly to local_encrypted secret",

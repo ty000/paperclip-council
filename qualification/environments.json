@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "paperclip": {
+    "repository": "https://github.com/paperclipai/paperclip.git",
+    "commit": "61b3fd57a695614dc4a37e2303f426a34a9795cf",
+    "packageManager": "pnpm@9.15.4",
+    "lockfileRepair": {
+      "reason": "The pinned commit predates the pnpm 9.15.4 patch-hash normalization for acpx@0.13.1; only the validated lock metadata delta is permitted in the owned sandbox.",
+      "originalSha256": "e0c928a494f90ddad3c00791e83f09315ee8c82df2a0418a809dcf93649a8ab3",
+      "repairedSha256": "f8c156313822db4b5ce1cc9cfb616098812ac2ad60984143f0392aa2a2b5ea07",
+      "diffSha256": "5e1c2b664e264586cbb349eba267fddf0a78947244555db8ade05da00864a397"
+    }
+  },
+  "localSandbox": {
+    "environmentClass": "local-sandbox",
+    "workspacePath": ".paperclip/qualification/paperclip",
+    "runtimeLifecycle": "ephemeral-per-run",
+    "providers": "disabled",
+    "sourcePolicy": "repo-owned-pinned-clone"
+  },
+  "integratedRecipe": {
+    "environmentClass": "integrated-recipe",
+    "sourceCheckout": "/home/davy-lp/workspace/paperclip",
+    "sourcePolicy": "read-only",
+    "runtimePolicy": "separate-owned-home-required",
+    "pluginManifestRequired": true,
+    "minimumPluginCountForCompositionClaim": 2
+  }
+}

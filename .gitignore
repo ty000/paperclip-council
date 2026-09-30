@@ -5,3 +5,4 @@ artifacts/functional.json
 .pnpm-store/
 .git-local/
 .runtime/
+.paperclip/qualification/
