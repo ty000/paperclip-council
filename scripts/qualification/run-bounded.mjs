@@ -62,6 +62,11 @@ async function main() {
   const host = await prepareQualificationHost();
   const evidencePath = process.env.COUNCIL_PACKAGE_EVIDENCE_PATH
     ?? resolve(repositoryRoot, "artifacts/functional.json");
+  const proofManifest = JSON.parse(readFileSync(resolve(repositoryRoot, "qualification/proof-manifest.json"), "utf8"));
+  if (proofManifest.schema_version !== "proof-manifest.v1" || proofManifest.status !== "partial"
+      || proofManifest.closure?.decision !== "keep-open") {
+    throw new Error("N1 qualification proof manifest must remain canonical and keep-open");
+  }
   const playwrightBrowsersPath = resolve(repositoryRoot, ".paperclip/qualification/playwright");
   mkdirSync(playwrightBrowsersPath, { recursive: true });
   await runProcessGroup("corepack", ["pnpm", "exec", "playwright", "install", "chromium"], {
@@ -88,8 +93,9 @@ async function main() {
 
     const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
     const failedResult = Object.entries(evidence.results ?? {}).find(([, result]) => result !== "PASS");
-    if (evidence.candidate?.commit !== candidateCommit
-      || evidence.outcome !== "L2 STEP A MISSION PERSISTENCE VALIDATED"
+    if (evidence.proofId !== proofManifest.proof_id
+      || evidence.candidate?.commit !== candidateCommit
+      || evidence.outcome !== "N1 SAFE BOUNDARY VALIDATED"
       || failedResult) {
       throw new Error(`Bounded qualification evidence did not pass for ${candidateCommit}`);
     }

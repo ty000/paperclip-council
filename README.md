@@ -5,7 +5,7 @@ Paperclip workflows. This standalone package extracts the demonstrated
 `private.paperclip-council` integration without importing from a Paperclip
 monorepo workspace.
 
-The plugin exposes one agent-authenticated route. It resolves a dedicated
+The legacy decision adapter exposes an agent-authenticated route. It resolves a dedicated
 Council agent API key from Paperclip's secret store and submits either a native
 changes-requested or approval transition through Paperclip's public issue API.
 Approval first requires a valid `delivery-manifest` for the same issue and an
@@ -14,6 +14,28 @@ attachment whose metadata matches the manifest's bundle SHA-256.
 It does not implement Council reasoning, voting, learning, delivery control, or
 a separate authorization model. The configured key retains the Council agent's
 normal Paperclip authority.
+
+## N1 candidate preparation boundary
+
+Version 0.5 adds a plugin-private admission envelope, owner-controlled mission
+activation, two-contributor plans, persistent native child-issue intents, and
+Git bundle verification before an Integration Lead can publish a candidate.
+The mission page exposes pinned rosters, participants, reservations, unknowns,
+checks and the next actor. Child issues are first created in native Paperclip
+backlog; their dispatch requires a separate durable reservation. An uncertain
+create or wakeup is retained as unknown and is never retried automatically.
+
+The pinned SDK does not expose authenticated provider usage or remaining
+exposure. A caller-provided source label and amount cannot establish that
+measurement. Consequently, this package refuses **real** N1 activation and
+dispatch. Known admission inputs require worker test mode, the explicit
+`n1FixtureMode: ephemeral-local-sandbox` company configuration, and the
+source label "fixture:local-sandbox". The bounded replay sets these on its
+owned ephemeral host; they
+qualify state transitions, not live budget safety or agent judgment. No
+durable Paperclip instance is activated by the repository's qualification
+commands. N2 verdict and review handoff are not part of this slice. See
+[N1 report](docs/reviews/n1/REPORT.md) for exact evidence and remaining gates.
 
 ## Compatibility
 

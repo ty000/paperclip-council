@@ -50,6 +50,40 @@ type ValidationResult = {
   prerequisites: Array<{ code: string; status: "ready" | "pending" | "unsupported"; message: string }>;
 };
 
+type MissionInspection = {
+  mission: {
+    missionId: string;
+    rootIssueId: string;
+    version: number;
+    aggregate: {
+      phase: string;
+      control: { status: string; reason?: string };
+      mandate: { objective: string };
+      compositions: { team: { name: string; revision: string }; council: { name: string; revision: string } };
+      responsibilities: { integrationLeadAgentId: string; finalReviewerAgentId: string };
+    };
+  };
+  nextAction: string;
+  n1: null | {
+    participants: Array<{
+      contributionId: string; title: string; assigneeAgentId: string; ownedPaths: string[];
+      issueState: string; childIssueId?: string; commit?: string; issueUnknown?: string;
+    }>;
+    candidate: null | {
+      candidate: { attachmentId: string; baseCommit: string; candidateCommit: string; sha256: string };
+      checks: Array<{ name: string; status: string; detail: string }>;
+    };
+    blocker: string | null;
+  };
+  admission: null | {
+    periodKey: string;
+    status: string;
+    blockers: Array<{ code: string; message: string }>;
+    availablePeriodUnits: number | null;
+    reservations: Array<{ reservationId: string; status: string; requestedUnits: number; usage: { status: string; units?: number; reason?: string } | null }>;
+  };
+};
+
 const stack: CSSProperties = { display: "grid", gap: "1rem" };
 const card: CSSProperties = {
   border: "1px solid var(--border)",
@@ -278,7 +312,7 @@ function RosterConfiguration({ context }: PluginPageProps) {
         </div>
         <div style={row} aria-label="Configuration status">
           <Status value={authorized ? "owner authorized" : "read only"} />
-          <Status value="mission activation unavailable" />
+          <Status value="real mission activation unqualified" />
           <Status value="L0 G3/G4 partial" />
         </div>
       </header>
@@ -383,4 +417,123 @@ function RosterConfiguration({ context }: PluginPageProps) {
 
 export function CouncilRostersPage(props: PluginPageProps) {
   return <><RosterConfiguration {...props} />{props.context.companyId && <CouncilDecisionReceipts />}</>;
+}
+
+export function CouncilMissionsPage({ context }: PluginPageProps) {
+  const host = useHostContext();
+  const companyId = context.companyId ?? host.companyId;
+  const [missions, setMissions] = useState<MissionInspection[]>([]);
+  const [loadedCompanyId, setLoadedCompanyId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    setMissions([]);
+    setSelectedId(null);
+    setLoadedCompanyId(null);
+    if (!companyId) {
+      setLoading(false);
+      setError("Select a company to inspect Council missions.");
+      return;
+    }
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    const path = "/api/plugins/private.paperclip-council/api/companies/" +
+      encodeURIComponent(companyId) + "/missions?companyId=" + encodeURIComponent(companyId);
+    void fetch(path, { credentials: "same-origin", signal: controller.signal })
+      .then(async (response) => {
+        const body = await response.json() as { missions?: MissionInspection[]; error?: string };
+        if (!response.ok) throw new Error(body.error ?? "Mission inspection failed");
+        return body.missions ?? [];
+      })
+      .then((items) => {
+        setMissions(items);
+        setLoadedCompanyId(companyId);
+        setSelectedId((current) => current && items.some((item) => item.mission.missionId === current)
+          ? current : items[0]?.mission.missionId ?? null);
+      })
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) setError(message(cause));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [companyId, refreshKey]);
+
+  const selected = !loading && !error && loadedCompanyId === companyId
+    ? missions.find((item) => item.mission.missionId === selectedId) ?? null
+    : null;
+  const issueLink = (issueId: string) => "/" + (context.companyPrefix ? context.companyPrefix + "/" : "") + "issues/" + encodeURIComponent(issueId);
+  return (
+    <main style={{ ...stack, padding: "1.5rem", maxWidth: "75rem", margin: "0 auto" }}>
+      <div style={{ ...row, justifyContent: "space-between" }}>
+        <div><h1 style={{ marginBottom: "0.25rem" }}>Council missions</h1><p style={{ marginTop: 0 }}>Owner inspection of pinned teams, contributions, admission and the integrated candidate.</p></div>
+        <button style={button} onClick={() => setRefreshKey((value) => value + 1)} disabled={loading}>Refresh</button>
+      </div>
+      {loading && <p role="status">Loading missions…</p>}
+      {error && <p role="alert" style={card}>{error}</p>}
+      {!loading && !error && loadedCompanyId === companyId && missions.length === 0 && <p>No Council missions are recorded for this company.</p>}
+      {!loading && !error && loadedCompanyId === companyId && missions.length > 0 && (
+        <div style={grid}>
+          <section style={card} aria-labelledby="mission-picker-title">
+            <h2 id="mission-picker-title" style={{ marginTop: 0 }}>Missions</h2>
+            <label style={field}>
+              <span>Select mission</span>
+              <select style={input} value={selectedId ?? ""} onChange={(event) => setSelectedId(event.currentTarget.value)}>
+                {missions.map((item) => (
+                  <option key={item.mission.missionId} value={item.mission.missionId}>
+                    {item.mission.aggregate.mandate.objective} — {item.mission.aggregate.phase}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </section>
+          {selected && <section style={card} aria-labelledby="mission-state-title">
+            <h2 id="mission-state-title" style={{ marginTop: 0 }}>{selected.mission.aggregate.mandate.objective}</h2>
+            <p><Status value={selected.mission.aggregate.phase} /> Control: {selected.mission.aggregate.control.status}; version {selected.mission.version}</p>
+            <p>Team: {selected.mission.aggregate.compositions.team.name} ({selected.mission.aggregate.compositions.team.revision})</p>
+            <p>Council: {selected.mission.aggregate.compositions.council.name} ({selected.mission.aggregate.compositions.council.revision})</p>
+            <p>Integration Lead: {selected.mission.aggregate.responsibilities.integrationLeadAgentId}</p>
+            <p>Final reviewer: {selected.mission.aggregate.responsibilities.finalReviewerAgentId}</p>
+            <p><a href={issueLink(selected.mission.rootIssueId)}>Open root issue</a></p>
+            <p><strong>Next actor/action:</strong> {selected.nextAction}</p>
+            {selected.n1?.blocker && <p role="status"><strong>Blocker:</strong> {selected.n1.blocker}</p>}
+          </section>}
+        </div>
+      )}
+      {selected?.n1 && <section style={card} aria-labelledby="contributions-title">
+        <h2 id="contributions-title" style={{ marginTop: 0 }}>Contributions</h2>
+        {selected.n1.participants.length === 0 ? <p>Plan pending.</p> : <ol>{selected.n1.participants.map((slot) => (
+          <li key={slot.contributionId}>
+            <strong>{slot.title}</strong> — {slot.issueState}; assignee {slot.assigneeAgentId}; owns {slot.ownedPaths.join(", ")}
+            {slot.childIssueId && <>; <a href={issueLink(slot.childIssueId)}>child issue</a></>}
+            {slot.commit && <>; commit {slot.commit}</>}
+            {slot.issueUnknown && <>; unknown: {slot.issueUnknown}</>}
+          </li>
+        ))}</ol>}
+      </section>}
+      {selected?.n1?.candidate && <section style={card} aria-labelledby="candidate-title">
+        <h2 id="candidate-title" style={{ marginTop: 0 }}>Integrated candidate</h2>
+        <p>Commit: {selected.n1.candidate.candidate.candidateCommit}</p>
+        <p>Base: {selected.n1.candidate.candidate.baseCommit}</p>
+        <p>Bundle SHA-256: {selected.n1.candidate.candidate.sha256}</p>
+        <p><a href={issueLink(selected.mission.rootIssueId) + "#attachment-" + encodeURIComponent(selected.n1.candidate.candidate.attachmentId)}>Open candidate attachment</a></p>
+        <ul>{selected.n1.candidate.checks.map((check) => <li key={check.name}>{check.name}: {check.status} — {check.detail}</li>)}</ul>
+      </section>}
+      {selected && <section style={card} aria-labelledby="admission-title">
+        <h2 id="admission-title" style={{ marginTop: 0 }}>Admission and usage</h2>
+        {!selected.admission ? <p>No admission envelope is linked. Launch remains blocked.</p> : <>
+          <p>Period {selected.admission.periodKey}; status {selected.admission.status}; available units {selected.admission.availablePeriodUnits ?? "unknown"}.</p>
+          {selected.admission.blockers.length > 0 && <ul>{selected.admission.blockers.map((blocker) => <li key={blocker.code}>{blocker.code}: {blocker.message}</li>)}</ul>}
+          <ul>{selected.admission.reservations.map((reservation) => (
+            <li key={reservation.reservationId}>{reservation.reservationId}: {reservation.status}; reserved {reservation.requestedUnits}; usage {reservation.usage?.status === "known" ? reservation.usage.units : reservation.usage?.reason ?? "unsettled/unknown"}</li>
+          ))}</ul>
+        </>}
+      </section>}
+    </main>
+  );
 }

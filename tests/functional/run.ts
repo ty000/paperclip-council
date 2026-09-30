@@ -88,7 +88,7 @@ const requireServer = createRequire(resolve(root, "server/package.json"));
 const { eq } = requireServer("drizzle-orm");
 const evidence: Record<string, any> = {
   schemaVersion: 1,
-  proofId: "paperclip-council-l2-step-a-2026-09-30",
+  proofId: "paperclip-council-n1-safe-boundary-qualification-v1",
   startedAt: new Date().toISOString(),
   head: hostCommit,
   hostTrackedFilesClean: hostStatus === "",
@@ -132,6 +132,8 @@ let missionRootIssueId: string | undefined;
 const companyId = randomUUID();
 const projectId = randomUUID();
 const executorId = randomUUID();
+const contributorAId = randomUUID();
+const contributorBId = randomUUID();
 const councilId = randomUUID();
 const foreignCompanyId = randomUUID();
 const agentTokens = new Map<string, { token: string; keyId: string; runId: string; agentId: string }>();
@@ -199,7 +201,7 @@ async function request(actor: string, method: string, path: string, body?: unkno
   return { status: response.status, body: value, headers: response.headers };
 }
 
-async function freshRun(actor: "executor" | "council") {
+async function freshRun(actor: string, contextIssueId: string | undefined = issueId) {
   const current = agentTokens.get(actor)!;
   const runId = randomUUID();
   await db.insert(tables.heartbeatRuns).values({
@@ -208,7 +210,7 @@ async function freshRun(actor: "executor" | "council") {
     agentId: current.agentId,
     status: "running",
     responsibleUserId: evidence.configuration.humanUserId,
-    contextSnapshot: { issueId, fixture: "deterministic council package qualification" },
+    contextSnapshot: { issueId: contextIssueId, fixture: "deterministic council package qualification" },
   });
   agentTokens.set(actor, { ...current, runId });
   return runId;
@@ -222,6 +224,17 @@ async function checkoutExecutor(expectedStatus: string) {
     expectedStatuses: [expectedStatus],
   });
   assert.equal(result.status, 200, "executor checkout must succeed");
+}
+
+async function checkoutAgent(actor: string, targetIssueId: string, expectedStatus: string) {
+  await freshRun(actor, targetIssueId);
+  const principal = agentTokens.get(actor)!;
+  const result = await request(actor, "POST", `/api/issues/${targetIssueId}/checkout`, {
+    agentId: principal.agentId,
+    expectedStatuses: [expectedStatus],
+  });
+  assert.equal(result.status, 200, `${actor} checkout must succeed`);
+  return principal;
 }
 
 async function closeApp() {
@@ -328,12 +341,17 @@ try {
   await db.insert(tables.companies).values({ id: foreignCompanyId, name: "Foreign Council fixture", issuePrefix: "FCQ", defaultResponsibleUserId: userId });
   await db.insert(tables.companyMemberships).values({ companyId: foreignCompanyId, principalType: "user", principalId: userId, membershipRole: "owner", status: "active" });
   await db.insert(tables.projects).values({ id: projectId, companyId, name: "Council package fixture" });
-  for (const [actor, id] of [["executor", executorId], ["council", councilId]] as const) {
+  for (const [actor, id, role] of [
+    ["executor", executorId, "engineer"],
+    ["contributor-a", contributorAId, "engineer"],
+    ["contributor-b", contributorBId, "engineer"],
+    ["council", councilId, "reviewer"],
+  ] as const) {
     await db.insert(tables.agents).values({
       id,
       companyId,
       name: actor,
-      role: actor === "council" ? "reviewer" : "engineer",
+      role,
       adapterType: "process",
       adapterConfig: { command: "/usr/bin/false" },
       status: "idle",
@@ -349,6 +367,7 @@ try {
   }
   evidence.configuration.companyId = companyId;
   evidence.configuration.executorAgentId = executorId;
+  evidence.configuration.contributorAgentIds = [contributorAId, contributorBId];
   evidence.configuration.councilAgentId = councilId;
   evidence.configuration.councilKeyId = agentTokens.get("council")!.keyId;
   evidence.configuration.councilKeyScope = { kind: "standard" };
@@ -376,6 +395,7 @@ try {
       apiBaseUrl: baseUrl,
       councilAgentId: councilId,
       councilApiKey: { type: "secret_ref", secretId: secret.body.id },
+      n1FixtureMode: "ephemeral-local-sandbox",
     },
   });
   assert.equal(configured.status, 200);
@@ -397,7 +417,11 @@ try {
     kind: "team",
     name: "Delivery team",
     projectId,
-    members: [{ agentId: executorId, responsibilities: ["integration_lead"] }],
+    members: [
+      { agentId: executorId, responsibilities: ["integration_lead"] },
+      { agentId: contributorAId, responsibilities: ["contributor"] },
+      { agentId: contributorBId, responsibilities: ["contributor"] },
+    ],
     integrationLeadAgentId: executorId,
     finalReviewerAgentId: null,
     requiredPerspectives: [],
@@ -808,6 +832,330 @@ try {
   assert.deepEqual(replayAfterRestart.body.mission, pinnedMission.body.mission);
   evidence.results.missionPersistenceAfterRestart = "PASS";
 
+  // N1 qualification uses only declared local fixtures. No wakeup, model, or provider path is invoked.
+  const n1Team = await request("human", "POST", rosterBase, {
+    companyId,
+    command: "create",
+    roster: { ...teamDraft, name: "N1 two-contributor fixture team" },
+  });
+  const n1Council = await request("human", "POST", rosterBase, {
+    companyId,
+    command: "create",
+    roster: { ...councilDraft, name: "N1 fixture council" },
+  });
+  assert.equal(n1Team.status, 201);
+  assert.equal(n1Council.status, 201);
+  const n1Pair = await request("human", "POST", rosterBase, {
+    companyId,
+    command: "activate-pair",
+    teamRosterId: n1Team.body.head.rosterId,
+    teamExpectedVersion: n1Team.body.head.version,
+    councilRosterId: n1Council.body.head.rosterId,
+    councilExpectedVersion: n1Council.body.head.version,
+  });
+  assert.equal(n1Pair.status, 200);
+
+  const n1PeriodKey = `fixture-n1-${qualificationId}`;
+  const admissionPath = `/api/plugins/${pluginId}/api/companies/${companyId}/admission`;
+  const now = Date.now();
+  const admissionConfiguration = {
+    commandId: randomUUID(),
+    companyId,
+    periodKey: n1PeriodKey,
+    periodStart: new Date(now - 60_000).toISOString(),
+    periodEnd: new Date(now + 3_600_000).toISOString(),
+    measurement: { status: "known", source: "fixture:local-sandbox", unit: "fixture-unit" },
+    allowance: {
+      status: "known", source: "fixture:local-sandbox",
+      periodUnits: 100, taskUnits: 20, knownUsageUnits: 0,
+    },
+    exposure: { status: "known", source: "fixture:local-sandbox", units: 0 },
+    limits: { maxConcurrent: 1, maxRetries: 0, maxCorrections: 0 },
+  };
+  const unauthorizedAdmission = await request("intruder", "POST", admissionPath, {
+    companyId, command: "configure", configuration: admissionConfiguration,
+  });
+  assert.equal(unauthorizedAdmission.status, 403);
+  assert.equal(unauthorizedAdmission.body.code, "owner_required");
+  const admissionConfigured = await request("human", "POST", admissionPath, {
+    companyId, command: "configure", configuration: admissionConfiguration,
+  });
+  assert.equal(admissionConfigured.status, 200);
+  assert.equal(admissionConfigured.body.outcome, "configured");
+  assert.equal(admissionConfigured.body.envelope.status, "admissible");
+
+  const n1MissionFixtures = await Promise.all(["A", "B"].map(async (suffix) => {
+    const rootIssue = await request("human", "POST", `/api/companies/${companyId}/issues`, {
+      title: `N1 activation concurrency fixture ${suffix}`,
+      description: "Synthetic local-sandbox mission; no child dispatch or model/provider call.",
+      projectId,
+      status: "backlog",
+      assigneeAgentId: executorId,
+    });
+    assert.equal(rootIssue.status, 201);
+    const fixtureMissionId = randomUUID();
+    const createdMission = await request("human", "POST", missionBase, {
+      companyId,
+      command: "create",
+      commandId: randomUUID(),
+      missionId: fixtureMissionId,
+      rootIssueId: rootIssue.body.id,
+      projectId,
+      teamRosterId: n1Team.body.head.rosterId,
+      teamRevision: n1Pair.body.team.revision.revision,
+      councilRosterId: n1Council.body.head.rosterId,
+      councilRevision: n1Pair.body.council.revision.revision,
+      mandate: {
+        objective: `N1 fixture mission ${suffix}`,
+        acceptanceCriteria: ["Create two native child issues without waking providers"],
+        commitments: ["Fixture transitions only; dispatch remains prohibited"],
+        limits: {
+          taskPolicy: "fixture allowance only",
+          periodPolicy: "fixture period only",
+          correctionLimit: 1,
+          elapsedMinutes: 30,
+        },
+      },
+    });
+    assert.equal(createdMission.status, 201);
+    return {
+      missionId: fixtureMissionId,
+      rootIssueId: rootIssue.body.id,
+      reservationId: randomUUID(),
+      activationCommandId: randomUUID(),
+    };
+  }));
+  const activationRace = await Promise.all(n1MissionFixtures.map((fixture) => request(
+    "human",
+    "POST",
+    `${missionBase}/${fixture.missionId}/commands`,
+    {
+      companyId,
+      command: "activate",
+      commandId: fixture.activationCommandId,
+      expectedVersion: 1,
+      periodKey: n1PeriodKey,
+      reservationId: fixture.reservationId,
+      requestedUnits: 10,
+    },
+  )));
+  assert.equal(activationRace.filter((result) => result.status === 200).length, 1);
+  assert.equal(activationRace.filter((result) => [409, 422].includes(result.status)).length, 1);
+  const winnerIndex = activationRace.findIndex((result) => result.status === 200);
+  const activeFixture = n1MissionFixtures[winnerIndex];
+  const waitingFixture = n1MissionFixtures[winnerIndex === 0 ? 1 : 0];
+  let activeMission = activationRace[winnerIndex].body.mission;
+  const admissionConflict = activationRace.find((result) => result.status !== 200)!;
+  assert(["version_conflict", "admission_blocked"].includes(admissionConflict.body.code));
+  const admissionAfterRace = await request("human", "GET", `${admissionPath}?companyId=${companyId}&periodKey=${encodeURIComponent(n1PeriodKey)}`);
+  assert.equal(admissionAfterRace.status, 200);
+  assert.equal(admissionAfterRace.body.envelope.reservations.length, 1);
+  assert.equal(admissionAfterRace.body.envelope.reservations[0].reservationId, activeFixture.reservationId);
+  evidence.results.n1AdmissionOwnerAuthAndAtomicActivationRace = "PASS";
+
+  const revisedAfterActivation = await request("human", "POST", `${rosterBase}/${n1Team.body.head.rosterId}/commands`, {
+    companyId,
+    command: "revise",
+    expectedVersion: n1Pair.body.team.head.version,
+    roster: { ...teamDraft, name: "N1 team revised after mission activation" },
+  });
+  assert.equal(revisedAfterActivation.status, 200);
+  const pinnedActiveMission = await request("human", "GET", `${missionBase}/${activeFixture.missionId}?companyId=${companyId}`);
+  assert.equal(pinnedActiveMission.status, 200);
+  assert.equal(pinnedActiveMission.body.mission.aggregate.control.status, "active");
+  assert.equal(pinnedActiveMission.body.mission.teamRevision, n1Pair.body.team.revision.revision);
+  assert.equal(pinnedActiveMission.body.mission.aggregate.compositions.team.name, "N1 two-contributor fixture team");
+  evidence.results.n1ActiveMissionPinsRosterRevision = "PASS";
+
+  const unsettled = await request("human", "POST", admissionPath, {
+    companyId,
+    command: "settle",
+    settlement: {
+      commandId: randomUUID(),
+      companyId,
+      periodKey: n1PeriodKey,
+      reservationId: activeFixture.reservationId,
+      usage: { status: "unknown", reason: "fixture does not invoke a provider usage source" },
+      remainingExposure: { status: "unknown", reason: "fixture provider exposure is intentionally unavailable" },
+      expectedVersion: admissionAfterRace.body.envelope.version,
+    },
+  });
+  assert.equal(unsettled.status, 200);
+  assert.equal(unsettled.body.envelope.status, "blocked");
+  assert.equal(unsettled.body.reservation.status, "unsettled");
+
+  await closeApp();
+  workerManager = createPluginWorkerManager();
+  app = await createApp(db, opts("vite-dev"));
+  server = createServer(app);
+  await new Promise<void>((resolveListen, reject) => {
+    server!.once("error", reject);
+    server!.listen(address.port, "127.0.0.1", resolveListen);
+  });
+  await app.locals.bundledPluginsStartup;
+  assert(workerManager.isRunning(pluginId), "installed package worker must reload after N1 admission restart");
+  const admissionAfterN1Restart = await request("human", "GET", `${admissionPath}?companyId=${companyId}&periodKey=${encodeURIComponent(n1PeriodKey)}`);
+  assert.equal(admissionAfterN1Restart.status, 200);
+  assert.equal(admissionAfterN1Restart.body.envelope.status, "blocked");
+  assert.equal(admissionAfterN1Restart.body.envelope.reservations[0].status, "unsettled");
+  assert(admissionAfterN1Restart.body.envelope.blockers.some((item: any) => item.code === "unsettled_usage_unknown"));
+  evidence.results.n1AdmissionUnsettledPersistenceAfterRestart = "PASS";
+
+  const finalSettlementCommandId = randomUUID();
+  const finalSettlement = {
+    commandId: finalSettlementCommandId,
+    companyId,
+    periodKey: n1PeriodKey,
+    reservationId: activeFixture.reservationId,
+    usage: { status: "known", source: "fixture:local-sandbox", units: 4 },
+    remainingExposure: { status: "known", source: "fixture:local-sandbox", units: 0 },
+    expectedVersion: admissionAfterN1Restart.body.envelope.version,
+  };
+  const reconciledAdmission = await request("human", "POST", admissionPath, {
+    companyId, command: "settle", settlement: finalSettlement,
+  });
+  assert.equal(reconciledAdmission.status, 200);
+  assert.equal(reconciledAdmission.body.reservation.status, "settled");
+  assert.equal(reconciledAdmission.body.envelope.status, "admissible");
+  assert.equal(reconciledAdmission.body.envelope.availablePeriodUnits, 96);
+  const waitingActivation = await request("human", "POST", `${missionBase}/${waitingFixture.missionId}/commands`, {
+    companyId,
+    command: "activate",
+    commandId: randomUUID(),
+    expectedVersion: 1,
+    periodKey: n1PeriodKey,
+    reservationId: randomUUID(),
+    requestedUnits: 10,
+  });
+  assert.equal(waitingActivation.status, 200);
+  assert.equal(waitingActivation.body.mission.aggregate.control.status, "active");
+  const admissionAfterCapacityReuse = await request("human", "GET", `${admissionPath}?companyId=${companyId}&periodKey=${encodeURIComponent(n1PeriodKey)}`);
+  assert.equal(admissionAfterCapacityReuse.status, 200);
+  assert.equal(admissionAfterCapacityReuse.body.envelope.reservations.length, 2);
+  assert.equal(admissionAfterCapacityReuse.body.envelope.reservations[0].status, "settled");
+  assert.equal(admissionAfterCapacityReuse.body.envelope.reservations[1].status, "reserved");
+  assert.equal(admissionAfterCapacityReuse.body.envelope.availablePeriodUnits, 86);
+  evidence.results.n1AdmissionKnownSettlementRestoresCapacity = "PASS";
+
+  const rootStarted = await request("human", "PATCH", `/api/issues/${activeFixture.rootIssueId}`, { status: "in_progress" });
+  assert.equal(rootStarted.status, 200);
+  const syntheticLead = await checkoutAgent("executor", activeFixture.rootIssueId, "in_progress");
+  const agentCommandPath = `/api/plugins/${pluginId}/api/issues/${activeFixture.rootIssueId}/council/commands`;
+  const contributionIds = [randomUUID(), randomUUID()];
+  const prematurePlan = await request("executor", "POST", agentCommandPath, {
+    missionId: activeFixture.missionId,
+    command: "plan", commandId: randomUUID(), expectedVersion: activeMission.version,
+    contributions: [
+      { contributionId: contributionIds[0], assigneeAgentId: contributorAId, title: "Fixture contribution A", ownedPaths: ["fixture/a.txt"] },
+      { contributionId: contributionIds[1], assigneeAgentId: contributorBId, title: "Fixture contribution B", ownedPaths: ["fixture/b.txt"] },
+    ],
+  });
+  assert.equal(prematurePlan.status, 409);
+  assert.equal(prematurePlan.body.code, "root_dispatch_run_mismatch");
+  const boundLead = await request("human", "POST", `${missionBase}/${activeFixture.missionId}/commands`, {
+    companyId, command: "fixture-bind-lead-run", fixtureSource: "fixture:local-sandbox",
+    commandId: randomUUID(), expectedVersion: activeMission.version, runId: syntheticLead.runId,
+  });
+  assert.equal(boundLead.status, 200);
+  assert.equal(boundLead.body.mission.aggregate.n1.rootDispatchMode, "fixture");
+  activeMission = boundLead.body.mission;
+  evidence.results.n1ManualLeadRunRefusedUntilExplicitFixtureBinding = "PASS";
+  const plan = await request("executor", "POST", agentCommandPath, {
+    missionId: activeFixture.missionId,
+    command: "plan",
+    commandId: randomUUID(),
+    expectedVersion: activeMission.version,
+    contributions: [
+      { contributionId: contributionIds[0], assigneeAgentId: contributorAId, title: "Fixture contribution A", ownedPaths: ["fixture/a.txt"] },
+      { contributionId: contributionIds[1], assigneeAgentId: contributorBId, title: "Fixture contribution B", ownedPaths: ["fixture/b.txt"] },
+    ],
+  });
+  assert.equal(plan.status, 200);
+  activeMission = plan.body.mission;
+  const materializedChildren: Array<{ contributionId: string; childIssueId: string; actor: string }> = [];
+  for (const [index, contributionId] of contributionIds.entries()) {
+    const materialized = await request("executor", "POST", agentCommandPath, {
+      missionId: activeFixture.missionId,
+      command: "materialize",
+      commandId: randomUUID(),
+      expectedVersion: activeMission.version,
+      contributionId,
+    });
+    assert.equal(materialized.status, 200);
+    assert.equal(materialized.body.outcome, "confirmed");
+    assert.equal(materialized.body.effect.issue.parentId, activeFixture.rootIssueId);
+    assert.equal(materialized.body.effect.issue.assigneeAgentId, index === 0 ? contributorAId : contributorBId);
+    activeMission = materialized.body.mission;
+    materializedChildren.push({
+      contributionId,
+      childIssueId: materialized.body.effect.issue.id,
+      actor: index === 0 ? "contributor-a" : "contributor-b",
+    });
+  }
+  evidence.results.n1TwoNativeAttributedChildIssues = "PASS";
+
+  for (const child of materializedChildren) {
+    const childStarted = await request("human", "PATCH", `/api/issues/${child.childIssueId}`, { status: "in_progress" });
+    assert.equal(childStarted.status, 200);
+    await checkoutAgent(child.actor, child.childIssueId, "in_progress");
+    const refusedContribution = await request(child.actor, "POST", `/api/plugins/${pluginId}/api/issues/${child.childIssueId}/council/commands`, {
+      missionId: activeFixture.missionId,
+      command: "record-contribution",
+      commandId: randomUUID(),
+      expectedVersion: activeMission.version,
+      contributionId: child.contributionId,
+      commit: "1".repeat(40),
+    });
+    assert.equal(refusedContribution.status, 409);
+    assert.equal(refusedContribution.body.code, "dispatch_not_confirmed");
+  }
+  const refusedPublish = await request("executor", "POST", agentCommandPath, {
+    missionId: activeFixture.missionId,
+    command: "publish",
+    commandId: randomUUID(),
+    expectedVersion: activeMission.version,
+    attachmentId: randomUUID(),
+    expectedSha256: "0".repeat(64),
+    baseCommit: "0".repeat(40),
+    candidateCommit: "1".repeat(40),
+  });
+  assert.equal(refusedPublish.status, 409);
+  assert.equal(refusedPublish.body.code, "contributions_incomplete");
+  const n1Inspection = await request("human", "GET", `${missionBase}/${activeFixture.missionId}?companyId=${companyId}`);
+  assert.equal(n1Inspection.status, 200);
+  assert.equal(n1Inspection.body.mission.aggregate.phase, "executing");
+  assert.equal(n1Inspection.body.n1.candidate, null);
+  assert.equal(n1Inspection.body.n1.participants.length, 2);
+  assert(n1Inspection.body.n1.participants.every((slot: any) => slot.issueState === "confirmed" && !slot.dispatchState));
+  evidence.results.n1ProhibitedDispatchKeepsContributionAndPublicationBlocked = "PASS";
+  evidence.n1Boundary = {
+    fixtures: "owner, agents, runs, limits, usage unknowns, missions, and issues are synthetic local-sandbox fixtures",
+    providerInvocation: "none; dispatch was deliberately not invoked because it requests native wakeup",
+    syntheticLeadRun: "owner bound an authenticated local-sandbox fixture run to the native root checkout; no wakeup occurred",
+    demonstrated: [
+      "owner admission auth",
+      "atomic activation reservation",
+      "unsettled restart",
+      "known settlement and restored capacity",
+      "active pinning",
+      "two native child issues",
+      "manually started lead run refused until explicit fixture-only binding",
+    ],
+    incomplete: ["confirmed native dispatch", "two recorded contributions", "integrated bundle candidate", "failed integration verification"],
+    admissionReplayLimits: {
+      periodUnits: 100,
+      taskUnits: 20,
+      maxConcurrent: 1,
+      maxRetries: 0,
+      maxCorrections: 0,
+      firstReservationUnits: 10,
+      reconciledUsageUnits: 4,
+      reconciledRemainingExposureUnits: 0,
+      reusedReservationUnits: 10,
+      availablePeriodUnitsAfterReuse: 86,
+    },
+  };
+
   const foreignBase = `/api/plugins/${pluginId}/api/companies/${foreignCompanyId}/rosters`;
   const foreignList = await request("human", "GET", `${foreignBase}?companyId=${foreignCompanyId}`);
   assert.equal(foreignList.status, 200);
@@ -880,6 +1228,18 @@ try {
     await ownerPage.getByLabel("Name").fill("Stale browser revision");
     await ownerPage.getByRole("button", { name: "Publish revision" }).click();
     await ownerPage.getByRole("alert").filter({ hasText: "stale" }).waitFor();
+    await ownerPage.goto(`${baseUrl}/CPQ/council-missions`, { waitUntil: "networkidle" });
+    await ownerPage.getByRole("heading", { name: "Council missions" }).waitFor();
+    await ownerPage.getByLabel("Select mission").selectOption(activeFixture.missionId);
+    await ownerPage.getByRole("heading", { name: /^N1 fixture mission [AB]$/ }).waitFor();
+    await ownerPage.getByRole("heading", { name: "Contributions" }).waitFor();
+    await ownerPage.getByText("Admission and usage").waitFor();
+    await ownerPage.route("**/api/plugins/*/api/companies/*/missions?**", (route) => route.abort());
+    await ownerPage.getByRole("button", { name: "Refresh" }).click();
+    await ownerPage.getByRole("alert").waitFor();
+    assert.equal(await ownerPage.getByRole("heading", { name: "Contributions" }).count(), 0);
+    assert.equal(await ownerPage.getByRole("heading", { name: "Admission and usage" }).count(), 0);
+    evidence.results.n1MissionUiHidesStaleDetailsOnRefreshFailure = "PASS";
     await ownerContext.close();
 
     const loadingContext = await browser.newContext({ viewport: { width: 760, height: 760 } });
@@ -907,15 +1267,30 @@ try {
     await errorPage.getByRole("alert").filter({ hasText: "Council configuration could not load" }).waitFor();
     await errorContext.close();
 
+    const missionErrorContext = await browser.newContext({ viewport: { width: 760, height: 760 } });
+    await addSessionCookies(missionErrorContext, cookie);
+    const missionErrorPage = await missionErrorContext.newPage();
+    await missionErrorPage.route("**/api/plugins/*/api/companies/*/missions*", (route) => route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "Injected mission inspection failure" }),
+    }));
+    await missionErrorPage.goto(`${baseUrl}/CPQ/council-missions`, { waitUntil: "domcontentloaded" });
+    await missionErrorPage.getByRole("alert").filter({ hasText: "Injected mission inspection failure" }).waitFor();
+    await missionErrorContext.close();
+
     const intruderContext = await browser.newContext({ viewport: { width: 760, height: 760 } });
     await addSessionCookies(intruderContext, intruderCookie);
     const intruderPage = await intruderContext.newPage();
     await intruderPage.goto(`${baseUrl}/CPQ/council-rosters`, { waitUntil: "networkidle" });
     await intruderPage.getByText("Status: read only").waitFor();
     assert.equal(await intruderPage.getByRole("button", { name: "Create draft" }).isDisabled(), true);
+    await intruderPage.goto(`${baseUrl}/CPQ/council-missions`, { waitUntil: "networkidle" });
+    await intruderPage.getByRole("alert").waitFor();
     await intruderContext.close();
     evidence.results.installedBrowserPageAndAuthenticatedAction = "PASS";
     evidence.results.installedBrowserStates = "PASS";
+    evidence.results.n1MissionOwnerPageAndFailureStates = "PASS";
   } finally {
     await browser.close();
   }
@@ -1130,7 +1505,7 @@ try {
     replacementAndRevocation: "documented-only",
     reason: "the required package journey used native ephemeral keys; durable key mutation was not requested",
   };
-  evidence.outcome = "L2 STEP A MISSION PERSISTENCE VALIDATED";
+  evidence.outcome = "N1 SAFE BOUNDARY VALIDATED";
 } catch (error) {
   evidence.outcome = "NON-CONCLUSIVE OR BLOCKED";
   evidence.error = error instanceof Error

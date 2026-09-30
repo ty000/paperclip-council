@@ -1,22 +1,60 @@
 {
-  "schemaVersion": 1,
-  "proofId": "paperclip-council-pre-l3-bounded-qualification-v1",
-  "environmentClass": "local-sandbox",
-  "candidatePolicy": "clean committed HEAD recorded in generated evidence",
-  "hostConfiguration": "qualification/environments.json",
-  "replayCommand": "pnpm qualification:bounded",
-  "generatedEvidence": "artifacts/functional.json (git-ignored)",
-  "expectedOutcome": "L2 STEP A MISSION PERSISTENCE VALIDATED",
-  "requiredChecks": [
-    "all functional result entries equal PASS",
-    "candidate commit equals replay HEAD",
-    "Paperclip host commit and build digests match pinned configuration",
-    "runtime and embedded database cleanup are recorded"
+  "schema_version": "proof-manifest.v1",
+  "proof_id": "paperclip-council-n1-safe-boundary-qualification-v1",
+  "subject": "Partial N1 safe-boundary implementation on the exact committed candidate and pinned ephemeral Paperclip host",
+  "status": "partial",
+  "summary": "Authenticated installed fixture transitions and fail-closed guards are replayable; trusted G4 usage, real dispatch, two attributed contributions, and an integrated candidate remain unproven.",
+  "categories": ["functional", "quality", "compliance", "documentation"],
+  "evidence": [
+    {
+      "id": "exact-candidate-sandbox",
+      "category": "functional",
+      "kind": "runtime-observation",
+      "location": "artifacts/functional.json",
+      "replayable": true,
+      "notes": "Generated and ignored by Git. Check proofId, candidate.commit, host identity, all named results, n1Boundary and cleanup. All N1 identities, allowances and usage are fixtures; no model/provider launch."
+    },
+    {
+      "id": "parallel-fast-checks",
+      "category": "quality",
+      "kind": "automated-test",
+      "location": "scripts/ci/run-checks.mjs",
+      "replayable": true,
+      "notes": "Independent typecheck, tests and build execute in parallel."
+    },
+    {
+      "id": "migration-precontrol",
+      "category": "compliance",
+      "kind": "document-only",
+      "location": "docs/reviews/n1/admission-prewrite.md",
+      "replayable": false,
+      "notes": "Applied baseline migration checksums and existing data were inspected before the additive 004 write; the document is not runtime proof."
+    }
   ],
-  "claimLimits": [
-    "single-plugin local sandbox only",
-    "no multi-plugin recipe claim",
-    "no selected-target activation or deployment claim",
-    "no model or provider execution"
-  ]
+  "replay": {
+    "preconditions": [
+      "Run from a clean committed Council candidate based on main 9ae33f13968be4d8d5d20dc511deb2215c552ab0 (merged PR #14).",
+      "Repo-owned host configuration pins Paperclip 61b3fd57a695614dc4a37e2303f426a34a9795cf; local ephemeral PostgreSQL, loopback and cached dependencies are available.",
+      "No durable Paperclip instance, model or provider is used."
+    ],
+    "steps": [
+      "COREPACK_HOME=/tmp/council-n1-corepack corepack pnpm install --offline --frozen-lockfile",
+      "COREPACK_HOME=/tmp/council-n1-corepack node scripts/ci/run-checks.mjs",
+      "COREPACK_HOME=/tmp/council-n1-corepack corepack pnpm qualification:bounded",
+      "sha256sum artifacts/functional.json"
+    ],
+    "expected_artifacts": [
+      "All fast checks pass; generated evidence uses this proof_id and exact replay HEAD.",
+      "All named functional results pass with outcome N1 SAFE BOUNDARY VALIDATED; n1Boundary explicitly lists incomplete N1 behavior.",
+      "Pinned host identity and ephemeral application/database cleanup are recorded."
+    ]
+  },
+  "closure": {
+    "decision": "keep-open",
+    "rationale": "The observable N1 exit needs authoritative G4 measurement, real admitted dispatch, two attributed contributions and a verified integrated candidate; fixture-safe proof cannot close it.",
+    "next_required_actions": [
+      "Expose and qualify trusted task/period usage and remaining-exposure readback bound to Paperclip run identity.",
+      "Replay N1 with two admitted native contributor runs, real attributed commits, integrated candidate and failed-integration refusal."
+    ]
+  }
 }
