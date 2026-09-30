@@ -39,8 +39,11 @@ Paperclip server before reporting `runtimeReady: true`.
 verifies or prepares the host, then delegates to the existing functional
 harness. That harness owns a fresh `PAPERCLIP_HOME`, instance ID, storage,
 listener and embedded PostgreSQL cluster for one run and removes them afterward.
-Providers and models remain disabled. The host checkout is reusable; the
-runtime instance is intentionally ephemeral.
+The bounded launcher also installs Chromium into the ignored repo-owned
+qualification cache and rejects any final evidence whose candidate SHA or
+verdict does not match the committed candidate. Providers and models remain
+disabled. The host checkout and browser cache are reusable; the runtime instance
+is intentionally ephemeral.
 
 ## Integrated recipe
 
