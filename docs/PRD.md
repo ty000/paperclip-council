@@ -1,7 +1,7 @@
 # Paperclip Council — PRD
 
 Status: V1 product scope selected; implementation and qualification pending. Detailed design choices and activation prerequisites are identified in the companion documents.
-Document version: 0.3 — September 30, 2026.
+Document version: 0.4 — September 30, 2026.
 
 This document defines the target product, its users, journeys, requirements, and the outcomes used to assess its value. The [roadmap](ROADMAP.md) proposes evolution horizons; it does not change this PRD's requirements. Architecture, libraries, infrastructure, tickets, sprints, and delivery dates belong in other documents.
 
@@ -127,11 +127,15 @@ The following rules reflect the initial user's decisions. They form a usage prof
 | A degradation leaves the complete journey's p95 strictly below 30 seconds for each affected group | The council may decide within the preceding trade-off; the duration multiplier is not an additional limit. |
 | This p95 reaches or exceeds 30 seconds for an affected group | Owner decision required. Improving an already long journey is not, by itself, a degradation. |
 | An infrastructure change affects costs, whether increasing or decreasing them | Prior owner decision, even within an authorized budget envelope. |
-| The request would exceed its spending cap or the overall budget for the period | Prior owner decision; both limits apply together. |
+| Admitting new work would exceed the task or shared period budget policy | Block new admission and obtain a prior owner decision to change the allowance; both limits apply together. Unknown available budget or remaining exposure blocks new admission. |
 
 The p95 covers the journey through to a usable result, including background waiting. Representative trials may be sufficient; their population, relevance, and uncertainty must be explicit. The 80/20 principle means a benefit for majority usage, not a screen count or a vote.
 
 If identifying an essential use or estimating a trade-off remains both decisive and uncertain, a proportionate investigation precedes escalation. A follow-up action does not authorize a trade-off outside the mandate. The absence of a human response never constitutes approval; only work dependent on that response waits.
+
+**Owner-approved V1 budget policy — September 30, 2026 (DEC-G4-01).** The owner accepts prudent monetary control with mandatory operational limits, rather than an absolute monetary ceiling. Reserve shared task/period allowance before launch, enforce configured concurrency and retry/correction limits, and keep corrections, appeals and resumption within the same envelope. Known spend, reservations and remaining in-flight exposure must stay visible; unknown or unpriced usage is never zero. Unknown available budget or remaining exposure blocks new launches. Work already committed may still produce an overrun: record it and stop new admission under the exhausted or uncertain envelope. This accepted residual risk does not permit knowingly admitting work beyond the authorized allowance. Cancellation is not proof that no further cost can accrue.
+
+Concrete amounts, period boundaries, measurement sources and reservation estimates remain activation inputs; accepting the policy does not qualify a runtime or choose those inputs. Infrastructure cost changes in either direction still require prior owner approval, independently of the operational envelope. See the [decision record](G3-G4-DECISIONS.md) for authority, pending qualification and scope.
 
 ### 6.4 Disagreements and appeals
 
@@ -301,3 +305,5 @@ Version 0.2 incorporates a documentary integration review against [Paperclip com
 This proposal is neither an independent validation of the product nor a delivery schedule commitment. The scenarios describe required behavior; only the facts explicitly qualified in section 4 are reported as demonstrated within their trial scope.
 
 Version 0.3 records the September 30 owner scope decision, adds team lifecycle requirements C17–C18 and scenarios A18–A22, and links V1 design and delivery planning. Detailed technical defaults are design proposals, not evidence of installed or running behavior. The initial §6.3 mandate is unchanged.
+
+Version 0.4 records owner-approved DEC-G4-01 in §6.3 and DEC-G3-01 for minimal supported decision readback. The former explicitly replaces the absolute monetary-cap interpretation with prudent admission control; all other mandate protections remain. Both technical gates stay open pending qualification. Future stronger guarantees are roadmap candidates, not V1 acceptance additions.

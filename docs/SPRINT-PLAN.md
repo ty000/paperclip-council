@@ -1,10 +1,12 @@
 # Paperclip Council — V1 sprint plan after L0
 
-Version 0.1 — September 30, 2026. Documentary plan, not a running sprint or delivery-date commitment.
+Version 0.2 — September 30, 2026. Documentary plan, not a running sprint or delivery-date commitment.
 
-Sources: [product backlog](BACKLOG.md), [PRD 0.3](PRD.md), [V1 scope](V1-SCOPE.md), [TAD D01–D10](TAD.md), [technical lots](IMPLEMENTATION-PLAN.md). PRD §6.3 remains unchanged. Every technical ticket below names a backlog parent; implementation details do not become new product requirements.
+Sources: [product backlog](BACKLOG.md), [PRD 0.4](PRD.md), [V1 scope](V1-SCOPE.md), [TAD D01–D10](TAD.md), [technical lots](IMPLEMENTATION-PLAN.md). PRD §6.3 incorporates owner-approved DEC-G4-01; other mandate protections remain unchanged. Every technical ticket below names a backlog parent; implementation details do not become new product requirements.
 
 ## 1. Baseline and entry status
+
+This section preserves the original pre-Sprint-1 planning baseline. Use the candidate-specific reports under `docs/reviews/` for delivered increments; §2 below records the later owner decisions, not a fresh runtime PASS.
 
 Published documentary base: `4cf7127880f4847a46cf1fdefa5acd5de5593206` on `origin/main`, verified September 30. L0 is a **local, separately reviewed candidate**, not merged into that base:
 
@@ -22,11 +24,11 @@ This pass read the report and manifest; it did not rerun L0 or requalify its run
 
 | ID / backlog parent | Current fact and boundary | Smallest next action / exit | Needed before |
 | --- | --- | --- | --- |
-| DEP-G3 / B03, B08 | The pinned host has no supported canonical readback of native decision actor/run/body/effect after an uncertain response. Ordinary native flow passing does not establish safe reconciliation | Technical owner proposes one company-scoped readback contract and its host ownership; qualify an uncertain-response replay before enabling the dependent recovery path. Any host edit is a separate scoped task. Until then retain unknown/blocked; no blind PATCH retry or direct-DB substitute | L3's applied-decision reconciliation; not L1 |
-| DEP-G4 / B04 | Plugin CAS can serialize its envelope, but L0 did not establish a hard task/period cap including native in-flight exposure | Technical owner bounds the reservation/exposure contract once. Keep affected dispatch disabled if unsupported. A narrower product guarantee needs an explicit owner decision and aligned PRD/TAD; it is not adopted here. Do not build a new scheduler or billing subsystem to force this green | L2 dispatch under the required limit policy |
+| DEP-G3 / B03, B08 | The pinned host has no supported canonical readback of native decision actor/run/body/effect after an uncertain response. Ordinary native flow passing does not establish safe reconciliation | DEC-G3-01 authorizes a bounded qualification/implementation lot: inspect existing supported reads first; if insufficient, add the minimum company-scoped host readback and necessary SDK exposure. Qualify uncertain-response replay before recovery. Keep host edits isolated from L2; no blind PATCH retry or direct-DB substitute | L3's applied-decision reconciliation; not L1 |
+| DEP-G4 / B04 | DEC-G4-01 adopts prudent monetary admission control and mandatory operational limits; the selected contract remains technically unqualified | Qualify atomic task/period reservations, concurrency/retry bounds, settlement/restart and blocking on unknown available budget or exposure. Keep affected activation/dispatch disabled until proven. Already-committed work may overrun; no absolute monetary ceiling is promised. Do not build a new scheduler or billing subsystem | L2 dispatch under the required limit policy |
 | DEP-OWNER / B04 | The probe proves an addressed fixture human responded; it does not prove contractual owner identity or mandate/submission binding | In L3, resolve the persisted configured owner, bind the question to exact revisions, verify native responder and reject stale/system/other responses. Test no-response waiting and attributable continuation. This is planned business implementation, not a reason to expand L0 | L3 owner-bound continuation |
 
-Default disposition: preserve the existing mandate and leave affected actions blocked. No budget amounts or relaxation is assumed. These rows are bounded dependency/decision records, not extra product backlog items or automatic authorization for host changes. One conclusion with a supported path or explicit blocker is sufficient; reopen only on new evidence or a changed contract.
+Default disposition: enforce the revised PRD mandate and leave affected actions blocked until qualified. The [September 30 owner decisions](G3-G4-DECISIONS.md) adopt the G4 policy and authorize a minimal G3 host readback change if needed; no budget amounts, live activation or wider host work are authorized. G3 and G4 technical qualification may proceed independently in isolated worktrees; G4 gates L2 dispatch, G3 gates L3 decision recovery. One bounded qualification conclusion is sufficient; reopen only on new evidence or a changed contract.
 
 ## 3. Sprint 1 — owner configuration (slice of L1)
 

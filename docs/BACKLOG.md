@@ -1,8 +1,8 @@
 # Paperclip Council — V1 product backlog
 
-Version 0.1 — September 30, 2026. Proposed delivery order; no item is declared implemented or qualified by this document.
+Version 0.2 — September 30, 2026. Proposed delivery order; no item is declared implemented or qualified by this document.
 
-Product authority: [PRD 0.3](PRD.md), especially §6.3 and C01–C11, C16–C18; [V1 scope](V1-SCOPE.md). Architecture: [TAD](TAD.md). Technical lots: [implementation plan](IMPLEMENTATION-PLAN.md). Selected work and technical dependencies: [sprint plan](SPRINT-PLAN.md).
+Product authority: [PRD 0.4](PRD.md), especially §6.3 and C01–C11, C16–C18; [V1 scope](V1-SCOPE.md). Architecture: [TAD](TAD.md). Technical lots: [implementation plan](IMPLEMENTATION-PLAN.md). Selected work and technical dependencies: [sprint plan](SPRINT-PLAN.md).
 
 ## 1. Release and priority
 
@@ -43,8 +43,8 @@ The dependencies below are **product capabilities**. SDK access, migrations, con
 - **Actor / value:** the owner delegates routine decisions while retaining reserved trade-offs and control over task/period consumption.
 - **Parent / priority:** V1; C01, C05–C06, C09; required before affected dispatch or decision application.
 - **Product dependencies:** B01 for identifiable participants and owner. Binding to a concrete result is completed with B02/B03, without requiring those capabilities to design the policy.
-- **Acceptance:** preserve PRD §6.3 unchanged, including essential uses, affected-group p95 strictly below 30 seconds, prior owner decision for infrastructure cost changes in either direction, and joint task/period limits. The actual owner receives options, evidence and a recommendation for a bound question. Silence, another responder or stale authorization cannot approve it. Only dependent work waits. Unknown consumption is shown as unknown; corrections and appeal do not reset operating limits.
-- **Evidence:** A05, A10–A11; no-response, wrong-responder and stale-response checks; meaningful task/period reservation and runtime-exposure evidence before claiming a hard cap. Missing host support remains an explicit blocker, not a lowered product promise.
+- **Acceptance:** enforce the owner-approved PRD §6.3, including essential uses, affected-group p95 strictly below 30 seconds, prior owner decision for infrastructure cost changes in either direction, and joint task/period limits. The actual owner receives options, evidence and a recommendation for a bound question. Silence, another responder or stale authorization cannot approve it. Only dependent work waits. Unknown consumption is shown as unknown; corrections and appeal do not reset operating limits. DEC-G4-01 requires shared reservations before admission, concurrency/retry limits and blocking new launches on unknown available budget or exposure; already-committed work can overrun the monetary threshold without creating permission for more work.
+- **Evidence:** A05, A10–A11; no-response, wrong-responder and stale-response checks; concurrent task/period reservation, restart/settlement, operational limit and unknown/late-usage evidence under DEC-G4-01. No absolute monetary cap is claimed. Missing support for this adopted contract remains a blocker until qualified.
 
 ### B05 — Relevant perspectives inform one accountable verdict
 
