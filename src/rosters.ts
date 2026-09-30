@@ -531,11 +531,18 @@ export async function activateRosterPair(
     councilRosterId: input.councilRosterId,
   })]);
   const update = await ctx.db.execute(
-    `UPDATE ${table(ctx, "roster_heads")}
-      SET lifecycle = 'active', version = version + 1, audit_entries = audit_entries || $1::jsonb, updated_at = now()
+    `WITH eligible AS MATERIALIZED (
+      SELECT roster_id FROM ${table(ctx, "roster_heads")}
       WHERE company_id = $2 AND lifecycle <> 'retired' AND (
         (roster_id = $3 AND version = $4) OR (roster_id = $5 AND version = $6)
-      )`,
+      )
+      FOR UPDATE
+    )
+    UPDATE ${table(ctx, "roster_heads")}
+      SET lifecycle = 'active', version = version + 1, audit_entries = audit_entries || $1::jsonb, updated_at = now()
+      WHERE company_id = $2
+        AND roster_id IN (SELECT roster_id FROM eligible)
+        AND (SELECT count(*) FROM eligible) = 2`,
     [audit, input.companyId, input.teamRosterId, input.teamExpectedVersion, input.councilRosterId, input.councilExpectedVersion],
   );
   if (update.rowCount !== 2) {

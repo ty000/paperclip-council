@@ -428,6 +428,26 @@ try {
   assert.equal(validation.status, 200);
   assert.equal(validation.body.eligible, true);
   assert(validation.body.prerequisites.some((item: any) => item.code === "decision_reconciliation" && item.status === "unsupported"));
+  const asymmetricStaleActivation = await request("human", "POST", rosterBase, {
+    companyId,
+    command: "activate-pair",
+    teamRosterId,
+    teamExpectedVersion: 1,
+    councilRosterId,
+    councilExpectedVersion: 999,
+  });
+  assert.equal(asymmetricStaleActivation.status, 409);
+  const teamAfterStaleActivation = await request("human", "GET", `${rosterBase}/${teamRosterId}?companyId=${companyId}`);
+  const councilAfterStaleActivation = await request("human", "GET", `${rosterBase}/${councilRosterId}?companyId=${companyId}`);
+  assert.deepEqual(
+    [teamAfterStaleActivation.body.roster.head.lifecycle, teamAfterStaleActivation.body.roster.head.version],
+    ["draft", 1],
+  );
+  assert.deepEqual(
+    [councilAfterStaleActivation.body.roster.head.lifecycle, councilAfterStaleActivation.body.roster.head.version],
+    ["draft", 1],
+  );
+  evidence.results.atomicPairActivationNoPartialMutation = "PASS";
   const activation = await request("human", "POST", rosterBase, {
     companyId,
     command: "activate-pair",
