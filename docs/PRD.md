@@ -1,5 +1,7 @@
 # Paperclip Council — PRD
 
+Current V1 decision (September 30, 2026, priority rescope): [DEC-G3-02](G3-G4-DECISIONS.md#dec-g3-02--plugin-only-receipts-and-preserved-uncertainty) replaces mandatory host D-H/readback and automatic ambiguous-result recovery with plugin-private receipts, a persistent uncertainty hold and authenticated human acknowledgement/abandonment. No Paperclip change or upstream PR acceptance is a V1 dependency. Human handling never confirms native success or unlocks an equivalent uncertain action. Other acceptance criteria and G4 remain mandatory. Historical reports retain their original verdicts.
+
 Status: V1 product scope selected; implementation and qualification pending. Detailed design choices and activation prerequisites are identified in the companion documents.
 Document version: 0.5 — September 30, 2026.
 
@@ -52,7 +54,7 @@ The product relies on platform services to organize work and execute agents. The
 
 Paperclip owns native tasks, agent execution and permissions. Council owns the cooperation rules, scoped planning/coordination and supervision semantics. Executive supplies optional profiles and analysis methods, without a second dispatcher or acceptance authority. An upstream product ticket, including one prepared in Linear, may still need technical decomposition inside its mission; Council does not recreate the upstream product backlog. Project coordination references native work and is not a replacement project-management platform.
 
-The reviewed Paperclip baseline provides agent identities, execution runs, issue review stages and native decision records. Council connects the mandate, identified submission, evidence, verdict and verified effect. Supported company-scoped readback of the decision details needed for uncertain-application reconciliation remains an open G3 dependency. The actors and acceptance paths covered by supervision must be declared when it is enabled; the availability of a platform capability does not demonstrate its integration into Council.
+The reviewed Paperclip baseline provides agent identities, execution runs, issue review stages and native decision records. Council connects the mandate, identified submission, evidence, verdict and verified effect. G3 now requires persisted attempts and safe uncertainty handling under DEC-G3-02; automatic reconciliation is not required for V1. The actors and acceptance paths covered by supervision must be declared when it is enabled; the availability of a platform capability does not demonstrate its integration into Council.
 
 ### Included in the vision
 
@@ -351,6 +353,6 @@ This proposal is neither an independent validation of the product nor a delivery
 
 Version 0.3 records the September 30 owner scope decision, adds team lifecycle requirements C17–C18 and scenarios A18–A22, and links V1 design and delivery planning. Detailed technical defaults are design proposals, not evidence of installed or running behavior. The initial §6.3 mandate is unchanged.
 
-Version 0.4 records owner-approved DEC-G4-01 in §6.3 and DEC-G3-01 for minimal supported decision readback. The former explicitly replaces the absolute monetary-cap interpretation with prudent admission control; all other mandate protections remain. Both technical gates stay open pending qualification. Future stronger guarantees are roadmap candidates, not V1 acceptance additions.
+Version 0.4 originally recorded owner-approved DEC-G4-01 in §6.3 and DEC-G3-01 for minimal supported decision readback. The later priority decision supersedes DEC-G3-01 for V1 with DEC-G3-02 receipts and persistent uncertainty handling. The former explicitly replaces the absolute monetary-cap interpretation with prudent admission control; all other mandate protections remain. Both technical gates stay open pending qualification. Future stronger guarantees are roadmap candidates, not V1 acceptance additions.
 
 Version 0.5 records the owner's explicit agreement, in the September 30 product-framing conversation, to implementation orchestration through a PR and durable multi-mission coordination. It adds C19–C23, J10–J12, A23–A30 and M1/M2, distinguishes project/mission/facilitation responsibilities and upstream product versus internal technical decomposition. This is a product-scope decision, not implementation, agent provisioning or runtime evidence. Existing mandate protections and deferred learning remain unchanged.

@@ -1,0 +1,310 @@
+{
+  "schema_version": "acceptance-coverage-manifest.v1",
+  "contract_id": "receipts-complete",
+  "plan_id": "council-receipts-v1",
+  "parent_plan_sha256": "169c7c4a691dcbeabe31ef18c7eaf02a1fc6f345276c37c750cf71e9521c827c",
+  "parent_lot_id": "RECEIPTS",
+  "child_lot_id": "RECEIPTS",
+  "slice_criterion_ids": [
+    "RC1",
+    "RC2",
+    "RC3",
+    "RC4",
+    "RC5",
+    "RC6",
+    "RC7",
+    "RC8",
+    "RC9"
+  ],
+  "phase": "pr-readiness",
+  "objective": "Deliver plugin-only Council verdict receipts with one claimed attempt, durable uncertainty holds and authenticated human handling; align Executive prescriptions.",
+  "parent_objective": "Deliver plugin-only Council verdict receipts with one claimed attempt, durable uncertainty holds and authenticated human handling; align Executive prescriptions.",
+  "activation_posture": {
+    "implementation": "required-executable-path",
+    "production_activation": "default-off"
+  },
+  "repository_coverage": [
+    {
+      "repository_id": "council",
+      "disposition": "included",
+      "preservation_status": "child-owned",
+      "evidence_ids": [
+        "E1",
+        "E2",
+        "E3",
+        "E4",
+        "E5",
+        "E6",
+        "E7"
+      ]
+    },
+    {
+      "repository_id": "executive",
+      "disposition": "included",
+      "preservation_status": "child-owned",
+      "evidence_ids": [
+        "E9"
+      ]
+    }
+  ],
+  "criterion_coverage": [
+    {
+      "criterion_id": "RC1",
+      "disposition": "included",
+      "preservation_status": "child-owned",
+      "surface_ids": [
+        "backend",
+        "storage"
+      ],
+      "evidence_ids": [
+        "E1"
+      ],
+      "blocker_ids": []
+    },
+    {
+      "criterion_id": "RC2",
+      "disposition": "included",
+      "preservation_status": "child-owned",
+      "surface_ids": [
+        "backend",
+        "storage"
+      ],
+      "evidence_ids": [
+        "E2"
+      ],
+      "blocker_ids": []
+    },
+    {
+      "criterion_id": "RC3",
+      "disposition": "included",
+      "preservation_status": "child-owned",
+      "surface_ids": [
+        "backend",
+        "storage"
+      ],
+      "evidence_ids": [
+        "E3"
+      ],
+      "blocker_ids": []
+    },
+    {
+      "criterion_id": "RC4",
+      "disposition": "included",
+      "preservation_status": "child-owned",
+      "surface_ids": [
+        "backend",
+        "storage"
+      ],
+      "evidence_ids": [
+        "E4"
+      ],
+      "blocker_ids": []
+    },
+    {
+      "criterion_id": "RC5",
+      "disposition": "included",
+      "preservation_status": "child-owned",
+      "surface_ids": [
+        "backend",
+        "storage"
+      ],
+      "evidence_ids": [
+        "E5"
+      ],
+      "blocker_ids": []
+    },
+    {
+      "criterion_id": "RC6",
+      "disposition": "included",
+      "preservation_status": "child-owned",
+      "surface_ids": [
+        "backend",
+        "storage"
+      ],
+      "evidence_ids": [
+        "E6"
+      ],
+      "blocker_ids": []
+    },
+    {
+      "criterion_id": "RC7",
+      "disposition": "included",
+      "preservation_status": "child-owned",
+      "surface_ids": [
+        "backend",
+        "storage"
+      ],
+      "evidence_ids": [
+        "E7"
+      ],
+      "blocker_ids": []
+    },
+    {
+      "criterion_id": "RC8",
+      "disposition": "included",
+      "preservation_status": "child-owned",
+      "surface_ids": [
+        "operator"
+      ],
+      "evidence_ids": [
+        "E8"
+      ],
+      "blocker_ids": []
+    },
+    {
+      "criterion_id": "RC9",
+      "disposition": "included",
+      "preservation_status": "child-owned",
+      "surface_ids": [
+        "alignment"
+      ],
+      "evidence_ids": [
+        "E9"
+      ],
+      "blocker_ids": []
+    }
+  ],
+  "surface_coverage": [
+    {
+      "surface_id": "backend",
+      "disposition": "included",
+      "preservation_status": "child-owned",
+      "evidence_ids": [
+        "E1",
+        "E2",
+        "E3",
+        "E4",
+        "E5",
+        "E6",
+        "E7"
+      ]
+    },
+    {
+      "surface_id": "storage",
+      "disposition": "included",
+      "preservation_status": "child-owned",
+      "evidence_ids": [
+        "E1",
+        "E2",
+        "E3",
+        "E4",
+        "E5",
+        "E6",
+        "E7"
+      ]
+    },
+    {
+      "surface_id": "operator",
+      "disposition": "included",
+      "preservation_status": "child-owned",
+      "evidence_ids": [
+        "E8"
+      ]
+    },
+    {
+      "surface_id": "alignment",
+      "disposition": "included",
+      "preservation_status": "child-owned",
+      "evidence_ids": [
+        "E9"
+      ]
+    }
+  ],
+  "evidence_map": [
+    {
+      "evidence_id": "E1",
+      "kind": "integration-test",
+      "status": "passed",
+      "artifact_refs": [
+        "../reviews/decision-receipts-2026-09-30/persistence-browser.json",
+        "../../tests/receipts/run.ts",
+        "../reviews/decision-receipts-2026-09-30/unchanged-host.json"
+      ]
+    },
+    {
+      "evidence_id": "E2",
+      "kind": "integration-test",
+      "status": "passed",
+      "artifact_refs": [
+        "../reviews/decision-receipts-2026-09-30/persistence-browser.json",
+        "../../tests/receipts/run.ts"
+      ]
+    },
+    {
+      "evidence_id": "E3",
+      "kind": "integration-test",
+      "status": "passed",
+      "artifact_refs": [
+        "../reviews/decision-receipts-2026-09-30/persistence-browser.json",
+        "../../tests/receipts/run.ts"
+      ]
+    },
+    {
+      "evidence_id": "E4",
+      "kind": "integration-test",
+      "status": "passed",
+      "artifact_refs": [
+        "../reviews/decision-receipts-2026-09-30/persistence-browser.json",
+        "../../tests/receipts/run.ts"
+      ]
+    },
+    {
+      "evidence_id": "E5",
+      "kind": "integration-test",
+      "status": "passed",
+      "artifact_refs": [
+        "../reviews/decision-receipts-2026-09-30/persistence-browser.json",
+        "../../tests/receipts/run.ts"
+      ]
+    },
+    {
+      "evidence_id": "E6",
+      "kind": "integration-test",
+      "status": "passed",
+      "artifact_refs": [
+        "../reviews/decision-receipts-2026-09-30/persistence-browser.json",
+        "../../tests/receipts/run.ts",
+        "../reviews/decision-receipts-2026-09-30/unchanged-host.json"
+      ]
+    },
+    {
+      "evidence_id": "E7",
+      "kind": "integration-test",
+      "status": "passed",
+      "artifact_refs": [
+        "../reviews/decision-receipts-2026-09-30/persistence-browser.json",
+        "../../tests/receipts/run.ts"
+      ]
+    },
+    {
+      "evidence_id": "E8",
+      "kind": "browser-test",
+      "status": "passed",
+      "artifact_refs": [
+        "../reviews/decision-receipts-2026-09-30/persistence-browser.json",
+        "../../tests/receipts/run.ts"
+      ]
+    },
+    {
+      "evidence_id": "E9",
+      "kind": "document",
+      "status": "passed",
+      "artifact_refs": [
+        "../L03-RECEIPTS-HANDOFF.md",
+        "../G3-G4-DECISIONS.md"
+      ]
+    }
+  ],
+  "dependency_coverage": [],
+  "blocking_finding_coverage": [],
+  "exclusions": [],
+  "completion_status": {
+    "run_artifact_status": "complete",
+    "child_lot_status": "complete",
+    "parent_lot_status": "complete",
+    "capability_verification": "verified",
+    "production_activation": "off"
+  },
+  "review_target": "parent",
+  "slice_id": null
+}

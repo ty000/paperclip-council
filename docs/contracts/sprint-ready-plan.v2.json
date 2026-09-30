@@ -1,0 +1,232 @@
+{
+  "schema_version": "implementation-meta-flow-sprint-ready-plan.v2",
+  "plan_id": "council-receipts-v1",
+  "sprint_plan_source": {
+    "ref": "../DECISION-RECEIPTS-V1.md",
+    "sha256": "f6cec24e12e78c0cf6ef99ba34d624baa6e94b53aa9ad30d29b8b90ae299f668"
+  },
+  "parallelism_policy": "parallel-eligible",
+  "repositories": [
+    {
+      "repository_id": "council",
+      "required": true,
+      "ownership": "Receipt runtime, storage and operator surface",
+      "source_ref": "46669b3b77f760b0f481bb927d3ff3f53bf9b42c"
+    },
+    {
+      "repository_id": "executive",
+      "required": true,
+      "ownership": "Documentation only",
+      "source_ref": "940aa21be26d5defae0c2b88bcbffbfc1a2aaeaa"
+    }
+  ],
+  "lots": [
+    {
+      "lot_id": "RECEIPTS",
+      "title": "Plugin-only verdict receipts",
+      "objective": "Deliver plugin-only Council verdict receipts with one claimed attempt, durable uncertainty holds and authenticated human handling; align Executive prescriptions.",
+      "change_class": "source-changing",
+      "scope": [
+        "Council verdict path/private receipts/operator surface/tests/docs",
+        "Executive active documentation alignment"
+      ],
+      "exclusions": [
+        "Paperclip writes/deployment/publication",
+        "Full L03/D-LIMIT/Executive runtime",
+        "Blind retries or human forced success"
+      ],
+      "stop_condition": "Tests and independent review complete; durable Council/Executive commits and authorized PRs; no host changes required",
+      "permissions": {
+        "mode": "bounded-write",
+        "write": "Only isolated Council and Executive worktrees, with disjoint child ownership"
+      },
+      "completion_policy": "all-mandatory-criteria-and-evidence",
+      "activation_posture": {
+        "implementation": "required-executable-path",
+        "production_activation": "default-off"
+      },
+      "required_repositories": [
+        {
+          "repository_id": "council",
+          "mandatory": true
+        },
+        {
+          "repository_id": "executive",
+          "mandatory": true
+        }
+      ],
+      "required_surfaces": [
+        {
+          "surface_id": "backend",
+          "kind": "runtime",
+          "repository_id": "council",
+          "mandatory": true
+        },
+        {
+          "surface_id": "storage",
+          "kind": "persistence",
+          "repository_id": "council",
+          "mandatory": true
+        },
+        {
+          "surface_id": "operator",
+          "kind": "ui",
+          "repository_id": "council",
+          "mandatory": true
+        },
+        {
+          "surface_id": "alignment",
+          "kind": "contract",
+          "repository_id": "executive",
+          "mandatory": true
+        }
+      ],
+      "acceptance_criteria": [
+        {
+          "criterion_id": "RC1",
+          "classification": "mandatory",
+          "statement": "Preserve native authorization, actor/run and exact-candidate checks without SDK fallback",
+          "required_surface_ids": [
+            "backend",
+            "storage"
+          ],
+          "evidence_requirements": [
+            {
+              "evidence_id": "E1",
+              "kind": "integration-test",
+              "mandatory": true
+            }
+          ]
+        },
+        {
+          "criterion_id": "RC2",
+          "classification": "mandatory",
+          "statement": "Persist target/content/actor/run and atomically claim before possible send using private additive storage",
+          "required_surface_ids": [
+            "backend",
+            "storage"
+          ],
+          "evidence_requirements": [
+            {
+              "evidence_id": "E2",
+              "kind": "integration-test",
+              "mandatory": true
+            }
+          ]
+        },
+        {
+          "criterion_id": "RC3",
+          "classification": "mandatory",
+          "statement": "Return same-operation receipts, reject changed-content identity conflicts and emit one concurrent attempt",
+          "required_surface_ids": [
+            "backend",
+            "storage"
+          ],
+          "evidence_requirements": [
+            {
+              "evidence_id": "E3",
+              "kind": "integration-test",
+              "mandatory": true
+            }
+          ]
+        },
+        {
+          "criterion_id": "RC4",
+          "classification": "mandatory",
+          "statement": "Persist uncertainty across lost/malformed response and crash/restart without blind retries",
+          "required_surface_ids": [
+            "backend",
+            "storage"
+          ],
+          "evidence_requirements": [
+            {
+              "evidence_id": "E4",
+              "kind": "integration-test",
+              "mandatory": true
+            }
+          ]
+        },
+        {
+          "criterion_id": "RC5",
+          "classification": "mandatory",
+          "statement": "Block equivalent or other verdict attempts on an uncertain company/issue even under new keys",
+          "required_surface_ids": [
+            "backend",
+            "storage"
+          ],
+          "evidence_requirements": [
+            {
+              "evidence_id": "E5",
+              "kind": "integration-test",
+              "mandatory": true
+            }
+          ]
+        },
+        {
+          "criterion_id": "RC6",
+          "classification": "mandatory",
+          "statement": "Keep local intention, possible send, native response and downstream execution evidence separate",
+          "required_surface_ids": [
+            "backend",
+            "storage"
+          ],
+          "evidence_requirements": [
+            {
+              "evidence_id": "E6",
+              "kind": "integration-test",
+              "mandatory": true
+            }
+          ]
+        },
+        {
+          "criterion_id": "RC7",
+          "classification": "mandatory",
+          "statement": "Authenticate and audit owner acknowledgement/abandonment without clearing native uncertainty or the issue hold",
+          "required_surface_ids": [
+            "backend",
+            "storage"
+          ],
+          "evidence_requirements": [
+            {
+              "evidence_id": "E7",
+              "kind": "integration-test",
+              "mandatory": true
+            }
+          ]
+        },
+        {
+          "criterion_id": "RC8",
+          "classification": "mandatory",
+          "statement": "Expose persistent readable operator status and minimal owner actions in the existing Council page",
+          "required_surface_ids": [
+            "operator"
+          ],
+          "evidence_requirements": [
+            {
+              "evidence_id": "E8",
+              "kind": "browser-test",
+              "mandatory": true
+            }
+          ]
+        },
+        {
+          "criterion_id": "RC9",
+          "classification": "mandatory",
+          "statement": "Align active Executive and Council D-H/A5/Q6 prescriptions while preserving historical audit and independent L03 criteria",
+          "required_surface_ids": [
+            "alignment"
+          ],
+          "evidence_requirements": [
+            {
+              "evidence_id": "E9",
+              "kind": "document",
+              "mandatory": true
+            }
+          ]
+        }
+      ],
+      "dependencies": [],
+      "blocking_findings": []
+    }
+  ]
+}

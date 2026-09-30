@@ -5,7 +5,7 @@ export const PLUGIN_ID = "private.paperclip-council";
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
-  version: "0.3.0",
+  version: "0.4.0",
   displayName: "Paperclip Council",
   description: "Private Council integration with revisioned rosters, pinned draft missions, and explicit Paperclip review decisions.",
   author: "Local Paperclip integration",
@@ -131,6 +131,22 @@ const manifest: PaperclipPluginManifestV1 = {
       capability: "api.routes.register",
       checkoutPolicy: "required-for-agent-in-progress",
       companyResolution: { from: "issue", param: "issueId" },
+    },
+    {
+      routeKey: "council-decisions-list",
+      method: "GET",
+      path: "/companies/:companyId/decisions",
+      auth: "board",
+      capability: "api.routes.register",
+      companyResolution: { from: "query", key: "companyId" },
+    },
+    {
+      routeKey: "council-decision-human",
+      method: "POST",
+      path: "/companies/:companyId/decisions/human",
+      auth: "board",
+      capability: "api.routes.register",
+      companyResolution: { from: "body", key: "companyId" },
     },
     {
       routeKey: "foundation-probe",

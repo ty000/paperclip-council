@@ -1,5 +1,7 @@
 # Paperclip Council — V1 product backlog
 
+Current V1 decision (September 30, 2026, priority rescope): [DEC-G3-02](G3-G4-DECISIONS.md#dec-g3-02--plugin-only-receipts-and-preserved-uncertainty) replaces mandatory host D-H/readback and automatic ambiguous-result recovery with plugin-private receipts, a persistent uncertainty hold and authenticated human acknowledgement/abandonment. No Paperclip change or upstream PR acceptance is a V1 dependency. Human handling never confirms native success or unlocks an equivalent uncertain action. Other acceptance criteria and G4 remain mandatory. Historical reports retain their original verdicts.
+
 Version 0.4 — September 30, 2026. Nominal-first delivery order; no item is declared implemented or qualified by this document.
 
 Product authority: [PRD 0.5](PRD.md), especially §6.3 and C01–C11, C16–C23; [V1 scope](V1-SCOPE.md). Architecture: [TAD](TAD.md). Technical lots: [implementation plan](IMPLEMENTATION-PLAN.md). Selected work and technical dependencies: [sprint plan](SPRINT-PLAN.md).

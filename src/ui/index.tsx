@@ -1,3 +1,4 @@
+import { CouncilDecisionReceipts } from "./decision-receipts.js";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import {
   useHostContext,
@@ -151,7 +152,7 @@ function AgentChecklist({
   );
 }
 
-export function CouncilRostersPage({ context }: PluginPageProps) {
+function RosterConfiguration({ context }: PluginPageProps) {
   const hostContext = useHostContext();
   const [selectedId, setSelectedId] = useState("");
   const params = useMemo(() => ({ ...(selectedId ? { rosterId: selectedId } : {}) }), [selectedId]);
@@ -378,4 +379,8 @@ export function CouncilRostersPage({ context }: PluginPageProps) {
       )}
     </main>
   );
+}
+
+export function CouncilRostersPage(props: PluginPageProps) {
+  return <><RosterConfiguration {...props} />{props.context.companyId && <CouncilDecisionReceipts />}</>;
 }

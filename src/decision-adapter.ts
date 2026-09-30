@@ -6,6 +6,8 @@ import type {
   SecretRef,
 } from "./contracts.js";
 
+const MAX_NATIVE_RESPONSE_BYTES = 64 * 1024;
+
 function requiredString(value: unknown, label: string): string {
   if (typeof value !== "string" || value.trim() === "") {
     throw new Error(`Missing ${label}`);
@@ -49,7 +51,7 @@ export function parseCouncilConfig(value: Record<string, unknown>): CouncilConfi
   };
 }
 
-function decisionPatch(input: CouncilDecisionInput) {
+export function buildCouncilDecisionRequest(config: CouncilConfig, input: CouncilDecisionInput) {
   const requestedIssueStatus = input.verdict === "changes_requested" ? "in_progress" : "done";
   const label = input.verdict === "changes_requested" ? "changes requested" : "approved";
   return {
@@ -60,10 +62,49 @@ function decisionPatch(input: CouncilDecisionInput) {
         `Council decision: ${label}.`,
         `Justification: ${input.justification}`,
         `Result reference: ${input.resultReference}`,
+        `Operation ID: ${input.operationId}`,
         ...(input.verdict === "approved" ? [`Approved commit: ${input.approvedCommit}`] : []),
       ].join("\n"),
     },
+    targetUrl: `${config.apiBaseUrl}/api/issues/${input.issueId}`,
   } as const;
+}
+
+async function readBoundedResponse(response: Response): Promise<{
+  body: unknown;
+  validJson: boolean;
+  truncated: boolean;
+}> {
+  if (!response.body) return { body: null, validJson: false, truncated: false };
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  while (true) {
+    const next = await reader.read();
+    if (next.done) break;
+    length += next.value.byteLength;
+    if (length > MAX_NATIVE_RESPONSE_BYTES) {
+      await reader.cancel();
+      return {
+        body: { truncated: true, maximumBytes: MAX_NATIVE_RESPONSE_BYTES },
+        validJson: false,
+        truncated: true,
+      };
+    }
+    chunks.push(next.value);
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const text = new TextDecoder().decode(bytes);
+  try {
+    return { body: JSON.parse(text) as unknown, validJson: true, truncated: false };
+  } catch {
+    return { body: text, validJson: false, truncated: false };
+  }
 }
 
 /**
@@ -79,8 +120,8 @@ export async function emitCouncilDecision(
     companyId: input.companyId,
     configPath: "councilApiKey",
   });
-  const patch = decisionPatch(input);
-  const response = await fetch(`${config.apiBaseUrl}/api/issues/${input.issueId}`, {
+  const patch = buildCouncilDecisionRequest(config, input);
+  const response = await fetch(patch.targetUrl, {
     method: "PATCH",
     headers: {
       "content-type": "application/json",
@@ -89,12 +130,15 @@ export async function emitCouncilDecision(
     },
     body: JSON.stringify(patch.body),
     signal: AbortSignal.timeout(15_000),
+    redirect: "error",
   });
-  const nativeResponse = await response.json().catch(() => null);
+  const native = await readBoundedResponse(response);
   return {
     verdict: input.verdict,
     requestedIssueStatus: patch.requestedIssueStatus,
     nativeStatus: response.status,
-    nativeResponse,
+    nativeResponse: native.body,
+    nativeBodyValid: native.validJson,
+    nativeBodyTruncated: native.truncated,
   };
 }

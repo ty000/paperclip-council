@@ -1,0 +1,302 @@
+{
+  "schema_version": "acceptance-coverage-manifest.v1",
+  "contract_id": "executive-docs-receipts",
+  "plan_id": "council-receipts-v1",
+  "parent_plan_sha256": "169c7c4a691dcbeabe31ef18c7eaf02a1fc6f345276c37c750cf71e9521c827c",
+  "parent_lot_id": "RECEIPTS",
+  "child_lot_id": "executive-docs",
+  "slice_id": "executive-docs",
+  "slice_criterion_ids": [
+    "RC9"
+  ],
+  "phase": "lot-prompt",
+  "objective": "Align Executive documentation with the accepted plugin-only uncertainty-stop V1 contract.",
+  "parent_objective": "Deliver plugin-only Council verdict receipts with one claimed attempt, durable uncertainty holds and authenticated human handling; align Executive prescriptions.",
+  "activation_posture": {
+    "implementation": "contract-only",
+    "production_activation": "default-off"
+  },
+  "repository_coverage": [
+    {
+      "repository_id": "council",
+      "disposition": "blocked",
+      "preservation_status": "parent-blocked",
+      "evidence_ids": []
+    },
+    {
+      "repository_id": "executive",
+      "disposition": "included",
+      "preservation_status": "child-owned",
+      "evidence_ids": [
+        "E9"
+      ]
+    }
+  ],
+  "criterion_coverage": [
+    {
+      "criterion_id": "RC1",
+      "disposition": "blocked",
+      "preservation_status": "parent-blocked",
+      "surface_ids": [
+        "backend",
+        "storage"
+      ],
+      "evidence_ids": [
+        "E1"
+      ],
+      "blocker_ids": [
+        "parent-owned"
+      ]
+    },
+    {
+      "criterion_id": "RC2",
+      "disposition": "blocked",
+      "preservation_status": "parent-blocked",
+      "surface_ids": [
+        "backend",
+        "storage"
+      ],
+      "evidence_ids": [
+        "E2"
+      ],
+      "blocker_ids": [
+        "parent-owned"
+      ]
+    },
+    {
+      "criterion_id": "RC3",
+      "disposition": "blocked",
+      "preservation_status": "parent-blocked",
+      "surface_ids": [
+        "backend",
+        "storage"
+      ],
+      "evidence_ids": [
+        "E3"
+      ],
+      "blocker_ids": [
+        "parent-owned"
+      ]
+    },
+    {
+      "criterion_id": "RC4",
+      "disposition": "blocked",
+      "preservation_status": "parent-blocked",
+      "surface_ids": [
+        "backend",
+        "storage"
+      ],
+      "evidence_ids": [
+        "E4"
+      ],
+      "blocker_ids": [
+        "parent-owned"
+      ]
+    },
+    {
+      "criterion_id": "RC5",
+      "disposition": "blocked",
+      "preservation_status": "parent-blocked",
+      "surface_ids": [
+        "backend",
+        "storage"
+      ],
+      "evidence_ids": [
+        "E5"
+      ],
+      "blocker_ids": [
+        "parent-owned"
+      ]
+    },
+    {
+      "criterion_id": "RC6",
+      "disposition": "blocked",
+      "preservation_status": "parent-blocked",
+      "surface_ids": [
+        "backend",
+        "storage"
+      ],
+      "evidence_ids": [
+        "E6"
+      ],
+      "blocker_ids": [
+        "parent-owned"
+      ]
+    },
+    {
+      "criterion_id": "RC7",
+      "disposition": "blocked",
+      "preservation_status": "parent-blocked",
+      "surface_ids": [
+        "backend",
+        "storage"
+      ],
+      "evidence_ids": [
+        "E7"
+      ],
+      "blocker_ids": [
+        "parent-owned"
+      ]
+    },
+    {
+      "criterion_id": "RC8",
+      "disposition": "blocked",
+      "preservation_status": "parent-blocked",
+      "surface_ids": [
+        "operator"
+      ],
+      "evidence_ids": [
+        "E8"
+      ],
+      "blocker_ids": [
+        "parent-owned"
+      ]
+    },
+    {
+      "criterion_id": "RC9",
+      "disposition": "included",
+      "preservation_status": "child-owned",
+      "surface_ids": [
+        "alignment"
+      ],
+      "evidence_ids": [
+        "E9"
+      ],
+      "blocker_ids": []
+    }
+  ],
+  "surface_coverage": [
+    {
+      "surface_id": "backend",
+      "disposition": "blocked",
+      "preservation_status": "parent-blocked",
+      "evidence_ids": [
+        "E1",
+        "E2",
+        "E3",
+        "E4",
+        "E5",
+        "E6",
+        "E7"
+      ]
+    },
+    {
+      "surface_id": "storage",
+      "disposition": "blocked",
+      "preservation_status": "parent-blocked",
+      "evidence_ids": [
+        "E1",
+        "E2",
+        "E3",
+        "E4",
+        "E5",
+        "E6",
+        "E7"
+      ]
+    },
+    {
+      "surface_id": "operator",
+      "disposition": "blocked",
+      "preservation_status": "parent-blocked",
+      "evidence_ids": [
+        "E8"
+      ]
+    },
+    {
+      "surface_id": "alignment",
+      "disposition": "included",
+      "preservation_status": "child-owned",
+      "evidence_ids": [
+        "E9"
+      ]
+    }
+  ],
+  "evidence_map": [
+    {
+      "evidence_id": "E1",
+      "kind": "integration-test",
+      "status": "blocked",
+      "artifact_refs": []
+    },
+    {
+      "evidence_id": "E2",
+      "kind": "integration-test",
+      "status": "blocked",
+      "artifact_refs": []
+    },
+    {
+      "evidence_id": "E3",
+      "kind": "integration-test",
+      "status": "blocked",
+      "artifact_refs": []
+    },
+    {
+      "evidence_id": "E4",
+      "kind": "integration-test",
+      "status": "blocked",
+      "artifact_refs": []
+    },
+    {
+      "evidence_id": "E5",
+      "kind": "integration-test",
+      "status": "blocked",
+      "artifact_refs": []
+    },
+    {
+      "evidence_id": "E6",
+      "kind": "integration-test",
+      "status": "blocked",
+      "artifact_refs": []
+    },
+    {
+      "evidence_id": "E7",
+      "kind": "integration-test",
+      "status": "blocked",
+      "artifact_refs": []
+    },
+    {
+      "evidence_id": "E8",
+      "kind": "browser-test",
+      "status": "blocked",
+      "artifact_refs": []
+    },
+    {
+      "evidence_id": "E9",
+      "kind": "document",
+      "status": "planned",
+      "artifact_refs": []
+    }
+  ],
+  "dependency_coverage": [],
+  "blocking_finding_coverage": [],
+  "exclusions": [
+    {
+      "exclusion_id": "outside-slice",
+      "capability": "Other bounded-lot obligations remain parent-owned and mandatory",
+      "criterion_ids": [
+        "RC1",
+        "RC2",
+        "RC3",
+        "RC4",
+        "RC5",
+        "RC6",
+        "RC7",
+        "RC8"
+      ],
+      "surface_ids": [
+        "backend",
+        "storage",
+        "operator"
+      ],
+      "disposition": "parent-blocked"
+    }
+  ],
+  "completion_status": {
+    "run_artifact_status": "pending",
+    "child_lot_status": "pending",
+    "parent_lot_status": "partial",
+    "capability_verification": "unverified",
+    "production_activation": "off"
+  },
+  "review_target": "child-slice"
+}

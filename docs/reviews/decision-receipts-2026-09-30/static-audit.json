@@ -1,0 +1,93 @@
+{
+  "schema_version": "static-code-audit-gate.v1",
+  "wrapper_version": "0.4.1",
+  "status": "pass",
+  "mode": "diff-gate",
+  "tool": "fallow",
+  "tool_version": "fallow 3.23.0",
+  "command": [
+    "/home/davy-lp/workspace/paperclip-council-decision-receipts/node_modules/.bin/fallow",
+    "audit",
+    "--base",
+    "46669b3b77f760b0f481bb927d3ff3f53bf9b42c",
+    "--format",
+    "json",
+    "--quiet"
+  ],
+  "repo": "/home/davy-lp/workspace/paperclip-council-decision-receipts",
+  "base_ref": "46669b3b77f760b0f481bb927d3ff3f53bf9b42c",
+  "blocking_findings": [],
+  "non_blocking_findings": [
+    {
+      "source_section": "dead_code",
+      "finding_type": "unused_exports",
+      "rule": "unused-exports",
+      "category": "dead_code",
+      "severity": null,
+      "message": "Unused export handlePluginRequest",
+      "path": "src/worker.ts",
+      "line": 130,
+      "introduced": false,
+      "symbol": "handlePluginRequest"
+    },
+    {
+      "source_section": "dead_code",
+      "finding_type": "unused_exports",
+      "rule": "unused-exports",
+      "category": "dead_code",
+      "severity": null,
+      "message": "Unused export default",
+      "path": "src/worker.ts",
+      "line": 156,
+      "introduced": false,
+      "symbol": "default"
+    }
+  ],
+  "policy": {
+    "phase": "integration-stable",
+    "telemetry_disabled": true,
+    "cloud_runtime_saas_disabled": true,
+    "auto_fix_forbidden": true,
+    "missing_fallow": "skipped",
+    "pinned_fallow_npm_spec": "fallow@3.23.0",
+    "bootstrap": "explicit-only",
+    "supported_install_strategies": [
+      "repo devDependency with exact fallow@3.23.0 and lockfile",
+      "dedicated Codex tool cache with exact fallow@3.23.0"
+    ],
+    "implicit_install_forbidden_modes": [
+      "probe",
+      "diff-gate",
+      "repo-audit",
+      "metrics",
+      "metrics-delta"
+    ],
+    "diff_gate_blocks": [
+      "introduced unresolved imports",
+      "introduced unlisted dependencies",
+      "introduced unused dependencies",
+      "introduced unused exports or dead-code regressions",
+      "introduced cycles or boundary violations",
+      "critical complexity attributed to the current diff",
+      "uninterpretable Fallow JSON after execution"
+    ],
+    "non_blocking": [
+      "pre-existing debt outside the diff",
+      "inherited findings on touched files unless Fallow marks them introduced",
+      "unattributed findings on touched files when Fallow does not report a failing diff signal",
+      "framework convention warnings and suspected framework entry-point false positives",
+      "non-JS/TS repository",
+      "missing Fallow during stable integration",
+      "low-severity warnings",
+      "probable false positives"
+    ],
+    "forbidden": [
+      "license activate",
+      "telemetry enable",
+      "coverage upload-*",
+      "--cloud",
+      "fix --yes",
+      "runtime or production coverage activation"
+    ]
+  }
+}

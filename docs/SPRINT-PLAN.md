@@ -1,5 +1,7 @@
 # Paperclip Council — nominal-first sprint plan
 
+Current V1 decision (September 30, 2026, priority rescope): [DEC-G3-02](G3-G4-DECISIONS.md#dec-g3-02--plugin-only-receipts-and-preserved-uncertainty) replaces mandatory host D-H/readback and automatic ambiguous-result recovery with plugin-private receipts, a persistent uncertainty hold and authenticated human acknowledgement/abandonment. No Paperclip change or upstream PR acceptance is a V1 dependency. Human handling never confirms native success or unlocks an equivalent uncertain action. Other acceptance criteria and G4 remain mandatory. Historical reports retain their original verdicts.
+
 Version 0.4 — September 30, 2026. Documentary execution plan; no dates, capacity, runtime activation or passed qualification are implied.
 
 Sources: [backlog B01–B11](BACKLOG.md), [PRD 0.5](PRD.md), [V1 scope](V1-SCOPE.md), [TAD D01–D14](TAD.md), [technical coverage L0–L8](IMPLEMENTATION-PLAN.md), [G3/G4 decisions](G3-G4-DECISIONS.md), and [prepared agent profiles](AGENT-CATALOG.md).
@@ -25,7 +27,7 @@ PRD 0.5 extends the selected scope with M1 (complete mission through PR) and M2 
 | DEP-OWNER / B04 | Enforce the existing configured owner and mandate. A reserved decision stops dependent work with a precise question and next actor | Bound owner-response verification and attributable continuation are F02. No response, another responder or a stale answer cannot resume work |
 | Runtime inputs / B01, B04 | Select supported host, instance/company/project, eligible agents, native auth, tools, skill mounts, operating amounts/periods and measurement sources before real runs | Missing inputs block affected activation, not unrelated bounded code. This plan supplies no credentials, amounts or live-run authorization |
 
-The 80/20 choice changes ordering and operating scope, not DEC-G3-01/DEC-G4-01 or owner-reserved authority. If a required nominal guarantee cannot be implemented proportionately, record the exact conflict for an owner decision. Do not invent a cheaper policy, simulate a PASS or start a new scheduler/billing platform.
+The 80/20 choice changes ordering and operating scope, not DEC-G3-02/DEC-G4-01 or owner-reserved authority. If a required nominal guarantee cannot be implemented proportionately, record the exact conflict for an owner decision. Do not invent a cheaper policy, simulate a PASS or start a new scheduler/billing platform.
 
 ## 3. Nominal delivery lots
 
@@ -112,7 +114,7 @@ A finding blocks the current nominal lot only if it prevents its journey, violat
 
 | ID / status | Source and impact | Current boundary / next action | Destination and trigger |
 | --- | --- | --- | --- |
-| F01 — required, deferred after nominal proof | B03/B08, G3, full L3/L5: lost response or restart can prevent automatic decision reconciliation | Preserve intent/unknown; no blind retry. Qualify minimal supported readback and attributable recovery | Recovery lot, after N4; pull forward only what N2 needs for truthful ordinary acceptance |
+| F01 — required, deferred after nominal proof | B03/B08, G3, full L3/L5: lost response or restart can prevent automatic decision reconciliation | Preserve receipts/unknown and the issue hold across restart; no blind retry or new-key bypass. Qualify authenticated human disposition without native-success claims | Recovery lot, after N4; pull forward only what N2 needs for truthful ordinary acceptance |
 | F02 — required, deferred after nominal proof | B04/B06, DEP-OWNER, full L3/L4: disputed or reserved decisions cannot yet complete automatically | Stop with owner destination; implement bound response verification and one-level appeal | Decision/appeal lot, after N4 or if representative use repeatedly stops here |
 | F03 — required, deferred after nominal proof | B01/B05/B08, full L4/L5: replacement, late opinions and in-flight lifecycle changes | Preserve history and stop new dependent work; complete explicit replacement, resumption and lifecycle inspection | Lifecycle lot, after N4 or observed need; retain G4 unsettled-usage safety in N1 |
 | F04 — optional breadth, deferred | Arbitrary graphs, throughput beyond M2, automatic reviewer selection, additional runtimes | Use the selected simple plan and configured roster; retain isolation/admission. Required two-mission coordination belongs to N6, not this optional item | Only with observed demand and a separate value/effort decision |

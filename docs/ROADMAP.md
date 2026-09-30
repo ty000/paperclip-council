@@ -1,5 +1,7 @@
 # Paperclip Council — Product Roadmap
 
+Current V1 decision (September 30, 2026, priority rescope): [DEC-G3-02](G3-G4-DECISIONS.md#dec-g3-02--plugin-only-receipts-and-preserved-uncertainty) replaces mandatory host D-H/readback and automatic ambiguous-result recovery with plugin-private receipts, a persistent uncertainty hold and authenticated human acknowledgement/abandonment. No Paperclip change or upstream PR acceptance is a V1 dependency. Human handling never confirms native success or unlocks an equivalent uncertain action. Other acceptance criteria and G4 remain mandatory. Historical reports retain their original verdicts.
+
 Status: V1 scope selected (H1 + H2, implementation through PR and project coordination); later horizons remain conditional.
 Document version: 0.4 — September 30, 2026.
 Product reference: [PRD](PRD.md).
@@ -117,7 +119,7 @@ Possible directions include reusable mandate profiles, other work contexts, or a
 
 ## 10. Candidate improvements following G3/G4
 
-The owner approved the minimal G3 readback direction and prudent G4 control policy on September 30, 2026; see [DEC-G3-01 / DEC-G4-01](G3-G4-DECISIONS.md). Their required qualification stays in V1. The following stronger capabilities are **proposals to evaluate after the minimum**, not implementation commitments, new V1 exit criteria, or an authorization to expand the current lots. They are independent of the deferred memory/learning horizons.
+The owner approved the minimal G3 readback direction and prudent G4 control policy on September 30, 2026; see [DEC-G3-01 / DEC-G4-01](G3-G4-DECISIONS.md). G4 qualification and the replacement DEC-G3-02 receipt/uncertainty qualification stay in V1; the earlier mandatory readback direction is superseded. The following stronger capabilities are **proposals to evaluate after the minimum**, not implementation commitments, new V1 exit criteria, or an authorization to expand the current lots. They are independent of the deferred memory/learning horizons.
 
 | Candidate | User value beyond the minimum | Dependency and reason to revisit | Evidence needed before commitment |
 | --- | --- | --- | --- |
