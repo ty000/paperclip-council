@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { prepareCandidatePackage } from "./candidate-package.js";
 
@@ -44,7 +44,12 @@ const hostStatus = execFileSync("git", ["status", "--porcelain", "--untracked-fi
 assert.equal(hostStatus, "", "functional host tracked files must match the exact host commit");
 const hostImport = (path: string) => import(pathToFileURL(resolve(root, path)).href);
 const qualificationId = randomUUID();
-const runtime = await mkdtemp(resolve(tmpdir(), "paperclip-council-package-"));
+const suppliedRuntime = process.env.PAPERCLIP_QUALIFICATION_RUNTIME;
+const runtime = suppliedRuntime
+  ? resolve(suppliedRuntime)
+  : await mkdtemp(resolve(tmpdir(), "paperclip-council-package-"));
+assert.equal(dirname(runtime), resolve(tmpdir()), "qualification runtime must be directly under the system temp root");
+assert(basename(runtime).startsWith("paperclip-council-package-"), "qualification runtime must use the owned prefix");
 try {
 const preparedCandidate = await prepareCandidatePackage(packageRoot, candidateCommit, runtime);
 const evidencePath = process.env.COUNCIL_PACKAGE_EVIDENCE_PATH

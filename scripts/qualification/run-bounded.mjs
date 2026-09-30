@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { materializeHost, repositoryRoot } from "./paperclip-host.mjs";
+import { runProcessGroup } from "./process-group.mjs";
+import { cleanupOwnedRuntime, createOwnedRuntime } from "./runtime-ownership.mjs";
 
 function git(args) {
   return execFileSync("git", args, { cwd: repositoryRoot, encoding: "utf8" }).trim();
@@ -19,33 +21,36 @@ const playwrightBrowsersPath = resolve(repositoryRoot, ".paperclip/qualification
 const browserInstallTimeoutMs = 5 * 60_000;
 const functionalTimeoutMs = 15 * 60_000;
 mkdirSync(playwrightBrowsersPath, { recursive: true });
-execFileSync("corepack", ["pnpm", "exec", "playwright", "install", "chromium"], {
+await runProcessGroup("corepack", ["pnpm", "exec", "playwright", "install", "chromium"], {
   cwd: host.target,
-  stdio: "inherit",
-  timeout: browserInstallTimeoutMs,
-  killSignal: "SIGTERM",
+  timeoutMs: browserInstallTimeoutMs,
   env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsersPath },
 });
 
-execFileSync("corepack", ["pnpm", "test:functional"], {
-  cwd: repositoryRoot,
-  stdio: "inherit",
-  timeout: functionalTimeoutMs,
-  killSignal: "SIGTERM",
-  env: {
-    ...process.env,
-    COUNCIL_PACKAGE_EXPECTED_COMMIT: candidateCommit,
-    PAPERCLIP_TEST_HOST_ROOT: host.target,
-    PAPERCLIP_PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsersPath,
-    PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsersPath,
-    COUNCIL_PACKAGE_EVIDENCE_PATH: evidencePath,
-  },
-});
+const qualificationRuntime = createOwnedRuntime();
+try {
+  await runProcessGroup("corepack", ["pnpm", "test:functional"], {
+    cwd: repositoryRoot,
+    timeoutMs: functionalTimeoutMs,
+    onFailure: async () => cleanupOwnedRuntime(qualificationRuntime),
+    env: {
+      ...process.env,
+      COUNCIL_PACKAGE_EXPECTED_COMMIT: candidateCommit,
+      PAPERCLIP_TEST_HOST_ROOT: host.target,
+      PAPERCLIP_QUALIFICATION_RUNTIME: qualificationRuntime,
+      PAPERCLIP_PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsersPath,
+      PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsersPath,
+      COUNCIL_PACKAGE_EVIDENCE_PATH: evidencePath,
+    },
+  });
 
-const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
-const failedResult = Object.entries(evidence.results ?? {}).find(([, result]) => result !== "PASS");
-if (evidence.candidate?.commit !== candidateCommit
-  || evidence.outcome !== "L2 STEP A MISSION PERSISTENCE VALIDATED"
-  || failedResult) {
-  throw new Error(`Bounded qualification evidence did not pass for ${candidateCommit}`);
+  const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
+  const failedResult = Object.entries(evidence.results ?? {}).find(([, result]) => result !== "PASS");
+  if (evidence.candidate?.commit !== candidateCommit
+    || evidence.outcome !== "L2 STEP A MISSION PERSISTENCE VALIDATED"
+    || failedResult) {
+    throw new Error(`Bounded qualification evidence did not pass for ${candidateCommit}`);
+  }
+} finally {
+  cleanupOwnedRuntime(qualificationRuntime);
 }
