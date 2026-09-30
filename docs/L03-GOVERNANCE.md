@@ -41,3 +41,9 @@ Automated domain, content, authorization and isolated PostgreSQL tests are separ
 ## Native run attribution
 
 Paperclip authenticates the agent identity. Signed run JWTs also bind the run ID; long-lived agent API keys instead pass a caller-supplied run header into plugin context. L03 requires that ID but the SDK exposes no live-run lookup for independent verification of the latter path. Do not describe standard-key run attribution as cryptographically bound or necessarily live. Qualification must retain real native run readbacks. This host-contract limitation is separate from pinned reviewer authorization and does not require or authorize a Paperclip change.
+
+## Terminal-event delivery boundary
+
+Executive persists terminal session output before publishing it to Council through a freshly scoped native `agent.run.finished`, `agent.run.failed`, or `agent.run.cancelled` event. The ordering wait is bounded to two seconds and cannot send or create another session. Missing delivery leaves the required opinion absent in Council and blocks direction.
+
+The unchanged host does not emit a plugin lifecycle event for the native `interrupted` terminal status. Its session callback can therefore persist a failed Executive contribution while Council still shows a missing opinion. This is a documented stop requiring operator inspection, not an automatically recovered state. A replay of an unexpired, unchanged reservation can publish an already-persisted terminal observation under a fresh scope without another consultation; it cannot extend expiry, replace identity, or prove success. Expired reservations and worker restarts have no guaranteed automatic observation recovery. No polling watchdog or host patch is included.
