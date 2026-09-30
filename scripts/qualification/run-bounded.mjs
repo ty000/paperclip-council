@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defaultHostRoot, inspectHost, repositoryRoot } from "./paperclip-host.mjs";
-import { runProcessGroup } from "./process-group.mjs";
+import { isProcessGroupDrainError, runProcessGroup } from "./process-group.mjs";
 import { cleanupOwnedRuntime, createOwnedRuntime } from "./runtime-ownership.mjs";
 
 function git(args) {
@@ -33,6 +33,26 @@ export async function prepareQualificationHost({
   return host;
 }
 
+export async function withOwnedQualificationRuntime(action, {
+  createRuntime = createOwnedRuntime,
+  cleanupRuntime = cleanupOwnedRuntime,
+} = {}) {
+  const runtime = createRuntime();
+  let preserveRuntime = false;
+  try {
+    return await action(runtime);
+  } catch (error) {
+    if (isProcessGroupDrainError(error)) {
+      preserveRuntime = true;
+      error.preservedRuntime = runtime;
+      error.message = `${error.message}; qualification runtime preserved at ${runtime}`;
+    }
+    throw error;
+  } finally {
+    if (!preserveRuntime) cleanupRuntime(runtime);
+  }
+}
+
 async function main() {
   const candidateCommit = git(["rev-parse", "HEAD"]);
   if (git(["status", "--porcelain"]) !== "") {
@@ -50,8 +70,7 @@ async function main() {
     env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsersPath },
   });
 
-  const qualificationRuntime = createOwnedRuntime();
-  try {
+  await withOwnedQualificationRuntime(async (qualificationRuntime) => {
     await runProcessGroup("corepack", ["pnpm", "test:functional"], {
       cwd: repositoryRoot,
       timeoutMs: functionalTimeoutMs,
@@ -74,9 +93,7 @@ async function main() {
       || failedResult) {
       throw new Error(`Bounded qualification evidence did not pass for ${candidateCommit}`);
     }
-  } finally {
-    cleanupOwnedRuntime(qualificationRuntime);
-  }
+  });
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

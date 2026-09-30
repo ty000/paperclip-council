@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 // @ts-expect-error The qualification process runner is intentionally plain ESM.
-import { runProcessGroup } from "../scripts/qualification/process-group.mjs";
+import { ProcessGroupDrainError, runProcessGroup, waitForProcessGroupExit } from "../scripts/qualification/process-group.mjs";
 // @ts-expect-error The qualification runtime helper is intentionally plain ESM.
 import { cleanupOwnedRuntime, createOwnedRuntime } from "../scripts/qualification/runtime-ownership.mjs";
 
@@ -192,6 +192,36 @@ describe("bounded qualification process groups", () => {
     })).rejects.toThrow(/ENOENT/);
 
     expect(cleanupCalls).toBe(1);
+    expect(process.listenerCount("SIGINT")).toBe(initialSigintListeners);
+    expect(process.listenerCount("SIGTERM")).toBe(initialSigtermListeners);
+  });
+
+  it("classifies an injected drain deadline and skips unsafe cleanup", async () => {
+    let clock = 0;
+    const drainError = await waitForProcessGroupExit(4242, 25, {
+      isAlive: () => true,
+      now: () => clock,
+      sleep: async (delayMs: number) => { clock += delayMs; },
+    }).catch((error: unknown) => error);
+    expect(drainError).toBeInstanceOf(ProcessGroupDrainError);
+    expect(drainError).toMatchObject({
+      code: "PROCESS_GROUP_DRAIN_TIMEOUT",
+      processGroupId: 4242,
+      timeoutMs: 100,
+    });
+
+    const root = await mkdtemp(resolve(tmpdir(), "council-process-group-undrained-"));
+    roots.push(root);
+    const initialSigintListeners = process.listenerCount("SIGINT");
+    const initialSigtermListeners = process.listenerCount("SIGTERM");
+    let cleanupCalls = 0;
+    await expect(runProcessGroup(resolve(root, "missing-command"), [], {
+      timeoutMs: 5_000,
+      terminationGraceMs: 25,
+      waitForExit: async () => { throw new ProcessGroupDrainError(4242, 25); },
+      onFailure: async () => { cleanupCalls += 1; },
+    })).rejects.toMatchObject({ code: "PROCESS_GROUP_DRAIN_TIMEOUT" });
+    expect(cleanupCalls).toBe(0);
     expect(process.listenerCount("SIGINT")).toBe(initialSigintListeners);
     expect(process.listenerCount("SIGTERM")).toBe(initialSigtermListeners);
   });

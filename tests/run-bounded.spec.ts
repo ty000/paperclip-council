@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error The qualification launcher is intentionally plain ESM.
-import { prepareQualificationHost } from "../scripts/qualification/run-bounded.mjs";
+import { ProcessGroupDrainError, runProcessGroup } from "../scripts/qualification/process-group.mjs";
+// @ts-expect-error The qualification launcher is intentionally plain ESM.
+import { prepareQualificationHost, withOwnedQualificationRuntime } from "../scripts/qualification/run-bounded.mjs";
 
 describe("bounded qualification launcher", () => {
   it("stops after blocked host preparation without inspecting or starting a later phase", async () => {
@@ -35,5 +37,64 @@ describe("bounded qualification launcher", () => {
       env: {},
     })).resolves.toBe(host);
     expect(phases).toEqual(["prepare", "inspect"]);
+  });
+
+  it("preserves only runtimes whose process group failed to drain", async () => {
+    const cleaned: string[] = [];
+    const policy = {
+      createRuntime: () => "/tmp/owned-qualification-runtime",
+      cleanupRuntime: (runtime: string) => { cleaned.push(runtime); },
+    };
+
+    await expect(withOwnedQualificationRuntime(async () => "success", policy)).resolves.toBe("success");
+    expect(cleaned).toEqual(["/tmp/owned-qualification-runtime"]);
+
+    cleaned.length = 0;
+    await expect(withOwnedQualificationRuntime(async () => {
+      throw new Error("functional evidence rejected");
+    }, policy)).rejects.toThrow(/functional evidence rejected/);
+    expect(cleaned).toEqual(["/tmp/owned-qualification-runtime"]);
+
+    cleaned.length = 0;
+    const drainFailure = new ProcessGroupDrainError(4242, 250);
+    await expect(withOwnedQualificationRuntime(async () => {
+      throw drainFailure;
+    }, policy)).rejects.toMatchObject({
+      code: "PROCESS_GROUP_DRAIN_TIMEOUT",
+      preservedRuntime: "/tmp/owned-qualification-runtime",
+    });
+    expect(drainFailure.message).toMatch(/runtime preserved at \/tmp\/owned-qualification-runtime/);
+    expect(cleaned).toEqual([]);
+  });
+
+  it("preserves the runtime when the supervisor cannot prove the group drained", async () => {
+    const cleaned: string[] = [];
+    const initialSigintListeners = process.listenerCount("SIGINT");
+    const initialSigtermListeners = process.listenerCount("SIGTERM");
+    let processCleanupCalls = 0;
+    const probeFailure = Object.assign(new Error("group liveness probe denied"), { code: "EPERM" });
+
+    const failure = await withOwnedQualificationRuntime(async () => {
+      await runProcessGroup("/command-that-does-not-exist", [], {
+        timeoutMs: 5_000,
+        terminationGraceMs: 1,
+        waitForExit: async () => { throw probeFailure; },
+        onFailure: async () => { processCleanupCalls += 1; },
+      });
+    }, {
+      createRuntime: () => "/tmp/exact-undrained-runtime",
+      cleanupRuntime: (runtime: string) => { cleaned.push(runtime); },
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "PROCESS_GROUP_DRAIN_FAILED",
+      cause: probeFailure,
+      preservedRuntime: "/tmp/exact-undrained-runtime",
+    });
+    expect(String((failure as Error).message)).toMatch(/runtime preserved at \/tmp\/exact-undrained-runtime/);
+    expect(processCleanupCalls).toBe(0);
+    expect(cleaned).toEqual([]);
+    expect(process.listenerCount("SIGINT")).toBe(initialSigintListeners);
+    expect(process.listenerCount("SIGTERM")).toBe(initialSigtermListeners);
   });
 });

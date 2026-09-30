@@ -9,21 +9,53 @@ function signalProcessGroup(child, processGroupId, signal) {
   }
 }
 
-async function waitForProcessGroupExit(processGroupId, timeoutMs) {
+export class ProcessGroupDrainError extends Error {
+  constructor(processGroupId, timeoutMs, cause) {
+    const boundedTimeoutMs = Math.max(timeoutMs, 100);
+    super(cause
+      ? `Could not prove process group ${processGroupId} drained after SIGKILL: ${cause.message ?? String(cause)}`
+      : `Process group ${processGroupId} did not drain within ${boundedTimeoutMs} ms after SIGKILL`);
+    this.name = "ProcessGroupDrainError";
+    this.code = cause ? "PROCESS_GROUP_DRAIN_FAILED" : "PROCESS_GROUP_DRAIN_TIMEOUT";
+    this.processGroupId = processGroupId;
+    this.timeoutMs = boundedTimeoutMs;
+    if (cause) this.cause = cause;
+  }
+}
+
+export function isProcessGroupDrainError(error) {
+  return error instanceof ProcessGroupDrainError
+    || error?.code === "PROCESS_GROUP_DRAIN_TIMEOUT"
+    || error?.code === "PROCESS_GROUP_DRAIN_FAILED";
+}
+
+function processGroupIsAlive(processGroupId) {
+  try {
+    process.kill(-processGroupId, 0);
+    return true;
+  } catch (error) {
+    if (error?.code === "ESRCH") return false;
+    throw error;
+  }
+}
+
+export async function waitForProcessGroupExit(processGroupId, timeoutMs, {
+  isAlive = processGroupIsAlive,
+  now = Date.now,
+  sleep = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
+} = {}) {
   if (process.platform === "win32" || !processGroupId) {
     await new Promise((resolve) => setImmediate(resolve));
     return;
   }
-  const deadline = Date.now() + Math.max(timeoutMs, 100);
-  while (Date.now() < deadline) {
-    try {
-      process.kill(-processGroupId, 0);
-    } catch (error) {
-      if (error?.code === "ESRCH") return;
-      throw error;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10));
+  const boundedTimeoutMs = Math.max(timeoutMs, 100);
+  const deadline = now() + boundedTimeoutMs;
+  while (now() < deadline) {
+    if (!isAlive(processGroupId)) return;
+    await sleep(10);
   }
+  if (!isAlive(processGroupId)) return;
+  throw new ProcessGroupDrainError(processGroupId, boundedTimeoutMs);
 }
 
 export function runProcessGroup(command, args, {
@@ -32,6 +64,7 @@ export function runProcessGroup(command, args, {
   timeoutMs,
   terminationGraceMs = 5_000,
   onFailure = async () => undefined,
+  waitForExit = waitForProcessGroupExit,
 } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -60,9 +93,11 @@ export function runProcessGroup(command, args, {
       forceTimer = setTimeout(async () => {
         try {
           signalProcessGroup(child, processGroupId, "SIGKILL");
-          await waitForProcessGroupExit(processGroupId, terminationGraceMs);
+          await waitForExit(processGroupId, terminationGraceMs);
         } catch (error) {
-          forceError = error;
+          forceError = isProcessGroupDrainError(error)
+            ? error
+            : new ProcessGroupDrainError(processGroupId, terminationGraceMs, error);
         } finally {
           forceComplete();
         }
@@ -87,6 +122,11 @@ export function runProcessGroup(command, args, {
       }
       if (!terminationReason) terminate(`exited ${code ?? signal}`);
       await forced;
+      if (forceError) {
+        removeSignalListeners();
+        reject(forceError);
+        return;
+      }
       let cleanupError;
       try {
         await onFailure();
@@ -95,10 +135,10 @@ export function runProcessGroup(command, args, {
       } finally {
         removeSignalListeners();
       }
-      if (forceError || cleanupError) {
+      if (cleanupError) {
         reject(new AggregateError(
-          [forceError, cleanupError].filter(Boolean),
-          `${command} failed during forced termination or cleanup`,
+          [cleanupError],
+          `${command} failed during cleanup`,
         ));
       } else {
         reject(new Error(`${command} ${terminationReason}`));
