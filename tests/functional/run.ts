@@ -576,7 +576,7 @@ try {
     const loadingContext = await browser.newContext({ viewport: { width: 760, height: 760 } });
     await addSessionCookies(loadingContext, cookie);
     const loadingPage = await loadingContext.newPage();
-    await loadingPage.route("**/api/plugins/*/bridge/data", async (route) => {
+    await loadingPage.route("**/api/plugins/*/data/council-rosters", async (route) => {
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 500));
       await route.continue();
     });
@@ -589,7 +589,7 @@ try {
     const errorContext = await browser.newContext({ viewport: { width: 760, height: 760 } });
     await addSessionCookies(errorContext, cookie);
     const errorPage = await errorContext.newPage();
-    await errorPage.route("**/api/plugins/*/bridge/data", (route) => route.fulfill({
+    await errorPage.route("**/api/plugins/*/data/council-rosters", (route) => route.fulfill({
       status: 500,
       contentType: "application/json",
       body: JSON.stringify({ error: "Injected UI load failure" }),
