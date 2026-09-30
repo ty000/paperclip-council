@@ -21,7 +21,7 @@
     "Git base gate passed on clean branch codex/council-l2 tracking origin/main.",
     "COUNCIL-L2-MISSIONS prewrite migration gate passed with no findings.",
     "S1 report keeps L1 partial and mission activation unavailable.",
-    "Runtime candidate 99680880876a824de69499fcee7344870602f4fe passed real installed mission storage, owner-only reads, structured roster refusals, initial and error-path recorded-result readback, replay after mutable lifecycle changes, atomic lifecycle selection contentions and ordered outcomes, CAS, roster-lifecycle pinning and complete restart inspection on clean host 61b3fd57a695614dc4a37e2303f426a34a9795cf."
+    "Runtime candidate 99680880876a824de69499fcee7344870602f4fe passed real installed mission storage, owner-only reads, structured roster refusals, initial receipt replay, replay after mutable lifecycle changes, atomic lifecycle selection contentions and ordered outcomes, CAS, roster-lifecycle pinning and complete restart inspection on clean host 61b3fd57a695614dc4a37e2303f426a34a9795cf; deterministic unit tests cover concurrent error-path recorded-result readback."
   ],
   "decisions": [
     "Use the native implementation meta-flow, not the historical V3 phase topology.",

@@ -18,7 +18,7 @@
       "kind": "runtime-observation",
       "location": "docs/reviews/l2/evidence/functional.json",
       "replayable": true,
-      "notes": "SHA-256 13bd496f6825a32a75596ffa7be95c118c07fea2df8180f79a372bdd2a06c235; exact candidate and clean pinned host; real install/migrations/auth/plugin SQL/restart; structured roster refusals, initial and error-path receipt readback, replay after mutable lifecycle changes, intruder read refusals, three contention attempts and both ordered lifecycle outcomes; 31 results pass; synthetic fixtures; no model calls."
+      "notes": "SHA-256 13bd496f6825a32a75596ffa7be95c118c07fea2df8180f79a372bdd2a06c235; exact candidate and clean pinned host; real install/migrations/auth/plugin SQL/restart; structured roster refusals, initial receipt replay, replay after mutable lifecycle changes, intruder read refusals, three contention attempts and both ordered lifecycle outcomes; 31 results pass; synthetic fixtures; no model calls. Error-path receipt readback is covered by deterministic unit tests; this installed replay is non-regression evidence for that path, not a forced concurrent same-identity proof."
     },
     {
       "id": "unit-type-build",
@@ -26,7 +26,7 @@
       "kind": "automated-test",
       "location": "tests/missions.spec.ts",
       "replayable": true,
-      "notes": "Typecheck and build succeed; Vitest reports 7 passing files and 49 passing tests."
+      "notes": "Typecheck and build succeed; Vitest reports 7 passing files and 50 passing tests, including deterministic concurrent error-path receipt readback and preservation of the original admission error when fallback storage readback fails."
     },
     {
       "id": "private-mission-migration",
