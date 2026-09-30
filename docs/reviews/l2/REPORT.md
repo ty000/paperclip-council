@@ -2,7 +2,7 @@
 
 Date: 2026-09-30 (Europe/Paris)
 
-Runtime-tested candidate: `4ee1930cd8616670c0d9b69e25ebbeda87d2ce14` on `codex/council-l2`
+Runtime-tested candidate: `579649a72fac95485412f40679a5dc83501f66dc` on `codex/council-l2`
 
 Base: `bfa921000c0743aff17d2c1e48eff6bb9ca365cf` (`origin/main`, merged S1)
 
@@ -33,11 +33,11 @@ This closes only the local Step A implementation slice. It does not close L1, L2
 ## Runtime evidence
 
 - Trace: `docs/reviews/l2/evidence/functional.json`
-- Trace SHA-256: `f9d6d3826d0abf389b8e88468c0ca1fba5ecfd903bbb47335e6b4fe6da75de7d`
-- Candidate source archive SHA-256: `22d7c16e973b54fa6e53bf9690a936f1c068b2c369c74b3ccd03c02619dacdd7`
-- Built distribution SHA-256: `b17d0b78bb7a4bda0f61cea9670a32c1906a7747230305831ed3c87ad6dc85c2`
+- Trace SHA-256: `f0c395e74579e943038faf67e2f9daaa85bf6cf042b84245099e4a89d395b966`
+- Candidate source archive SHA-256: `31a559e935a7fd5e2850af5238275cac64ecc036c485aa182b9e0c2963f142cc`
+- Built distribution SHA-256: `cfc8213bf3000b43f14fba0b325e381e57bd63cada3629e3b25d01f1925b747b`
 
-The replay installed the exact clean candidate on a fresh authenticated/private Paperclip application and embedded PostgreSQL database. It passed owner/intruder mutation and list/detail read authorization, idempotent create and identity conflict, competing mission CAS with one winner, three create-versus-suspend races with every stale selection refused, pinned revision survival after general-roster change/suspension/retirement, refusal of retired-roster selection for a new mission, and readback after plugin/application restart. It also reran the inherited S1/browser and earlier bounded decision paths. All fixtures were synthetic, no model was invoked, credentials were omitted from evidence, and the isolated app/database/runtime were cleaned.
+The replay installed the exact clean candidate on a fresh authenticated/private Paperclip application and embedded PostgreSQL database. It passed owner/intruder mutation and list/detail read authorization, structured missing-roster refusals, idempotent create and identity conflict, replay after revision/retirement/restart, competing mission CAS with one winner, three create-versus-suspend contentions, deterministic create-before-suspend persistence and suspend-before-create refusal, pinned revision survival, refusal of retired-roster selection for a new mission, and complete inspection readback after plugin/application restart. It also reran the inherited S1/browser and earlier bounded decision paths. All 31 named results passed. All fixtures were synthetic, no model was invoked, credentials were omitted from evidence, and the isolated app/database/runtime were cleaned.
 
 ## Replay
 
@@ -51,18 +51,18 @@ git diff --check
 # Prepare an isolated clean Paperclip checkout at the pinned host revision and
 # link only its existing node_modules directories, as in the S1 replay.
 COREPACK_HOME=/tmp/council-l2-corepack \
-COUNCIL_PACKAGE_EXPECTED_COMMIT=4ee1930cd8616670c0d9b69e25ebbeda87d2ce14 \
+COUNCIL_PACKAGE_EXPECTED_COMMIT=579649a72fac95485412f40679a5dc83501f66dc \
 PAPERCLIP_TEST_HOST_ROOT=/tmp/<isolated-host>/paperclip \
 PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH=/home/davy-lp/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell \
 COUNCIL_PACKAGE_EVIDENCE_PATH="$PWD/docs/reviews/l2/evidence/functional.json" \
 corepack pnpm test:functional
 ```
 
-Expected: typecheck/build succeed; 7 test files and 37 tests pass; functional output ends with `L2 STEP A MISSION PERSISTENCE VALIDATED`; the named mission results are `PASS`; host/candidate cleanliness is true.
+Expected: typecheck/build succeed; 7 test files and 45 tests pass; functional output ends with `L2 STEP A MISSION PERSISTENCE VALIDATED`; all 31 named mission/package results are `PASS`; host/candidate cleanliness is true.
 
 ## Independent-review remediation
 
-The first independent review rejected candidate `36b43076` on two Step A defects: mission creation checked active/current roster heads before a separate insert, leaving a lifecycle race, and board reads exposed mission aggregates to a non-owner company user. Candidate `4ee1930c` resolves both. The insert now locks and checks both active heads and exact published revisions in the same SQL statement; three real create-versus-suspend races were refused. Mission list/detail reads now require the configured owner, with installed-host `403` proof for the intruder. The earlier failed review remains diagnostic history and is not closure proof.
+The first independent review rejected candidate `36b43076` on two Step A defects: mission creation checked active/current roster heads before a separate insert, leaving a lifecycle race, and board reads exposed mission aggregates to a non-owner company user. Candidate `4ee1930c` resolved both. The PR review loop then found that an identical create retry consulted mutable admission state before its persisted receipt and that roster-domain errors escaped the mission API boundary. Candidate `579649a7` moves persisted receipt replay ahead of mutable admission checks without weakening new-create validation, translates typed roster errors, and strengthens ordered lifecycle plus restart coverage. The exact installed replay passed after these corrections. Earlier failed or superseded runs remain diagnostic history and are not closure proof.
 
 ## Status handoff
 
@@ -82,7 +82,7 @@ The smallest next action is an explicit owner decision on G4 followed by technic
 [Proof Gate Output V1]
 Date de reference: 2026-09-30 (Europe/Paris)
 Proof ID: paperclip-council-l2-step-a-2026-09-30
-Subject: Bounded local Step A mission persistence at candidate 4ee1930cd8616670c0d9b69e25ebbeda87d2ce14
+Subject: Bounded local Step A mission persistence at candidate 579649a72fac95485412f40679a5dc83501f66dc
 Status: pass
 Summary: The exact clean candidate provides replayably verified private mission persistence, immutable roster-revision pinning, owner and scope guards, command identity/CAS, explicit G4 blocking and restart survival without activation or dispatch.
 Categories: functional, quality, compliance, documentation, operations

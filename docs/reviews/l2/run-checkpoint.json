@@ -1,8 +1,8 @@
 {
   "objective": "Close the independent L1 mission-revision pinning remainder and implement only the G4-independent portion of L2.",
-  "current_gate": "Finalize the reviewed L2 Step A handoff on a clean, validated branch.",
+  "current_gate": "Publish the PR-loop remediation evidence and complete current-head review gates.",
   "mandate": {
-    "current": "Local code, tests, additive private migration, required routes or UI, coherent local commits, isolated host proof, and final independent review are authorized; push, PR, merge, durable deployment, real-agent provisioning, credential changes, paid provider calls, host writes, and external delivery are excluded.",
+    "current": "Local code, tests, additive private migration, coherent commits, isolated host proof, PR creation, bounded PR-head remediation publication and review-loop operations are authorized; merge, durable deployment, real-agent provisioning, credential changes, paid provider calls, host writes, and external delivery remain excluded.",
     "superseded_instructions": []
   },
   "stop_conditions": [
@@ -21,7 +21,7 @@
     "Git base gate passed on clean branch codex/council-l2 tracking origin/main.",
     "COUNCIL-L2-MISSIONS prewrite migration gate passed with no findings.",
     "S1 report keeps L1 partial and mission activation unavailable.",
-    "Runtime candidate 4ee1930cd8616670c0d9b69e25ebbeda87d2ce14 passed real installed mission storage, owner-only reads, atomic lifecycle selection races, CAS, roster-lifecycle pinning and restart checks on clean host 61b3fd57a695614dc4a37e2303f426a34a9795cf."
+    "Runtime candidate 579649a72fac95485412f40679a5dc83501f66dc passed real installed mission storage, owner-only reads, structured roster refusals, recorded-result replay after mutable lifecycle changes, atomic lifecycle selection contentions and ordered outcomes, CAS, roster-lifecycle pinning and complete restart inspection on clean host 61b3fd57a695614dc4a37e2303f426a34a9795cf."
   ],
   "decisions": [
     "Use the native implementation meta-flow, not the historical V3 phase topology.",
@@ -34,26 +34,26 @@
   ],
   "open_risks": [
     "An active-mission acceptance criterion may remain partial because G4 forbids activation or dispatch.",
-    "The initial independent review findings were remediated; targeted re-review found no new material defect and left one non-blocking proof timestamp correction, now applied."
+    "The PR review loop found and remediated recorded-result replay ordering, typed roster-error translation and regression-depth gaps; GitHub Codex review is unavailable because the connector reported exhausted review quota."
   ],
   "owners": [
     "Primary writer: current root Codex task.",
-    "Independent reviewer: initial consolidated review and targeted re-review completed; Step A close-final accepted with no remaining material finding."
+    "Independent reviewers: initial/targeted Step A reviews completed; PR-loop local correctness, test/regression and migration/docs reviews completed; current-head global re-review remains pending."
   ],
   "evidence_collected": [
     "Git base gate replay command reported pass at bfa921000c0743aff17d2c1e48eff6bb9ca365cf.",
     "docs/reviews/l2/prewrite-migration-contract.json validated by prewrite_migration_gate.py with status pass.",
-    "docs/reviews/l2/evidence/functional.json SHA-256 f9d6d3826d0abf389b8e88468c0ca1fba5ecfd903bbb47335e6b4fe6da75de7d; outcome L2 STEP A MISSION PERSISTENCE VALIDATED on candidate 4ee1930cd8616670c0d9b69e25ebbeda87d2ce14.",
+    "docs/reviews/l2/evidence/functional.json SHA-256 f0c395e74579e943038faf67e2f9daaa85bf6cf042b84245099e4a89d395b966; outcome L2 STEP A MISSION PERSISTENCE VALIDATED with 31 passing results on candidate 579649a72fac95485412f40679a5dc83501f66dc.",
     "Targeted independent re-review closed both prior material findings, found no new material issue, and accepted close-final for the bounded Step A only."
   ],
   "files_touched": [
     "docs/reviews/l2/prewrite-migration-contract.json: created control descriptor.",
     "docs/reviews/l2/run-checkpoint.json: refreshed living checkpoint source.",
-    "Initial implementation committed in 36b43076c262e60bfe3e63affb0da72a55c08952; atomic selection/read-auth remediation and race coverage committed through 4ee1930cd8616670c0d9b69e25ebbeda87d2ce14.",
+    "Initial implementation committed in 36b43076c262e60bfe3e63affb0da72a55c08952; atomic selection/read-auth remediation and race coverage committed through 4ee1930cd8616670c0d9b69e25ebbeda87d2ce14; PR-loop replay/error-boundary remediation committed in 579649a72fac95485412f40679a5dc83501f66dc.",
     "docs/reviews/l2/evidence/functional.json, REPORT.md, proof-manifest.json, alignment-manifest.json: prepared review packet."
   ],
-  "next_action": "Commit the final metadata correction, replay documentary and Git gates, and hand off without push or PR.",
-  "next_checkpoint": "Final handoff after a clean Git/base-gate readback.",
+  "next_action": "Commit and publish the refreshed exact-candidate evidence, then request current-head review if the GitHub Codex quota permits.",
+  "next_checkpoint": "After PR-head publication and current-head local/global review readback.",
   "volatile_state": [
     "Re-check worktree cleanliness and HEAD before runtime proof and review.",
     "Re-check Paperclip host commit and tracked cleanliness in the isolated clone used by the harness.",
