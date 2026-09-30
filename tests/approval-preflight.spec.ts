@@ -101,6 +101,24 @@ describe("approval preflight", () => {
     expect(f.fetchMock).toHaveBeenCalledOnce();
   });
 
+  it("refuses a conflicting primary candidate despite a matching archived work product", async () => {
+    const f = fixture({ workProducts: [
+      {
+        type: "commit", status: "archived", isPrimary: false,
+        metadata: { repo: "owner/repository", branch: manifest.branch, sha: head, baseCommit: manifest.baseCommit },
+      },
+      {
+        type: "commit", status: "ready_for_review", isPrimary: true,
+        metadata: { repo: "owner/repository", branch: manifest.branch, sha: "d".repeat(40), baseCommit: manifest.baseCommit },
+      },
+    ] });
+    const result = await handleDecision(f.input, f.ctx);
+    expect(result.status).toBe(422);
+    expect(result.body.error).toMatch(/Candidate work product/);
+    expect(f.resolve).not.toHaveBeenCalled();
+    expect(f.fetchMock).not.toHaveBeenCalled();
+  });
+
   it("permits changes_requested without a manifest or bundle read", async () => {
     const f = fixture({ verdict: "changes_requested", body: null, attachment: null });
     const result = await handleDecision(f.input, f.ctx);
