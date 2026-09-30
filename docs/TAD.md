@@ -4,6 +4,10 @@ Version 0.2 — September 30, 2026. **Design for bounded implementation; runtime
 
 Product authority: [PRD 0.4](PRD.md) and [V1 scope](V1-SCOPE.md). Sequence and exit checks: [implementation plan](IMPLEMENTATION-PLAN.md). Proposed responsibilities: [agent catalogue](AGENT-CATALOG.md). This document specifies contracts, not installed behavior or authorization to operate an instance.
 
+Environment classes and proof-promotion boundaries are normative in
+[`ENVIRONMENTS.md`](ENVIRONMENTS.md). In particular, the repo-owned sandbox and
+the read-only integrated Paperclip recipe are distinct environments.
+
 ## 1. Baseline and evidence
 
 Source inspection used native WSL files and Git objects; no build, test, provider request, installation or live API mutation was performed for this TAD. The initial documentary base was Council `365809efdf190010f818a25b938bad59ebd4f33c`. Publication is based on main at `9d7d0e0efd21d8385f10fea018e3e4c0697eaf30`, which already contains the standalone adapter, manifest gate and current-candidate validation fix. The following sources were inspected; historical commits remain evidence of their own revisions:

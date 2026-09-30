@@ -27,7 +27,12 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run --config ./vitest.config.ts",
-    "test:functional": "tsx tests/functional/run.ts"
+    "audit:static": "node scripts/ci/run-static-audit.mjs",
+    "test:functional": "tsx tests/functional/run.ts",
+    "qualification:host:prepare": "node scripts/qualification/paperclip-host.mjs prepare",
+    "qualification:host:status": "node scripts/qualification/paperclip-host.mjs status",
+    "qualification:host:verify": "node scripts/qualification/paperclip-host.mjs verify",
+    "qualification:bounded": "node scripts/qualification/run-bounded.mjs"
   },
   "dependencies": {
     "@paperclipai/plugin-sdk": "2026.916.1"
@@ -37,6 +42,7 @@
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.18",
     "esbuild": "^0.28.2",
+    "fallow": "3.23.0",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"

@@ -50,6 +50,20 @@ Its agents, issues, policies, and heartbeat runs are explicitly synthetic test
 preparation. Executor and Council are distinct agents, and each decision uses a
 fresh active run. The isolated instance and database are removed afterward.
 
+For a repo-owned pinned Paperclip checkout and one-command bounded replay, use:
+
+```sh
+pnpm qualification:host:prepare
+pnpm qualification:host:status
+pnpm qualification:bounded
+```
+
+The checkout lives under ignored `.paperclip/qualification/`; each replay still
+creates and removes its own runtime instance and database. See
+[`docs/ENVIRONMENTS.md`](./docs/ENVIRONMENTS.md) for the normative separation
+between package checks, this local sandbox, the integrated Paperclip recipe and
+an authorized target.
+
 To install the built checkout into a separately selected Paperclip instance:
 
 ```sh
