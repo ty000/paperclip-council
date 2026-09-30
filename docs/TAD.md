@@ -1,8 +1,8 @@
 # Paperclip Council — V1 technical architecture
 
-Version 0.2 — September 30, 2026. **Design for bounded implementation; runtime qualification pending.**
+Version 0.3 — September 30, 2026. **Design for bounded implementation; runtime qualification pending.**
 
-Product authority: [PRD 0.4](PRD.md) and [V1 scope](V1-SCOPE.md). Sequence and exit checks: [implementation plan](IMPLEMENTATION-PLAN.md). Proposed responsibilities: [agent catalogue](AGENT-CATALOG.md). This document specifies contracts, not installed behavior or authorization to operate an instance.
+Product authority: [PRD 0.5](PRD.md) and [V1 scope](V1-SCOPE.md). Sequence and exit checks: [implementation plan](IMPLEMENTATION-PLAN.md). Proposed responsibilities: [agent catalogue](AGENT-CATALOG.md). This document specifies contracts, not installed behavior or authorization to operate an instance.
 
 Environment classes and proof-promotion boundaries are normative in
 [`ENVIRONMENTS.md`](ENVIRONMENTS.md). In particular, the repo-owned sandbox and
@@ -32,7 +32,7 @@ The existing untracked integration review in the original checkout remains uncha
 | ID | Decision and rationale | PRD |
 | --- | --- | --- |
 | D01 | Extend the existing TypeScript Paperclip plugin; reuse its public-PATCH decision adapter after integrating the separate code baseline. No new agent execution engine or backend service | C01–C04 |
-| D02 | Paperclip owns agents, runs, issue checkout, native issue status and artifacts. Council owns rosters, mandate snapshots, contributions, opinion aggregation and its decision/application record | C02, C10, C16–C18 |
+| D02 | Paperclip owns agents, runs, issue checkout, native issue status and artifacts. Council owns rosters, mandate snapshots, technical plans, coordination, opinion aggregation and its decision/application record. Executive supplies optional methods/profiles, not another dispatcher or verdict writer | C02, C10, C16–C22 |
 | D03 | Use the host-managed plugin SQL namespace and immutable roster revisions. Store each mission's authoritative state, journal and effect intents in one versioned aggregate row | C05, C17–C18 |
 | D04 | Use compare-and-swap (CAS) for every mission command; persist external-effect intent in the same row change. Do not assume an atomic transaction spanning plugin state and Paperclip's public API | C04–C05 |
 | D05 | One accountable final reviewer owns one native root review stage. Specialists use separate child review issues and submit authenticated opinions; no native multi-vote interpretation | C02, C10–C11 |
@@ -40,16 +40,22 @@ The existing untracked integration review in the original checkout remains uncha
 | D07 | Reserved owner decisions use addressed `human_only` interactions plus verified owner identity and result/mandate binding. Silence or system resolution is insufficient | C01, C05 |
 | D08 | Reconciliation reads native evidence after ambiguous effects; it never retries an unproven approval solely because a timeout elapsed | C04–C06 |
 | D09 | Use existing Paperclip agents and runtime instruction/context surfaces. No automatic agent provisioning or global instruction rewrite in V1 | C09, C17 |
-| D10 | Minimal plugin UI within Paperclip, with native issue links and decision summaries; no memory engine or external delivery component | C07–C09 |
+| D10 | Minimal plugin UI within Paperclip, with native issue links, project coordination, mission/PR state and decision summaries; no memory engine or generic delivery platform | C07–C09, C21, C23 |
+| D11 | Revisioned technical plans identify planner, orchestrator and integration owner; route by required skill, dependency and write ownership. Preserve independent review provenance | C19–C20 |
+| D12 | Durable project coordination references native missions and serializes finite shared-capacity claims; mission dispatch remains with one accountable orchestrator | C21 |
+| D13 | Facilitation is a bounded attributed work item on an observed blocker, with outcome and next actor; no additional approval hierarchy | C22 |
+| D14 | A separate authorized PR effect binds accepted submission, repository/base/head and publisher; persist intent and reconcile ambiguity before retry. Acceptance and PR/check/review state are separate | C23 |
 
 ```mermaid
 flowchart LR
   Owner[Owner in Paperclip] --> UI[Council configuration and mission view]
   UI --> Commands[Authenticated commands and guards]
-  Commands --> Store[Plugin namespace: rosters and mission aggregates]
+  Commands --> Store[Plugin namespace: rosters, missions and project coordination]
   Store --> Effects[Persisted effect intents and reconciliation]
   Effects --> Native[Paperclip issues, artifacts and wakeups]
-  Native --> Agents[Executors, integration lead and reviewers]
+  Native --> Agents[Planners, orchestrators, contributors and reviewers]
+  Effects --> Publisher[Authorized PR publisher]
+  Publisher --> PR[Observed PR and checks]
   Agents --> Commands
   Commands --> Adapter[Final reviewer decision adapter]
   Adapter --> Patch[Public issue PATCH and native decision]
@@ -59,6 +65,29 @@ flowchart LR
 All paths carry the host-resolved company. V1 has one configured owner per company; every query, foreign reference and command must enforce company boundaries even though initial qualification uses a single company. A project restriction is additionally checked on missions and members' usable workspaces. Titles or instruction text never grant a permission.
 
 ## 3. Persistence and concurrency
+
+### 3.1 Orchestration extension contracts — D11–D14
+
+These contracts derive from PRD 0.5 and are not implemented or qualified by this document. Reuse the native issue model and existing persistence/effect rules. Select exact routes and schema changes in N5/N6 after checking the current host; no new scheduler service is assumed.
+
+| Contract | Required information and behavior |
+| --- | --- |
+| Technical plan | Mission/mandate and plan revision; planner, orchestrator and integration owner; contribution skills, interfaces, dependencies, assignee, write scope and expected evidence. Replanning records reason and affected work; preserve valid unaffected evidence and rerun affected validation. |
+| Project coordination | Company/project, owner delegation, coordinator, native mission references, ordering rationale, dependency result/evidence references, bounded capacity and active claims, waits and next actors. State and attributed decisions survive session replacement. |
+| Facilitation | Named blocker, mission/project references, participants, expected outcome, operating limit, outcome and accountable next actor. Reuse bounded native work; no verdict, dispatch or priority authority is inferred from the facilitator title. |
+| PR effect | Stable operation identity, accepted submission/evidence/mandate revision, repository, base, expected head, authorized publisher, permitted create/update action, pending/unknown/confirmed result and observed PR URL/head. Record check/review observations separately. |
+
+Project coordination is operational state, not the deferred learning store. A versioned project coordination record must atomically claim finite shared capacity before a mission marks dispatch eligible; use CAS or an equivalent qualified host primitive. Claim identity is stable across project and mission records. A crash between those writes retains the claim conservatively; release requires evidence that no work was dispatched or that the in-flight work ended. Do not assume a transaction spanning project/mission/host state, free a claim merely on timeout, or bypass G4 budget admission. Shared resources must resolve to one claim authority; initial support may restrict them to one configured project. Unsupported cross-project sharing blocks affected dispatch instead of silently double-booking.
+
+The Project Manager selects eligible mission ordering within delegation; one mission orchestrator dispatches eligible contributions. The planner proposes revisions and the named integration lead assembles the candidate. Existing native root assignment may remain with the integration lead; distinct orchestration/planning actors use their own supported assignments/commands and never impersonate that checkout. Bound dependency validation and refuse cycles or missing evidence. An external `done` status alone cannot release a dependency that requires an accepted candidate or published PR.
+
+An authorized existing delivery path or task-scoped publisher may perform the PR effect; the provider path, credential boundary and supported readback must be selected and qualified before N5 publication. Do not duplicate an existing delivery trigger: one logical publication has one effect owner. Confirm repository/base/head against the accepted candidate before writing and read them back afterwards. Persist intent before dispatch; ambiguous creation/update stays unknown until correlated with the observed PR. A PR title match or absence from one stale read is insufficient grounds to create another.
+
+PR state is an orthogonal delivery record: `not_requested`, `awaiting_authority`, `pending`, `unknown`, `opened` or `failed`, with separate check/review observations. Historical `accepted` remains attached to its exact candidate; it does not mean the current PR is ready. A code correction after acceptance opens a new attempt/review round for the same mission, using a qualified native reopen/child-work route. Preserve the old decision, invalidate affected current readiness and publish the changed head only after its required checks and acceptance. A known failed update may be corrected and retried within mandate after readback; an ambiguous effect may not. Merge/deployment automation is outside this contract.
+
+Compatibility boundary: [Executive PRD 0.2](https://github.com/ty000/paperclip-executive/blob/404d62d/docs/PRD.md) assumes prepared product tickets and assigns Executive the review profiles/methods. Internal technical decomposition here does not recreate that upstream backlog. When composing plugins, bind Executive contributions to the same mission/candidate and choose one dispatch owner; this Council document does not assert that Executive implements the integration.
+
+### 3.2 Existing mission persistence foundation
 
 Use migrations in the plugin package under the host-derived namespace. Do not write Paperclip public tables, use direct DB credentials or install another database. The proposed physical layout deliberately avoids depending on unavailable multi-statement worker transactions (S3).
 
@@ -105,7 +134,7 @@ New result bytes create a new submission and review round. New evidence alone in
 
 ## 5. Execution teams and council protocol
 
-The root issue represents the integrated mission and remains assigned to the integration lead until native review handoff. Each contribution uses a child issue with one native assignee; dependencies are an acyclic graph checked before dispatch. The lead owns dependency and integration decisions within scope. Agent unavailability or a cycle produces an explicit blocker. Use isolated workspaces/branches for concurrent writes, or explicitly serialize access; never assign conflicting writes to a shared checkout silently.
+The root issue represents the integrated mission and remains assigned to the integration lead until native review handoff. Each contribution uses a child issue with one native assignee; dependencies are an acyclic graph checked before dispatch. The planner owns plan revisions, the orchestrator owns dispatch and the lead owns integration; one identity may hold these responsibilities. Agent unavailability or a cycle produces an explicit blocker. Use isolated workspaces/branches for concurrent writes, or explicitly serialize access; never assign conflicting writes to a shared checkout silently.
 
 Council-managed child issues use stable `originKind`/`originId` correlation derived from mission and contribution/review slot. The SDK exposes these on create and list (S2). Their availability is not proof of a database uniqueness constraint: ambiguous issue creation requires correlation readback; if absence or uniqueness cannot be established, stop automatic creation and expose reconciliation. Do not issue another create simply because the first call timed out.
 
@@ -216,6 +245,6 @@ These gates constrain implementation and activation, not completion of this docu
 
 G3 closes only the minimum readback/reconciliation dependency. L3 must still qualify the full eligible-actor handoff, correction, final acceptance and confirmed application journey. Likewise, G4 closes only the monetary admission and operational-limit dependency for affected L2 dispatch; addressed-owner identity, no-response waiting and attributable continuation remain separate L3 requirements under `DEP-OWNER`.
 
-The current baseline lacks a worker transaction spanning host mutation and plugin state; native review is not collective; external overrides are possible. The architecture addresses the covered workflow and exposes uncertainty. It does not establish adversarial isolation, universal prevention of `done`, external delivery control, measured savings or learning. Representative real-agent evaluation remains necessary for judgment quality.
+The current baseline lacks a worker transaction spanning host mutation and plugin state; native review is not collective; external overrides are possible. The architecture addresses the covered workflow and exposes uncertainty. It does not establish adversarial isolation, universal prevention of `done`, delivery control beyond the selected C23 path, measured savings or learning. Representative real-agent evaluation remains necessary for judgment quality.
 
 Local document review checks requirement coverage, source grounding, owner-approved mandate revisions, cross-file consistency and bounded writes. No independent reviewer or runtime campaign was invoked. The selected scope is ready to guide the first contract-validation lot; live activation and the above guarantees remain unverified.

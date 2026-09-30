@@ -1,8 +1,8 @@
 # Paperclip Council — nominal-first sprint plan
 
-Version 0.3 — September 30, 2026. Documentary execution plan; no dates, capacity, runtime activation or passed qualification are implied.
+Version 0.4 — September 30, 2026. Documentary execution plan; no dates, capacity, runtime activation or passed qualification are implied.
 
-Sources: [backlog B01–B08](BACKLOG.md), [PRD 0.4](PRD.md), [V1 scope](V1-SCOPE.md), [TAD D01–D10](TAD.md), [technical coverage L0–L6](IMPLEMENTATION-PLAN.md), [G3/G4 decisions](G3-G4-DECISIONS.md), and [prepared agent profiles](AGENT-CATALOG.md).
+Sources: [backlog B01–B11](BACKLOG.md), [PRD 0.5](PRD.md), [V1 scope](V1-SCOPE.md), [TAD D01–D14](TAD.md), [technical coverage L0–L8](IMPLEMENTATION-PLAN.md), [G3/G4 decisions](G3-G4-DECISIONS.md), and [prepared agent profiles](AGENT-CATALOG.md).
 
 ## 1. Baseline and entry status
 
@@ -13,6 +13,8 @@ Delivered is not operationally complete: L1 active-mission pinning and L2 dispat
 **Owner direction:** prioritize a generic end-to-end path, collect concrete exceptions during implementation, and schedule subsequent hardening/decision work. Also maximize the diversity of agent types exercised so their usefulness can be assessed during those generic missions. N1–N4 supersede the old sequential sprint outline for execution, without deleting full-V1 acceptance criteria.
 
 The nominal milestone is an early, narrow L6-style evaluation. Full L6/V1 closure still requires the remaining mandatory cases; report these two milestones separately.
+
+PRD 0.5 extends the selected scope with M1 (complete mission through PR) and M2 (two coordinated missions). This revision was framed on `46669b3b77f760b0f481bb927d3ff3f53bf9b42c`, including the merged nominal plan. Preserve N1–N4 as foundations; N5 completes M1 and N6 demonstrates M2. Existing bounded implementation work is not silently widened. Nine prepared profiles remain the N4 coverage target; the new responsibilities require preparation and evaluation in their own lots.
 
 ## 2. Decisions and blocked capabilities
 
@@ -27,7 +29,7 @@ The 80/20 choice changes ordering and operating scope, not DEC-G3-01/DEC-G4-01 o
 
 ## 3. Nominal delivery lots
 
-Four coherent delivery lots; not necessarily four PRs. Preserve existing implementation and tests. Each lot includes its useful inspection slice and ends at an observable result. Narrow setup assumptions must be enforced and visible, not promises in a prompt.
+Six coherent delivery lots, each split into one or a few reviewable PRs where useful. Preserve existing implementation and tests. Each lot includes its useful inspection slice and ends at an observable result. Narrow setup assumptions must be enforced and visible, not promises in a prompt.
 
 ### N1 — Two contributors deliver one integrated candidate
 
@@ -67,6 +69,26 @@ Four coherent delivery lots; not necessarily four PRs. Preserve existing impleme
 - **Exit:** nominal journey demonstrated; all nine profile types evaluated on a concrete relevant question at least once. A profile not exercised is explicitly NOT EVALUATED and keeps profile coverage partial; do not claim its relevance from its title, output volume or an empty opinion. End-to-end success and breadth of profile evaluation have separate reported statuses.
 - **Defer:** exhaustive failure combinations and universal model/profile comparisons. Capture concrete discoveries for the decision checkpoint instead of repeatedly expanding N4.
 
+### N5 — Planned multidisciplinary mission through its PR (M1)
+
+- **Parents:** B02, B11; B03/B04/B07/B08 and selected B05. **TAD:** D04–D06, D08–D11, D14. **Coverage:** explicit planning/skills in L2 plus L7; PRD C19–C20/C23, A23–A24/A28–A30.
+- **Entry:** N1–N4 foundation/evidence within the selected operating profile. Verify the narrow publisher API/tool, authenticated actor, repository/base permissions, PR readback and native post-acceptance correction route before dependent implementation/publication. Missing host support is a named dependency, not an inferred API.
+- **Implement:** revisioned technical plan and named planner/orchestrator/integrator; skill and interface routing; QA expectations during planning; guarded replan and correction handoffs. Prepare missing responsibility instructions using existing agents without automatic hiring. Add one persisted authorized PR effect and actual PR/check/review observations; reuse an existing delivery path if it satisfies D14, with one dispatch owner.
+- **Inspect:** plan revision, assignments, dependencies, integration/QA evidence, accepted candidate, publisher authority, PR URL/head and actual check/review state. Preserve separate accepted/waiting/unknown/opened/ready observations and the next correction actor.
+- **Validate:** a representative frontend/backend or equivalent complementary mission follows plan → contributions → integrated validation → real correction → acceptance → observed PR. Verify missing authority causes no publication, mismatched head does not pass, timeout does not create a second PR, and code changes requested by CI/review receive affected revalidation and independent acceptance. Label intentionally selected correction exercises. Domain tests do not prove provider effects.
+- **Exit:** M1 is demonstrated on the authorized target; record exact candidate/PR, evidence and actual readiness. A PR can be opened with pending checks, but neither pending/failed checks nor draft status may be reported as ready. M1 does not imply merge/deployment or M2.
+- **PR slices:** planning/responsibility and validation handoff; authorized PR effect/readback and minimal view; focused qualification/evidence. Combine when coherent; no unrelated provider framework or CI redesign.
+
+### N6 — Durable project coordination and useful facilitation (M2)
+
+- **Parents:** B09, B10; B02/B04/B07/B08/B11. **TAD:** D02–D04, D07–D13 and D14 for each PR handoff. **Coverage:** L8, PRD C21–C22, A25–A27.
+- **Entry:** M1, two scoped native missions in one configured company/project, explicit priority delegation, finite shared-capacity rules and dependency evidence. Prepare suitable Project Manager/facilitator instructions and identities; availability is checked before execution.
+- **Implement:** durable native-mission references, ordering rationale, capacity claims, dependency/wait state and coordinator handoff; each mission retains one execution orchestrator. Qualify atomic claims and conservative reconciliation before concurrent use. Add bounded facilitation on a concrete blocker with question, participants, outcome and next actor. Reuse native events/wakeups; no constantly polling model or new general scheduler.
+- **Inspect:** compact project view with queued/active/waiting missions, capacity/dependency reason, decisions, next actor and linked mission/PR states; existing accessibility criteria apply.
+- **Validate:** two real missions contend for a resource or depend on a required result. Observe a delegated ordering decision, blocked dispatch, verified release/prerequisite and resumed progress through the PR workflow. Deterministic/runtime cases additionally cover competing exclusive claims, dependency cycle/false completion, crash between project claim and mission dispatch, coordinator restart/replacement and reserved priority change. Evaluate one concrete facilitation outcome without inventing mandatory ceremonies.
+- **Exit:** M2 demonstrates coordination rather than independent concurrent successes; responsibility, waiting, resumption, budget effects and facilitation evidence are durable and inspectable. Report PM/facilitator usefulness separately from runtime transition checks.
+- **PR slices:** coordination state/admission and mission handoff; minimal view plus bounded facilitation instructions/path; representative qualification/evidence. Arbitrary cross-project scheduling and throughput tuning remain outside this lot.
+
 ## 4. Breadth of agent evaluation
 
 Target **nine profile types**: Executor, Generalist Reviewer and the seven specialist reviewers. This is coverage across the campaign, not nine mandatory participants per mission or nine automatically hired identities. Two distinct Executor identities are needed for the integrated-work proof. Required specialist opinions use eligible attributed identities distinct from the authors/integrator; a generalist adopting several tones is not specialist coverage.
@@ -93,16 +115,16 @@ A finding blocks the current nominal lot only if it prevents its journey, violat
 | F01 — required, deferred after nominal proof | B03/B08, G3, full L3/L5: lost response or restart can prevent automatic decision reconciliation | Preserve intent/unknown; no blind retry. Qualify minimal supported readback and attributable recovery | Recovery lot, after N4; pull forward only what N2 needs for truthful ordinary acceptance |
 | F02 — required, deferred after nominal proof | B04/B06, DEP-OWNER, full L3/L4: disputed or reserved decisions cannot yet complete automatically | Stop with owner destination; implement bound response verification and one-level appeal | Decision/appeal lot, after N4 or if representative use repeatedly stops here |
 | F03 — required, deferred after nominal proof | B01/B05/B08, full L4/L5: replacement, late opinions and in-flight lifecycle changes | Preserve history and stop new dependent work; complete explicit replacement, resumption and lifecycle inspection | Lifecycle lot, after N4 or observed need; retain G4 unsettled-usage safety in N1 |
-| F04 — optional breadth, deferred | Rich graphs, more throughput, automatic reviewer selection, additional runtimes | Use the selected simple plan and configured roster; retain existing isolation and admission guards | Only with observed demand and a separate value/effort decision; not new V1 requirements |
+| F04 — optional breadth, deferred | Arbitrary graphs, throughput beyond M2, automatic reviewer selection, additional runtimes | Use the selected simple plan and configured roster; retain isolation/admission. Required two-mission coordination belongs to N6, not this optional item | Only with observed demand and a separate value/effort decision |
 | F05 — evaluation-driven, pending N4 observations | Nine profiles may overlap, miss important questions or consume disproportionate time | No profile declared useful merely because it ran; use participation records | Post-N4 decision checkpoint chooses retain/adjust/conditional and any bounded profile edits |
 
 No new defects are claimed by these seeded coverage gaps. Every discovered defect needs evidence; every mandatory V1 gap retains its requirement even if inconvenient. Cosmetic work, hypothetical hostile local races and speculative generalization are not release blockers unless they violate the actual supported contract.
 
-After N4, hold **one decision checkpoint**: inspect user value, actual blockers and profile usefulness; select coherent F01–F03 completion/hardening lots and evidence-driven fixes. Retain required V1 coverage or obtain an explicit scoped release decision. Then perform the remaining full L6 qualification. Do not predetermine an exhaustive hardening backlog before using the nominal path.
+After N4, hold **one decision checkpoint**: inspect value, blockers and profile usefulness; sequence N5 → N6 and coherent F01–F03 completion lots. Pull forward a follow-up only when needed by the selected journey or its guarantees; for example, N5's post-acceptance correction requires its own supported native continuation. Retain required V1 coverage or obtain an explicit scoped release decision. Full L6 qualification follows required L7/L8 and the remaining coverage. Do not predetermine an exhaustive hardening backlog before using the nominal path.
 
 ## 6. Execution and validation rules
 
-- Select N1 next. N1 → N2 → N3 → N4 follows functional dependencies. Independent contract inspection and preparation of runtime inputs can overlap; use separate write ownership, not concurrent edits to the same implementation.
+- Select N1 next under its existing bounded scope. N1 → N2 → N3 → N4 → N5 → N6 follows functional dependencies; M1 precedes M2. Independent contract inspection and preparation of runtime inputs can overlap; use separate write ownership, not concurrent edits to the same implementation.
 - Keep changed-surface tests with each increment. Run independent typecheck, tests and build in parallel using the existing CI runner; target at most four minutes of CI per push. Keep heavier selected-runtime qualification explicit and bounded, outside the default push loop. Tests needed to prove a current guarantee cannot be removed just to meet timing.
 - One consolidated independent review of a coherent candidate; fix material findings, then recheck affected paths. Reopen the whole review only for a changed contract or consequential new evidence. Cosmetic preferences and unused correction budget do not justify another cycle.
 - Preserve still-valid evidence with its candidate identity and scope; do not promote old runtime results to a changed candidate. Describe implemented, configured, activated and exercised states separately.
