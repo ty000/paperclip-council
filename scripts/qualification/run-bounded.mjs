@@ -16,16 +16,22 @@ const host = await materializeHost({ source: process.env.PAPERCLIP_QUALIFICATION
 const evidencePath = process.env.COUNCIL_PACKAGE_EVIDENCE_PATH
   ?? resolve(repositoryRoot, "artifacts/functional.json");
 const playwrightBrowsersPath = resolve(repositoryRoot, ".paperclip/qualification/playwright");
+const browserInstallTimeoutMs = 5 * 60_000;
+const functionalTimeoutMs = 15 * 60_000;
 mkdirSync(playwrightBrowsersPath, { recursive: true });
 execFileSync("corepack", ["pnpm", "exec", "playwright", "install", "chromium"], {
   cwd: host.target,
   stdio: "inherit",
+  timeout: browserInstallTimeoutMs,
+  killSignal: "SIGTERM",
   env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsersPath },
 });
 
 execFileSync("corepack", ["pnpm", "test:functional"], {
   cwd: repositoryRoot,
   stdio: "inherit",
+  timeout: functionalTimeoutMs,
+  killSignal: "SIGTERM",
   env: {
     ...process.env,
     COUNCIL_PACKAGE_EXPECTED_COMMIT: candidateCommit,

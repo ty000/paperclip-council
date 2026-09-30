@@ -34,6 +34,9 @@ lockfile and verifies that tracked host files are clean.
 It then builds the pinned `@paperclipai/plugin-sdk` workspace and its declared
 shared dependency, and verifies the exact runtime entry points required by the
 Paperclip server before reporting `runtimeReady: true`.
+Both generated entry points and the virtual-store lock are checked against
+pinned digests. Reusing the checkout reruns the bounded lock repair, frozen
+install and host build instead of trusting the mutable cache marker.
 
 `pnpm qualification:bounded` requires a clean committed Council candidate,
 verifies or prepares the host, then delegates to the existing functional
@@ -44,6 +47,12 @@ qualification cache and rejects any final evidence whose candidate SHA or
 verdict does not match the committed candidate. Providers and models remain
 disabled. The host checkout and browser cache are reusable; the runtime instance
 is intentionally ephemeral.
+
+The launcher has five-minute browser-install and fifteen-minute functional-run
+deadlines. It manages Playwright browser archives, not operating-system
+packages: supported Linux/WSL hosts must already provide Chromium's native
+libraries. CI bootstrap may install those packages explicitly; this repository
+does not invoke privileged `playwright install --with-deps` implicitly.
 
 ## Integrated recipe
 

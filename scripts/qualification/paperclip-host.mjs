@@ -75,9 +75,14 @@ function prepareHostBuild(hostRoot) {
     cwd: hostRoot,
     env: { ...process.env, COREPACK_HOME: resolve(runtimeRoot, "corepack") },
   });
-  const missingOutputs = hostBuild.requiredOutputs.filter((output) => !existsSync(resolve(hostRoot, output)));
-  if (missingOutputs.length > 0) {
-    throw new Error(`Paperclip host build did not create required outputs: ${missingOutputs.join(", ")}`);
+  const invalidOutputs = Object.entries(hostBuild.requiredOutputs)
+    .filter(([output, expectedSha256]) => {
+      const outputPath = resolve(hostRoot, output);
+      return !existsSync(outputPath) || sha256(readFileSync(outputPath)) !== expectedSha256;
+    })
+    .map(([output]) => output);
+  if (invalidOutputs.length > 0) {
+    throw new Error(`Paperclip host build outputs differ from pinned digests: ${invalidOutputs.join(", ")}`);
   }
   return { command: ["corepack", "pnpm", ...hostBuild.arguments], requiredOutputs: hostBuild.requiredOutputs };
 }
@@ -111,10 +116,15 @@ export function inspectHost(target, expectedCommit = expectedPaperclipCommit, al
   const dependencyPreparationValid = dependencyPreparation?.mode === "validated-lock-metadata-repair"
     && dependencyPreparation.originalSha256 === lockfileRepair.originalSha256
     && dependencyPreparation.repairedSha256 === lockfileRepair.repairedSha256
-    && dependencyPreparation.diffSha256 === lockfileRepair.diffSha256;
+    && dependencyPreparation.diffSha256 === lockfileRepair.diffSha256
+    && existsSync(resolve(absoluteTarget, "node_modules/.pnpm/lock.yaml"))
+    && sha256(readFileSync(resolve(absoluteTarget, "node_modules/.pnpm/lock.yaml"))) === lockfileRepair.repairedSha256;
   const hostBuildPreparation = marker?.hostBuildPreparation ?? null;
   const hostBuildValid = JSON.stringify(hostBuildPreparation?.command) === JSON.stringify(["corepack", "pnpm", ...hostBuild.arguments])
-    && hostBuild.requiredOutputs.every((output) => existsSync(resolve(absoluteTarget, output)));
+    && Object.entries(hostBuild.requiredOutputs).every(([output, expectedSha256]) => {
+      const outputPath = resolve(absoluteTarget, output);
+      return existsSync(outputPath) && sha256(readFileSync(outputPath)) === expectedSha256;
+    });
   return {
     prepared: head === expectedCommit && trackedStatus === "" && marker?.expectedCommit === expectedCommit,
     target: absoluteTarget,
@@ -142,7 +152,7 @@ export async function materializeHost({
     if (!current.prepared) {
       throw new Error(`Existing qualification host is not an owned clean ${expectedCommit} checkout: ${absoluteTarget}`);
     }
-    if (!install || current.runtimeReady) return current;
+    if (!install) return current;
   } else {
     await mkdir(dirname(absoluteTarget), { recursive: true });
     const partialTarget = assertOwnedTarget(`${absoluteTarget}.partial-${process.pid}`, allowedRoot);
@@ -167,10 +177,7 @@ export async function materializeHost({
   if (install) {
     const corepackHome = resolve(runtimeRoot, "corepack");
     await mkdir(corepackHome, { recursive: true });
-    const installedState = inspectHost(absoluteTarget, expectedCommit, allowedRoot);
-    if (!installedState.dependenciesInstalled) {
-      updateMarker(absoluteTarget, { dependencyPreparation: prepareDependencies(absoluteTarget) });
-    }
+    updateMarker(absoluteTarget, { dependencyPreparation: prepareDependencies(absoluteTarget) });
     updateMarker(absoluteTarget, { hostBuildPreparation: prepareHostBuild(absoluteTarget) });
   }
   const result = inspectHost(absoluteTarget, expectedCommit, allowedRoot);

@@ -6,7 +6,10 @@
     "packageManager": "pnpm@9.15.4",
     "hostBuild": {
       "arguments": ["--filter", "@paperclipai/plugin-sdk", "build"],
-      "requiredOutputs": ["packages/plugins/sdk/dist/index.js", "packages/shared/dist/index.js"]
+      "requiredOutputs": {
+        "packages/plugins/sdk/dist/index.js": "137b2a7136b0c6f0e9bddac3a086231878e120b9be869daeecf814119afaaab7",
+        "packages/shared/dist/index.js": "ef8d74ca6062cd4f788c3ca34f5de66a9f7715b060dfb3502d94eae42c6dc410"
+      }
     },
     "lockfileRepair": {
       "reason": "The pinned commit predates the pnpm 9.15.4 patch-hash normalization for acpx@0.13.1; only the validated lock metadata delta is permitted in the owned sandbox.",

@@ -45,6 +45,7 @@ assert.equal(hostStatus, "", "functional host tracked files must match the exact
 const hostImport = (path: string) => import(pathToFileURL(resolve(root, path)).href);
 const qualificationId = randomUUID();
 const runtime = await mkdtemp(resolve(tmpdir(), "paperclip-council-package-"));
+try {
 const preparedCandidate = await prepareCandidatePackage(packageRoot, candidateCommit, runtime);
 const evidencePath = process.env.COUNCIL_PACKAGE_EVIDENCE_PATH
   ?? resolve(packageRoot, "artifacts", "functional.json");
@@ -1154,4 +1155,7 @@ try {
     results: evidence.results,
     error: evidence.error?.message,
   }));
+}
+} finally {
+  await rm(runtime, { recursive: true, force: true });
 }
