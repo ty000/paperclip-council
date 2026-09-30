@@ -518,6 +518,15 @@ try {
   assert(missionCreate.body.inspection.prerequisites.some(
     (item: any) => item.code === "runtime_budget_exposure" && item.status === "unsupported",
   ));
+  const unauthorizedMissionList = await request("intruder", "GET", `${missionBase}?companyId=${companyId}`);
+  assert.equal(unauthorizedMissionList.status, 403);
+  assert.equal(unauthorizedMissionList.body.code, "owner_required");
+  const unauthorizedMissionRead = await request("intruder", "GET", `${missionBase}/${missionId}?companyId=${companyId}`);
+  assert.equal(unauthorizedMissionRead.status, 403);
+  assert.equal(unauthorizedMissionRead.body.code, "owner_required");
+  const ownerMissionList = await request("human", "GET", `${missionBase}?companyId=${companyId}`);
+  assert.equal(ownerMissionList.status, 200);
+  assert.equal(ownerMissionList.body.missions.length, 1);
   const missionReplay = await request("human", "POST", missionBase, missionCreateBody);
   assert.equal(missionReplay.status, 200);
   assert.equal(missionReplay.body.outcome, "replayed");
@@ -528,7 +537,7 @@ try {
   });
   assert.equal(identityConflict.status, 409);
   assert.equal(identityConflict.body.code, "command_identity_conflict");
-  evidence.results.missionOwnerIdentityAndIdempotentCreate = "PASS";
+  evidence.results.missionOwnerIdentityReadScopeAndIdempotentCreate = "PASS";
 
   const missionCommandPath = `${missionBase}/${missionId}/commands`;
   const competingMandates = await Promise.all([
@@ -590,13 +599,63 @@ try {
     councilExpectedVersion: activation.body.council.head.version,
   });
   assert.equal(reactivate.status, 200);
+  let currentPair = reactivate.body;
+  const missionLifecycleRaceOutcomes: number[] = [];
+  for (let raceIndex = 0; raceIndex < 3; raceIndex += 1) {
+    const raceRoot = await request("human", "POST", `/api/companies/${companyId}/issues`, {
+      title: `Mission lifecycle race fixture ${raceIndex + 1}`,
+      description: "Synthetic create-versus-suspend race; no dispatch.",
+      projectId,
+      status: "backlog",
+      assigneeAgentId: executorId,
+    });
+    assert.equal(raceRoot.status, 201);
+    const [raceCreate, raceSuspend] = await Promise.all([
+      request("human", "POST", missionBase, {
+        ...missionCreateBody,
+        commandId: randomUUID(),
+        missionId: randomUUID(),
+        rootIssueId: raceRoot.body.id,
+        teamRevision: winningRevision.revision.revision,
+      }),
+      request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
+        companyId,
+        command: "suspend",
+        expectedVersion: currentPair.team.head.version,
+      }),
+    ]);
+    assert.equal(raceSuspend.status, 200);
+    assert([201, 409, 422].includes(raceCreate.status), `unexpected race create status ${raceCreate.status}`);
+    if (raceCreate.status === 201) {
+      assert.equal(raceCreate.body.mission.teamRevision, winningRevision.revision.revision);
+    } else {
+      assert(["roster_selection_changed", "roster_pair_ineligible"].includes(raceCreate.body.code));
+    }
+    missionLifecycleRaceOutcomes.push(raceCreate.status);
+    const raceReactivate = await request("human", "POST", rosterBase, {
+      companyId,
+      command: "activate-pair",
+      teamRosterId,
+      teamExpectedVersion: raceSuspend.body.head.version,
+      councilRosterId,
+      councilExpectedVersion: currentPair.council.head.version,
+    });
+    assert.equal(raceReactivate.status, 200);
+    currentPair = raceReactivate.body;
+  }
+  evidence.results.missionCreationVsLifecycleRace = "PASS";
+  evidence.missionLifecycleRace = {
+    attempts: missionLifecycleRaceOutcomes.length,
+    createStatuses: missionLifecycleRaceOutcomes,
+    invariant: "create serialized before suspension or refused after selection changed",
+  };
   const suspend = await request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
-    companyId, command: "suspend", expectedVersion: reactivate.body.team.head.version,
+    companyId, command: "suspend", expectedVersion: currentPair.team.head.version,
   });
   assert.equal(suspend.status, 200);
   assert.equal(suspend.body.head.lifecycle, "suspended");
   const staleSuspend = await request("human", "POST", `${rosterBase}/${teamRosterId}/commands`, {
-    companyId, command: "suspend", expectedVersion: reactivate.body.team.head.version,
+    companyId, command: "suspend", expectedVersion: currentPair.team.head.version,
   });
   assert.equal(staleSuspend.status, 409);
   const afterStale = await request("human", "GET", `${rosterBase}/${teamRosterId}?companyId=${companyId}`);

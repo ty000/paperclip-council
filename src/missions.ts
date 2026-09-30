@@ -223,9 +223,31 @@ export function canonicalPayloadHash(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(stable(value))).digest("hex");
 }
 
-function table(ctx: PluginContext): string {
+function namespaceTable(ctx: PluginContext, name: "missions" | "roster_heads"): string {
   if (!/^[a-z_][a-z0-9_]*$/.test(ctx.db.namespace)) throw new Error("Unsafe plugin database namespace");
-  return `${ctx.db.namespace}.missions`;
+  return `${ctx.db.namespace}.${name}`;
+}
+
+function table(ctx: PluginContext): string {
+  return namespaceTable(ctx, "missions");
+}
+
+export function missionInsertSql(ctx: PluginContext): string {
+  return `INSERT INTO ${table(ctx)}
+    (company_id, mission_id, root_issue_id, project_id, owner_user_id,
+     team_roster_id, team_revision, council_roster_id, council_revision, aggregate)
+    SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb
+    WHERE 2 = (
+      SELECT count(*) FROM (
+        SELECT roster_id FROM ${namespaceTable(ctx, "roster_heads")}
+        WHERE company_id = $1 AND lifecycle = 'active' AND (
+          (roster_id = $6 AND published_revision = $7) OR
+          (roster_id = $8 AND published_revision = $9)
+        )
+        FOR UPDATE
+      ) AS selectable_heads
+    )
+    ON CONFLICT DO NOTHING`;
 }
 
 function timestamp(value: Date | string): string {
@@ -419,18 +441,20 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
   const at = new Date().toISOString();
   const aggregate = buildMissionAggregate({ create, companyId, ownerUserId, team: validation.team, council: validation.council, payloadHash, at });
   const insert = await ctx.db.execute(
-    `INSERT INTO ${table(ctx)}
-      (company_id, mission_id, root_issue_id, project_id, owner_user_id,
-       team_roster_id, team_revision, council_roster_id, council_revision, aggregate)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
-      ON CONFLICT DO NOTHING`,
+    missionInsertSql(ctx),
     [companyId, create.missionId, create.rootIssueId, create.projectId, ownerUserId,
       create.teamRosterId, create.teamRevision, create.councilRosterId, create.councilRevision,
       JSON.stringify(aggregate)],
   );
   const mission = await getMission(ctx, companyId, create.missionId)
     ?? await getMissionByRootIssue(ctx, companyId, create.rootIssueId);
-  if (!mission) throw new Error("Mission insert returned no readable record");
+  if (!mission) {
+    throw new MissionError(
+      409,
+      "roster_selection_changed",
+      "Team or council selection changed before the mission could be recorded; retry from current active revisions",
+    );
+  }
   if (insert.rowCount === 1) return { outcome: "applied" as const, mission, receipt: mission.aggregate.commandReceipts[0] };
   const replay = replayOrConflict(mission, create.commandId, ownerUserId, payloadHash);
   if (replay) return replay;
@@ -534,11 +558,14 @@ export function inspectMission(mission: MissionRecord) {
 export async function handleMissionApi(input: PluginApiRequestInput, ctx: PluginContext) {
   try {
     const companyId = companyIdFromRequest(input);
+    const actorUserId = input.actor.actorType === "user" ? input.actor.userId ?? null : null;
     if (input.routeKey === "missions-list") {
+      await requireOwner(ctx, companyId, actorUserId);
       const missions = await listMissions(ctx, companyId);
       return { status: 200, body: { missions: missions.map(inspectMission) } };
     }
     if (input.routeKey === "mission-read") {
+      await requireOwner(ctx, companyId, actorUserId);
       const missionId = uuid(input.params.missionId, "missionId");
       const mission = await getMission(ctx, companyId, missionId);
       if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
@@ -547,8 +574,8 @@ export async function handleMissionApi(input: PluginApiRequestInput, ctx: Plugin
     if (input.routeKey === "missions-command" || input.routeKey === "mission-command") {
       const result = await executeMissionCommand(ctx, {
         companyId,
-        missionId: input.params.missionId,
-        actorUserId: input.actor.actorType === "user" ? input.actor.userId ?? null : null,
+        missionId: input.params.missionId ? uuid(input.params.missionId, "missionId") : undefined,
+        actorUserId,
         body: input.body,
       });
       const creating = input.routeKey === "missions-command" && asRecord(input.body).command === "create";

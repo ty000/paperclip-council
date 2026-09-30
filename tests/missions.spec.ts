@@ -5,6 +5,8 @@ import {
   buildMissionAggregate,
   canonicalPayloadHash,
   executeMissionCommand,
+  handleMissionApi,
+  missionInsertSql,
   parseMissionCreateInput,
   type MissionMandate,
 } from "../src/missions.js";
@@ -137,5 +139,45 @@ describe("Council mission contracts", () => {
       actorUserId: "intruder-1",
       body: { command: "create" },
     })).rejects.toMatchObject({ status: 403, code: "owner_required" });
+  });
+
+  it("makes mission insertion conditional on locking both active current roster heads", () => {
+    const sql = missionInsertSql({
+      db: { namespace: "plugin_private_paperclip_council_test" },
+    } as unknown as PluginContext);
+    expect(sql).toContain("lifecycle = 'active'");
+    expect(sql).toContain("published_revision = $7");
+    expect(sql).toContain("published_revision = $9");
+    expect(sql).toContain("FOR UPDATE");
+    expect(sql).toContain("SELECT count(*)");
+  });
+
+  it("refuses mission list and detail inspection to a non-owner board user", async () => {
+    const ctx = {
+      companies: { get: async () => ({ id: ids.company, defaultResponsibleUserId: "owner-1" }) },
+      db: {
+        namespace: "plugin_private_paperclip_council_test",
+        query: async () => { throw new Error("mission storage must not be read before authorization"); },
+      },
+    } as unknown as PluginContext;
+    const request = (routeKey: string, params: Record<string, string>) => ({
+      routeKey,
+      method: "GET",
+      path: "",
+      params: { companyId: ids.company, ...params },
+      query: { companyId: ids.company },
+      body: undefined,
+      actor: { actorType: "user" as const, actorId: "intruder-1", userId: "intruder-1" },
+      companyId: ids.company,
+      headers: {},
+    });
+    await expect(handleMissionApi(request("missions-list", {}), ctx)).resolves.toMatchObject({
+      status: 403,
+      body: { code: "owner_required" },
+    });
+    await expect(handleMissionApi(request("mission-read", { missionId: ids.mission }), ctx)).resolves.toMatchObject({
+      status: 403,
+      body: { code: "owner_required" },
+    });
   });
 });
