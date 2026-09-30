@@ -74,12 +74,12 @@ const requireServer = createRequire(resolve(root, "server/package.json"));
 const { eq } = requireServer("drizzle-orm");
 const evidence: Record<string, any> = {
   schemaVersion: 1,
-  proofId: "paperclip-council-l0-functional-2026-09-30",
+  proofId: "paperclip-council-s1-configuration-2026-09-30",
   startedAt: new Date().toISOString(),
   head: hostCommit,
   branch: execFileSync("git", ["branch", "--show-current"], { cwd: root, encoding: "utf8" }).trim(),
   node: process.version,
-  command: "COUNCIL_PACKAGE_EXPECTED_COMMIT=<candidate-sha> PAPERCLIP_TEST_HOST_ROOT=<checkout> pnpm test:functional",
+  command: "COUNCIL_PACKAGE_EXPECTED_COMMIT=<candidate-sha> PAPERCLIP_TEST_HOST_ROOT=<checkout> PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH=<chromium> pnpm test:functional",
   candidate: {
     commit: candidateCommit,
     branch: candidateBranch,
@@ -528,7 +528,12 @@ try {
   evidence.results.installedUiBundleAndAuthenticatedBridge = "PASS";
 
   const { chromium } = requireServer("@playwright/test");
-  const browser = await chromium.launch({ headless: true });
+  const playwrightExecutablePath = process.env.PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH;
+  const browser = await chromium.launch({
+    headless: true,
+    ...(playwrightExecutablePath ? { executablePath: playwrightExecutablePath } : {}),
+  });
+  evidence.configuration.playwrightExecutable = playwrightExecutablePath ?? "Playwright-managed default";
   try {
     const addSessionCookies = async (browserContext: any, rawCookie: string) => {
       await browserContext.addCookies(rawCookie.split("; ").map((part) => {
@@ -774,7 +779,7 @@ try {
     replacementAndRevocation: "documented-only",
     reason: "the required package journey used native ephemeral keys; durable key mutation was not requested",
   };
-  evidence.outcome = "PACKAGE LOCAL INTEGRATION VALIDATED";
+  evidence.outcome = "SPRINT 1 CONFIGURATION INCREMENT VALIDATED";
 } catch (error) {
   evidence.outcome = "NON-CONCLUSIVE OR BLOCKED";
   evidence.error = error instanceof Error
