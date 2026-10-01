@@ -1,4 +1,17 @@
-import { closeSync, fstatSync, lstatSync, mkdirSync, openSync, rmdirSync, unlinkSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  fsyncSync,
+  ftruncateSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readSync,
+  rmdirSync,
+  unlinkSync,
+  writeSync,
+} from "node:fs";
 import { basename, dirname, extname, resolve } from "node:path";
 
 const SAFE_PROOF_ID = "paperclip-council-n1-safe-boundary-qualification-v1";
@@ -73,10 +86,40 @@ function fail(message) {
   throw new Error(`Qualification evidence contract failed: ${message}`);
 }
 
+function identityOf(status) {
+  return { dev: status.dev.toString(), ino: status.ino.toString() };
+}
+
+function sameIdentity(status, identity) {
+  return status.dev.toString() === identity.dev && status.ino.toString() === identity.ino;
+}
+
+function claimedIdentity(fd, kind) {
+  const status = fstatSync(fd, { bigint: true });
+  if (!status.isFile()) fail(`live ${kind} claim must remain a regular file`);
+  return identityOf(status);
+}
+
+function assertClaimedPath(path, fd, identity, kind) {
+  let current;
+  try {
+    current = lstatSync(path, { bigint: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") fail(`live ${kind} claim path was removed: ${path}`);
+    throw error;
+  }
+  const openClaim = fstatSync(fd, { bigint: true });
+  if (!current.isFile() || !openClaim.isFile()
+      || !sameIdentity(current, identity) || !sameIdentity(openClaim, identity)) {
+    fail(`live ${kind} claim identity changed; refusing pathname access ${path}`);
+  }
+  return openClaim;
+}
+
 function claimCreateOnly(path, kind) {
   mkdirSync(dirname(path), { recursive: true });
   try {
-    return openSync(path, "wx", 0o600);
+    return openSync(path, "wx+", 0o600);
   } catch (error) {
     if (error?.code === "EEXIST") {
       fail(`live ${kind} path already exists; refusing to overwrite ${path}`);
@@ -88,23 +131,85 @@ function claimCreateOnly(path, kind) {
 function rollbackEmptyClaim(path, fd, identity) {
   let current;
   try {
-    current = lstatSync(path);
+    current = lstatSync(path, { bigint: true });
   } catch (error) {
     if (error?.code === "ENOENT") return;
     throw error;
   }
-  const openClaim = fstatSync(fd);
+  const openClaim = fstatSync(fd, { bigint: true });
   if (!current.isFile()
       || !openClaim.isFile()
-      || current.dev !== identity.dev
-      || current.ino !== identity.ino
-      || openClaim.dev !== identity.dev
-      || openClaim.ino !== identity.ino
-      || current.size !== 0
-      || openClaim.size !== 0) {
+      || !sameIdentity(current, identity)
+      || !sameIdentity(openClaim, identity)
+      || current.size !== 0n
+      || openClaim.size !== 0n) {
     return;
   }
   unlinkSync(path);
+}
+
+function closeClaimDescriptors(evidenceFd, screenshotFd) {
+  try {
+    if (screenshotFd !== undefined) closeSync(screenshotFd);
+  } finally {
+    if (evidenceFd !== undefined) closeSync(evidenceFd);
+  }
+}
+
+function releaseClaimLock(claimLockPath, claimLockIdentity) {
+  let current;
+  try {
+    current = lstatSync(claimLockPath, { bigint: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") fail(`live artifact pair claim lock was removed: ${claimLockPath}`);
+    throw error;
+  }
+  if (!current.isDirectory() || !sameIdentity(current, claimLockIdentity)) {
+    fail(`live artifact pair claim lock identity changed; refusing cleanup ${claimLockPath}`);
+  }
+  rmdirSync(claimLockPath);
+}
+
+function readOpenClaim(fd, status) {
+  if (status.size > BigInt(Number.MAX_SAFE_INTEGER)) fail("live evidence exceeds the readable size limit");
+  const buffer = Buffer.alloc(Number(status.size));
+  let offset = 0;
+  while (offset < buffer.length) {
+    const read = readSync(fd, buffer, offset, buffer.length - offset, offset);
+    if (read === 0) fail("live evidence claim ended before its recorded size");
+    offset += read;
+  }
+  return buffer.toString("utf8");
+}
+
+function assertSerializedIdentity(identity, kind) {
+  if (!identity || typeof identity !== "object"
+      || !/^[0-9]+$/.test(identity.dev) || !/^[0-9]+$/.test(identity.ino)) {
+    fail(`live ${kind} claim identity is missing or malformed`);
+  }
+}
+
+export function writeClaimedArtifact(path, identity, content, kind = "artifact") {
+  assertSerializedIdentity(identity, kind);
+  let fd;
+  try {
+    fd = openSync(path, constants.O_WRONLY | constants.O_NOFOLLOW);
+  } catch (error) {
+    fail(`live ${kind} claim could not be opened safely: ${error?.message ?? String(error)}`);
+  }
+  try {
+    assertClaimedPath(path, fd, identity, kind);
+    const bytes = Buffer.isBuffer(content) ? content : Buffer.from(content);
+    ftruncateSync(fd, 0);
+    let offset = 0;
+    while (offset < bytes.length) {
+      offset += writeSync(fd, bytes, offset, bytes.length - offset, offset);
+    }
+    fsyncSync(fd);
+    assertClaimedPath(path, fd, identity, kind);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 function requireUnclaimed(path, kind) {
@@ -145,13 +250,14 @@ function claimLiveEvidencePathsInternal(repositoryRoot, candidateCommit, configu
     }
     throw error;
   }
+  const claimLockIdentity = identityOf(lstatSync(claimLockPath, { bigint: true }));
   let evidenceFd;
   let screenshotFd;
   try {
     requireUnclaimed(evidencePath, "evidence");
     requireUnclaimed(screenshotPath, "screenshot");
     evidenceFd = claimCreateOnly(evidencePath, "evidence");
-    const evidenceIdentity = fstatSync(evidenceFd);
+    const evidenceIdentity = claimedIdentity(evidenceFd, "evidence");
     try {
       beforeScreenshotClaim?.({ evidencePath, screenshotPath });
       screenshotFd = claimCreateOnly(screenshotPath, "screenshot");
@@ -159,17 +265,53 @@ function claimLiveEvidencePathsInternal(repositoryRoot, candidateCommit, configu
       rollbackEmptyClaim(evidencePath, evidenceFd, evidenceIdentity);
       throw error;
     }
-    return { evidencePath, screenshotPath };
-  } finally {
+    const screenshotIdentity = claimedIdentity(screenshotFd, "screenshot");
+    let released = false;
+    return {
+      evidencePath,
+      screenshotPath,
+      evidenceIdentity,
+      screenshotIdentity,
+      readEvidence() {
+        if (released) fail("live artifact pair claim was already released");
+        const evidenceStatus = assertClaimedPath(evidencePath, evidenceFd, evidenceIdentity, "evidence");
+        const screenshotStatus = assertClaimedPath(screenshotPath, screenshotFd, screenshotIdentity, "screenshot");
+        if (evidenceStatus.size === 0n || screenshotStatus.size === 0n) {
+          fail("live evidence and screenshot claims must both be populated before validation");
+        }
+        const serialized = readOpenClaim(evidenceFd, evidenceStatus);
+        assertClaimedPath(evidencePath, evidenceFd, evidenceIdentity, "evidence");
+        assertClaimedPath(screenshotPath, screenshotFd, screenshotIdentity, "screenshot");
+        return serialized;
+      },
+      release({ validate = false } = {}) {
+        if (released) return;
+        released = true;
+        let validationError;
+        try {
+          if (validate) {
+            assertClaimedPath(evidencePath, evidenceFd, evidenceIdentity, "evidence");
+            assertClaimedPath(screenshotPath, screenshotFd, screenshotIdentity, "screenshot");
+          }
+        } catch (error) {
+          validationError = error;
+        } finally {
+          try {
+            closeClaimDescriptors(evidenceFd, screenshotFd);
+          } finally {
+            releaseClaimLock(claimLockPath, claimLockIdentity);
+          }
+        }
+        if (validationError) throw validationError;
+      },
+    };
+  } catch (error) {
     try {
-      if (screenshotFd !== undefined) closeSync(screenshotFd);
+      closeClaimDescriptors(evidenceFd, screenshotFd);
     } finally {
-      try {
-        if (evidenceFd !== undefined) closeSync(evidenceFd);
-      } finally {
-        rmdirSync(claimLockPath);
-      }
+      releaseClaimLock(claimLockPath, claimLockIdentity);
     }
+    throw error;
   }
 }
 

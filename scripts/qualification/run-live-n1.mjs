@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -64,8 +64,8 @@ async function installChromium(host, playwrightBrowsersPath) {
 }
 
 // fallow-ignore-next-line complexity
-function assertPassingEvidence(evidencePath, candidateCommit, notBefore) {
-  const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
+function assertPassingEvidence(serializedEvidence, candidateCommit, notBefore) {
+  const evidence = JSON.parse(serializedEvidence);
   assertQualificationEvidence(evidence, { mode: "live", candidateCommit, notBefore });
 }
 
@@ -83,26 +83,41 @@ async function runNativeQualification(runtime, options) {
       PLAYWRIGHT_BROWSERS_PATH: options.playwrightBrowsersPath,
       COUNCIL_PACKAGE_EVIDENCE_PATH: options.evidencePath,
       COUNCIL_N1_LIVE_SCREENSHOT_PATH: options.screenshotPath,
+      COUNCIL_N1_LIVE_EVIDENCE_IDENTITY: JSON.stringify(options.evidenceIdentity),
+      COUNCIL_N1_LIVE_SCREENSHOT_IDENTITY: JSON.stringify(options.screenshotIdentity),
     },
   });
-  assertPassingEvidence(options.evidencePath, options.candidateCommit, notBefore);
+  return notBefore;
 }
 
 async function main() {
   authorizedProfile();
   assertCodexAuthentication();
   const candidateCommit = committedCandidate();
-  const { evidencePath, screenshotPath } = claimLiveEvidencePaths(
+  const claim = claimLiveEvidencePaths(
     repositoryRoot,
     candidateCommit,
     process.env.COUNCIL_PACKAGE_EVIDENCE_PATH,
   );
-  const host = preparedHost();
-  const playwrightBrowsersPath = resolve(repositoryRoot, ".paperclip/qualification/playwright");
-  await installChromium(host, playwrightBrowsersPath);
-  await withOwnedQualificationRuntime((runtime) => runNativeQualification(runtime, {
-    candidateCommit, host, playwrightBrowsersPath, evidencePath, screenshotPath,
-  }));
+  let validated = false;
+  try {
+    const host = preparedHost();
+    const playwrightBrowsersPath = resolve(repositoryRoot, ".paperclip/qualification/playwright");
+    await installChromium(host, playwrightBrowsersPath);
+    const notBefore = await withOwnedQualificationRuntime((runtime) => runNativeQualification(runtime, {
+      candidateCommit,
+      host,
+      playwrightBrowsersPath,
+      evidencePath: claim.evidencePath,
+      screenshotPath: claim.screenshotPath,
+      evidenceIdentity: claim.evidenceIdentity,
+      screenshotIdentity: claim.screenshotIdentity,
+    }));
+    assertPassingEvidence(claim.readEvidence(), candidateCommit, notBefore);
+    validated = true;
+  } finally {
+    claim.release({ validate: validated });
+  }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

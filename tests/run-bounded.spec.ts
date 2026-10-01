@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -10,7 +10,8 @@ import { ProcessGroupDrainError, runProcessGroup } from "../scripts/qualificatio
 // @ts-expect-error The qualification launcher is intentionally plain ESM.
 import { prepareQualificationHost, withOwnedQualificationRuntime } from "../scripts/qualification/run-bounded.mjs";
 // @ts-expect-error The qualification evidence contract is intentionally plain ESM.
-import { __claimLiveEvidencePathsForTest, assertQualificationEvidence, claimLiveEvidencePaths, LIVE_RESULT_KEYS, SAFE_RESULT_KEYS } from "../scripts/qualification/evidence-contract.mjs";
+import { __claimLiveEvidencePathsForTest, assertQualificationEvidence, claimLiveEvidencePaths, LIVE_RESULT_KEYS, SAFE_RESULT_KEYS, writeClaimedArtifact } from "../scripts/qualification/evidence-contract.mjs";
+import { assertNoReviewerRuns } from "./functional/n1-live.js";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -77,6 +78,8 @@ describe("bounded qualification launcher", () => {
           screenshotPath: resolve(root, `artifacts/n1-live-${commit}-ready-for-review.png`),
         },
       });
+      const winner = contenders.find((result) => result.status === "fulfilled");
+      if (winner?.status === "fulfilled") winner.value.release();
 
       expect(() => claimLiveEvidencePaths(root, commit, resolve(root, "unqualified.json")))
         .toThrow(/must be JSON and contain candidate commit/);
@@ -87,7 +90,7 @@ describe("bounded qualification launcher", () => {
 
   it("claims live artifact paths before host inspection or provider-capable work", () => {
     const launcherSource = readFileSync(resolve(packageRoot, "scripts/qualification/run-live-n1.mjs"), "utf8");
-    const claimAt = launcherSource.indexOf("const { evidencePath, screenshotPath } = claimLiveEvidencePaths(");
+    const claimAt = launcherSource.indexOf("const claim = claimLiveEvidencePaths(");
     const hostAt = launcherSource.indexOf("const host = preparedHost();", claimAt);
     const browserAt = launcherSource.indexOf("await installChromium(host", claimAt);
     const runtimeAt = launcherSource.indexOf("await withOwnedQualificationRuntime", claimAt);
@@ -149,8 +152,13 @@ describe("bounded qualification launcher", () => {
       const claimed = claimLiveEvidencePaths(root, successCommit, undefined);
       expect(existsSync(claimed.evidencePath)).toBe(true);
       expect(existsSync(claimed.screenshotPath)).toBe(true);
-      writeFileSync(claimed.evidencePath, "claimed evidence");
-      writeFileSync(claimed.screenshotPath, "claimed screenshot");
+      expect(() => claimLiveEvidencePaths(root, successCommit, undefined))
+        .toThrow(/already being claimed/);
+      writeClaimedArtifact(claimed.evidencePath, claimed.evidenceIdentity, "first evidence", "evidence");
+      writeClaimedArtifact(claimed.evidencePath, claimed.evidenceIdentity, "claimed evidence", "evidence");
+      writeClaimedArtifact(claimed.screenshotPath, claimed.screenshotIdentity, Buffer.from("claimed screenshot"), "screenshot");
+      expect(claimed.readEvidence()).toBe("claimed evidence");
+      claimed.release({ validate: true });
       expect(() => claimLiveEvidencePaths(root, successCommit, undefined))
         .toThrow(/already exists; refusing to overwrite/);
       expect(readFileSync(claimed.evidencePath, "utf8")).toBe("claimed evidence");
@@ -158,6 +166,71 @@ describe("bounded qualification launcher", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it("fails closed after claimed JSON or screenshot paths are replaced or deleted", async () => {
+    const root = await mkdtemp(resolve(tmpdir(), "council-live-post-claim-race-"));
+    const jsonCommit = "3".repeat(40);
+    const screenshotCommit = "4".repeat(40);
+    const deletedCommit = "5".repeat(40);
+    const deletedScreenshotCommit = "6".repeat(40);
+    try {
+      const jsonClaim = claimLiveEvidencePaths(root, jsonCommit, undefined);
+      const originalJson = resolve(root, "original-json-claim");
+      renameSync(jsonClaim.evidencePath, originalJson);
+      writeFileSync(jsonClaim.evidencePath, "replacement JSON");
+      expect(() => writeClaimedArtifact(
+        jsonClaim.evidencePath, jsonClaim.evidenceIdentity, "must not overwrite", "evidence",
+      )).toThrow(/identity changed/);
+      expect(() => jsonClaim.readEvidence()).toThrow(/identity changed/);
+      expect(readFileSync(jsonClaim.evidencePath, "utf8")).toBe("replacement JSON");
+      jsonClaim.release();
+
+      const screenshotClaim = claimLiveEvidencePaths(root, screenshotCommit, undefined);
+      const originalScreenshot = resolve(root, "original-screenshot-claim");
+      renameSync(screenshotClaim.screenshotPath, originalScreenshot);
+      writeFileSync(screenshotClaim.screenshotPath, "replacement PNG");
+      expect(() => writeClaimedArtifact(
+        screenshotClaim.screenshotPath, screenshotClaim.screenshotIdentity, Buffer.from("must not overwrite"), "screenshot",
+      )).toThrow(/identity changed/);
+      expect(readFileSync(screenshotClaim.screenshotPath, "utf8")).toBe("replacement PNG");
+      screenshotClaim.release();
+
+      const deletedClaim = claimLiveEvidencePaths(root, deletedCommit, undefined);
+      unlinkSync(deletedClaim.evidencePath);
+      expect(() => writeClaimedArtifact(
+        deletedClaim.evidencePath, deletedClaim.evidenceIdentity, "must not recreate", "evidence",
+      )).toThrow(/could not be opened safely/);
+      expect(existsSync(deletedClaim.evidencePath)).toBe(false);
+      deletedClaim.release();
+
+      const deletedScreenshotClaim = claimLiveEvidencePaths(root, deletedScreenshotCommit, undefined);
+      unlinkSync(deletedScreenshotClaim.screenshotPath);
+      expect(() => writeClaimedArtifact(
+        deletedScreenshotClaim.screenshotPath,
+        deletedScreenshotClaim.screenshotIdentity,
+        Buffer.from("must not recreate"),
+        "screenshot",
+      )).toThrow(/could not be opened safely/);
+      expect(existsSync(deletedScreenshotClaim.screenshotPath)).toBe(false);
+      deletedScreenshotClaim.release();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("derives the N1 reviewer stop proof from an empty native run readback", () => {
+    const response = (status: number, body: unknown) => ({ status, body, headers: new Headers() }) as any;
+    expect(assertNoReviewerRuns(response(200, []))).toEqual([]);
+    expect(() => assertNoReviewerRuns(response(200, [{ id: "unexpected-review-run", status: "queued" }])))
+      .toThrow(/reviewer must not run during N1/);
+    expect(() => assertNoReviewerRuns(response(200, {}))).toThrow(/must return an array/);
+    expect(() => assertNoReviewerRuns(response(403, { error: "forbidden" }))).toThrow();
+
+    const source = readFileSync(resolve(packageRoot, "tests/functional/n1-live.ts"), "utf8");
+    expect(source).toContain("/heartbeat-runs?agentId=${encodeURIComponent(reviewer.id)}&limit=1000&summary=1");
+    expect(source).toContain("reviewerRunCount: reviewerRuns.length");
+    expect(source).not.toContain("reviewerRunCount: 0");
   });
 
   it("rolls back only its empty JSON claim when the screenshot O_EXCL create fails", async () => {

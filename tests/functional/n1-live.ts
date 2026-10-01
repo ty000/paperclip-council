@@ -18,6 +18,13 @@ type RunSnapshot = {
 
 const terminalStatuses = new Set(["succeeded", "failed", "cancelled", "timed_out", "interrupted"]);
 
+export function assertNoReviewerRuns(result: ApiResult): any[] {
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert(Array.isArray(result.body), "reviewer run readback must return an array");
+  assert.equal(result.body.length, 0, `reviewer must not run during N1: ${JSON.stringify(result.body)}`);
+  return result.body;
+}
+
 function hasKnownPositiveUsage(reservation: any): boolean {
   return reservation.usage?.status === "known"
     && Number.isSafeInteger(reservation.usage.units)
@@ -429,6 +436,13 @@ export async function runLiveN1(input: {
   }));
   assert(observedModelSettings.every((setting) => setting.adapterType === "codex_local" && setting.model === model && setting.effort === effort));
 
+  const reviewerRunReadback = await input.request(
+    "human",
+    "GET",
+    `/api/companies/${companyId}/heartbeat-runs?agentId=${encodeURIComponent(reviewer.id)}&limit=1000&summary=1`,
+  );
+  const reviewerRuns = assertNoReviewerRuns(reviewerRunReadback);
+
   input.evidence.configuration.models = { authorized: { model, effort }, observedAgentConfiguration: observedModelSettings };
   input.evidence.configuration.fixtureBoundary = "The safe-boundary suite uses fixtures; the N1 live campaign below uses native APIs, native wakeups, exact Paperclip run IDs, and run-derived terminal token settlement.";
   input.evidence.liveN1 = {
@@ -444,7 +458,7 @@ export async function runLiveN1(input: {
     mission: finalMission.body,
     admission: admissionFinal.body,
     usageSettlement: leadUsage.body,
-    reviewerRunCount: 0,
+    reviewerRunCount: reviewerRuns.length,
     stopBoundary: "ready_for_review; N2 not started",
   };
   input.evidence.results.n1NativeLeadAndTwoContributors = "PASS";

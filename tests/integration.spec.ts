@@ -16,26 +16,26 @@ afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 
-async function fixture(options: {
+type FixtureOptions = {
   candidateAddThenRevert?: boolean;
   extraCandidateChange?: boolean;
   hiddenAlphaHistory?: boolean;
+  reverseContributionOrder?: boolean;
+  stacked?: boolean;
+  stackedBetaChangesAlpha?: boolean;
+  stackedNonlinear?: boolean;
+  stackedUnownedIntermediate?: boolean;
   transientUnownedAlphaHistory?: boolean;
   oversizedObject?: boolean;
   revertAlpha?: boolean;
   whitespaceError?: boolean;
-} = {}) {
-  const root = await mkdtemp(resolve(tmpdir(), "council-integration-test-"));
-  cleanup.push(root);
-  const repository = resolve(root, "source");
-  execFileSync("git", ["init", "-b", "main", repository]);
-  execFileSync("git", ["config", "user.email", "council@example.test"], { cwd: repository });
-  execFileSync("git", ["config", "user.name", "Council Test"], { cwd: repository });
-  await writeFile(resolve(repository, "README.md"), "base\n");
-  execFileSync("git", ["add", "README.md"], { cwd: repository });
-  execFileSync("git", ["commit", "-m", "base"], { cwd: repository });
-  const baseCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
+};
 
+function currentCommit(repository: string): string {
+  return execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
+}
+
+async function createAlphaContribution(repository: string, options: FixtureOptions): Promise<string> {
   execFileSync("git", ["switch", "-c", "contribution-a"], { cwd: repository });
   if (options.transientUnownedAlphaHistory) {
     await writeFile(resolve(repository, "unowned.txt"), "transient unowned history\n");
@@ -57,17 +57,43 @@ async function fixture(options: {
   );
   execFileSync("git", ["add", "alpha.txt"], { cwd: repository });
   execFileSync("git", ["commit", "-m", "alpha contribution"], { cwd: repository });
-  const alphaCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
+  return currentCommit(repository);
+}
 
-  execFileSync("git", ["switch", "main"], { cwd: repository });
+async function createBetaContribution(repository: string, options: FixtureOptions): Promise<string> {
+  execFileSync("git", ["switch", options.stacked ? "contribution-a" : "main"], { cwd: repository });
   execFileSync("git", ["switch", "-c", "contribution-b"], { cwd: repository });
+  if (options.stackedUnownedIntermediate) {
+    await writeFile(resolve(repository, "unowned.txt"), "transient unowned beta history\n");
+    execFileSync("git", ["add", "unowned.txt"], { cwd: repository });
+    execFileSync("git", ["commit", "-m", "add transient unowned beta history"], { cwd: repository });
+    execFileSync("git", ["rm", "unowned.txt"], { cwd: repository });
+    execFileSync("git", ["commit", "-m", "delete transient unowned beta history"], { cwd: repository });
+  }
+  if (options.stackedNonlinear) {
+    execFileSync("git", ["switch", "-c", "contribution-b-side"], { cwd: repository });
+    execFileSync("git", ["commit", "--allow-empty", "-m", "parallel beta history"], { cwd: repository });
+    execFileSync("git", ["switch", "contribution-b"], { cwd: repository });
+  }
   await writeFile(resolve(repository, "beta.txt"), "beta\n");
-  execFileSync("git", ["add", "beta.txt"], { cwd: repository });
+  if (options.stackedBetaChangesAlpha) {
+    await writeFile(resolve(repository, "alpha.txt"), "beta changed alpha\n");
+  }
+  execFileSync("git", ["add", "beta.txt", ...(options.stackedBetaChangesAlpha ? ["alpha.txt"] : [])], { cwd: repository });
   execFileSync("git", ["commit", "-m", "beta contribution"], { cwd: repository });
-  const betaCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
+  if (options.stackedNonlinear) {
+    execFileSync("git", ["merge", "--no-ff", "contribution-b-side", "-m", "nonlinear beta contribution"], { cwd: repository });
+  }
+  return currentCommit(repository);
+}
 
+async function createCandidate(repository: string, options: FixtureOptions): Promise<string> {
   execFileSync("git", ["switch", "-c", "candidate"], { cwd: repository });
-  execFileSync("git", ["merge", "--no-ff", "contribution-a", "-m", "integrate contributions"], { cwd: repository });
+  if (options.stacked) {
+    execFileSync("git", ["commit", "--allow-empty", "-m", "integrate contributions"], { cwd: repository });
+  } else {
+    execFileSync("git", ["merge", "--no-ff", "contribution-a", "-m", "integrate contributions"], { cwd: repository });
+  }
   if (options.candidateAddThenRevert) {
     await writeFile(resolve(repository, "transient.txt"), "candidate-only transient content\n");
     execFileSync("git", ["add", "transient.txt"], { cwd: repository });
@@ -84,7 +110,24 @@ async function fixture(options: {
     execFileSync("git", ["add", "integration.txt"], { cwd: repository });
     execFileSync("git", ["commit", "-m", "extra integration change"], { cwd: repository });
   }
-  const candidateCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
+  return currentCommit(repository);
+}
+
+async function fixture(options: FixtureOptions = {}) {
+  const root = await mkdtemp(resolve(tmpdir(), "council-integration-test-"));
+  cleanup.push(root);
+  const repository = resolve(root, "source");
+  execFileSync("git", ["init", "-b", "main", repository]);
+  execFileSync("git", ["config", "user.email", "council@example.test"], { cwd: repository });
+  execFileSync("git", ["config", "user.name", "Council Test"], { cwd: repository });
+  await writeFile(resolve(repository, "README.md"), "base\n");
+  execFileSync("git", ["add", "README.md"], { cwd: repository });
+  execFileSync("git", ["commit", "-m", "base"], { cwd: repository });
+  const baseCommit = currentCommit(repository);
+  const alphaCommit = await createAlphaContribution(repository, options);
+  const betaCommit = await createBetaContribution(repository, options);
+  const candidateCommit = await createCandidate(repository, options);
+
   execFileSync("git", ["branch", "base", baseCommit], { cwd: repository });
   const bundlePath = resolve(root, "candidate.bundle");
   execFileSync("git", ["bundle", "create", bundlePath, "refs/heads/base", "refs/heads/candidate"], { cwd: repository });
@@ -117,6 +160,7 @@ async function fixture(options: {
       { contributionId: "beta", commit: betaCommit, ownedPaths: ["beta.txt"] },
     ],
   };
+  if (options.reverseContributionOrder) input.contributions.reverse();
   return { ctx, input };
 }
 
@@ -185,6 +229,49 @@ describe("integrated Git candidate verification", () => {
 
     await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow(
       "Contribution alpha changed unowned path unowned.txt",
+    );
+  });
+
+  it("verifies ordered contributions stacked in one shared workspace", async () => {
+    const { ctx, input } = await fixture({ stacked: true });
+
+    const result = await verifyIntegratedCandidate(ctx, input);
+
+    expect(result.contributions).toEqual([
+      { contributionId: "alpha", commit: input.contributions[0].commit, ownedPaths: ["alpha.txt"], changedPaths: ["alpha.txt"] },
+      { contributionId: "beta", commit: input.contributions[1].commit, ownedPaths: ["beta.txt"], changedPaths: ["beta.txt"] },
+    ]);
+  });
+
+  it("rejects a stacked contribution that changes a prior contribution's owned path", async () => {
+    const { ctx, input } = await fixture({ stacked: true, stackedBetaChangesAlpha: true });
+
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow(
+      "Contribution beta changed unowned path alpha.txt",
+    );
+  });
+
+  it("rejects an unowned add-then-delete inside a stacked contribution segment", async () => {
+    const { ctx, input } = await fixture({ stacked: true, stackedUnownedIntermediate: true });
+
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow(
+      "Contribution beta changed unowned path unowned.txt",
+    );
+  });
+
+  it("rejects stacked contributions declared in reverse ancestry order", async () => {
+    const { ctx, input } = await fixture({ stacked: true, reverseContributionOrder: true });
+
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow(
+      "Contribution order must declare an ancestor before its descendant",
+    );
+  });
+
+  it("rejects a nonlinear history inside a stacked contribution segment", async () => {
+    const { ctx, input } = await fixture({ stacked: true, stackedNonlinear: true });
+
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow(
+      "Contribution beta must be a linear history rooted at the declared base",
     );
   });
 

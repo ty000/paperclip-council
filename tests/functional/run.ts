@@ -10,6 +10,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { prepareCandidatePackage } from "./candidate-package.js";
 import { runLiveN1 } from "./n1-live.js";
 import { createFunctionalRuntimeCleanup } from "./runtime-cleanup.js";
+// @ts-expect-error The qualification evidence contract is intentionally plain ESM.
+import { writeClaimedArtifact } from "../../scripts/qualification/evidence-contract.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, "../..");
@@ -32,6 +34,20 @@ const candidateBranch = execFileSync("git", ["branch", "--show-current"], {
   encoding: "utf8",
 }).trim();
 const liveN1Authorized = process.env.COUNCIL_N1_LIVE_AUTHORIZED === "1";
+type ArtifactIdentity = { dev: string; ino: string };
+function claimedArtifactIdentity(name: string): ArtifactIdentity {
+  const serialized = process.env[name];
+  if (!serialized) throw new Error(`${name} is required for the explicitly authorized N1 live run`);
+  try {
+    return JSON.parse(serialized) as ArtifactIdentity;
+  } catch {
+    throw new Error(`${name} must contain the serialized create-only claim identity`);
+  }
+}
+const liveEvidenceIdentity = liveN1Authorized
+  ? claimedArtifactIdentity("COUNCIL_N1_LIVE_EVIDENCE_IDENTITY") : undefined;
+const liveScreenshotIdentity = liveN1Authorized
+  ? claimedArtifactIdentity("COUNCIL_N1_LIVE_SCREENSHOT_IDENTITY") : undefined;
 const hostRootInput = process.env.PAPERCLIP_TEST_HOST_ROOT;
 if (!hostRootInput) {
   throw new Error("PAPERCLIP_TEST_HOST_ROOT must point to the Paperclip checkout under test");
@@ -121,7 +137,14 @@ const evidence: Record<string, any> = {
   results: {},
   outcome: "RUNNING",
 };
-const save = () => writeFile(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`);
+const save = async () => {
+  const serialized = `${JSON.stringify(evidence, null, 2)}\n`;
+  if (liveEvidenceIdentity) {
+    writeClaimedArtifact(evidencePath, liveEvidenceIdentity, serialized, "evidence");
+    return;
+  }
+  await writeFile(evidencePath, serialized);
+};
 await save();
 
 let database: any;
@@ -1656,7 +1679,9 @@ try {
       const liveScreenshotPath = process.env.COUNCIL_N1_LIVE_SCREENSHOT_PATH;
       assert(liveScreenshotPath, "live screenshot path must be claimed by the N1 launcher");
       await mkdir(dirname(liveScreenshotPath), { recursive: true });
-      await page.screenshot({ path: liveScreenshotPath, fullPage: true });
+      assert(liveScreenshotIdentity, "live screenshot identity must be claimed by the N1 launcher");
+      const screenshot = await page.screenshot({ type: "png", fullPage: true });
+      writeClaimedArtifact(liveScreenshotPath, liveScreenshotIdentity, screenshot, "screenshot");
       evidence.liveN1.ui = { screenshot: liveScreenshotPath, missionId: live.missionId, rootIssueId: live.rootIssueId };
       evidence.results.n1InstalledBrowserObservableState = "PASS";
       await context.close();

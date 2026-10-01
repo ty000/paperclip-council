@@ -216,7 +216,7 @@ async function changedPathsBetween(
 }
 
 async function inspectContributionHistory(
-  baseCommit: string,
+  segmentRootCommit: string,
   contribution: { contributionId: string; commit: string; ownedPaths: string[] },
   repositoryPath: string,
 ): Promise<void> {
@@ -226,7 +226,7 @@ async function inspectContributionHistory(
     `--max-count=${MAX_COMMITS_PER_CONTRIBUTION + 1}`,
     contribution.commit,
     "--not",
-    baseCommit,
+    segmentRootCommit,
   ], repositoryPath)).split("\n").filter((entry) => entry !== "");
   if (commits.length === 0 || commits.at(-1) !== contribution.commit) {
     throw new Error(`Contribution ${contribution.contributionId} history does not terminate at its declared commit`);
@@ -234,7 +234,7 @@ async function inspectContributionHistory(
   if (commits.length > MAX_COMMITS_PER_CONTRIBUTION) {
     throw new Error(`Contribution ${contribution.contributionId} exceeds the commit-history limit`);
   }
-  let expectedParent = baseCommit;
+  let expectedParent = segmentRootCommit;
   for (const contributionCommit of commits) {
     const commitAndParents = (await git([
       "rev-list",
@@ -259,6 +259,41 @@ async function inspectContributionHistory(
     }
     expectedParent = contributionCommit;
   }
+}
+
+async function contributionSegmentRoots(
+  contributions: ValidatedContribution[],
+  baseCommit: string,
+  candidateCommit: string,
+  repositoryPath: string,
+): Promise<[string, string]> {
+  for (const contribution of contributions) {
+    await requireGitCheck(
+      "contribution-ancestry",
+      ["merge-base", "--is-ancestor", baseCommit, contribution.commit],
+      repositoryPath,
+      `${contribution.contributionId} does not descend from base`,
+    );
+    await requireGitCheck(
+      "contribution-integration",
+      ["merge-base", "--is-ancestor", contribution.commit, candidateCommit],
+      repositoryPath,
+      `${contribution.contributionId} is not included in candidate`,
+    );
+  }
+
+  const mergeBase = (await git([
+    "merge-base",
+    contributions[0].commit,
+    contributions[1].commit,
+  ], repositoryPath)).trim();
+  if (mergeBase === contributions[1].commit) {
+    throw new Error("Contribution order must declare an ancestor before its descendant");
+  }
+  return [
+    baseCommit,
+    mergeBase === contributions[0].commit ? contributions[0].commit : baseCommit,
+  ];
 }
 
 function validateContributions(input: IntegratedCandidateInput): Array<{
@@ -381,24 +416,11 @@ async function importAndValidateRepository(
 
 async function verifyContribution(
   contribution: ValidatedContribution,
-  baseCommit: string,
-  candidateCommit: string,
+  segmentRootCommit: string,
   repositoryPath: string,
 ): Promise<IntegratedCandidateVerification["contributions"][number]> {
-  await requireGitCheck(
-    "contribution-ancestry",
-    ["merge-base", "--is-ancestor", baseCommit, contribution.commit],
-    repositoryPath,
-    `${contribution.contributionId} does not descend from base`,
-  );
-  await requireGitCheck(
-    "contribution-integration",
-    ["merge-base", "--is-ancestor", contribution.commit, candidateCommit],
-    repositoryPath,
-    `${contribution.contributionId} is not included in candidate`,
-  );
-  await inspectContributionHistory(baseCommit, contribution, repositoryPath);
-  const changedPaths = await changedPathsBetween(baseCommit, contribution.commit, repositoryPath);
+  await inspectContributionHistory(segmentRootCommit, contribution, repositoryPath);
+  const changedPaths = await changedPathsBetween(segmentRootCommit, contribution.commit, repositoryPath);
   if (changedPaths.length === 0) {
     throw new Error(`Contribution ${contribution.contributionId} has no changed paths`);
   }
@@ -411,13 +433,20 @@ async function verifyContribution(
   if (outsideOwnership) {
     throw new Error(`Contribution ${contribution.contributionId} changed unowned path ${outsideOwnership}`);
   }
+  return { ...contribution, changedPaths };
+}
+
+async function verifyContributionTreePreservation(
+  contribution: IntegratedCandidateVerification["contributions"][number],
+  candidateCommit: string,
+  repositoryPath: string,
+): Promise<void> {
   await requireGitCheck(
     "contribution-tree-preservation",
-    ["diff", "--quiet", contribution.commit, candidateCommit, "--", ...changedPaths],
+    ["diff", "--quiet", contribution.commit, candidateCommit, "--", ...contribution.changedPaths],
     repositoryPath,
     `${contribution.contributionId} changed paths do not survive in the candidate tree`,
   );
-  return { ...contribution, changedPaths };
 }
 
 async function verifyCandidateDelta(
@@ -488,17 +517,25 @@ export async function verifyIntegratedCandidate(
     const repositoryPath = resolve(root, "repository.git");
     await importAndValidateRepository(bytes, bundlePath, repositoryPath, baseCommit, candidateCommit, checks);
 
+    const segmentRoots = await contributionSegmentRoots(
+      contributions,
+      baseCommit,
+      candidateCommit,
+      repositoryPath,
+    );
     const verifiedContributions: IntegratedCandidateVerification["contributions"] = [];
-    for (const contribution of contributions) {
+    for (const [index, contribution] of contributions.entries()) {
       verifiedContributions.push(await verifyContribution(
         contribution,
-        baseCommit,
-        candidateCommit,
+        segmentRoots[index],
         repositoryPath,
       ));
     }
+    for (const contribution of verifiedContributions) {
+      await verifyContributionTreePreservation(contribution, candidateCommit, repositoryPath);
+    }
     checks.push({ name: "contribution-ancestry", status: "passed", detail: "two distinct contribution commits are included" });
-    checks.push({ name: "contribution-history-topology", status: "passed", detail: "each contribution is a bounded linear history rooted at base" });
+    checks.push({ name: "contribution-history-topology", status: "passed", detail: "each contribution is a bounded linear history rooted at base or a prior declared contribution" });
     checks.push({ name: "write-ownership", status: "passed", detail: "every contribution commit changed only its declared paths" });
     checks.push({ name: "contribution-tree-preservation", status: "passed", detail: "both contributions survive in the candidate tree" });
 
