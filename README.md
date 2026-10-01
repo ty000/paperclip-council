@@ -5,7 +5,7 @@ Paperclip workflows. This standalone package extracts the demonstrated
 `private.paperclip-council` integration without importing from a Paperclip
 monorepo workspace.
 
-The plugin exposes one agent-authenticated route. It resolves a dedicated
+The legacy decision adapter exposes an agent-authenticated route. It resolves a dedicated
 Council agent API key from Paperclip's secret store and submits either a native
 changes-requested or approval transition through Paperclip's public issue API.
 Approval first requires a valid `delivery-manifest` for the same issue and an
@@ -14,6 +14,28 @@ attachment whose metadata matches the manifest's bundle SHA-256.
 It does not implement Council reasoning, voting, learning, delivery control, or
 a separate authorization model. The configured key retains the Council agent's
 normal Paperclip authority.
+
+## N1 candidate preparation boundary
+
+Version 0.5 adds a plugin-private admission envelope, owner-controlled mission
+activation, two-contributor plans, persistent native child-issue intents, and
+Git bundle verification before an Integration Lead can publish a candidate.
+The mission page exposes pinned rosters, participants, reservations, unknowns,
+checks and the next actor. Child issues are first created in native Paperclip
+backlog; their dispatch requires a separate durable reservation. An uncertain
+create or wakeup is retained as unknown and is never retried automatically.
+
+The pinned SDK exposes an authenticated orchestration summary containing exact
+native runs, token totals, cost cents, budget incidents and invocation blocks.
+Council supports one deliberately narrow native profile that reserves an
+explicit token estimate before each launch, runs the two contributors
+sequentially, and settles only from the expected terminal run. A zero monetary
+cost is labelled unpriced, while a zero token total remains unknown and blocks
+publication. The historical `n1FixtureMode: ephemeral-local-sandbox` remains a
+test-only transition proof. The separate `qualification:live:n1` command needs
+explicit provider authorization and a clean committed candidate. N2 verdict
+and review handoff are not part of this slice. See the
+[N1 report](docs/reviews/n1/REPORT.md) for the exact profile and proof boundary.
 
 ## Compatibility
 
@@ -99,6 +121,17 @@ Create a company-scoped configuration with Paperclip's plugin configuration API:
     "councilApiKey": {
       "type": "secret_ref",
       "secretId": "<PAPERCLIP_SECRET_ID>"
+    },
+    "n1OperatingProfile": {
+      "kind": "paperclip-orchestration-tokens-v1",
+      "periodKey": "<IDENTIFIED_PERIOD>",
+      "periodStart": "<ISO_TIMESTAMP>",
+      "periodEnd": "<ISO_TIMESTAMP>",
+      "periodAllowanceUnits": 180000,
+      "runReservationUnits": 60000,
+      "initialKnownUsageUnits": 0,
+      "initialExposureUnits": 0,
+      "initialTokenAccountingSource": "owner-attested:fresh-company-and-period:<IDENTIFIER>"
     }
   }
 }
@@ -110,6 +143,13 @@ resolved so a configuration mistake cannot transmit the standard Council token
 off-host. `councilAgentId` must own the stored key. `councilApiKey` must remain
 a `secret_ref`; never store a raw token in plugin configuration, source, logs,
 or reports.
+
+`n1OperatingProfile` is optional unless native N1 execution is requested. Its
+units are tokens, not currency. The allowance and reservation values are an
+explicit admission policy; they do not claim a future provider bill ceiling.
+Initial known usage and exposure are required activation inputs, and
+`initialTokenAccountingSource` must identify the company/period readback or
+bounded fresh-period attestation that supports them. Zero is never inferred.
 
 Using a board session authorized for the target company:
 

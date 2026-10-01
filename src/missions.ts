@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
+import { AdmissionError } from "./admission.js";
+import { executeN1BoardCommand, inspectN1State, readN1AdmissionForMission } from "./n1-missions.js";
 import {
   RosterError,
   validateRosterPair,
@@ -24,8 +26,8 @@ export type MissionMandate = {
 
 export type MissionReceipt = {
   commandId: string;
-  command: "create" | "update-mandate";
-  actorType: "user";
+  command: "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish";
+  actorType: "user" | "agent";
   actorId: string;
   payloadHash: string;
   appliedVersion: number;
@@ -51,8 +53,8 @@ export type MissionAggregate = {
     finalReviewerAgentId: string;
     requiredPerspectives: string[];
   };
-  phase: "draft";
-  control: { status: "inactive"; reason: "mission_not_enabled" };
+  phase: "draft" | "executing" | "integrating" | "ready_for_review" | "blocked";
+  control: { status: "inactive"; reason: "mission_not_enabled" | "candidate_ready_for_review" } | { status: "active" } | { status: "blocked"; reason: string };
   readiness: {
     mission: "recorded";
     compositions: "pinned";
@@ -61,7 +63,8 @@ export type MissionAggregate = {
   };
   journal: Array<Record<string, unknown>>;
   commandReceipts: MissionReceipt[];
-  effectIntents: [];
+  effectIntents: Array<Record<string, unknown>>;
+  n1?: Record<string, unknown>;
 };
 
 export type PinnedRoster = {
@@ -165,6 +168,13 @@ function positiveInteger(value: unknown, label: string, max = Number.MAX_SAFE_IN
   return Number(value);
 }
 
+function nonnegativeInteger(value: unknown, label: string, max = Number.MAX_SAFE_INTEGER): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 0 || Number(value) > max) {
+    throw new MissionError(400, "malformed_request", `${label} must be a nonnegative bounded integer`);
+  }
+  return Number(value);
+}
+
 function stringList(value: unknown, label: string, maxItems = 50): string[] {
   if (!Array.isArray(value) || value.length > maxItems) {
     throw new MissionError(400, "malformed_request", `${label} must be an array of at most ${maxItems} items`);
@@ -186,7 +196,7 @@ export function parseMissionMandate(value: unknown): MissionMandate {
     limits: {
       taskPolicy: requiredString(limits.taskPolicy, "mandate.limits.taskPolicy", 1_000),
       periodPolicy: requiredString(limits.periodPolicy, "mandate.limits.periodPolicy", 1_000),
-      correctionLimit: positiveInteger(limits.correctionLimit, "mandate.limits.correctionLimit", 100),
+      correctionLimit: nonnegativeInteger(limits.correctionLimit, "mandate.limits.correctionLimit", 100),
       elapsedMinutes: positiveInteger(limits.elapsedMinutes, "mandate.limits.elapsedMinutes", 525_600),
     },
   };
@@ -571,16 +581,22 @@ function companyIdFromRequest(input: PluginApiRequestInput): string {
 }
 
 export function inspectMission(mission: MissionRecord) {
+  const n1 = inspectN1State(mission);
   return {
     mission,
     state: {
       recorded: true,
       compositionsPinned: true,
-      executable: false,
+      executable: mission.aggregate.control.status === "active",
     },
-    prerequisites: mission.aggregate.readiness.blockers,
-    nextAction: "Resolve and qualify G4 before adding any dispatch or activation command.",
+    prerequisites: n1?.prerequisites ?? mission.aggregate.readiness.blockers,
+    nextAction: n1?.nextAction ?? "Resolve and qualify G4 before adding any dispatch or activation command.",
+    n1,
   };
+}
+
+async function inspectMissionWithAdmission(ctx: PluginContext, mission: MissionRecord) {
+  return { ...inspectMission(mission), admission: await readN1AdmissionForMission(ctx, mission) };
 }
 
 export async function handleMissionApi(input: PluginApiRequestInput, ctx: PluginContext) {
@@ -590,28 +606,33 @@ export async function handleMissionApi(input: PluginApiRequestInput, ctx: Plugin
     if (input.routeKey === "missions-list") {
       await requireOwner(ctx, companyId, actorUserId);
       const missions = await listMissions(ctx, companyId);
-      return { status: 200, body: { missions: missions.map(inspectMission) } };
+      return { status: 200, body: { missions: await Promise.all(missions.map((mission) => inspectMissionWithAdmission(ctx, mission))) } };
     }
     if (input.routeKey === "mission-read") {
       await requireOwner(ctx, companyId, actorUserId);
       const missionId = uuid(input.params.missionId, "missionId");
       const mission = await getMission(ctx, companyId, missionId);
       if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
-      return { status: 200, body: inspectMission(mission) };
+      return { status: 200, body: await inspectMissionWithAdmission(ctx, mission) };
     }
     if (input.routeKey === "missions-command" || input.routeKey === "mission-command") {
-      const result = await executeMissionCommand(ctx, {
+      const body = asRecord(input.body);
+      const missionId = input.params.missionId ? uuid(input.params.missionId, "missionId") : undefined;
+      const result = (body.command === "activate" || body.command === "start-lead"
+        || body.command === "fixture-bind-lead-run" || body.command === "reconcile-lead-usage") && missionId
+        ? await executeN1BoardCommand(ctx, { companyId, missionId, actorUserId, body })
+        : await executeMissionCommand(ctx, {
         companyId,
-        missionId: input.params.missionId ? uuid(input.params.missionId, "missionId") : undefined,
+        missionId,
         actorUserId,
         body: input.body,
       });
       const creating = input.routeKey === "missions-command" && asRecord(input.body).command === "create";
-      return { status: creating && result.outcome === "applied" ? 201 : 200, body: { ...result, inspection: inspectMission(result.mission) } };
+      return { status: creating && result.outcome === "applied" ? 201 : 200, body: { ...result, inspection: await inspectMissionWithAdmission(ctx, result.mission) } };
     }
     return { status: 404, body: { error: "Unknown mission route" } };
   } catch (error) {
-    if (error instanceof MissionError || error instanceof RosterError) {
+    if (error instanceof MissionError || error instanceof RosterError || error instanceof AdmissionError) {
       return { status: error.status, body: { error: error.message, code: error.code, details: error.details } };
     }
     throw error;

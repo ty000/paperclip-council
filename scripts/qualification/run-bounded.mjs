@@ -1,10 +1,12 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defaultHostRoot, inspectHost, repositoryRoot } from "./paperclip-host.mjs";
 import { isProcessGroupDrainError, runProcessGroup } from "./process-group.mjs";
 import { cleanupOwnedRuntime, createOwnedRuntime } from "./runtime-ownership.mjs";
+import { assertQualificationEvidence } from "./evidence-contract.mjs";
 
 function git(args) {
   return execFileSync("git", args, { cwd: repositoryRoot, encoding: "utf8" }).trim();
@@ -61,7 +63,14 @@ async function main() {
 
   const host = await prepareQualificationHost();
   const evidencePath = process.env.COUNCIL_PACKAGE_EVIDENCE_PATH
-    ?? resolve(repositoryRoot, "artifacts/functional.json");
+    ?? resolve(repositoryRoot, `artifacts/functional-${candidateCommit}.json`);
+  const proofManifest = JSON.parse(readFileSync(resolve(repositoryRoot, "qualification/proof-manifest.json"), "utf8"));
+  if (proofManifest.schema_version !== "proof-manifest.v1"
+      || proofManifest.proof_id !== "paperclip-council-n1-safe-boundary-qualification-v1"
+      || proofManifest.status !== "partial"
+      || proofManifest.closure?.decision !== "keep-open") {
+    throw new Error("N1 qualification proof manifest must remain canonical and keep-open");
+  }
   const playwrightBrowsersPath = resolve(repositoryRoot, ".paperclip/qualification/playwright");
   mkdirSync(playwrightBrowsersPath, { recursive: true });
   await runProcessGroup("corepack", ["pnpm", "exec", "playwright", "install", "chromium"], {
@@ -71,6 +80,7 @@ async function main() {
   });
 
   await withOwnedQualificationRuntime(async (qualificationRuntime) => {
+    const notBefore = Date.now();
     await runProcessGroup("corepack", ["pnpm", "test:functional"], {
       cwd: repositoryRoot,
       timeoutMs: functionalTimeoutMs,
@@ -86,13 +96,11 @@ async function main() {
       },
     });
 
-    const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
-    const failedResult = Object.entries(evidence.results ?? {}).find(([, result]) => result !== "PASS");
-    if (evidence.candidate?.commit !== candidateCommit
-      || evidence.outcome !== "L2 STEP A MISSION PERSISTENCE VALIDATED"
-      || failedResult) {
-      throw new Error(`Bounded qualification evidence did not pass for ${candidateCommit}`);
-    }
+    const evidenceBytes = readFileSync(evidencePath);
+    const evidence = JSON.parse(evidenceBytes.toString("utf8"));
+    assertQualificationEvidence(evidence, { mode: "safe", candidateCommit, notBefore });
+    const evidenceSha256 = createHash("sha256").update(evidenceBytes).digest("hex");
+    console.log(`Bounded qualification evidence: ${evidencePath} sha256=${evidenceSha256}`);
   });
 }
 

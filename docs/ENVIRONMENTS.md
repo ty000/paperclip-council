@@ -43,12 +43,15 @@ verifies or prepares the host, then delegates to the existing functional
 harness. That harness owns a fresh `PAPERCLIP_HOME`, instance ID, storage,
 listener and embedded PostgreSQL cluster for one run and removes them afterward.
 The bounded launcher also installs Chromium into the ignored repo-owned
-qualification cache and rejects any final evidence whose candidate SHA or
-verdict does not match the committed candidate. The harness invokes no model or
-provider execution; inherited process variables are not evidence of provider
-activation. The host checkout and browser cache are reusable; the runtime
-instance is intentionally ephemeral. `qualification/proof-manifest.json`
-records the replay contract and claim limits; generated evidence remains local.
+qualification cache, writes the default safe trace to the commit-qualified
+`artifacts/functional-<commit>.json` path, prints its SHA-256, and rejects any
+final evidence whose candidate SHA or verdict does not match the committed
+candidate. The harness invokes no model or provider execution; inherited
+process variables are not evidence of provider activation. The host checkout
+and browser cache are reusable; the runtime instance is intentionally
+ephemeral. `qualification/proof-manifest.json` records the replay contract and
+claim limits; generated evidence remains local and is not an immutable closure
+archive.
 
 The launcher has five-minute browser-install and fifteen-minute functional-run
 deadlines. It manages Playwright browser archives, not operating-system

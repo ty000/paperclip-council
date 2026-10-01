@@ -17,6 +17,7 @@ import {
 import { ApprovalPreflightError, verifyApprovalCandidate } from "./delivery-manifest.js";
 import { handleFoundationProbe } from "./foundation-probe.js";
 import { handleMissionApi } from "./missions.js";
+import { handleN1AdmissionApi, handleN1AgentApi } from "./n1-missions.js";
 import { handleRosterApi, registerRosterBridge } from "./rosters.js";
 
 let ctx: PluginContext;
@@ -130,6 +131,8 @@ export async function handleDecision(
 export async function handlePluginRequest(input: PluginApiRequestInput, context: PluginContext = ctx) {
   if (input.routeKey === "decision") return handleDecision(input, context);
   if (input.routeKey.startsWith("council-decision")) return handleDecisionReceiptApi(input, context);
+  if (input.routeKey === "admission-read" || input.routeKey === "admission-command") return handleN1AdmissionApi(input, context);
+  if (input.routeKey === "mission-agent-command") return handleN1AgentApi(input, context);
   if (input.routeKey.startsWith("roster")) return handleRosterApi(input, context);
   if (input.routeKey.startsWith("mission")) return handleMissionApi(input, context);
   if (input.routeKey !== "foundation-probe") {

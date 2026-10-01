@@ -179,6 +179,14 @@ describe("Council mission contracts", () => {
       mandate,
     };
     expect(parseMissionCreateInput(body)).toEqual(body);
+    expect(parseMissionCreateInput({
+      ...body,
+      mandate: { ...mandate, limits: { ...mandate.limits, correctionLimit: 0 } },
+    }).mandate.limits.correctionLimit).toBe(0);
+    expect(() => parseMissionCreateInput({
+      ...body,
+      mandate: { ...mandate, limits: { ...mandate.limits, correctionLimit: -1 } },
+    })).toThrow(/nonnegative/);
     expect(() => parseMissionCreateInput({ ...body, mandate: { ...mandate, limits: undefined } })).toThrow(/mandate\.limits/);
   });
 

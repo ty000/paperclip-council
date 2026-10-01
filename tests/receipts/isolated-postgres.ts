@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -18,18 +17,16 @@ export async function isolatedPostgres() {
   const directory = await mkdtemp(resolve(tmpdir(), "council-receipts-pg-"));
   const environment = { ...process.env, LD_LIBRARY_PATH: resolve(native, "lib") };
   const bin = (name: string, args: string[]) => execFileSync(resolve(native, "bin", name), args, { env: environment, stdio: "pipe" });
-  const probe = createServer();
-  await new Promise<void>((done) => probe.listen(0, "127.0.0.1", done));
-  const address = probe.address(); assert(address && typeof address !== "string");
-  const port = address.port;
-  await new Promise<void>((done, reject) => probe.close((error) => error ? reject(error) : done()));
+  // A probe-and-release TCP port has a TOCTOU window before pg_ctl binds it.
+  // The owned temporary directory gives every run an exclusive Unix socket.
+  const port = 5432;
   let started = false;
   let sql: any;
   try {
     bin("initdb", ["-D", resolve(directory, "data"), "-U", "postgres", "-A", "trust", "--no-locale"]);
-    bin("pg_ctl", ["-D", resolve(directory, "data"), "-l", resolve(directory, "postgres.log"), "-o", `-h 127.0.0.1 -p ${port} -k ${directory}`, "-w", "start"]);
+    bin("pg_ctl", ["-D", resolve(directory, "data"), "-l", resolve(directory, "postgres.log"), "-o", `-h '' -p ${port} -k ${directory}`, "-w", "start"]);
     started = true;
-    sql = postgres({ host: "127.0.0.1", port, database: "postgres", username: "postgres", max: 12, onnotice: () => {} });
+    sql = postgres({ host: directory, port, database: "postgres", username: "postgres", max: 12, onnotice: () => {} });
     // Match the host drizzle/postgres-js parameter serializers.
     requireDb("drizzle-orm/postgres-js").drizzle(sql);
     const guards = await import(pathToFileURL(resolve(host, "server/src/services/plugin-database.ts")).href);
@@ -47,7 +44,7 @@ export async function isolatedPostgres() {
       },
     };
     return {
-      sql, db, directory, connection: { host: "127.0.0.1", port, database: "postgres", username: "postgres" },
+      sql, db, directory, connection: { host: directory, port, database: "postgres", username: "postgres" },
       async migration(file: string) {
         const source = await readFile(file, "utf8");
         for (const statement of source.split(";").map((value) => value.trim()).filter(Boolean)) {
