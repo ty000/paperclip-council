@@ -2,9 +2,9 @@
 
 Current V1 decision (September 30, 2026, priority rescope): [DEC-G3-02](G3-G4-DECISIONS.md#dec-g3-02--plugin-only-receipts-and-preserved-uncertainty) replaces mandatory host D-H/readback and automatic ambiguous-result recovery with plugin-private receipts, a persistent uncertainty hold and authenticated human acknowledgement/abandonment. No Paperclip change or upstream PR acceptance is a V1 dependency. Human handling never confirms native success or unlocks an equivalent uncertain action. Other acceptance criteria and G4 remain mandatory. Historical reports retain their original verdicts.
 
-Version 0.4 — September 30, 2026. Nominal-first delivery order; no item is declared implemented or qualified by this document.
+Version 0.5 — October 1, 2026. Nominal-first delivery order; no item is declared implemented or qualified by this document.
 
-Product authority: [PRD 0.5](PRD.md), especially §6.3 and C01–C11, C16–C23; [V1 scope](V1-SCOPE.md). Architecture: [TAD](TAD.md). Technical lots: [implementation plan](IMPLEMENTATION-PLAN.md). Selected work and technical dependencies: [sprint plan](SPRINT-PLAN.md).
+Product authority: [PRD 0.6](PRD.md), especially §6.3 and C01–C11, C16–C23; [V1 scope](V1-SCOPE.md). Architecture: [TAD](TAD.md). Technical lots: [implementation plan](IMPLEMENTATION-PLAN.md). Selected work and technical dependencies: [sprint plan](SPRINT-PLAN.md).
 
 ## 1. Release and priority
 
@@ -15,6 +15,8 @@ The configuration slice and draft-mission persistence are already delivered; the
 This milestone brings a narrow L6-style evaluation forward. It does not declare full L6 or V1 complete, remove required acceptance criteria, or reinterpret accepted G3/G4 policy. Complete remaining V1 cases in explicit follow-up lots; reconsider scope only through a recorded owner decision. The [sprint plan](SPRINT-PLAN.md) owns the N1→N6 execution order: N1–N4 remain foundations, followed by required N5/M1 and N6/M2 lots without widening work already bounded, alongside the follow-up register.
 
 The dependencies below are **product capabilities**. SDK access, migrations, contract probes and package work are technical dependencies in the sprint plan, not standalone product backlog items. Acceptance criteria describe expected behavior, not tests already passed.
+
+These items describe an organization of agents and its observable outcomes. The owner adopted the 11 [native-reuse decisions](NATIVE-REUSE-DECISIONS.md): native configuration, instructions and skills first; autonomous continuation within mandate; bounded reviews and targeted Council additions. Apply the [TAD native reuse boundary](TAD.md#native-reuse-boundary-for-n2n6), preserving B01–B11. Existing N1 and draft N2 work are inputs to retain, not a reason to duplicate native capabilities or start a rewrite. Later Linear, Slack and Agent-Pixels integration adds no current delivery prerequisite.
 
 The owner-adopted orchestration extension requires **M1**, one complete planned, integrated, verified and corrected mission through its PR, then **M2**, two coordinated missions sharing capacity or a dependency. B02 now makes planning/skills explicit; B09–B11 complete project coordination, facilitation and PR handoff. N5/N6 follow the N1–N4 foundation; required multi-mission coordination is not optional throughput optimization.
 
@@ -33,7 +35,7 @@ The owner-adopted orchestration extension requires **M1**, one complete planned,
 - **Actor / value:** the integration lead coordinates bounded contributions; the owner receives a coherent result rather than a collection of completed child tasks.
 - **Parent / priority:** V1; C01, C16, C18–C20; after configuration and operating safeguards.
 - **Product dependencies:** B01 and B04 before governed dispatch. B08 supplies failure/replacement/resumption behavior for the completed journey.
-- **Acceptance:** identify mandate, planner, orchestrator, integration lead and revisioned contributions, skills, interfaces, dependencies and expected evidence. QA informs planning; eligible frontend/backend or other work can run in series/parallel with explicit write ownership. A blocked/invalidated plan receives a bounded revision without silently changing scope. Publish a candidate only after required integration checks; completed children cannot hide a failed journey. Design authors and testers who change code cannot supply counted independent review of that result.
+- **Acceptance:** identify mandate, planner, orchestrator, integration lead and revisioned contributions, skills, interfaces, dependencies and evidence. Reuse prepared technical work in a native operational plan; the later Linear hierarchy remains authoritative for its published breakdown. Internal steps stay in Paperclip; distinct deliverables or changes to published scope/criteria/dependencies return to Linear under authority. QA informs planning; use native isolated or serial writes. Plan/replan within mandate without systematic owner reapproval. Publish a candidate only after integration checks; child completion cannot hide failure. Authors/testers who change code cannot supply counted independent review.
 - **Evidence:** A08, contribution portion of A19–A20, A23–A24, A30 and a representative two-contributor result. N1 supplies the nominal integration slice; N5 completes the explicit planning/skill/QA journey.
 
 ### B03 — A separate reviewer corrects and accepts the exact result
@@ -41,7 +43,7 @@ The owner-adopted orchestration extension requires **M1**, one complete planned,
 - **Actor / value:** executor and reviewer can converge on a sufficient correction, while the owner can distinguish a verdict from its confirmed effect.
 - **Parent / priority:** V1; C02–C06; establish the single-reviewer journey before expanding review composition.
 - **Product dependencies:** B02 and B04; B08 provides safe continuation after interrupted application.
-- **Acceptance:** an eligible reviewer examines the exact candidate and evidence, requests a justified correction, and reviews a new version. Changed content cannot inherit acceptance. Missing evidence produces a precise request. Applied acceptance identifies result, actual actor and effect; uncertain application remains visible and cannot be retried blindly. Repeated review without new evidence stops or escalates.
+- **Acceptance:** an eligible reviewer examines the exact candidate and evidence, requests a justified correction, and reviews a new version through the native workflow. Changed content cannot inherit acceptance. Missing evidence produces a precise request. Applied acceptance identifies result, actual actor and effect; uncertainty cannot be retried blindly. Set finite review limits and proportionate exit checks; fix material findings and defer optional improvements. Another pass needs a specific changed or unresolved risk; repeated review without progress stops or escalates.
 - **Evidence:** A01–A04, A06–A07 and decision portion of A20. This intermediate journey is not the entire V1 release.
 
 ### B04 — Owner authority and operating limits govern dependent work
@@ -51,6 +53,7 @@ The owner-adopted orchestration extension requires **M1**, one complete planned,
 - **Product dependencies:** B01 for identifiable participants and owner. Binding to a concrete result is completed with B02/B03, without requiring those capabilities to design the policy.
 - **Acceptance:** enforce the owner-approved PRD §6.3, including essential uses, affected-group p95 strictly below 30 seconds, prior owner decision for infrastructure cost changes in either direction, and joint task/period limits. The actual owner receives options, evidence and a recommendation for a bound question. Silence, another responder or stale authorization cannot approve it. Only dependent work waits. Unknown consumption is shown as unknown; corrections and appeal do not reset operating limits. DEC-G4-01 requires shared reservations before admission, concurrency/retry limits and blocking new launches on unknown available budget or exposure; already-committed work can overrun the monetary threshold without creating permission for more work.
 - **Evidence:** A05, A10–A11; no-response, wrong-responder and stale-response checks; concurrent task/period reservation, restart/settlement, operational limit and unknown/late-usage evidence under DEC-G4-01. No absolute monetary cap is claimed. Missing support for this adopted contract remains a blocker until qualified.
+- **Reuse boundary:** native billed costs remain the monetary source; Council adds only missing mission/token/exposure and operational limits, preserving the bounded N1 pilot. Use native human interactions, with later Slack transport preserving owner/decision binding. Neither integration supplies new authority.
 
 ### B05 — Relevant perspectives inform one accountable verdict
 
@@ -73,7 +76,7 @@ The owner-adopted orchestration extension requires **M1**, one complete planned,
 - **Actor / value:** the owner knows what happened, what remains uncertain and who acts next without reading full logs.
 - **Parent / priority:** V1; C07–C09; delivered incrementally with each visible journey.
 - **Product dependencies:** B01 for configuration inspection; mission sections consume B02–B06 as they become available.
-- **Acceptance:** show composition, mandate, result/evidence, contributions, opinions, rationale, application state, owner waiting and next action. Show available time, corrections, interventions and usage with gaps visible. Support keyboard operation, meaningful evidence links, understandable errors and status without color alone. Measurements support decisions; no generic analytics platform or claimed savings is required.
+- **Acceptance:** make composition, mandate, result/evidence, contributions, opinions, rationale, application state, owner waiting and next action understandable. Use native screens/links first and targeted Council summaries for missing information; retain useful current views. Show time, corrections, interventions and usage gaps without another monetary dashboard. Support keyboard operation, evidence links, actionable errors and non-color status. Later Agent-Pixels is optional visualization; activity is not acceptance evidence.
 - **Evidence:** A17 and the operational portion of A16; keyboard/focus/error checks on delivered surfaces. Learning attribution remains excluded.
 
 ### B08 — Owner can stop, reconfigure and resume without losing responsibility
@@ -89,8 +92,8 @@ The owner-adopted orchestration extension requires **M1**, one complete planned,
 - **Actor / value:** the owner delegates ongoing project coordination and can understand priorities, commitments and waits across native missions.
 - **Parent / priority:** V1; C05, C07–C08, C21; M2 after the M1 delivery journey.
 - **Product dependencies:** B01/B02/B04 for eligible work and limits; B07/B08 for inspection and durable continuation; B11 for full through-PR missions.
-- **Acceptance:** maintain delegated ordering, finite shared-capacity claims, dependency evidence and next actors. Mission orchestrators dispatch within that allocation; an exclusive resource cannot be double-booked. Resume after coordinator replacement/restart without duplicate work or losing a commitment. Reserved priority changes go to the owner.
-- **Evidence:** J11, A25–A26, two real active missions with observed prioritization/wait/resumption; independent successes alone cannot pass.
+- **Acceptance:** maintain delegated ordering, dependency evidence, existing concurrency limits and next actors. The first M2 links two missions through the first one's accepted result, using native blockers plus required result verification. Resume after coordinator replacement/restart without duplicate work or lost commitments. An actual exclusive resource cannot be double-booked; use native controls/serialization before adding a missing claim mechanism. Reserved priority changes go to the owner.
+- **Evidence:** J11/A26, two real active missions with observed prioritization/wait/resumption; independent successes alone cannot pass. A25 applies to a selected exclusive-resource path and does not require a generic resource manager for the first M2.
 
 ### B10 — Facilitator resolves a concrete cooperation blocker
 
@@ -105,7 +108,7 @@ The owner-adopted orchestration extension requires **M1**, one complete planned,
 - **Actor / value:** the owner receives an identified PR linked to its candidate, acceptance and evidence, with visible actual CI/review state and correction ownership.
 - **Parent / priority:** V1; C03–C05, C07, C23; completes M1.
 - **Product dependencies:** B02/B03 for integrated accepted work, B04 for explicit publication authority, B07/B08 for observation and uncertain-effect handling; B05 where required by the mission.
-- **Acceptance:** the named publisher opens/updates the intended PR through one authorized path and verifies repository/base/head and URL. Missing authority stays waiting; ambiguity is reconciled before retry. A changed candidate from CI/review feedback returns to affected checks and independent acceptance. PR opened, CI status and readiness are reported separately; no merge or deployment is implied.
+- **Acceptance:** the named agent publishes with existing tools through one authorized path and verifies repository/base/head and URL; use native work products for links. An authorized early draft is permitted for discussion/integration but cannot establish accepted delivery. The final handoff binds the accepted candidate. Missing authority waits; ambiguity is reconciled before retry. CI/review code changes return to affected checks and independent acceptance. PR opened, CI and readiness stay separate; no merge/deployment is implied.
 - **Evidence:** J10, A28–A29 and an actual authorized PR handoff. A local commit, generic favorable comment or provider fixture cannot establish publication.
 
 ## 3. Nominal milestone and later coverage
@@ -122,7 +125,7 @@ All slices below inherit V1 and their existing PRD parents. They are delivery pr
 | B06 — appeal | An unresolved dispute stops with an explicit owner destination | Implement and qualify the one-level appeal required for full V1 |
 | B07 — inspection | One understandable mission summary: candidate, contributions, opinions, effect, usage/unknowns and next actor | Complete lifecycle/history inspection and usability coverage |
 | B08 — continuity | Durable state, single-effect command handling, stop new work on suspension/uncertainty | Assisted resumption, replacement and complete interruption qualification |
-| B09 — project coordination | Not demonstrated by N1–N4 | N6/M2: actual shared-capacity/dependency coordination, wait/resumption and durable ownership |
+| B09 — project coordination | Not demonstrated by N1–N4 | N6/M2: accepted-result dependency, wait/resumption and durable ownership within existing limits; exclusive-resource proof only for a selected path |
 | B10 — facilitation | No mandatory invocation for routine work | N6: bounded useful facilitation on a selected concrete blocker |
 | B11 — PR handoff | Acceptance from N2/N4 is the foundation | N5/M1: authorized observed PR, check/review state and correction ownership |
 

@@ -2,13 +2,17 @@
 
 Current V1 decision (September 30, 2026, priority rescope): [DEC-G3-02](G3-G4-DECISIONS.md#dec-g3-02--plugin-only-receipts-and-preserved-uncertainty) replaces mandatory host D-H/readback and automatic ambiguous-result recovery with plugin-private receipts, a persistent uncertainty hold and authenticated human acknowledgement/abandonment. No Paperclip change or upstream PR acceptance is a V1 dependency. Human handling never confirms native success or unlocks an equivalent uncertain action. Other acceptance criteria and G4 remain mandatory. Historical reports retain their original verdicts.
 
-Version 0.5 — September 30, 2026. Technical coverage lots, not a calendar or issued tickets. Product decomposition: [V1 backlog](BACKLOG.md). Selected next increment: [sprint plan](SPRINT-PLAN.md).
+Version 0.6 — October 1, 2026. Technical coverage lots, not a calendar or issued tickets. Product decomposition: [V1 backlog](BACKLOG.md). Selected next increment: [sprint plan](SPRINT-PLAN.md).
 
 Product parents: [PRD](PRD.md) C01–C11, C16–C23 and [V1 scope](V1-SCOPE.md). Architecture: [TAD](TAD.md) D01–D14. Memory/learning C12–C15 remain deferred. This plan does not authorize instance changes, credentials, provider runs, external publication, merge or deployment.
 
 ## Current execution order — nominal first
 
 The owner selected an 80/20 route to representative use, then adopted implementation through PR and multi-mission coordination. [Sprint plan N1–N6](SPRINT-PLAN.md#3-nominal-delivery-lots) defines the order: preserve N1–N4, complete M1 in N5, then demonstrate M2 in N6. L0–L8 below are coverage and full-closure definitions, not numeric execution order; full L6 qualification follows required L7/L8. Existing lot scopes are not silently expanded.
+
+Apply the [native reuse boundary](TAD.md#native-reuse-boundary-for-n2n6) to every remaining lot: use native policies, work, triggers and agent instructions/skills first; add plugin behavior only for an unmet selected requirement. The L-lot descriptions are capability coverage, not a demand for a custom engine or new schema per lot. Retain N1 and reconcile existing N2 work with its merged base. The [current sprint checkpoint](SPRINT-PLAN.md#october-1-delivery-checkpoint) records the scoped N1 UI reservation; historical campaign verdicts remain unchanged.
+
+All 11 [reuse decisions](NATIVE-REUSE-DECISIONS.md) are owner-adopted. N5 consumes prepared technical work in a native operational plan and uses existing publication tools; authorized early drafts remain distinct from accepted delivery. N6 first proves an accepted-result dependency using native blockers/events and existing concurrency limits. Native screens and proportionate bounded reviews apply throughout. Linear, Slack and Agent-Pixels are later additions, not prerequisites or new lots in this sequence.
 
 | Current lot | Technical coverage | Observable delivery |
 | --- | --- | --- |
@@ -17,7 +21,7 @@ The owner selected an 80/20 route to representative use, then adopted implementa
 | N3 — specialist synthesis | L4 opinion path plus minimal L5 inspection | Relevant required perspectives inform one attributable final verdict; support all prepared specialist types |
 | N4 — representative run | Early, narrow L6 evaluation across N1–N3 | Selected real agents complete the supported journey; all nine profile types receive an initial evidence-based usefulness assessment |
 | N5 — complete mission through PR | Explicit planning/skills in L2 and authorized delivery in L7 | M1: plan, complementary contributions, integration/QA, actual correction, acceptance and verified PR handoff |
-| N6 — coordinated project missions | L8 and per-mission L7 delivery | M2: two missions share capacity/dependencies, visibly prioritize/wait/resume; useful bounded facilitation |
+| N6 — coordinated project missions | L8 and per-mission L7 delivery | M2: two missions linked by an accepted-result dependency visibly prioritize/wait/resume; useful bounded facilitation |
 
 Ordinary-path evidence is still required: candidate/actor checks, actual supported plugin/native effects and G4 admission cannot be replaced by mocks. G3 recovery is deferred only where an uncertain effect is durably stopped and never blindly retried; any G3 read needed to establish nominal acceptance remains in N2. Budget settlement/restart safety necessary for G4 remains in N1. Automatic recovery, appeal and expanded lifecycle handling follow N4 in explicit lots. N4 success does not close L3–L6 or V1 wholesale.
 
@@ -39,7 +43,7 @@ Each lot ends with an inspectable behavior and scoped evidence. A failing depend
 | L5 — Owner can inspect, stop and resume the whole mission | C05, C07–C09, C17–C18; D04, D08–D10 | Complete mission view, restart scan, explicit member replacement, suspension/cancellation accounting, usage/unknowns and retained history. Depends on L4; underlying recovery exists since L2–L3 | A17–A22 and G5: restart at effect boundaries, late opinion, roster change and in-flight suspension produce attributable states and next actions; no duplicate approval or silent data loss |
 | L6 — V1 is qualified on representative work | Entire selected scope; D01–D14 | Fresh authenticated target qualification and bounded real-agent missions after required L0–L5 and L7–L8; retain still-valid candidate-specific evidence | M1/M2, integrated team, collective review, correction, facilitation/appeal, owner waiting and restart have persisted actor/run/result/effect/PR evidence. Real-agent judgment is separate from transition tests |
 | L7 — Accepted implementation reaches its PR | B11; C03–C05, C07, C23; D04, D06, D08, D10, D14 | One authorized publisher path, persisted PR effect, repository/base/head verification, check/review state and supported correction continuation. Depends on L2/L3 nominal capability and verified publisher/native contracts | A28–A29; actual PR binds accepted candidate; no unauthorized/duplicate publication or false readiness; revised code receives affected validation and acceptance |
-| L8 — Project coordination resolves shared-work constraints | B09/B10; C05–C08, C21–C22; D02–D04, D07–D13 | Native mission references, delegated ordering, finite capacity claims, dependency evidence, durable waits/handoffs, bounded facilitation and project view. Depends on M1 and qualified admission | A25–A27 and M2; real prioritization/wait/resumption, no double booking, restart preserves responsibility and an actual facilitation outcome |
+| L8 — Project coordination resolves shared-work constraints | B09/B10; C05–C08, C21–C22; D02–D04, D07–D13 | Native missions/blockers, delegated ordering, accepted-result evidence, existing limits, durable waits/handoffs and bounded facilitation; native inspection first. Add resource claims only for an uncovered selected exclusive-resource need. Depends on M1 and qualified admission | A26–A27/M2: prioritization/wait/resumption, restart preserves responsibility and useful facilitation. A25: prove no double booking before enabling a selected exclusive-resource path, using native controls/serialization where sufficient |
 
 L3 is an intermediate usable workflow, not completion of V1. L4–L8 are required by the selected scope. L7 adds only the authorized PR handoff, and L8 adds operational project coordination. Neither adds reusable knowledge, learning, a generic scheduler or merge/deployment automation.
 
@@ -52,7 +56,7 @@ L3 is an intermediate usable workflow, not completion of V1. L4–L8 are require
 | Representative agents | A01–A02, A06–A11, operational A16, A19 | Distinct actual agents create and review a coherent result, compare arguments, correct and resume; record intervention, usage and uncertainty, not just process exit codes |
 | Human inspection | A17, A18, A21 | Configure and inspect without full logs; keyboard use, focus/errors, evidence links, non-color state and narrow-window layout; screenshots alone do not establish keyboard usability |
 | Orchestration / PR | A23–A24, A28–A30 | Plan/replan, skill/QA ownership, integrated result and observed authorized PR; distinguish actual publication/readiness from local code or mocked provider results |
-| Project coordination | A25–A27 | Competing claims and restart via real supported persistence; actual-agent M2 demonstrates useful ordering, waits/resumption and bounded facilitation |
+| Project coordination | A25–A27 | First M2 proves an accepted-result dependency, waits/resumption, restart and useful facilitation. Qualify A25 through native controls/serialization or the minimal missing claim only for a selected exclusive-resource path |
 
 Fault injection must cover intent persistence, dispatch claim, native success before local receipt, timeout with late native completion, duplicate wake and manifest/content change. Observe the actual receipt path; automatic ambiguous-result readback is superseded by DEC-G3-02. If safe retry cannot be established, an explicit recoverable unknown state is the correct result; a false acceptance is a failure.
 
