@@ -95,8 +95,11 @@ describe("native G4 profile", () => {
     }), companyId)).rejects.toMatchObject({ code: "g4_profile_invalid" });
   });
 
+  it("treats Codex cached input as a detail already included in input tokens", async () => {
+    await expect(assertNativeLaunchAllowed(context({}, summary({ runs: [] })), { companyId, issueId })).resolves.toBe(130);
+  });
+
   it("honors host invocation and budget blocks before a native launch", async () => {
-    await expect(assertNativeLaunchAllowed(context({}, summary({ runs: [] })), { companyId, issueId })).resolves.toBe(150);
     await expect(assertNativeLaunchAllowed(context({}, summary({
       runs: [],
       invocationBlocks: [{ issueId, agentId: "agent", scopeType: "company", scopeId: companyId, scopeName: "Company", reason: "budget" }],
@@ -120,7 +123,7 @@ describe("native G4 profile", () => {
       expectedVersion: 3,
     })).resolves.toEqual({ outcome: "settled" });
     expect(settleAdmission).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      usage: expect.objectContaining({ status: "known", units: 110, source: expect.stringContaining("issue-baseline=40") }),
+      usage: expect.objectContaining({ status: "known", units: 90, source: expect.stringContaining("issue-baseline=40") }),
       remainingExposure: expect.objectContaining({ status: "known", units: 0, source: expect.stringContaining("terminal=succeeded") }),
     }));
   });

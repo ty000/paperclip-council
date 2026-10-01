@@ -16,6 +16,19 @@ type RunSnapshot = {
   usageJson: Record<string, unknown> | null;
 };
 
+export function nativeRunEvidence(run: RunSnapshot | null): Record<string, unknown> | null {
+  if (!run) return null;
+  return {
+    id: run.id,
+    agentId: run.agentId,
+    status: run.status,
+    startedAt: run.startedAt,
+    finishedAt: run.finishedAt,
+    error: run.error,
+    usageJson: run.usageJson,
+  };
+}
+
 const terminalStatuses = new Set(["succeeded", "failed", "cancelled", "timed_out", "interrupted"]);
 
 export function assertNoReviewerRuns(result: ApiResult): any[] {
@@ -208,6 +221,15 @@ export async function runLiveN1(input: {
     "",
     promptPolicy("ordinary final reviewer; not launched during N1"),
   ].join("\n"));
+  const observedModelSettings = [lead, contributorA, contributorB].map((agent) => ({
+    agentId: agent.id,
+    adapterType: agent.adapterType,
+    model: agent.adapterConfig?.model ?? null,
+    effort: agent.adapterConfig?.modelReasoningEffort ?? null,
+  }));
+  assert(observedModelSettings.every((setting) => setting.adapterType === "codex_local" && setting.model === model && setting.effort === effort));
+  input.evidence.configuration.models = { authorized: { model, effort }, observedAgentConfiguration: observedModelSettings };
+  input.evidence.configuration.fixtureBoundary = "The safe-boundary suite uses fixtures; the N1 live campaign below uses native APIs, native wakeups, exact Paperclip run IDs, and run-derived terminal token settlement.";
 
   const councilKey = await input.request("human", "POST", `/api/agents/${reviewer.id}/keys`, {
     name: "council-native-n1",
@@ -417,6 +439,25 @@ export async function runLiveN1(input: {
   const leadRunId = started.body.mission.aggregate.n1.rootDispatchRunId as string;
   assert.match(leadRunId, /^[0-9a-f-]{36}$/i);
 
+  const liveEvidence: Record<string, any> = {
+    stage: "lead_requested",
+    companyId,
+    companyIssuePrefix: company.body.issuePrefix,
+    projectId,
+    repository,
+    baseCommit,
+    missionId,
+    rootIssueId: root.body.id,
+    agents: { lead: lead.id, contributors: [contributorA.id, contributorB.id], reviewer: reviewer.id },
+    usageAccounting: {
+      profile: "codex_local/cli",
+      formula: "inputTokens + outputTokens",
+      cachedInputTokens: "retained in usageJson as an inputTokens subset; not added again",
+    },
+    runs: [],
+  };
+  input.evidence.liveN1 = liveEvidence;
+
   const leadRunBarrier = await input.request("human", "PATCH", `/api/agents/${lead.id}`, {
     runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: false, maxConcurrentRuns: 1 } },
   });
@@ -424,12 +465,19 @@ export async function runLiveN1(input: {
   assert.equal(leadRunBarrier.body.runtimeConfig?.heartbeat?.wakeOnDemand, false);
 
   const leadRun = await waitForTerminalRun(leadRunId, input.getRun);
-  assert.equal(leadRun.status, "succeeded", `lead run failed: ${leadRun.error ?? "unknown error"}`);
+  liveEvidence.stage = "lead_terminal";
+  liveEvidence.runs = [nativeRunEvidence(leadRun)];
 
-  const integratingMission = await input.request("human", "GET", `${missionBase}/${missionId}?companyId=${companyId}`);
-  assert.equal(integratingMission.status, 200, JSON.stringify(integratingMission.body));
-  assert.equal(integratingMission.body.mission.aggregate.phase, "integrating");
-  const leadUsageExpectedVersion = integratingMission.body.mission.version;
+  const postLeadMission = await input.request("human", "GET", `${missionBase}/${missionId}?companyId=${companyId}`);
+  assert.equal(postLeadMission.status, 200, JSON.stringify(postLeadMission.body));
+  liveEvidence.missionAfterLead = postLeadMission.body;
+  const dispatchedRunIds = (postLeadMission.body.mission.aggregate.n1.contributions as any[])
+    .map((slot) => slot.dispatchRunId)
+    .filter((runId: unknown): runId is string => typeof runId === "string" && runId.length > 0);
+  const observedRuns = await Promise.all([leadRunId, ...dispatchedRunIds].map((runId) => input.getRun(runId)));
+  liveEvidence.runs = observedRuns.map(nativeRunEvidence);
+
+  const leadUsageExpectedVersion = postLeadMission.body.mission.version;
   assert(Number.isSafeInteger(leadUsageExpectedVersion) && leadUsageExpectedVersion > 0);
   const leadUsageCommand = {
     companyId,
@@ -447,7 +495,18 @@ export async function runLiveN1(input: {
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 2_000));
   }
   assert(leadUsage);
+  liveEvidence.usageSettlement = { status: leadUsage.status, body: leadUsage.body };
+
+  const postReconciliationMission = await input.request("human", "GET", `${missionBase}/${missionId}?companyId=${companyId}`);
+  assert.equal(postReconciliationMission.status, 200, JSON.stringify(postReconciliationMission.body));
+  const admissionAfterLead = await input.request("human", "GET", `${admissionPath}?companyId=${companyId}&periodKey=${encodeURIComponent(profile.periodKey)}`);
+  assert.equal(admissionAfterLead.status, 200, JSON.stringify(admissionAfterLead.body));
+  liveEvidence.stage = leadUsage.status === 200 ? "lead_usage_reconciled" : "lead_usage_reconciliation_refused";
+  liveEvidence.mission = postReconciliationMission.body;
+  liveEvidence.admission = admissionAfterLead.body;
   assert.equal(leadUsage.status, 200, JSON.stringify(leadUsage.body));
+  assert.equal(leadRun.status, "succeeded", `lead run failed: ${leadRun.error ?? "unknown error"}`);
+  assert.equal(postReconciliationMission.body.mission.aggregate.phase, "integrating");
 
   const finalMission = await input.request("human", "GET", `${missionBase}/${missionId}?companyId=${companyId}`);
   assert.equal(finalMission.status, 200, JSON.stringify(finalMission.body));
@@ -478,14 +537,6 @@ export async function runLiveN1(input: {
   assert(issueRuns.every((run) => run?.status === "succeeded"));
   assert(issueRuns.every((run) => run?.finishedAt));
 
-  const observedModelSettings = [lead, contributorA, contributorB].map((agent) => ({
-    agentId: agent.id,
-    adapterType: agent.adapterType,
-    model: agent.adapterConfig?.model ?? null,
-    effort: agent.adapterConfig?.modelReasoningEffort ?? null,
-  }));
-  assert(observedModelSettings.every((setting) => setting.adapterType === "codex_local" && setting.model === model && setting.effort === effort));
-
   const reviewerRunReadback = await input.request(
     "human",
     "GET",
@@ -499,21 +550,12 @@ export async function runLiveN1(input: {
   );
   const observedLeadRuns = assertOnlyExpectedAgentRun(leadRunReadback, leadRunId, "lead");
 
-  input.evidence.configuration.models = { authorized: { model, effort }, observedAgentConfiguration: observedModelSettings };
-  input.evidence.configuration.fixtureBoundary = "The safe-boundary suite uses fixtures; the N1 live campaign below uses native APIs, native wakeups, exact Paperclip run IDs, and run-derived terminal token settlement.";
-  input.evidence.liveN1 = {
-    companyId,
-    companyIssuePrefix: company.body.issuePrefix,
-    projectId,
-    repository,
-    baseCommit,
-    missionId,
-    rootIssueId: root.body.id,
-    agents: { lead: lead.id, contributors: [contributorA.id, contributorB.id], reviewer: reviewer.id },
-    runs: issueRuns,
+  Object.assign(liveEvidence, {
+    stage: "ready_for_review",
+    runs: issueRuns.map(nativeRunEvidence),
     mission: finalMission.body,
     admission: admissionFinal.body,
-    usageSettlement: leadUsage.body,
+    usageSettlement: { status: leadUsage.status, body: leadUsage.body },
     leadRunBarrier: {
       expectedRunId: leadRunId,
       wakeOnDemand: leadRunBarrier.body.runtimeConfig.heartbeat.wakeOnDemand,
@@ -521,7 +563,7 @@ export async function runLiveN1(input: {
     },
     reviewerRunCount: reviewerRuns.length,
     stopBoundary: "ready_for_review; N2 not started",
-  };
+  });
   input.evidence.results.n1NativeLeadAndTwoContributors = "PASS";
   input.evidence.results.n1IntegrationFailureBlocked = "PASS";
   input.evidence.results.n1VerifiedCandidateReadyForReview = "PASS";

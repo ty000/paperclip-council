@@ -858,7 +858,7 @@ describe("N1 mission transitions", () => {
     h.requestWakeup.mockImplementation(async () => {
       expect(h.row().aggregate.n1).toMatchObject({
         rootDispatchState: "claimed",
-        rootUsageBaselineUnits: 25,
+        rootUsageBaselineUnits: 22,
       });
       return { queued: true, runId: id.leadRun };
     });
@@ -875,7 +875,7 @@ describe("N1 mission transitions", () => {
       rootDispatchState: "requested",
       rootDispatchRunId: id.leadRun,
       rootDispatchMode: "native",
-      rootUsageBaselineUnits: 25,
+      rootUsageBaselineUnits: 22,
     });
   });
 
@@ -994,7 +994,7 @@ describe("N1 mission transitions", () => {
     });
     expect(settled).toMatchObject({ outcome: "replayed", mission: { aggregate: { phase: "ready_for_review" } } });
     expect(settleAdmission).toHaveBeenLastCalledWith(h.ctx, expect.objectContaining({
-      usage: expect.objectContaining({ units: 150 }),
+      usage: expect.objectContaining({ units: 120 }),
     }));
     expect(h.row().aggregate.control).toEqual({ status: "inactive", reason: "candidate_ready_for_review" });
 

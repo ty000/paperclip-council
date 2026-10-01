@@ -11,7 +11,7 @@ import { ProcessGroupDrainError, runProcessGroup } from "../scripts/qualificatio
 import { prepareQualificationHost, withOwnedQualificationRuntime } from "../scripts/qualification/run-bounded.mjs";
 // @ts-expect-error The qualification evidence contract is intentionally plain ESM.
 import { __claimLiveEvidencePathsForTest, assertQualificationEvidence, claimLiveEvidencePaths, LIVE_RESULT_KEYS, SAFE_RESULT_KEYS, writeClaimedArtifact } from "../scripts/qualification/evidence-contract.mjs";
-import { assertNoReviewerRuns, assertOnlyExpectedAgentRun, n1DeliveryAdapterConfig } from "./functional/n1-live.js";
+import { assertNoReviewerRuns, assertOnlyExpectedAgentRun, n1DeliveryAdapterConfig, nativeRunEvidence } from "./functional/n1-live.js";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const liveCommit = "a".repeat(40);
@@ -346,6 +346,34 @@ describe("bounded qualification launcher", () => {
     expect(() => assertOnlyExpectedAgentRun(
       response(200, [{ id: "lead-run" }, { id: "unexpected-run" }]), "lead-run", "lead",
     )).toThrow(/exactly the expected native run/);
+  });
+
+  it("preserves raw terminal usage and reconciles the lead before asserting integration", () => {
+    const usageJson = {
+      inputTokens: 700,
+      cachedInputTokens: 500,
+      outputTokens: 40,
+      rawInputTokens: 700,
+      rawCachedInputTokens: 500,
+      rawOutputTokens: 40,
+    };
+    expect(nativeRunEvidence({
+      id: "lead-run",
+      agentId: "lead-agent",
+      status: "succeeded",
+      startedAt: "2026-10-01T00:00:00.000Z",
+      finishedAt: "2026-10-01T00:01:00.000Z",
+      error: null,
+      usageJson,
+    })).toMatchObject({ id: "lead-run", status: "succeeded", usageJson });
+
+    const source = readFileSync(resolve(packageRoot, "tests/functional/n1-live.ts"), "utf8");
+    expect(source.indexOf("const leadUsageCommand")).toBeLessThan(
+      source.indexOf('assert.equal(postReconciliationMission.body.mission.aggregate.phase, "integrating")'),
+    );
+    expect(source.indexOf("const leadUsageCommand")).toBeLessThan(
+      source.indexOf('assert.equal(leadRun.status, "succeeded",'),
+    );
   });
 
   it("rolls back only its empty JSON claim when the screenshot O_EXCL create fails", async () => {
