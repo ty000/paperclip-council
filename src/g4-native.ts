@@ -239,15 +239,17 @@ export async function settleNativeRunUsage(
   if (existingReservation && existingReceipt) {
     const usageSourcePrefix = `${MEASUREMENT_SOURCE};run=${input.runId};issue-baseline=${input.baselineUsageUnits};`;
     const terminalSourcePrefix = `${MEASUREMENT_SOURCE};terminal=`;
-    const terminalStatus = existingReservation.remainingExposure.status === "known"
-      && existingReservation.remainingExposure.source.startsWith(terminalSourcePrefix)
-      ? existingReservation.remainingExposure.source.slice(terminalSourcePrefix.length)
+    const replayUsage = existingReceipt.settlement?.usage ?? existingReservation.usage;
+    const replayExposure = existingReceipt.settlement?.remainingExposure ?? existingReservation.remainingExposure;
+    const terminalStatus = replayExposure.status === "known"
+      && replayExposure.source.startsWith(terminalSourcePrefix)
+      ? replayExposure.source.slice(terminalSourcePrefix.length)
       : null;
     if (existingReceipt.command !== "settle"
-        || existingReservation.usage?.status !== "known"
-        || !existingReservation.usage.source.startsWith(usageSourcePrefix)
-        || existingReservation.remainingExposure.status !== "known"
-        || existingReservation.remainingExposure.units !== 0
+        || replayUsage?.status !== "known"
+        || !replayUsage.source.startsWith(usageSourcePrefix)
+        || replayExposure.status !== "known"
+        || replayExposure.units !== 0
         || !terminalStatus || !TERMINAL_RUN_STATUSES.has(terminalStatus)) {
       throw new AdmissionError(409, "command_identity_conflict",
         "commandId was already used with another native run settlement binding");
@@ -257,8 +259,8 @@ export async function settleNativeRunUsage(
       companyId: input.companyId,
       periodKey: input.periodKey,
       reservationId: input.reservationId,
-      usage: existingReservation.usage,
-      remainingExposure: existingReservation.remainingExposure,
+      usage: replayUsage,
+      remainingExposure: replayExposure,
       expectedVersion: input.expectedVersion,
     });
   }

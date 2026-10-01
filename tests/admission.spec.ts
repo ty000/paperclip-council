@@ -150,6 +150,12 @@ describe("G4 admission envelopes", () => {
     const alpha = await reserve(alphaReservationId, randomUUID(), lead.envelope.version);
     const alphaSettlement = await settle(alphaReservationId, 20, alpha.envelope.version);
     expect(alphaSettlement.result.envelope.allowance).toMatchObject({ knownUsageUnits: 30 });
+    expect(alphaSettlement.result.reservation?.settlementReceipts[0]).toMatchObject({
+      settlement: {
+        usage: alphaSettlement.input.usage,
+        remainingExposure: alphaSettlement.input.remainingExposure,
+      },
+    });
     expect(() => assertNativeEnvelope(alphaSettlement.result.envelope, profile)).not.toThrow();
 
     const beta = await reserve(betaReservationId, randomUUID(), alphaSettlement.result.envelope.version);

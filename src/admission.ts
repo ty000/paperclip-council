@@ -74,6 +74,10 @@ export type AdmissionCommandReceipt = {
   payloadHash: string;
   appliedVersion: number;
   recordedAt: string;
+  settlement?: {
+    usage: AdmissionUsage;
+    remainingExposure: AdmissionRemainingExposure;
+  };
 };
 
 export type AdmissionDocument = {
@@ -676,6 +680,10 @@ export async function settleAdmission(ctx: PluginContext, input: AdmissionSettle
       payloadHash: hash,
       appliedVersion: nextVersion,
       recordedAt: at,
+      settlement: {
+        usage: parsed.usage,
+        remainingExposure: parsed.remainingExposure,
+      },
     }],
   };
   let allowance = current.allowance;

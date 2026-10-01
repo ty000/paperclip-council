@@ -85,6 +85,18 @@ function settledEnvelope(input: { commandId?: string; runId?: string; baselineUs
         payloadHash: "a".repeat(64),
         appliedVersion: 4,
         recordedAt: "2026-10-01T10:02:00.000Z",
+        settlement: {
+          usage: {
+            status: "known",
+            source: `paperclip:issues.summaries.getOrchestration:terminal-token-ledger;run=${settledRunId};issue-baseline=${baselineUsageUnits};monetary-cost=unpriced`,
+            units: 90,
+          },
+          remainingExposure: {
+            status: "known",
+            source: "paperclip:issues.summaries.getOrchestration:terminal-token-ledger;terminal=succeeded",
+            units: 0,
+          },
+        },
       }],
     }],
   };
@@ -226,6 +238,53 @@ describe("native G4 profile", () => {
       reservationId,
       usage: { status: "known", units: 990 },
     });
+  });
+
+  it("replays an older settlement from its receipt after a newer settlement changes the reservation", async () => {
+    const newerCommandId = "70000000-0000-4000-8000-000000000007";
+    const envelope = settledEnvelope() as ReturnType<typeof settledEnvelope>;
+    envelope.reservations[0].usage = {
+      status: "known",
+      source: `paperclip:issues.summaries.getOrchestration:terminal-token-ledger;run=${runId};issue-baseline=40;monetary-cost=unpriced`,
+      units: 990,
+    };
+    envelope.reservations[0].settlementReceipts.push({
+      commandId: newerCommandId,
+      command: "settle",
+      payloadHash: "b".repeat(64),
+      appliedVersion: 5,
+      recordedAt: "2026-10-01T10:03:00.000Z",
+      settlement: {
+        usage: envelope.reservations[0].usage,
+        remainingExposure: envelope.reservations[0].remainingExposure,
+      },
+    });
+    vi.mocked(readAdmission).mockResolvedValue(envelope as never);
+    vi.mocked(settleAdmission).mockResolvedValue({ outcome: "replayed" } as never);
+    const getOrchestration = vi.fn(async () => summary({
+      costs: { costCents: 0, inputTokens: 10_000, cachedInputTokens: 2_000, outputTokens: 30, billingCode: null },
+    }));
+    const ctx = {
+      config: { get: vi.fn(async () => ({})) },
+      issues: { summaries: { getOrchestration } },
+    } as never;
+
+    await expect(settleNativeRunUsage(ctx, {
+      commandId: settlementCommandId,
+      companyId,
+      issueId,
+      runId,
+      baselineUsageUnits: 40,
+      periodKey: "n1-qualified-2026-10-01",
+      reservationId,
+      expectedVersion: 5,
+    })).resolves.toEqual({ outcome: "replayed" });
+
+    expect(getOrchestration).not.toHaveBeenCalled();
+    expect(settleAdmission).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      commandId: settlementCommandId,
+      usage: expect.objectContaining({ status: "known", units: 90 }),
+    }));
   });
 
   it("rejects replay when the recorded native run or baseline binding differs", async () => {
