@@ -80,6 +80,7 @@ async function waitForTerminalRun(
   throw new Error(`Native Paperclip run ${runId} did not reach a terminal state within ${timeoutMs} ms`);
 }
 
+// fallow-ignore-next-line complexity
 export async function runLiveN1(input: {
   request: ApiRequest;
   getRun: (runId: string) => Promise<RunSnapshot | null>;

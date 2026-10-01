@@ -17,7 +17,8 @@ function required(name) {
   return value;
 }
 
-async function main() {
+// fallow-ignore-next-line complexity
+function authorizedProfile() {
   if (required("COUNCIL_N1_LIVE_AUTHORIZED") !== "1") {
     throw new Error("COUNCIL_N1_LIVE_AUTHORIZED=1 is the explicit provider-run authorization gate");
   }
@@ -29,51 +30,79 @@ async function main() {
   if (!Number.isSafeInteger(runUnits) || runUnits < 1 || !Number.isSafeInteger(periodUnits) || periodUnits < runUnits * 3) {
     throw new Error("The explicit period token allowance must cover exactly three positive per-run reservations");
   }
+}
+
+function assertCodexAuthentication() {
   const authPath = resolve(process.env.CODEX_HOME?.trim() || resolve(homedir(), ".codex"), "auth.json");
   if (!existsSync(authPath)) throw new Error(`Codex authentication is unavailable at ${authPath}`);
+}
 
+function committedCandidate() {
   const candidateCommit = git(["rev-parse", "HEAD"]);
   if (git(["status", "--porcelain"]) !== "") {
     throw new Error("Native N1 qualification requires a clean committed candidate");
   }
+  return candidateCommit;
+}
+
+function preparedHost() {
   const host = inspectHost(defaultHostRoot);
   if (!host.prepared || !host.runtimeReady) {
     throw new Error("Run pnpm qualification:host:prepare before the provider-authorized N1 qualification");
   }
+  return host;
+}
 
-  const playwrightBrowsersPath = resolve(repositoryRoot, ".paperclip/qualification/playwright");
+async function installChromium(host, playwrightBrowsersPath) {
   mkdirSync(playwrightBrowsersPath, { recursive: true });
   await runProcessGroup("corepack", ["pnpm", "exec", "playwright", "install", "chromium"], {
     cwd: host.target,
     timeoutMs: 5 * 60_000,
     env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsersPath },
   });
+}
 
+// fallow-ignore-next-line complexity
+function assertPassingEvidence(evidencePath, candidateCommit) {
+  const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
+  const failedResult = Object.entries(evidence.results ?? {}).find(([, result]) => result !== "PASS");
+  if (evidence.proofId !== "paperclip-council-n1-observable-native-qualification-v1"
+    || evidence.candidate?.commit !== candidateCommit
+    || evidence.outcome !== "N1 OBSERVABLE RESULT VALIDATED"
+    || failedResult) {
+    throw new Error(`Native N1 evidence did not pass for ${candidateCommit}`);
+  }
+}
+
+async function runNativeQualification(runtime, options) {
+  await runProcessGroup("corepack", ["pnpm", "test:functional"], {
+    cwd: repositoryRoot,
+    timeoutMs: 45 * 60_000,
+    env: {
+      ...process.env,
+      COUNCIL_PACKAGE_EXPECTED_COMMIT: options.candidateCommit,
+      PAPERCLIP_TEST_HOST_ROOT: options.host.target,
+      PAPERCLIP_QUALIFICATION_RUNTIME: runtime,
+      PAPERCLIP_PLAYWRIGHT_BROWSERS_PATH: options.playwrightBrowsersPath,
+      PLAYWRIGHT_BROWSERS_PATH: options.playwrightBrowsersPath,
+      COUNCIL_PACKAGE_EVIDENCE_PATH: options.evidencePath,
+    },
+  });
+  assertPassingEvidence(options.evidencePath, options.candidateCommit);
+}
+
+async function main() {
+  authorizedProfile();
+  assertCodexAuthentication();
+  const candidateCommit = committedCandidate();
+  const host = preparedHost();
+  const playwrightBrowsersPath = resolve(repositoryRoot, ".paperclip/qualification/playwright");
+  await installChromium(host, playwrightBrowsersPath);
   const evidencePath = process.env.COUNCIL_PACKAGE_EVIDENCE_PATH
     ?? resolve(repositoryRoot, "artifacts", "n1-live.json");
-  await withOwnedQualificationRuntime(async (runtime) => {
-    await runProcessGroup("corepack", ["pnpm", "test:functional"], {
-      cwd: repositoryRoot,
-      timeoutMs: 45 * 60_000,
-      env: {
-        ...process.env,
-        COUNCIL_PACKAGE_EXPECTED_COMMIT: candidateCommit,
-        PAPERCLIP_TEST_HOST_ROOT: host.target,
-        PAPERCLIP_QUALIFICATION_RUNTIME: runtime,
-        PAPERCLIP_PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsersPath,
-        PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsersPath,
-        COUNCIL_PACKAGE_EVIDENCE_PATH: evidencePath,
-      },
-    });
-    const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
-    const failedResult = Object.entries(evidence.results ?? {}).find(([, result]) => result !== "PASS");
-    if (evidence.proofId !== "paperclip-council-n1-observable-native-qualification-v1"
-      || evidence.candidate?.commit !== candidateCommit
-      || evidence.outcome !== "N1 OBSERVABLE RESULT VALIDATED"
-      || failedResult) {
-      throw new Error(`Native N1 evidence did not pass for ${candidateCommit}`);
-    }
-  });
+  await withOwnedQualificationRuntime((runtime) => runNativeQualification(runtime, {
+    candidateCommit, host, playwrightBrowsersPath, evidencePath,
+  }));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
