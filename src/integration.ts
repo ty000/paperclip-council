@@ -49,6 +49,7 @@ export type IntegratedCandidateCheck = {
 export type IntegratedCandidateVerification = {
   outcome: "verified";
   publicationEligible: true;
+  subject: { companyId: string; issueId: string };
   candidate: {
     attachmentId: string;
     byteSize: number;
@@ -559,6 +560,7 @@ export async function verifyIntegratedCandidate(
     return {
       outcome: "verified",
       publicationEligible: true,
+      subject: { companyId: input.companyId, issueId: input.issueId },
       candidate: {
         attachmentId: input.attachmentId,
         byteSize: bytes.byteLength,

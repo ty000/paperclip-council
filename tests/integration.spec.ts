@@ -186,6 +186,7 @@ describe("integrated Git candidate verification", () => {
     expect(result).toMatchObject({
       outcome: "verified",
       publicationEligible: true,
+      subject: { companyId: input.companyId, issueId: input.issueId },
       candidate: {
         attachmentId: input.attachmentId,
         byteSize: input.expectedByteSize,

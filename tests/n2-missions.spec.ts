@@ -29,6 +29,7 @@ function candidate(
   return {
     outcome: "verified",
     publicationEligible: true,
+    subject: { companyId: ids.company, issueId: ids.root },
     candidate: {
       attachmentId: randomUUID(), byteSize: 120, sha256: sha,
       baseCommit, candidateCommit: commit,
@@ -219,10 +220,13 @@ describe("N2 ordinary correction and confirmed acceptance", () => {
       actorAgentId: ids.lead, runId: ids.correctionRun,
       candidate: candidate("e".repeat(40), "f".repeat(64)),
       baselineRunIds: [ids.reviewerRun1, ids.correctionRun], baselineTokenTotal: 300,
-      verificationSubject: { companyId: ids.company, issueId: ids.root }, evidenceRevision: 13,
+      evidenceRevision: 13,
     };
     expect(() => resubmitN2Candidate(correcting, source, {
-      ...validResubmission, verificationSubject: { companyId: ids.company, issueId: randomUUID() },
+      ...validResubmission, candidate: {
+        ...validResubmission.candidate,
+        subject: { companyId: ids.company, issueId: randomUUID() },
+      },
     })).toThrowError(/mission root issue and company/);
     expect(() => resubmitN2Candidate(correcting, source, {
       ...validResubmission, candidate: candidate("e".repeat(40), "f".repeat(64), "b".repeat(40)),
@@ -233,16 +237,16 @@ describe("N2 ordinary correction and confirmed acceptance", () => {
     expect(() => resubmitN2Candidate(correcting, source, {
       actorAgentId: ids.lead, runId: ids.correctionRun,
       candidate: candidate("e".repeat(40), "f".repeat(64)), baselineRunIds: [ids.reviewerRun1], baselineTokenTotal: 200,
-      verificationSubject: { companyId: ids.company, issueId: ids.root }, evidenceRevision: 13,
+      evidenceRevision: 13,
     })).toThrowError(/exact correction run identity/);
     expect(() => resubmitN2Candidate(correcting, source, {
       actorAgentId: ids.lead, runId: ids.correctionRun, candidate: candidate(), baselineRunIds: [], baselineTokenTotal: 200,
-      verificationSubject: { companyId: ids.company, issueId: ids.root }, evidenceRevision: 13,
+      evidenceRevision: 13,
     })).toThrowError(/changed commit and bytes/);
     const resubmitted = resubmitN2Candidate(correcting, source, {
       actorAgentId: ids.lead, runId: ids.correctionRun,
       candidate: candidate("e".repeat(40), "f".repeat(64)), baselineRunIds: [ids.reviewerRun1, ids.correctionRun],
-      baselineTokenTotal: 300, verificationSubject: { companyId: ids.company, issueId: ids.root },
+      baselineTokenTotal: 300,
       evidenceRevision: 13, submissionId: ids.submission2,
     });
     expect(resubmitted).toMatchObject({ status: "review_handoff", activeSubmissionId: ids.submission2, submissions: [{ ordinal: 1 }, { ordinal: 2, predecessorSubmissionId: ids.submission1 }] });
@@ -259,7 +263,7 @@ describe("N2 ordinary correction and confirmed acceptance", () => {
     const round2 = resubmitN2Candidate(correcting, source, {
       actorAgentId: ids.lead, runId: ids.correctionRun, candidate: candidate("e".repeat(40), "f".repeat(64)),
       baselineRunIds: [ids.reviewerRun1, ids.correctionRun], baselineTokenTotal: 300,
-      verificationSubject: { companyId: ids.company, issueId: ids.root }, evidenceRevision: 13, submissionId: ids.submission2,
+      evidenceRevision: 13, submissionId: ids.submission2,
     });
     const reviewing2 = confirmN2ReviewHandoff(round2, source, {
       status: "in_review", assigneeAgentId: ids.reviewer, currentParticipantAgentId: ids.reviewer,

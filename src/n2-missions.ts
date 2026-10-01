@@ -433,7 +433,6 @@ export function resubmitN2Candidate(
     actorAgentId: string;
     runId: string;
     candidate: IntegratedCandidateVerification;
-    verificationSubject: { companyId: string; issueId: string };
     baselineRunIds: string[];
     baselineTokenTotal: number;
     evidenceRevision: number;
@@ -450,8 +449,8 @@ export function resubmitN2Candidate(
   const previous = state.submissions.at(-1)!;
   const candidate = input.candidate;
   const currentMandateHash = mandateHash(mission);
-  if (input.verificationSubject.companyId !== mission.companyId
-      || input.verificationSubject.issueId !== mission.rootIssueId) {
+  if (candidate.subject.companyId !== mission.companyId
+      || candidate.subject.issueId !== mission.rootIssueId) {
     throw new MissionError(409, "candidate_subject_mismatch", "V2 verification must address this mission root issue and company");
   }
   if (candidate.outcome !== "verified" || candidate.publicationEligible !== true
