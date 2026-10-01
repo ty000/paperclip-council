@@ -36,8 +36,11 @@ export function n1DeliveryAdapterConfig(input: {
     modelReasoningEffort: input.effort,
     timeoutSec: 1_200,
     dangerouslyBypassApprovalsAndSandbox: false,
-    filesystemScope: "workspace",
-    extraArgs: ["--add-dir", resolve(input.repository, ".git")],
+    extraArgs: [
+      "--sandbox", "workspace-write",
+      "-c", "sandbox_workspace_write.network_access=true",
+      "--add-dir", resolve(input.repository, ".git"),
+    ],
   };
 }
 

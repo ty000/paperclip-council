@@ -333,8 +333,11 @@ describe("bounded qualification launcher", () => {
       modelReasoningEffort: "high",
       timeoutSec: 1_200,
       dangerouslyBypassApprovalsAndSandbox: false,
-      filesystemScope: "workspace",
-      extraArgs: ["--add-dir", resolve(repository, ".git")],
+      extraArgs: [
+        "--sandbox", "workspace-write",
+        "-c", "sandbox_workspace_write.network_access=true",
+        "--add-dir", resolve(repository, ".git"),
+      ],
     });
 
     const response = (status: number, body: unknown) => ({ status, body, headers: new Headers() }) as any;
