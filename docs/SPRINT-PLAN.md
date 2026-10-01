@@ -2,21 +2,31 @@
 
 Current V1 decision (September 30, 2026, priority rescope): [DEC-G3-02](G3-G4-DECISIONS.md#dec-g3-02--plugin-only-receipts-and-preserved-uncertainty) replaces mandatory host D-H/readback and automatic ambiguous-result recovery with plugin-private receipts, a persistent uncertainty hold and authenticated human acknowledgement/abandonment. No Paperclip change or upstream PR acceptance is a V1 dependency. Human handling never confirms native success or unlocks an equivalent uncertain action. Other acceptance criteria and G4 remain mandatory. Historical reports retain their original verdicts.
 
-Version 0.4 — September 30, 2026. Documentary execution plan; no dates, capacity, runtime activation or passed qualification are implied.
+Version 0.5 — October 1, 2026. Documentary execution plan; no dates, capacity, runtime activation or passed qualification are implied.
 
 Sources: [backlog B01–B11](BACKLOG.md), [PRD 0.5](PRD.md), [V1 scope](V1-SCOPE.md), [TAD D01–D14](TAD.md), [technical coverage L0–L8](IMPLEMENTATION-PLAN.md), [G3/G4 decisions](G3-G4-DECISIONS.md), and [prepared agent profiles](AGENT-CATALOG.md).
 
 ## 1. Baseline and entry status
 
-Inspected main: `cbe8e54ffa4e3c857424b44518b75d38de45d28b`. Configuration (PR #6), draft-mission persistence (PR #8), fast CI (PR #7), qualification infrastructure (PR #9), G3/G4 decisions (PR #10) and nine documentary agent profiles (PR #11) are merged. Historical reports under `docs/reviews/` keep their original candidate identities and limits. The earlier pre-Sprint-1 plan is retained in Git at this baseline; it is not the current work queue.
+Original planning baseline: `cbe8e54ffa4e3c857424b44518b75d38de45d28b`. Configuration (PR #6), draft-mission persistence (PR #8), fast CI (PR #7), qualification infrastructure (PR #9), G3/G4 decisions (PR #10) and nine documentary agent profiles (PR #11) were merged at that point. Historical reports under `docs/reviews/` keep their original candidate identities and limits. The earlier pre-Sprint-1 plan is retained in Git at this baseline; it is not the current work queue.
 
-Delivered is not operationally complete: L1 active-mission pinning and L2 dispatch/integration remain open; G3/G4 technical qualification remains open; profiles are not configured or running agents. The pre-L3 infrastructure did not complete L2. No historical runtime replay proves this planning revision or future candidates.
+At that baseline, delivery was not operationally complete: L1 active-mission pinning, L2 dispatch/integration and G3/G4 technical qualification remained open; profiles were not configured or running agents. The pre-L3 infrastructure did not complete L2. No historical runtime replay proves this planning revision or future candidates. The October 1 checkpoint below records the updated delivery state.
 
 **Owner direction:** prioritize a generic end-to-end path, collect concrete exceptions during implementation, and schedule subsequent hardening/decision work. Also maximize the diversity of agent types exercised so their usefulness can be assessed during those generic missions. N1→N6 supersedes the old sequential sprint outline for execution: N1–N4 remain foundations, N5 completes M1 and N6 demonstrates M2, without widening already bounded lots or deleting full-V1 acceptance criteria.
 
 The nominal milestone is an early, narrow L6-style evaluation. Full L6/V1 closure still requires the remaining mandatory cases; report these two milestones separately.
 
 PRD 0.5 extends the selected scope with M1 (complete mission through PR) and M2 (two coordinated missions). This revision was framed on `46669b3b77f760b0f481bb927d3ff3f53bf9b42c`, including the merged nominal plan. Preserve N1–N4 as foundations; N5 completes M1 and N6 demonstrates M2. Existing bounded implementation work is not silently widened. Nine prepared profiles remain the N4 coverage target; the new responsibilities require preparation and evaluation in their own lots.
+
+### October 1 delivery checkpoint
+
+Main inspected for this update is `9ae33f13968be4d8d5d20dc511deb2215c552ab0`, including the decision receipts from PR #14. [N1 PR #15](https://github.com/ty000/paperclip-council/pull/15), inspected at `9bedaa81d873d755ec679e174c70279118d8deef`, remains under review with its native exit unproven; its [candidate report](https://github.com/ty000/paperclip-council/blob/9bedaa81d873d755ec679e174c70279118d8deef/docs/reviews/n1/REPORT.md) records the blocked campaign. Recheck the final head and evidence before consuming N1; source review, merge and runtime qualification are separate outcomes.
+
+The owner prioritizes Council usability through M1. Executive implementation is paused. Council [PR #16](https://github.com/ty000/paperclip-council/pull/16) was closed without merging; `codex/l03-council` at `ddab8103a15a5a9af8677cc9a80166af5fb691a9` preserves that work for a later Executive restart. Its integration is not a dependency of N1 or N2. Neither a plugin consolidation nor a shared core library is part of the current path. N4 remains the first representative-use milestone, N5 completes M1, and N6/M2 remains selected after M1.
+
+N2 development may proceed during N1 review in a separate worktree based on an identified N1 commit. The N1 owner retains its branch, review loop and qualification; N2 owns its review/correction extensions. Coordinate common-interface changes and integrate the final N1 base before complete N2 qualification. N2's native exit still requires a qualified N1 candidate; merge N1 before N2. Independent local tests or a draft N2 PR do not satisfy that dependency. Review-loop bounds and provider-run authorizations belong to their named runs and are not transferred between N1 and N2.
+
+Prepare each later lot just before execution: identify its outcome, available dependencies, affected surfaces, exit proof and exclusions. N4 needs concrete representative tasks and eligible agents; N5 needs the selected publisher path and authority; N6 needs two missions with an actual shared resource or dependency. Preserve the existing acceptance scope rather than rebuilding the full PRD/backlog/sprint chain.
 
 ## 2. Decisions and blocked capabilities
 
@@ -27,7 +37,7 @@ PRD 0.5 extends the selected scope with M1 (complete mission through PR) and M2 
 | DEP-OWNER / B04 | Enforce the existing configured owner and mandate. A reserved decision stops dependent work with a precise question and next actor | Bound owner-response verification and attributable continuation are F02. No response, another responder or a stale answer cannot resume work |
 | Runtime inputs / B01, B04 | Select supported host, instance/company/project, eligible agents, native auth, tools, skill mounts, operating amounts/periods and measurement sources before real runs | Missing inputs block affected activation, not unrelated bounded code. This plan supplies no credentials, amounts or live-run authorization |
 
-The 80/20 choice changes ordering and operating scope, not DEC-G3-02/DEC-G4-01 or owner-reserved authority. If a required nominal guarantee cannot be implemented proportionately, record the exact conflict for an owner decision. Do not invent a cheaper policy, simulate a PASS or start a new scheduler/billing platform.
+The 80/20 choice changes ordering and operating scope, not DEC-G3-02/DEC-G4-01 or owner-reserved authority. The [token-pilot clarification](G3-G4-DECISIONS.md#october-1-clarification--token-pilot-and-monetary-policy) distinguishes N1's implemented measurement profile from the monetary requirement. If a required nominal guarantee cannot be implemented proportionately, record the exact conflict for an owner decision. Do not invent a cheaper policy, simulate a PASS or start a new scheduler/billing platform.
 
 ## 3. Nominal delivery lots
 
@@ -46,8 +56,9 @@ Six coherent delivery lots, each split into one or a few reviewable PRs where us
 ### N2 — Ordinary correction and confirmed acceptance
 
 - **Parents:** B03, B04; B07/B08 slices. **TAD:** D04–D08, D10. **Coverage:** nominal L3.
-- **Entry:** N1 candidate and eligible final reviewer distinct from recorded authors/integrator.
+- **Entry:** development may use the identified N1 base under the parallel-work boundary above; native qualification requires a qualified N1 candidate and eligible final reviewer distinct from recorded authors/integrator.
 - **Implement:** native review handoff, immutable submission/evidence binding, applicable G2 bundle/content verification, one ordinary correction/resubmission, persisted verdict/application intent and confirmed native effect. Reuse the existing decision adapter where its contract suffices.
+- **Integration contract:** apply the [N1-to-N2 boundary](TAD.md#n1-to-n2-integration-boundary): bind each candidate/review/correction run explicitly, preserve earlier submissions, and qualify bounded correction admission. N1's zero-correction, single-run operating profile is not proof of N2 continuation.
 - **Inspect:** candidate under review, correction requested, formulated verdict, applied decision/effect, uncertainty and next actor.
 - **Validate:** correction → changed candidate → new review → confirmed acceptance. Wrong actor, stale bytes, failed application and unknown outcome cannot pass. Stop a duplicate wake/uncertain effect without a second mutation. Ordinary success must have supported native evidence; use the minimum G3 read necessary if the response/current supported reads are insufficient.
 - **Exit:** one accountable reviewer can correct and accept this supported path. A reserved owner question or ambiguous effect remains durably waiting/unknown.
