@@ -88,8 +88,14 @@ function qualificationEvidence(mode: "safe" | "live"): any {
           n1: {
             nextAction: "N2 may begin after this N1 stop boundary.",
             participants: [
-              { contributionId: "alpha-contribution", assigneeAgentId: "alpha", dispatchRunId: "alpha-run", commit: "1".repeat(40) },
-              { contributionId: "beta-contribution", assigneeAgentId: "beta", dispatchRunId: "beta-run", commit: "2".repeat(40) },
+              {
+                contributionId: "alpha-contribution", assigneeAgentId: "alpha", dispatchRunId: "alpha-run",
+                commit: "1".repeat(40), ownedPaths: ["alpha.txt"],
+              },
+              {
+                contributionId: "beta-contribution", assigneeAgentId: "beta", dispatchRunId: "beta-run",
+                commit: "2".repeat(40), ownedPaths: ["beta.txt"],
+              },
             ],
             candidate: { outcome: "verified" },
           },
@@ -101,8 +107,14 @@ function qualificationEvidence(mode: "safe" | "live"): any {
               n1: {
                 rootDispatchRunId: "lead-run",
                 contributions: [
-                  { contributionId: "alpha-contribution", assigneeAgentId: "alpha", dispatchRunId: "alpha-run", commit: "1".repeat(40) },
-                  { contributionId: "beta-contribution", assigneeAgentId: "beta", dispatchRunId: "beta-run", commit: "2".repeat(40) },
+                  {
+                    contributionId: "alpha-contribution", assigneeAgentId: "alpha", dispatchRunId: "alpha-run",
+                    commit: "1".repeat(40), ownedPaths: ["alpha.txt"],
+                  },
+                  {
+                    contributionId: "beta-contribution", assigneeAgentId: "beta", dispatchRunId: "beta-run",
+                    commit: "2".repeat(40), ownedPaths: ["beta.txt"],
+                  },
                 ],
                 candidate: {
                   outcome: "verified",
@@ -110,6 +122,10 @@ function qualificationEvidence(mode: "safe" | "live"): any {
                   candidate: {
                     attachmentId: "attachment", baseCommit: "0".repeat(40), candidateCommit: "3".repeat(40), sha256: "4".repeat(64),
                   },
+                  contributions: [
+                    { contributionId: "alpha-contribution", commit: "1".repeat(40), ownedPaths: ["alpha.txt"], changedPaths: ["alpha.txt"] },
+                    { contributionId: "beta-contribution", commit: "2".repeat(40), ownedPaths: ["beta.txt"], changedPaths: ["beta.txt"] },
+                  ],
                   checks: [{ name: "fixture", status: "passed", detail: "checked" }],
                 },
               },
@@ -438,7 +454,10 @@ describe("bounded qualification launcher", () => {
       (evidence) => { evidence.configuration.models.observedAgentConfiguration[1].effort = "medium"; },
       (evidence) => { evidence.liveN1.runs.pop(); },
       (evidence) => { delete evidence.liveN1.mission.mission.aggregate.n1.contributions[0].commit; },
+      (evidence) => { evidence.liveN1.runs[1].agentId = "beta"; },
+      (evidence) => { evidence.configuration.models.observedAgentConfiguration[1].agentId = "someone-else"; },
       (evidence) => { delete evidence.liveN1.mission.mission.aggregate.n1.candidate; },
+      (evidence) => { evidence.liveN1.mission.mission.aggregate.n1.candidate.contributions[0].commit = "9".repeat(40); },
       (evidence) => { evidence.liveN1.mission.mission.aggregate.journal = []; },
       (evidence) => { delete evidence.liveN1.ui; },
     ];
@@ -449,7 +468,7 @@ describe("bounded qualification launcher", () => {
     }
     expect(() => assertQualificationEvidence(qualificationEvidence("live"), {
       ...options, screenshotBytes: Buffer.from("not-a-png"),
-    })).toThrow(/PNG claim/);
+    })).toThrow(/PNG signature/);
   });
 
   it("stops after blocked host preparation without inspecting or starting a later phase", async () => {

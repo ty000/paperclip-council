@@ -453,17 +453,82 @@ function nonemptyString(value) {
   return typeof value === "string" && value.trim() === value && value.length > 0;
 }
 
+function requireProof(condition, message) {
+  if (!condition) fail(message);
+}
+
+function distinctStrings(values) {
+  return values.every(nonemptyString) && new Set(values).size === values.length;
+}
+
+function sameStringSet(left, right) {
+  return left.length === right.length && distinctStrings(left) && left.every((value) => right.includes(value));
+}
+
+function assertObservedModel(item, authorized) {
+  requireProof(nonemptyString(item?.agentId), "observed model agent identity is missing");
+  requireProof(item?.adapterType === "codex_local", "observed model adapter is not codex_local");
+  requireProof(item?.model === authorized.model, "observed model differs from the authorized model");
+  requireProof(item?.effort === authorized.effort, "observed effort differs from the authorized effort");
+}
+
 function assertLiveHostAndModels(evidence) {
   const models = evidence.configuration?.models;
   const observed = models?.observedAgentConfiguration;
-  if (evidence.head !== EXPECTED_HOST_COMMIT || evidence.hostTrackedFilesClean !== true
-      || models?.authorized?.model !== "gpt-5.6-sol" || models?.authorized?.effort !== "high"
-      || !Array.isArray(observed) || observed.length !== 3
-      || observed.some((item) => !nonemptyString(item?.agentId) || item?.adapterType !== "codex_local"
-        || item?.model !== models.authorized.model || item?.effort !== models.authorized.effort)
-      || new Set(observed.map((item) => item.agentId)).size !== 3) {
-    fail("live host identity, cleanliness, or observed model settings are missing or inconsistent");
-  }
+  const agents = evidence.liveN1?.agents;
+  const expectedAgentIds = [agents?.lead, ...(agents?.contributors ?? [])];
+  requireProof(evidence.head === EXPECTED_HOST_COMMIT, "live host commit is not the pinned candidate");
+  requireProof(evidence.hostTrackedFilesClean === true, "live host tracked files were not clean");
+  requireProof(models?.authorized?.model === "gpt-5.6-sol", "authorized live model is missing or unexpected");
+  requireProof(models?.authorized?.effort === "high", "authorized live effort is missing or unexpected");
+  requireProof(Array.isArray(observed) && observed.length === 3, "three observed model settings are required");
+  requireProof(sameStringSet(observed.map((item) => item?.agentId), expectedAgentIds),
+    "observed model settings must identify the exact lead and two contributors");
+  observed.forEach((item) => assertObservedModel(item, models.authorized));
+}
+
+function assertLiveRun(run, expectedAgentIds) {
+  requireProof(nonemptyString(run?.id), "native run identity is missing");
+  requireProof(expectedAgentIds.includes(run?.agentId), "native run actor is not an expected N1 agent");
+  requireProof(run?.status === "succeeded", "native run did not succeed");
+  requireProof(nonemptyString(run?.finishedAt), "native run terminal timestamp is missing");
+}
+
+function assertRecordedContribution(slot, contributorIds, runById) {
+  requireProof(nonemptyString(slot?.contributionId), "contribution identity is missing");
+  requireProof(contributorIds.includes(slot?.assigneeAgentId), "contribution assignee is not an expected contributor");
+  requireProof(runById.get(slot?.dispatchRunId)?.agentId === slot?.assigneeAgentId,
+    "contribution dispatch run is not attributed to its assignee");
+  requireProof(COMMIT.test(slot?.commit), "contribution commit is missing or malformed");
+  requireProof(Array.isArray(slot?.ownedPaths) && slot.ownedPaths.length > 0,
+    "contribution owned paths are missing");
+}
+
+function assertLiveIdentities(live) {
+  requireProof(nonemptyString(live?.companyId), "live company identity is missing");
+  requireProof(nonemptyString(live?.missionId), "live mission identity is missing");
+  requireProof(nonemptyString(live?.rootIssueId), "live root issue identity is missing");
+  requireProof(COMMIT.test(live?.baseCommit), "live repository base commit is missing or malformed");
+}
+
+function assertLiveRunSet(live, runs, expectedAgentIds) {
+  requireProof(distinctStrings(expectedAgentIds), "lead and contributor identities must be distinct");
+  requireProof(Array.isArray(runs) && runs.length === 3, "exactly three native runs are required");
+  runs.forEach((run) => assertLiveRun(run, expectedAgentIds));
+  requireProof(sameStringSet(runs.map((run) => run.agentId), expectedAgentIds),
+    "native runs must belong to the exact lead and two contributors");
+  requireProof(distinctStrings(runs.map((run) => run.id)), "native run identities must be distinct");
+}
+
+function assertLiveContributionSet(live, state, contributions, runs) {
+  const runById = new Map(runs.map((run) => [run.id, run]));
+  requireProof(Array.isArray(contributions) && contributions.length === 2, "exactly two contributions are required");
+  contributions.forEach((slot) => assertRecordedContribution(slot, live.agents.contributors, runById));
+  requireProof(distinctStrings(contributions.map((slot) => slot.contributionId)), "contribution identities must be distinct");
+  requireProof(distinctStrings(contributions.map((slot) => slot.dispatchRunId)), "contribution runs must be distinct");
+  requireProof(distinctStrings(contributions.map((slot) => slot.commit)), "contribution commits must be distinct");
+  requireProof(runById.get(state?.rootDispatchRunId)?.agentId === live.agents.lead,
+    "root dispatch run is not attributed to the Integration Lead");
 }
 
 function assertLiveRunsAndContributions(evidence) {
@@ -472,23 +537,47 @@ function assertLiveRunsAndContributions(evidence) {
   const state = live?.mission?.mission?.aggregate?.n1;
   const contributions = state?.contributions;
   const expectedAgentIds = [live?.agents?.lead, ...(live?.agents?.contributors ?? [])];
-  if (!nonemptyString(live?.companyId) || !nonemptyString(live?.missionId) || !nonemptyString(live?.rootIssueId)
-      || !COMMIT.test(live?.baseCommit) || !Array.isArray(runs) || runs.length !== 3
-      || runs.some((run) => !nonemptyString(run?.id) || run?.status !== "succeeded" || !nonemptyString(run?.finishedAt))
-      || new Set(runs.map((run) => run.id)).size !== 3
-      || expectedAgentIds.length !== 3 || expectedAgentIds.some((id) => !nonemptyString(id))
-      || new Set(expectedAgentIds).size !== 3 || runs.some((run) => !expectedAgentIds.includes(run.agentId))
-      || !Array.isArray(contributions) || contributions.length !== 2
-      || contributions.some((slot) => !nonemptyString(slot?.contributionId)
-        || !live.agents.contributors.includes(slot?.assigneeAgentId)
-        || !runs.some((run) => run.id === slot?.dispatchRunId)
-        || !COMMIT.test(slot?.commit))
-      || new Set(contributions.map((slot) => slot.contributionId)).size !== 2
-      || new Set(contributions.map((slot) => slot.dispatchRunId)).size !== 2
-      || new Set(contributions.map((slot) => slot.commit)).size !== 2
-      || !runs.some((run) => run.id === state?.rootDispatchRunId && run.agentId === live.agents.lead)) {
-    fail("live mission must bind three distinct native runs to the lead and two attributed contributions");
-  }
+  assertLiveIdentities(live);
+  assertLiveRunSet(live, runs, expectedAgentIds);
+  assertLiveContributionSet(live, state, contributions, runs);
+}
+
+function sameContribution(left, right) {
+  return left?.contributionId === right?.contributionId
+    && left?.commit === right?.commit
+    && JSON.stringify(left?.ownedPaths) === JSON.stringify(right?.ownedPaths);
+}
+
+function assertVerifiedContributions(recorded, verified) {
+  requireProof(Array.isArray(verified) && verified.length === 2, "verified candidate must contain two contributions");
+  requireProof(recorded.every((slot) => verified.some((item) => sameContribution(slot, item))),
+    "verified candidate contributions do not match the recorded contribution ID, commit, and owned paths");
+}
+
+function assertCandidateCheck(check) {
+  requireProof(nonemptyString(check?.name), "candidate check name is missing");
+  requireProof(check?.status === "passed", "candidate check did not pass");
+  requireProof(nonemptyString(check?.detail), "candidate check detail is missing");
+}
+
+function assertCandidateIdentity(live, aggregate, verified, candidate) {
+  requireProof(aggregate?.phase === "ready_for_review", "live mission is not ready_for_review");
+  requireProof(aggregate?.control?.status === "inactive", "live mission control did not stop");
+  requireProof(verified?.outcome === "verified", "integrated candidate is not verified");
+  requireProof(verified?.publicationEligible === true, "integrated candidate is not publication eligible");
+  requireProof(candidate?.baseCommit === live?.baseCommit, "candidate base does not match the live repository base");
+  requireProof(COMMIT.test(candidate?.candidateCommit), "candidate commit is missing or malformed");
+  requireProof(DIGEST.test(candidate?.sha256), "candidate bundle digest is missing or malformed");
+  requireProof(nonemptyString(candidate?.attachmentId), "candidate attachment identity is missing");
+}
+
+function assertCandidateChecksAndFailure(aggregate, verified) {
+  assertVerifiedContributions(aggregate?.n1?.contributions, verified?.contributions);
+  requireProof(Array.isArray(verified?.checks) && verified.checks.length > 0, "candidate checks are missing");
+  verified.checks.forEach(assertCandidateCheck);
+  requireProof(Array.isArray(aggregate?.journal), "mission journal is missing");
+  requireProof(aggregate.journal.some((entry) => entry?.action === "integration_check_failed"),
+    "failed integration refusal is not recorded in the mission journal");
 }
 
 function assertLiveCandidate(evidence) {
@@ -496,31 +585,48 @@ function assertLiveCandidate(evidence) {
   const aggregate = live?.mission?.mission?.aggregate;
   const verified = aggregate?.n1?.candidate;
   const candidate = verified?.candidate;
-  if (aggregate?.phase !== "ready_for_review" || aggregate?.control?.status !== "inactive"
-      || verified?.outcome !== "verified" || verified?.publicationEligible !== true
-      || candidate?.baseCommit !== live?.baseCommit || !COMMIT.test(candidate?.candidateCommit)
-      || !DIGEST.test(candidate?.sha256) || !nonemptyString(candidate?.attachmentId)
-      || !Array.isArray(verified?.checks) || verified.checks.length === 0
-      || verified.checks.some((check) => check?.status !== "passed")
-      || !Array.isArray(aggregate?.journal)
-      || !aggregate.journal.some((entry) => entry?.action === "integration_check_failed")) {
-    fail("live mission must contain the verified candidate and observed failed-integration refusal");
-  }
+  assertCandidateIdentity(live, aggregate, verified, candidate);
+  assertCandidateChecksAndFailure(aggregate, verified);
+}
+
+function assertObservedParticipant(participant, recorded) {
+  const match = recorded.find((slot) => slot?.contributionId === participant?.contributionId);
+  requireProof(Boolean(match), "rendered participant is not a recorded contribution");
+  requireProof(participant?.assigneeAgentId === match.assigneeAgentId, "rendered participant assignee does not match");
+  requireProof(participant?.dispatchRunId === match.dispatchRunId, "rendered participant run does not match");
+  requireProof(participant?.commit === match.commit, "rendered participant commit does not match");
+  requireProof(JSON.stringify(participant?.ownedPaths) === JSON.stringify(match.ownedPaths),
+    "rendered participant owned paths do not match");
+}
+
+function assertScreenshotClaim(ui, live, candidateCommit, screenshotPath, screenshotBytes) {
+  requireProof(nonemptyString(screenshotPath), "live screenshot path is missing");
+  requireProof(ui?.screenshot === screenshotPath, "live UI evidence does not identify the claimed screenshot");
+  requireProof(screenshotPath.endsWith(".png"), "live screenshot claim is not a PNG path");
+  requireProof(screenshotPath.includes(candidateCommit), "live screenshot path is not commit-qualified");
+  requireProof(ui?.missionId === live?.missionId, "live UI mission identity does not match");
+  requireProof(ui?.rootIssueId === live?.rootIssueId, "live UI root issue identity does not match");
+  requireProof(Buffer.isBuffer(screenshotBytes), "live screenshot bytes are missing");
+  requireProof(screenshotBytes.length > PNG_SIGNATURE.length, "live screenshot PNG is empty");
+  requireProof(screenshotBytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE),
+    "live screenshot claim does not contain a PNG signature");
+}
+
+function assertUiMissionBinding(observed, recorded) {
+  requireProof(Array.isArray(observed?.participants) && observed.participants.length === 2,
+    "live UI must expose exactly two participants");
+  observed.participants.forEach((participant) => assertObservedParticipant(participant, recorded));
+  requireProof(nonemptyString(observed?.nextAction), "live UI next action is missing");
+  requireProof(observed?.candidate?.outcome === "verified", "live UI candidate is not verified");
 }
 
 function assertLiveUiProof(evidence, candidateCommit, screenshotPath, screenshotBytes) {
   const live = evidence.liveN1;
   const ui = live?.ui;
   const observed = live?.mission?.n1;
-  if (!nonemptyString(screenshotPath) || ui?.screenshot !== screenshotPath
-      || !screenshotPath.endsWith(".png") || !screenshotPath.includes(candidateCommit)
-      || ui?.missionId !== live?.missionId || ui?.rootIssueId !== live?.rootIssueId
-      || !Array.isArray(observed?.participants) || observed.participants.length !== 2
-      || !nonemptyString(observed?.nextAction) || observed?.candidate?.outcome !== "verified"
-      || !Buffer.isBuffer(screenshotBytes) || screenshotBytes.length <= PNG_SIGNATURE.length
-      || !screenshotBytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
-    fail("live UI proof must bind the rendered mission values and a populated commit-qualified PNG claim");
-  }
+  const recorded = live?.mission?.mission?.aggregate?.n1?.contributions;
+  assertScreenshotClaim(ui, live, candidateCommit, screenshotPath, screenshotBytes);
+  assertUiMissionBinding(observed, recorded);
 }
 
 function assertLiveNativeProof(evidence, candidateCommit, screenshotPath, screenshotBytes) {
