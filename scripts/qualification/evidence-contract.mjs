@@ -83,6 +83,7 @@ export const LIVE_RESULT_KEYS = Object.freeze([
   "n1IntegrationFailureBlocked",
   "n1VerifiedCandidateReadyForReview",
   "n1NativeG4UsageSettled",
+  "n1LeadSingleRunBarrier",
   "n1InstalledBrowserObservableState",
 ]);
 
@@ -531,6 +532,18 @@ function assertLiveContributionSet(live, state, contributions, runs) {
     "root dispatch run is not attributed to the Integration Lead");
 }
 
+function assertLeadSingleRunBarrier(live, state) {
+  const leadBarrier = live?.leadRunBarrier;
+  requireProof(leadBarrier?.expectedRunId === state?.rootDispatchRunId,
+    "lead single-run barrier is not bound to the root dispatch run");
+  requireProof(leadBarrier?.wakeOnDemand === false,
+    "lead wake-on-demand barrier was not observed disabled");
+  requireProof(Array.isArray(leadBarrier?.observedRunIds)
+      && leadBarrier.observedRunIds.length === 1
+      && leadBarrier.observedRunIds[0] === state?.rootDispatchRunId,
+    "lead run readback must contain exactly the expected root dispatch run");
+}
+
 function assertLiveRunsAndContributions(evidence) {
   const live = evidence.liveN1;
   const runs = live?.runs;
@@ -540,6 +553,7 @@ function assertLiveRunsAndContributions(evidence) {
   assertLiveIdentities(live);
   assertLiveRunSet(live, runs, expectedAgentIds);
   assertLiveContributionSet(live, state, contributions, runs);
+  assertLeadSingleRunBarrier(live, state);
 }
 
 function sameContribution(left, right) {

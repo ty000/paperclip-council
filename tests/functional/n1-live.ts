@@ -25,6 +25,37 @@ export function assertNoReviewerRuns(result: ApiResult): any[] {
   return result.body;
 }
 
+export function n1DeliveryAdapterConfig(input: {
+  model: string;
+  effort: string;
+  repository: string;
+}): Record<string, unknown> {
+  return {
+    engine: "cli",
+    model: input.model,
+    modelReasoningEffort: input.effort,
+    timeoutSec: 1_200,
+    dangerouslyBypassApprovalsAndSandbox: false,
+    filesystemScope: "workspace",
+    extraArgs: ["--add-dir", resolve(input.repository, ".git")],
+  };
+}
+
+export function assertOnlyExpectedAgentRun(
+  result: ApiResult,
+  expectedRunId: string,
+  agentLabel: string,
+): any[] {
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert(Array.isArray(result.body), `${agentLabel} run readback must return an array`);
+  assert.deepEqual(
+    result.body.map((run: any) => run?.id),
+    [expectedRunId],
+    `${agentLabel} must have exactly the expected native run`,
+  );
+  return result.body;
+}
+
 function hasKnownPositiveUsage(reservation: any): boolean {
   return reservation.usage?.status === "known"
     && Number.isSafeInteger(reservation.usage.units)
@@ -143,18 +174,21 @@ export async function runLiveN1(input: {
   assert.equal(company.status, 201, JSON.stringify(company.body));
   const companyId = company.body.id as string;
 
-  const createAgent = async (name: string, role: string, instructions: string) => {
+  const createAgent = async (name: string, role: string, instructions: string, needsGit = false) => {
     const created = await input.request("human", "POST", `/api/companies/${companyId}/agents`, {
       name,
       role,
       adapterType: "codex_local",
-      adapterConfig: {
-        engine: "cli",
-        model,
-        modelReasoningEffort: effort,
-        timeoutSec: 1_200,
-        dangerouslyBypassApprovalsAndSandbox: false,
-      },
+      adapterConfig: needsGit
+        ? n1DeliveryAdapterConfig({ model, effort, repository })
+        : {
+            engine: "cli",
+            model,
+            modelReasoningEffort: effort,
+            timeoutSec: 1_200,
+            dangerouslyBypassApprovalsAndSandbox: false,
+            filesystemScope: "workspace",
+          },
       instructionsBundle: { entryFile: "AGENTS.md", files: { "AGENTS.md": instructions } },
       runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: true, maxConcurrentRuns: 1 } },
       budgetMonthlyCents: 0,
@@ -163,9 +197,9 @@ export async function runLiveN1(input: {
     return created.body;
   };
 
-  const lead = await createAgent("N1 Integration Lead", "engineer", leadInstructions());
-  const contributorA = await createAgent("N1 Contributor Alpha", "engineer", contributorInstructions());
-  const contributorB = await createAgent("N1 Contributor Beta", "engineer", contributorInstructions());
+  const lead = await createAgent("N1 Integration Lead", "engineer", leadInstructions(), true);
+  const contributorA = await createAgent("N1 Contributor Alpha", "engineer", contributorInstructions(), true);
+  const contributorB = await createAgent("N1 Contributor Beta", "engineer", contributorInstructions(), true);
   const reviewer = await createAgent("N1 Independent Reviewer", "qa", [
     "You are reserved for the later independent Council review. N1 must stop before waking you.",
     "",
@@ -380,6 +414,12 @@ export async function runLiveN1(input: {
   const leadRunId = started.body.mission.aggregate.n1.rootDispatchRunId as string;
   assert.match(leadRunId, /^[0-9a-f-]{36}$/i);
 
+  const leadRunBarrier = await input.request("human", "PATCH", `/api/agents/${lead.id}`, {
+    runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: false, maxConcurrentRuns: 1 } },
+  });
+  assert.equal(leadRunBarrier.status, 200, JSON.stringify(leadRunBarrier.body));
+  assert.equal(leadRunBarrier.body.runtimeConfig?.heartbeat?.wakeOnDemand, false);
+
   const leadRun = await waitForTerminalRun(leadRunId, input.getRun);
   assert.equal(leadRun.status, "succeeded", `lead run failed: ${leadRun.error ?? "unknown error"}`);
 
@@ -449,6 +489,12 @@ export async function runLiveN1(input: {
     `/api/companies/${companyId}/heartbeat-runs?agentId=${encodeURIComponent(reviewer.id)}&limit=1000&summary=1`,
   );
   const reviewerRuns = assertNoReviewerRuns(reviewerRunReadback);
+  const leadRunReadback = await input.request(
+    "human",
+    "GET",
+    `/api/companies/${companyId}/heartbeat-runs?agentId=${encodeURIComponent(lead.id)}&limit=1000&summary=1`,
+  );
+  const observedLeadRuns = assertOnlyExpectedAgentRun(leadRunReadback, leadRunId, "lead");
 
   input.evidence.configuration.models = { authorized: { model, effort }, observedAgentConfiguration: observedModelSettings };
   input.evidence.configuration.fixtureBoundary = "The safe-boundary suite uses fixtures; the N1 live campaign below uses native APIs, native wakeups, exact Paperclip run IDs, and run-derived terminal token settlement.";
@@ -465,6 +511,11 @@ export async function runLiveN1(input: {
     mission: finalMission.body,
     admission: admissionFinal.body,
     usageSettlement: leadUsage.body,
+    leadRunBarrier: {
+      expectedRunId: leadRunId,
+      wakeOnDemand: leadRunBarrier.body.runtimeConfig.heartbeat.wakeOnDemand,
+      observedRunIds: observedLeadRuns.map((run: any) => run.id),
+    },
     reviewerRunCount: reviewerRuns.length,
     stopBoundary: "ready_for_review; N2 not started",
   };
@@ -472,6 +523,7 @@ export async function runLiveN1(input: {
   input.evidence.results.n1IntegrationFailureBlocked = "PASS";
   input.evidence.results.n1VerifiedCandidateReadyForReview = "PASS";
   input.evidence.results.n1NativeG4UsageSettled = "PASS";
+  input.evidence.results.n1LeadSingleRunBarrier = "PASS";
 
   return {
     companyId,

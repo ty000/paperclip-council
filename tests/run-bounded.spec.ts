@@ -11,7 +11,7 @@ import { ProcessGroupDrainError, runProcessGroup } from "../scripts/qualificatio
 import { prepareQualificationHost, withOwnedQualificationRuntime } from "../scripts/qualification/run-bounded.mjs";
 // @ts-expect-error The qualification evidence contract is intentionally plain ESM.
 import { __claimLiveEvidencePathsForTest, assertQualificationEvidence, claimLiveEvidencePaths, LIVE_RESULT_KEYS, SAFE_RESULT_KEYS, writeClaimedArtifact } from "../scripts/qualification/evidence-contract.mjs";
-import { assertNoReviewerRuns } from "./functional/n1-live.js";
+import { assertNoReviewerRuns, assertOnlyExpectedAgentRun, n1DeliveryAdapterConfig } from "./functional/n1-live.js";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const liveCommit = "a".repeat(40);
@@ -83,6 +83,11 @@ function qualificationEvidence(mode: "safe" | "live"): any {
           { id: "alpha-run", agentId: "alpha", status: "succeeded", finishedAt: "2026-10-01T10:00:40.000Z" },
           { id: "beta-run", agentId: "beta", status: "succeeded", finishedAt: "2026-10-01T10:00:50.000Z" },
         ],
+        leadRunBarrier: {
+          expectedRunId: "lead-run",
+          wakeOnDemand: false,
+          observedRunIds: ["lead-run"],
+        },
         mission: {
           nextAction: "N2 may begin after this N1 stop boundary.",
           n1: {
@@ -320,6 +325,26 @@ describe("bounded qualification launcher", () => {
     expect(source).not.toContain("reviewerRunCount: 0");
   });
 
+  it("keeps delivery Git access narrow and refuses extra lead runs", () => {
+    const repository = resolve("/tmp", "council-n1-repository");
+    expect(n1DeliveryAdapterConfig({ model: "gpt-5.6-sol", effort: "high", repository })).toEqual({
+      engine: "cli",
+      model: "gpt-5.6-sol",
+      modelReasoningEffort: "high",
+      timeoutSec: 1_200,
+      dangerouslyBypassApprovalsAndSandbox: false,
+      filesystemScope: "workspace",
+      extraArgs: ["--add-dir", resolve(repository, ".git")],
+    });
+
+    const response = (status: number, body: unknown) => ({ status, body, headers: new Headers() }) as any;
+    expect(assertOnlyExpectedAgentRun(response(200, [{ id: "lead-run" }]), "lead-run", "lead"))
+      .toEqual([{ id: "lead-run" }]);
+    expect(() => assertOnlyExpectedAgentRun(
+      response(200, [{ id: "lead-run" }, { id: "unexpected-run" }]), "lead-run", "lead",
+    )).toThrow(/exactly the expected native run/);
+  });
+
   it("rolls back only its empty JSON claim when the screenshot O_EXCL create fails", async () => {
     const root = await mkdtemp(resolve(tmpdir(), "council-live-rollback-"));
     const commit = "1".repeat(40);
@@ -456,6 +481,7 @@ describe("bounded qualification launcher", () => {
       (evidence) => { delete evidence.liveN1.mission.mission.aggregate.n1.contributions[0].commit; },
       (evidence) => { evidence.liveN1.runs[1].agentId = "beta"; },
       (evidence) => { evidence.configuration.models.observedAgentConfiguration[1].agentId = "someone-else"; },
+      (evidence) => { evidence.liveN1.leadRunBarrier.observedRunIds.push("unexpected-lead-run"); },
       (evidence) => { delete evidence.liveN1.mission.mission.aggregate.n1.candidate; },
       (evidence) => { evidence.liveN1.mission.mission.aggregate.n1.candidate.contributions[0].commit = "9".repeat(40); },
       (evidence) => { evidence.liveN1.mission.mission.aggregate.journal = []; },
