@@ -460,6 +460,9 @@ describe("bounded qualification launcher", () => {
       (evidence) => { evidence.liveN1.mission.mission.aggregate.n1.candidate.contributions[0].commit = "9".repeat(40); },
       (evidence) => { evidence.liveN1.mission.mission.aggregate.journal = []; },
       (evidence) => { delete evidence.liveN1.ui; },
+      (evidence) => {
+        evidence.liveN1.mission.n1.participants[1] = structuredClone(evidence.liveN1.mission.n1.participants[0]);
+      },
     ];
     for (const mutate of mutations) {
       const evidence = qualificationEvidence("live");

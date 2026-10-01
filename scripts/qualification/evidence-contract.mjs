@@ -615,6 +615,12 @@ function assertScreenshotClaim(ui, live, candidateCommit, screenshotPath, screen
 function assertUiMissionBinding(observed, recorded) {
   requireProof(Array.isArray(observed?.participants) && observed.participants.length === 2,
     "live UI must expose exactly two participants");
+  requireProof(Array.isArray(recorded) && recorded.length === 2,
+    "live mission must retain exactly two recorded contributions for UI binding");
+  requireProof(sameStringSet(
+    observed.participants.map((participant) => participant?.contributionId),
+    recorded.map((slot) => slot?.contributionId),
+  ), "live UI participant IDs must exactly cover the two recorded contributions");
   observed.participants.forEach((participant) => assertObservedParticipant(participant, recorded));
   requireProof(nonemptyString(observed?.nextAction), "live UI next action is missing");
   requireProof(observed?.candidate?.outcome === "verified", "live UI candidate is not verified");
