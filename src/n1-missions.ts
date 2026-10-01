@@ -284,7 +284,7 @@ function readSlotPlan(value: unknown, mission: MissionRecord): Slot[] {
   return slots;
 }
 
-function contributionDescription(input: {
+export function contributionDescription(input: {
   missionId: string;
   contributionId: string;
   ownedPaths: string[];
@@ -295,7 +295,7 @@ function contributionDescription(input: {
     `Contribution ID: ${input.contributionId}`,
     `Owned paths: ${input.ownedPaths.join(", ")}`,
     "Do not modify files outside the owned paths. Commit the completed change on the current shared branch.",
-    "Use the authenticated endpoint /api/plugins/private.paperclip-council/api/issues/<this-child-issue-id>/council/commands: first command=inspect to read the current mission version, then command=record-contribution with a fresh commandId, that expectedVersion, the contributionId, and the 40-character commit SHA.",
+    `Use the authenticated endpoint /api/plugins/private.paperclip-council/api/issues/<this-child-issue-id>/council/commands. The first request body is exactly {"command":"inspect","missionId":"${input.missionId}"}. Read body.version, then send command=record-contribution with missionId, a fresh commandId, that expectedVersion, the contributionId, and the 40-character commit SHA.`,
     "Mark this Paperclip child issue done only after record-contribution succeeds.",
     "",
     "Plugins/skills à utiliser",
@@ -345,6 +345,35 @@ export async function readN1AdmissionForMission(ctx: PluginContext, mission: Mis
   return readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
 }
 
+async function reconcileContributionUsage(
+  ctx: PluginContext,
+  mission: MissionRecord,
+  input: { commandId: string; contributionId: string },
+) {
+  const state = n1State(mission);
+  const slot = state?.contributions.find((entry) => entry.contributionId === input.contributionId);
+  if (!state || !slot?.childIssueId || slot.dispatchState !== "requested" || !slot.dispatchReservationId
+      || !slot.dispatchRunId || !Number.isSafeInteger(slot.dispatchUsageBaselineUnits)
+      || slot.dispatchUsageBaselineUnits! < 0) {
+    throw new MissionError(409, "dispatch_not_confirmed", "A confirmed native contribution run is required for usage reconciliation");
+  }
+  const profile = await readNativeG4Profile(ctx, mission.companyId);
+  if (!profile) throw new MissionError(409, "g4_measurement_unqualified", "No supported native N1 operating profile is configured");
+  const envelope = await readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
+  if (!envelope) throw new MissionError(422, "g4_not_configured", "No task/period admission envelope is configured");
+  assertNativeEnvelope(envelope, profile);
+  return settleNativeRunUsage(ctx, {
+    commandId: input.commandId,
+    companyId: mission.companyId,
+    issueId: slot.childIssueId,
+    runId: slot.dispatchRunId,
+    baselineUsageUnits: slot.dispatchUsageBaselineUnits!,
+    periodKey: state.periodKey,
+    reservationId: slot.dispatchReservationId,
+    expectedVersion: envelope.version,
+  });
+}
+
 export async function executeN1BoardCommand(ctx: PluginContext, input: {
   companyId: string;
   missionId: string;
@@ -354,6 +383,13 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
   const mission = await getMission(ctx, input.companyId, input.missionId);
   if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
   await owner(ctx, mission, input.actorUserId);
+  if (input.body.command === "reconcile-contribution-usage") {
+    const result = await reconcileContributionUsage(ctx, mission, {
+      commandId: uuid(input.body.commandId, "commandId"),
+      contributionId: uuid(input.body.contributionId, "contributionId"),
+    });
+    return { ...result, mission };
+  }
   if (input.body.command === "fixture-bind-lead-run") {
     if (!await isOwnedFixtureRuntime(ctx, mission.companyId) || input.body.fixtureSource !== "fixture:local-sandbox") {
       throw new MissionError(403, "fixture_only", "Synthetic run binding is confined to the owned local sandbox");
@@ -426,6 +462,10 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
         || !leadAgent || leadAgent.companyId !== mission.companyId
         || !["active", "idle", "running"].includes(leadAgent.status)) {
       throw new MissionError(409, "root_dispatch_ineligible", "Root issue or lead is no longer eligible");
+    }
+    if (nativeProfile && !isNativeCliAgent(leadAgent)) {
+      throw new MissionError(409, "native_agent_adapter_required",
+        "Native N1 dispatch requires a codex_local agent configured with the cli engine");
     }
     const next: MissionAggregate = {
       ...mission.aggregate,
@@ -650,6 +690,17 @@ async function isOwnedFixtureRuntime(ctx: PluginContext, companyId: string): Pro
   return config.n1FixtureMode === "ephemeral-local-sandbox";
 }
 
+function isNativeCliAgent(agent: unknown): boolean {
+  if (!agent || typeof agent !== "object" || Array.isArray(agent)) return false;
+  const record = agent as Record<string, unknown>;
+  const adapterConfig = record.adapterConfig;
+  return record.adapterType === "codex_local"
+    && Boolean(adapterConfig)
+    && typeof adapterConfig === "object"
+    && !Array.isArray(adapterConfig)
+    && (adapterConfig as Record<string, unknown>).engine === "cli";
+}
+
 export async function handleN1AdmissionApi(input: PluginApiRequestInput, ctx: PluginContext) {
   try {
     const companyId = boundedString(input.params.companyId, "companyId", 64);
@@ -849,6 +900,20 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
           || !["active", "idle", "running"].includes(agent.status)) {
         throw new MissionError(409, "native_dispatch_ineligible", "Native child or assignee is no longer eligible for dispatch");
       }
+      for (const prior of state.contributions.slice(0, index)) {
+        const priorIssue = prior.childIssueId
+          ? await ctx.issues.get(prior.childIssueId, mission.companyId)
+          : null;
+        if (!prior.commit || !prior.authorRunId || prior.dispatchState !== "requested"
+            || !prior.dispatchReservationId || !prior.dispatchRunId
+            || prior.authorRunId !== prior.dispatchRunId
+            || !priorIssue || priorIssue.companyId !== mission.companyId
+            || priorIssue.projectId !== mission.projectId || priorIssue.parentId !== mission.rootIssueId
+            || priorIssue.assigneeAgentId !== prior.assigneeAgentId || priorIssue.status !== "done") {
+          throw new MissionError(409, "prior_contribution_incomplete",
+            "Every earlier contribution must be attributed to its confirmed native run and its mapped child issue must be done");
+        }
+      }
       const reservationId = uuid(body.reservationId, "reservationId");
       const requestedUnits = integer(body.requestedUnits, "requestedUnits");
       requireFreshCommand(mission, body);
@@ -861,6 +926,10 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         throw new MissionError(409, "g4_measurement_unqualified", "No supported native N1 operating profile is configured");
       }
       if (nativeProfile) {
+        if (!isNativeCliAgent(agent)) {
+          throw new MissionError(409, "native_agent_adapter_required",
+            "Native N1 dispatch requires a codex_local agent configured with the cli engine");
+        }
         assertNativeEnvelope(envelope, nativeProfile);
         if (requestedUnits !== nativeProfile.runReservationUnits) {
           throw new MissionError(422, "g4_profile_mismatch", "Child dispatch must use the configured run reservation estimate");
@@ -949,26 +1018,9 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
     }
     if (body.command === "reconcile-usage") {
       await lead(ctx, mission, input);
-      const contributionId = uuid(body.contributionId, "contributionId");
-      const slot = state.contributions.find((entry) => entry.contributionId === contributionId);
-      if (!slot?.childIssueId || slot.dispatchState !== "requested" || !slot.dispatchReservationId || !slot.dispatchRunId
-          || !Number.isSafeInteger(slot.dispatchUsageBaselineUnits) || slot.dispatchUsageBaselineUnits! < 0) {
-        throw new MissionError(409, "dispatch_not_confirmed", "A confirmed native contribution run is required for usage reconciliation");
-      }
-      const profile = await readNativeG4Profile(ctx, mission.companyId);
-      if (!profile) throw new MissionError(409, "g4_measurement_unqualified", "No supported native N1 operating profile is configured");
-      const envelope = await readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
-      if (!envelope) throw new MissionError(422, "g4_not_configured", "No task/period admission envelope is configured");
-      assertNativeEnvelope(envelope, profile);
-      const result = await settleNativeRunUsage(ctx, {
+      const result = await reconcileContributionUsage(ctx, mission, {
         commandId,
-        companyId: mission.companyId,
-        issueId: slot.childIssueId,
-        runId: slot.dispatchRunId,
-        baselineUsageUnits: slot.dispatchUsageBaselineUnits!,
-        periodKey: state.periodKey,
-        reservationId: slot.dispatchReservationId,
-        expectedVersion: envelope.version,
+        contributionId: uuid(body.contributionId, "contributionId"),
       });
       return { status: 200, body: result };
     }

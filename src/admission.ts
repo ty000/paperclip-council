@@ -74,6 +74,10 @@ export type AdmissionCommandReceipt = {
   payloadHash: string;
   appliedVersion: number;
   recordedAt: string;
+  settlement?: {
+    usage: AdmissionUsage;
+    remainingExposure: AdmissionRemainingExposure;
+  };
 };
 
 export type AdmissionDocument = {
@@ -635,16 +639,31 @@ function findReservation(snapshot: AdmissionSnapshot, reservationId: string): Ad
   return reservation;
 }
 
+function settlementCommandBinding(snapshot: AdmissionSnapshot, commandId: string) {
+  const bindings = snapshot.reservations.flatMap((reservation) => reservation.settlementReceipts
+    .filter((receipt) => receipt.commandId === commandId)
+    .map((receipt) => ({ reservation, receipt })));
+  if (bindings.length > 1) {
+    throw new AdmissionError(409, "command_identity_conflict", "commandId is already bound to multiple settlement reservations");
+  }
+  return bindings[0] ?? null;
+}
+
 export async function settleAdmission(ctx: PluginContext, input: AdmissionSettleInput): Promise<AdmissionResult> {
   const parsed = settlementPayload(input);
   const expectedVersion = positiveInteger(input.expectedVersion, "expectedVersion");
   const hash = payloadHash(parsed);
   const current = await requireAdmission(ctx, parsed.companyId, parsed.periodKey);
   const existing = findReservation(current, parsed.reservationId);
-  const receipt = existing.settlementReceipts.find((item) => item.commandId === parsed.commandId);
-  if (receipt) {
-    if (receipt.payloadHash !== hash) throw new AdmissionError(409, "command_identity_conflict", "commandId was already used with another settlement payload");
-    return { outcome: "replayed", envelope: current, reservation: existing };
+  const binding = settlementCommandBinding(current, parsed.commandId);
+  if (binding) {
+    if (binding.reservation.reservationId !== parsed.reservationId) {
+      throw new AdmissionError(409, "command_identity_conflict", "commandId was already used for another settlement reservation");
+    }
+    if (binding.receipt.payloadHash !== hash) {
+      throw new AdmissionError(409, "command_identity_conflict", "commandId was already used with another settlement payload");
+    }
+    return { outcome: "replayed", envelope: current, reservation: binding.reservation };
   }
   if (current.version !== expectedVersion) throw new AdmissionError(409, "version_conflict", "Admission version is stale", { current });
   if (existing.settlementReceipts.length >= MAX_RECEIPTS) {
@@ -676,6 +695,10 @@ export async function settleAdmission(ctx: PluginContext, input: AdmissionSettle
       payloadHash: hash,
       appliedVersion: nextVersion,
       recordedAt: at,
+      settlement: {
+        usage: parsed.usage,
+        remainingExposure: parsed.remainingExposure,
+      },
     }],
   };
   let allowance = current.allowance;
@@ -692,10 +715,15 @@ export async function settleAdmission(ctx: PluginContext, input: AdmissionSettle
 
   const concurrent = await requireAdmission(ctx, parsed.companyId, parsed.periodKey);
   const concurrentReservation = findReservation(concurrent, parsed.reservationId);
-  const concurrentReceipt = concurrentReservation.settlementReceipts.find((item) => item.commandId === parsed.commandId);
-  if (concurrentReceipt?.payloadHash === hash) {
-    return { outcome: "replayed", envelope: concurrent, reservation: concurrentReservation };
+  const concurrentBinding = settlementCommandBinding(concurrent, parsed.commandId);
+  if (concurrentBinding) {
+    if (concurrentBinding.reservation.reservationId !== concurrentReservation.reservationId) {
+      throw new AdmissionError(409, "command_identity_conflict", "commandId was settled concurrently for another reservation");
+    }
+    if (concurrentBinding.receipt.payloadHash === hash) {
+      return { outcome: "replayed", envelope: concurrent, reservation: concurrentBinding.reservation };
+    }
+    throw new AdmissionError(409, "command_identity_conflict", "commandId was settled concurrently with another payload");
   }
-  if (concurrentReceipt) throw new AdmissionError(409, "command_identity_conflict", "commandId was settled concurrently with another payload");
   throw new AdmissionError(409, "version_conflict", "A competing settlement changed the envelope; this settlement was not recorded", { current: concurrent });
 }

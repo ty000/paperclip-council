@@ -11,7 +11,16 @@ import { ProcessGroupDrainError, runProcessGroup } from "../scripts/qualificatio
 import { prepareQualificationHost, withOwnedQualificationRuntime } from "../scripts/qualification/run-bounded.mjs";
 // @ts-expect-error The qualification evidence contract is intentionally plain ESM.
 import { __claimLiveEvidencePathsForTest, assertQualificationEvidence, claimLiveEvidencePaths, LIVE_RESULT_KEYS, SAFE_RESULT_KEYS, writeClaimedArtifact } from "../scripts/qualification/evidence-contract.mjs";
-import { assertNoReviewerRuns } from "./functional/n1-live.js";
+import {
+  assertNoReviewerRuns,
+  assertOnlyExpectedAgentRun,
+  contributorInstructions,
+  leadInstructions,
+  n1DeliveryAdapterConfig,
+  nativeRunEvidence,
+  reconcileTerminalN1Usage,
+} from "./functional/n1-live.js";
+import { contributionDescription } from "../src/n1-missions.js";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const liveCommit = "a".repeat(40);
@@ -28,10 +37,31 @@ function liveOptions(notBefore: number) {
 function qualificationEvidence(mode: "safe" | "live"): any {
   const live = mode === "live";
   const results = Object.fromEntries((live ? LIVE_RESULT_KEYS : SAFE_RESULT_KEYS).map((key: string) => [key, "PASS"]));
-  const reservations = [1, 2, 3].map((ordinal) => ({
-    reservationId: `reservation-${ordinal}`,
+  const runEvidence = [
+    { id: "lead-run", agentId: "lead", inputTokens: 1_200, cachedInputTokens: 600, outputTokens: 140, baseline: 100 },
+    { id: "alpha-run", agentId: "alpha", inputTokens: 900, cachedInputTokens: 200, outputTokens: 110, baseline: 10 },
+    { id: "beta-run", agentId: "beta", inputTokens: 800, cachedInputTokens: 0, outputTokens: 90, baseline: 40 },
+  ];
+  const reservationIds = [
+    "10000000-0000-4000-8000-000000000001",
+    "10000000-0000-4000-8000-000000000002",
+    "10000000-0000-4000-8000-000000000003",
+  ];
+  const reservationEffects = [
+    "20000000-0000-4000-8000-000000000001",
+    "alpha-contribution",
+    "beta-contribution",
+  ];
+  const reservations = runEvidence.map((run, index) => ({
+    reservationId: reservationIds[index],
+    missionId: "mission",
+    effectId: reservationEffects[index],
     status: "settled",
-    usage: { status: "known", units: ordinal },
+    usage: {
+      status: "known",
+      units: run.inputTokens + run.outputTokens,
+      source: `paperclip:issues.summaries.getOrchestration:terminal-token-ledger;run=${run.id};issue-baseline=${run.baseline};monetary-cost=unpriced`,
+    },
     remainingExposure: { status: "known", units: 0 },
   }));
   return {
@@ -78,11 +108,30 @@ function qualificationEvidence(mode: "safe" | "live"): any {
         rootIssueId: "root-issue",
         baseCommit: "0".repeat(40),
         agents: { lead: "lead", contributors: ["alpha", "beta"], reviewer: "reviewer" },
-        runs: [
-          { id: "lead-run", agentId: "lead", status: "succeeded", finishedAt: "2026-10-01T10:00:20.000Z" },
-          { id: "alpha-run", agentId: "alpha", status: "succeeded", finishedAt: "2026-10-01T10:00:40.000Z" },
-          { id: "beta-run", agentId: "beta", status: "succeeded", finishedAt: "2026-10-01T10:00:50.000Z" },
-        ],
+        usageAccounting: {
+          profile: "codex_local/cli",
+          formula: "inputTokens + outputTokens",
+        },
+        runs: runEvidence.map((run, index) => ({
+          id: run.id,
+          agentId: run.agentId,
+          status: "succeeded",
+          finishedAt: `2026-10-01T10:00:${20 + index * 15}.000Z`,
+          usageJson: {
+            inputTokens: run.inputTokens,
+            cachedInputTokens: run.cachedInputTokens,
+            outputTokens: run.outputTokens,
+            rawInputTokens: run.inputTokens,
+            rawCachedInputTokens: run.cachedInputTokens,
+            rawOutputTokens: run.outputTokens,
+            usageSource: "per_run",
+          },
+        })),
+        leadRunBarrier: {
+          expectedRunId: "lead-run",
+          wakeOnDemand: false,
+          observedRunIds: ["lead-run"],
+        },
         mission: {
           nextAction: "N2 may begin after this N1 stop boundary.",
           n1: {
@@ -103,16 +152,26 @@ function qualificationEvidence(mode: "safe" | "live"): any {
             aggregate: {
               phase: "ready_for_review",
               control: { status: "inactive" },
+              commandReceipts: [{
+                commandId: reservationEffects[0],
+                command: "activate",
+                appliedVersion: 2,
+                result: { missionId: "mission", version: 2 },
+              }],
               journal: [{ action: "integration_check_failed" }],
               n1: {
+                activationReservationId: reservationIds[0],
+                rootUsageBaselineUnits: runEvidence[0].baseline,
                 rootDispatchRunId: "lead-run",
                 contributions: [
                   {
                     contributionId: "alpha-contribution", assigneeAgentId: "alpha", dispatchRunId: "alpha-run",
+                    dispatchReservationId: reservationIds[1], dispatchUsageBaselineUnits: runEvidence[1].baseline,
                     commit: "1".repeat(40), ownedPaths: ["alpha.txt"],
                   },
                   {
                     contributionId: "beta-contribution", assigneeAgentId: "beta", dispatchRunId: "beta-run",
+                    dispatchReservationId: reservationIds[2], dispatchUsageBaselineUnits: runEvidence[2].baseline,
                     commit: "2".repeat(40), ownedPaths: ["beta.txt"],
                   },
                 ],
@@ -137,7 +196,7 @@ function qualificationEvidence(mode: "safe" | "live"): any {
         reviewerRunCount: 0,
         admission: {
           envelope: {
-            allowance: { status: "known", knownUsageUnits: 6 },
+            allowance: { status: "known", knownUsageUnits: reservations.reduce((total, item) => total + item.usage.units, 0) },
             reservations,
           },
         },
@@ -320,6 +379,197 @@ describe("bounded qualification launcher", () => {
     expect(source).not.toContain("reviewerRunCount: 0");
   });
 
+  it("keeps delivery Git access narrow and refuses extra lead runs", () => {
+    const repository = resolve("/tmp", "council-n1-repository");
+    expect(n1DeliveryAdapterConfig({ model: "gpt-5.6-sol", effort: "high", repository })).toEqual({
+      engine: "cli",
+      model: "gpt-5.6-sol",
+      modelReasoningEffort: "high",
+      timeoutSec: 1_200,
+      dangerouslyBypassApprovalsAndSandbox: false,
+      extraArgs: [
+        "--sandbox", "workspace-write",
+        "-c", "sandbox_workspace_write.network_access=true",
+        "--add-dir", resolve(repository, ".git"),
+      ],
+    });
+
+    const response = (status: number, body: unknown) => ({ status, body, headers: new Headers() }) as any;
+    expect(assertOnlyExpectedAgentRun(response(200, [{ id: "lead-run" }]), "lead-run", "lead"))
+      .toEqual([{ id: "lead-run" }]);
+    expect(() => assertOnlyExpectedAgentRun(
+      response(200, [{ id: "lead-run" }, { id: "unexpected-run" }]), "lead-run", "lead",
+    )).toThrow(/exactly the expected native run/);
+  });
+
+  it("preserves only allowlisted terminal usage and keeps the phase check on the pre-reconciliation snapshot", () => {
+    const usageJson = {
+      inputTokens: 700,
+      cachedInputTokens: 500,
+      outputTokens: 40,
+      rawInputTokens: 700,
+      rawCachedInputTokens: 500,
+      rawOutputTokens: 40,
+      usageSource: "per_run",
+      providerSessionId: "must-not-leak",
+      providerMetadata: { private: true },
+    };
+    expect(nativeRunEvidence({
+      id: "lead-run",
+      agentId: "lead-agent",
+      status: "succeeded",
+      startedAt: "2026-10-01T00:00:00.000Z",
+      finishedAt: "2026-10-01T00:01:00.000Z",
+      error: null,
+      usageJson,
+    })).toEqual({
+      id: "lead-run",
+      agentId: "lead-agent",
+      status: "succeeded",
+      startedAt: "2026-10-01T00:00:00.000Z",
+      finishedAt: "2026-10-01T00:01:00.000Z",
+      error: null,
+      usageJson: {
+        inputTokens: 700,
+        cachedInputTokens: 500,
+        outputTokens: 40,
+        rawInputTokens: 700,
+        rawCachedInputTokens: 500,
+        rawOutputTokens: 40,
+        usageSource: "per_run",
+      },
+    });
+
+    const source = readFileSync(resolve(packageRoot, "tests/functional/n1-live.ts"), "utf8");
+    expect(source.indexOf("const phaseBeforeLeadReconciliation")).toBeLessThan(
+      source.indexOf("reconcileTerminalN1Usage({"),
+    );
+    expect(source.indexOf("reconcileTerminalN1Usage({")).toBeLessThan(
+      source.indexOf('assert.equal(phaseBeforeLeadReconciliation, "integrating")'),
+    );
+    expect(source.indexOf("reconcileTerminalN1Usage({")).toBeLessThan(
+      source.indexOf('assert.equal(leadRun.status, "succeeded",'),
+    );
+  });
+
+  it("uses explicit inspect payloads and reaches ready_for_review only after terminal usage settlement", async () => {
+    const missionId = "11111111-1111-4111-8111-111111111111";
+    const contributionA = "22222222-2222-4222-8222-222222222222";
+    const contributionB = "33333333-3333-4333-8333-333333333333";
+    const inspectPayload = `{"command":"inspect","missionId":"${missionId}"}`;
+    expect(contributorInstructions()).toContain('{"command":"inspect","missionId":"<mission-id>"}');
+    expect(leadInstructions()).toContain('{"command":"inspect","missionId":"<mission-id>"}');
+    expect(contributionDescription({ missionId, contributionId: contributionA, ownedPaths: ["alpha.txt"] }))
+      .toContain(inspectPayload);
+    const source = readFileSync(resolve(packageRoot, "tests/functional/n1-live.ts"), "utf8");
+    expect(source).not.toContain("inspect needs only command=inspect");
+    expect(source).toContain('The exact inspect body is {"command":"inspect","missionId":"${missionId}"}');
+
+    const requests: Array<Record<string, any>> = [];
+    const request = async (_actor: string, _method: string, _path: string, body?: unknown) => {
+      requests.push(body as Record<string, any>);
+      const ready = (body as any).command === "reconcile-lead-usage";
+      return {
+        status: 200,
+        body: ready
+          ? { outcome: "settled", mission: { aggregate: { phase: "ready_for_review" } } }
+          : { outcome: "settled", reservation: { status: "settled" } },
+        headers: new Headers(),
+      };
+    };
+    const runs = new Map([
+      ["alpha-run", { id: "alpha-run", agentId: "alpha", status: "succeeded", startedAt: "start", finishedAt: "finish", error: null, usageJson: {} }],
+      ["beta-run", { id: "beta-run", agentId: "beta", status: "succeeded", startedAt: "start", finishedAt: "finish", error: null, usageJson: {} }],
+    ]);
+    const result = await reconcileTerminalN1Usage({
+      request,
+      getRun: async (runId) => runs.get(runId) ?? null,
+      commandPath: `/missions/${missionId}/commands`,
+      companyId: "company",
+      leadRun: { id: "lead-run", agentId: "lead", status: "succeeded", startedAt: "start", finishedAt: "finish", error: null, usageJson: {} },
+      missionBeforeLeadReconciliation: {
+        mission: {
+          version: 12,
+          aggregate: {
+            phase: "integrating",
+            n1: { contributions: [
+              { contributionId: contributionA, dispatchRunId: "alpha-run", commit: "a".repeat(40) },
+              { contributionId: contributionB, dispatchRunId: "beta-run", commit: "b".repeat(40) },
+            ] },
+          },
+        },
+      },
+    });
+
+    expect(requests.map((body) => body.command)).toEqual([
+      "reconcile-lead-usage",
+      "reconcile-contribution-usage",
+      "reconcile-contribution-usage",
+    ]);
+    expect(requests[1]).toEqual({
+      companyId: "company",
+      command: "reconcile-contribution-usage",
+      commandId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
+      contributionId: contributionA,
+    });
+    expect(requests[0]).toEqual({
+      companyId: "company",
+      command: "reconcile-lead-usage",
+      commandId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
+      expectedVersion: 12,
+    });
+    expect(result.runs.map((run) => run.id)).toEqual(["lead-run", "alpha-run", "beta-run"]);
+    expect(result.leadSettlement.body.mission.aggregate.phase).toBe("ready_for_review");
+  });
+
+  it("settles a terminal child without a contribution and does not authorize another dispatch", async () => {
+    const requests: Array<Record<string, any>> = [];
+    const request = async (_actor: string, _method: string, _path: string, body?: unknown) => {
+      requests.push(body as Record<string, any>);
+      return {
+        status: 200,
+        body: (body as any).command === "reconcile-contribution-usage"
+          ? { outcome: "settled", reservation: { status: "settled", usage: { units: 91 } } }
+          : { outcome: "settled", mission: { aggregate: { phase: "executing" } } },
+        headers: new Headers(),
+      };
+    };
+    const result = await reconcileTerminalN1Usage({
+      request,
+      getRun: async (runId) => runId === "alpha-run"
+        ? { id: runId, agentId: "alpha", status: "failed", startedAt: "start", finishedAt: "finish", error: "no contribution", usageJson: {} }
+        : null,
+      commandPath: "/missions/mission/commands",
+      companyId: "company",
+      leadRun: { id: "lead-run", agentId: "lead", status: "succeeded", startedAt: "start", finishedAt: "finish", error: null, usageJson: {} },
+      missionBeforeLeadReconciliation: {
+        mission: {
+          version: 8,
+          aggregate: {
+            phase: "executing",
+            n1: { contributions: [
+              { contributionId: "alpha", dispatchRunId: "alpha-run" },
+              { contributionId: "beta" },
+            ] },
+          },
+        },
+      },
+    });
+
+    expect(result.contributionSettlements).toHaveLength(1);
+    expect(result.contributionSettlements[0]).toMatchObject({
+      contributionId: "alpha",
+      runStatus: "failed",
+      response: { status: 200, body: { reservation: { status: "settled", usage: { units: 91 } } } },
+    });
+    expect(result.leadSettlement.body.mission.aggregate.phase).toBe("executing");
+    expect(requests.map((body) => body.command)).toEqual([
+      "reconcile-lead-usage",
+      "reconcile-contribution-usage",
+    ]);
+    expect(requests.some((body) => body.command === "dispatch")).toBe(false);
+  });
+
   it("rolls back only its empty JSON claim when the screenshot O_EXCL create fails", async () => {
     const root = await mkdtemp(resolve(tmpdir(), "council-live-rollback-"));
     const commit = "1".repeat(40);
@@ -447,6 +697,119 @@ describe("bounded qualification launcher", () => {
     expect(() => assertQualificationEvidence(unsettled, options)).toThrow(/every live reservation must be settled/);
   });
 
+  it("requires exact safe token counters, pinned accounting, and run-bound reservation deltas", () => {
+    const options = liveOptions(Date.parse("2026-10-01T09:59:59.000Z"));
+    const counters = [
+      "inputTokens",
+      "cachedInputTokens",
+      "outputTokens",
+      "rawInputTokens",
+      "rawCachedInputTokens",
+      "rawOutputTokens",
+    ];
+    const reject = (mutate: (evidence: any) => void, message: RegExp) => {
+      const evidence = qualificationEvidence("live");
+      mutate(evidence);
+      expect(() => assertQualificationEvidence(evidence, options)).toThrow(message);
+    };
+
+    reject((evidence) => { delete evidence.liveN1.runs[0].usageJson; }, /usageJson is missing/);
+    for (const counter of counters) {
+      reject((evidence) => { delete evidence.liveN1.runs[0].usageJson[counter]; }, new RegExp(`usageJson\\.${counter}`));
+      reject((evidence) => { evidence.liveN1.runs[0].usageJson[counter] = -1; }, new RegExp(`usageJson\\.${counter}`));
+      reject((evidence) => { evidence.liveN1.runs[0].usageJson[counter] = Number.MAX_SAFE_INTEGER + 1; },
+        new RegExp(`usageJson\\.${counter}`));
+    }
+    reject((evidence) => { evidence.liveN1.runs[0].usageJson.cachedInputTokens = 1_201; },
+      /cachedInputTokens exceeds inputTokens/);
+    reject((evidence) => { evidence.liveN1.runs[0].usageJson.rawCachedInputTokens = 1_201; },
+      /rawCachedInputTokens exceeds rawInputTokens/);
+    reject((evidence) => { evidence.liveN1.runs[0].usageJson.rawInputTokens += 1; },
+      /raw usage counters do not match normalized per_run counters/);
+    reject((evidence) => { evidence.liveN1.runs[0].usageJson.rawCachedInputTokens -= 1; },
+      /raw usage counters do not match normalized per_run counters/);
+    reject((evidence) => { evidence.liveN1.runs[0].usageJson.rawOutputTokens += 1; },
+      /raw usage counters do not match normalized per_run counters/);
+    reject((evidence) => { evidence.liveN1.runs[0].usageJson.providerSessionId = "secret"; },
+      /non-accounting provider metadata/);
+    reject((evidence) => { delete evidence.liveN1.runs[0].usageJson.usageSource; }, /usageSource must be per_run/);
+    reject((evidence) => { evidence.liveN1.runs[0].usageJson.usageSource = "session_delta"; },
+      /usageSource must be per_run/);
+    reject((evidence) => { evidence.liveN1.usageAccounting.profile = "other/cli"; }, /profile/);
+    reject((evidence) => { evidence.liveN1.usageAccounting.formula = "inputTokens + cachedInputTokens + outputTokens"; },
+      /formula/);
+
+    reject((evidence) => {
+      evidence.liveN1.admission.envelope.reservations[0].usage.units += 1;
+      evidence.liveN1.admission.envelope.allowance.knownUsageUnits += 1;
+    },
+      /reservation usage does not equal/);
+    reject((evidence) => { evidence.liveN1.admission.envelope.reservations[0].usage.source = "wrong"; },
+      /exact native run and usage baseline/);
+    reject((evidence) => {
+      evidence.liveN1.admission.envelope.reservations[0].usage.source =
+        evidence.liveN1.admission.envelope.reservations[0].usage.source.replace("run=lead-run", "run=other-run");
+    }, /exact native run and usage baseline/);
+    reject((evidence) => {
+      evidence.liveN1.admission.envelope.reservations[0].usage.source =
+        evidence.liveN1.admission.envelope.reservations[0].usage.source.replace(
+          ";issue-baseline=", ";run=lead-run;issue-baseline=",
+        );
+    }, /exact native run and usage baseline/);
+    reject((evidence) => {
+      evidence.liveN1.admission.envelope.reservations[0].usage.source =
+        evidence.liveN1.admission.envelope.reservations[0].usage.source.replace(
+          ";monetary-cost=", ";issue-baseline=100;monetary-cost=",
+        );
+    }, /exact native run and usage baseline/);
+    reject((evidence) => {
+      evidence.liveN1.admission.envelope.reservations[0].usage.source += ";run=other-run";
+    }, /exact native run and usage baseline/);
+    reject((evidence) => {
+      evidence.liveN1.admission.envelope.reservations[0].usage.source =
+        "paperclip:issues.summaries.getOrchestration:terminal-token-ledger;issue-baseline=100;run=lead-run;monetary-cost=unpriced";
+    }, /exact native run and usage baseline/);
+    reject((evidence) => { evidence.liveN1.mission.mission.aggregate.n1.rootUsageBaselineUnits += 1; },
+      /reservation usage does not equal|exact native run and usage baseline/);
+    reject((evidence) => {
+      evidence.liveN1.mission.mission.aggregate.n1.activationReservationId =
+        evidence.liveN1.mission.mission.aggregate.n1.contributions[0].dispatchReservationId;
+    }, /reservation usage does not equal|effect identity/);
+    reject((evidence) => { evidence.liveN1.admission.envelope.reservations[1].missionId = "other-mission"; },
+      /mission identity/);
+    reject((evidence) => { evidence.liveN1.admission.envelope.reservations[1].effectId = "beta-contribution"; },
+      /effect identity/);
+    reject((evidence) => { delete evidence.liveN1.mission.mission.aggregate.commandReceipts; },
+      /exactly one applied activation command receipt/);
+    reject((evidence) => {
+      evidence.liveN1.mission.mission.aggregate.commandReceipts.push({
+        ...evidence.liveN1.mission.mission.aggregate.commandReceipts[0],
+        commandId: "20000000-0000-4000-8000-000000000002",
+      });
+    }, /exactly one applied activation command receipt/);
+    reject((evidence) => {
+      evidence.liveN1.mission.mission.aggregate.commandReceipts[0].commandId = "not-a-uuid";
+    }, /activation command receipt is malformed/);
+    reject((evidence) => {
+      evidence.liveN1.admission.envelope.reservations[0].effectId = "20000000-0000-4000-8000-000000000002";
+    }, /effect identity/);
+
+    const validCachedUsage = qualificationEvidence("live");
+    expect(validCachedUsage.liveN1.runs[0].usageJson.cachedInputTokens).toBeGreaterThan(0);
+    expect(validCachedUsage.liveN1.admission.envelope.reservations[0].usage.units).toBe(
+      validCachedUsage.liveN1.runs[0].usageJson.inputTokens
+        + validCachedUsage.liveN1.runs[0].usageJson.outputTokens,
+    );
+    expect(() => assertQualificationEvidence(validCachedUsage, options)).not.toThrow();
+
+    const validPricedUsage = qualificationEvidence("live");
+    validPricedUsage.liveN1.admission.envelope.reservations[0].usage.source =
+      validPricedUsage.liveN1.admission.envelope.reservations[0].usage.source.replace(
+        "monetary-cost=unpriced", "priced-cost-cents=42",
+      );
+    expect(() => assertQualificationEvidence(validPricedUsage, options)).not.toThrow();
+  });
+
   it("binds live proof to host, models, native runs, contributions, candidate, failure refusal, and PNG UI", () => {
     const options = liveOptions(Date.parse("2026-10-01T09:59:59.000Z"));
     const mutations: Array<(evidence: any) => void> = [
@@ -456,6 +819,7 @@ describe("bounded qualification launcher", () => {
       (evidence) => { delete evidence.liveN1.mission.mission.aggregate.n1.contributions[0].commit; },
       (evidence) => { evidence.liveN1.runs[1].agentId = "beta"; },
       (evidence) => { evidence.configuration.models.observedAgentConfiguration[1].agentId = "someone-else"; },
+      (evidence) => { evidence.liveN1.leadRunBarrier.observedRunIds.push("unexpected-lead-run"); },
       (evidence) => { delete evidence.liveN1.mission.mission.aggregate.n1.candidate; },
       (evidence) => { evidence.liveN1.mission.mission.aggregate.n1.candidate.contributions[0].commit = "9".repeat(40); },
       (evidence) => { evidence.liveN1.mission.mission.aggregate.journal = []; },

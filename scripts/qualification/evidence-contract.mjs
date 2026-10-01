@@ -27,8 +27,10 @@ const LIVE_FIXTURE_BOUNDARY = "The safe-boundary suite uses fixtures; the N1 liv
 const SAFE_PROVIDER_BOUNDARY = "none; dispatch was deliberately not invoked because it requests native wakeup";
 const LIVE_STOP_BOUNDARY = "ready_for_review; N2 not started";
 const EXPECTED_HOST_COMMIT = "61b3fd57a695614dc4a37e2303f426a34a9795cf";
+const NATIVE_USAGE_SOURCE = "paperclip:issues.summaries.getOrchestration:terminal-token-ledger";
 const COMMIT = /^[0-9a-f]{40}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 export const SAFE_RESULT_KEYS = Object.freeze([
@@ -83,6 +85,7 @@ export const LIVE_RESULT_KEYS = Object.freeze([
   "n1IntegrationFailureBlocked",
   "n1VerifiedCandidateReadyForReview",
   "n1NativeG4UsageSettled",
+  "n1LeadSingleRunBarrier",
   "n1InstalledBrowserObservableState",
 ]);
 
@@ -494,6 +497,45 @@ function assertLiveRun(run, expectedAgentIds) {
   requireProof(nonemptyString(run?.finishedAt), "native run terminal timestamp is missing");
 }
 
+const LIVE_USAGE_COUNTERS = [
+  "inputTokens",
+  "cachedInputTokens",
+  "outputTokens",
+  "rawInputTokens",
+  "rawCachedInputTokens",
+  "rawOutputTokens",
+];
+
+function assertLiveUsageAccounting(live) {
+  requireProof(live?.usageAccounting?.profile === "codex_local/cli",
+    "live usage accounting profile must be codex_local/cli");
+  requireProof(live?.usageAccounting?.formula === "inputTokens + outputTokens",
+    "live usage accounting formula must be inputTokens + outputTokens");
+}
+
+function assertLiveRunUsage(run) {
+  const usage = run?.usageJson;
+  requireProof(usage && typeof usage === "object" && !Array.isArray(usage),
+    "native run usageJson is missing");
+  for (const counter of LIVE_USAGE_COUNTERS) {
+    requireProof(Number.isSafeInteger(usage[counter]) && usage[counter] >= 0,
+      `native run usageJson.${counter} must be a nonnegative safe integer`);
+  }
+  requireProof(usage.cachedInputTokens <= usage.inputTokens,
+    "native run cachedInputTokens exceeds inputTokens");
+  requireProof(usage.rawCachedInputTokens <= usage.rawInputTokens,
+    "native run rawCachedInputTokens exceeds rawInputTokens");
+  requireProof(usage.rawInputTokens === usage.inputTokens
+    && usage.rawCachedInputTokens === usage.cachedInputTokens
+    && usage.rawOutputTokens === usage.outputTokens,
+  "native run raw usage counters do not match normalized per_run counters");
+  const allowedKeys = new Set([...LIVE_USAGE_COUNTERS, "usageSource"]);
+  requireProof(Object.keys(usage).every((key) => allowedKeys.has(key)),
+    "native run usageJson contains non-accounting provider metadata");
+  requireProof(usage.usageSource === "per_run",
+    "native run usageSource must be per_run for the pinned codex_local/cli profile");
+}
+
 function assertRecordedContribution(slot, contributorIds, runById) {
   requireProof(nonemptyString(slot?.contributionId), "contribution identity is missing");
   requireProof(contributorIds.includes(slot?.assigneeAgentId), "contribution assignee is not an expected contributor");
@@ -514,10 +556,108 @@ function assertLiveIdentities(live) {
 function assertLiveRunSet(live, runs, expectedAgentIds) {
   requireProof(distinctStrings(expectedAgentIds), "lead and contributor identities must be distinct");
   requireProof(Array.isArray(runs) && runs.length === 3, "exactly three native runs are required");
-  runs.forEach((run) => assertLiveRun(run, expectedAgentIds));
+  runs.forEach((run) => {
+    assertLiveRun(run, expectedAgentIds);
+    assertLiveRunUsage(run);
+  });
   requireProof(sameStringSet(runs.map((run) => run.agentId), expectedAgentIds),
     "native runs must belong to the exact lead and two contributors");
   requireProof(distinctStrings(runs.map((run) => run.id)), "native run identities must be distinct");
+}
+
+function isCanonicalPricingField(field) {
+  if (field === "monetary-cost=unpriced") return true;
+  const prefix = "priced-cost-cents=";
+  if (typeof field !== "string" || !field.startsWith(prefix)) return false;
+  const rawCents = field.slice(prefix.length);
+  const cents = Number(rawCents);
+  return Number.isFinite(cents) && cents > 0 && String(cents) === rawCents;
+}
+
+function parseReservationSource(source) {
+  if (!nonemptyString(source)) return null;
+  const fields = source.split(";");
+  if (fields.length !== 4 || fields[0] !== NATIVE_USAGE_SOURCE || !isCanonicalPricingField(fields[3])) return null;
+  const runPrefix = "run=";
+  const baselinePrefix = "issue-baseline=";
+  if (!fields[1].startsWith(runPrefix) || !fields[2].startsWith(baselinePrefix)) return null;
+  return {
+    runId: fields[1].slice(runPrefix.length),
+    baseline: fields[2].slice(baselinePrefix.length),
+  };
+}
+
+function assertReservationSource(source, runId, baseline) {
+  const parsed = parseReservationSource(source);
+  requireProof(parsed?.runId === runId && parsed?.baseline === String(baseline),
+  "reservation usage source must identify the exact native run and usage baseline");
+}
+
+function assertRunReservation(live, reservationById, input) {
+  requireProof(nonemptyString(input.reservationId), `${input.label} reservation identity is missing`);
+  requireProof(Number.isSafeInteger(input.baseline) && input.baseline >= 0,
+    `${input.label} usage baseline is missing or invalid`);
+  requireProof(input.run && typeof input.run === "object" && !Array.isArray(input.run),
+    `${input.label} native run is missing from live evidence`);
+  const reservation = reservationById.get(input.reservationId);
+  requireProof(Boolean(reservation), `${input.label} reservation is missing from live admission`);
+  requireProof(reservation.missionId === live.missionId,
+    `${input.label} reservation mission identity does not match`);
+  requireProof(input.effectId === undefined
+      ? nonemptyString(reservation.effectId)
+      : reservation.effectId === input.effectId,
+  `${input.label} reservation effect identity does not match`);
+  const usage = input.run.usageJson;
+  const expectedUnits = usage.inputTokens + usage.outputTokens;
+  requireProof(Number.isSafeInteger(expectedUnits) && expectedUnits > 0,
+    `${input.label} native run usage delta must be positive`);
+  requireProof(reservation.usage?.units === expectedUnits,
+    `${input.label} reservation usage does not equal per-run inputTokens + outputTokens`);
+  assertReservationSource(reservation.usage?.source, input.run.id, input.baseline);
+}
+
+function activationEffectId(live, aggregate) {
+  const activationReceipts = Array.isArray(aggregate?.commandReceipts)
+    ? aggregate.commandReceipts.filter((receipt) => receipt?.command === "activate")
+    : [];
+  requireProof(activationReceipts.length === 1,
+    "live mission must contain exactly one applied activation command receipt");
+  const activationReceipt = activationReceipts[0];
+  requireProof(UUID.test(activationReceipt?.commandId)
+      && Number.isSafeInteger(activationReceipt?.appliedVersion)
+      && activationReceipt.appliedVersion > 0
+      && activationReceipt?.result?.missionId === live.missionId
+      && activationReceipt?.result?.version === activationReceipt.appliedVersion,
+  "live activation command receipt is malformed or not bound to the mission");
+  return activationReceipt.commandId;
+}
+
+function assertLiveRunReservations(evidence) {
+  const live = evidence.liveN1;
+  const aggregate = live?.mission?.mission?.aggregate;
+  const state = aggregate?.n1;
+  const runs = live?.runs;
+  const reservations = liveReservations(evidence).reservations;
+  const reservationById = new Map(reservations.map((reservation) => [reservation?.reservationId, reservation]));
+  requireProof(reservationById.size === reservations.length,
+    "live reservation identities must be distinct");
+  const runById = new Map(runs.map((run) => [run.id, run]));
+  assertRunReservation(live, reservationById, {
+    label: "lead",
+    reservationId: state?.activationReservationId,
+    baseline: state?.rootUsageBaselineUnits,
+    run: runById.get(state?.rootDispatchRunId),
+    effectId: activationEffectId(live, aggregate),
+  });
+  for (const slot of state.contributions) {
+    assertRunReservation(live, reservationById, {
+      label: `contribution ${slot.contributionId}`,
+      reservationId: slot.dispatchReservationId,
+      baseline: slot.dispatchUsageBaselineUnits,
+      run: runById.get(slot.dispatchRunId),
+      effectId: slot.contributionId,
+    });
+  }
 }
 
 function assertLiveContributionSet(live, state, contributions, runs) {
@@ -531,6 +671,18 @@ function assertLiveContributionSet(live, state, contributions, runs) {
     "root dispatch run is not attributed to the Integration Lead");
 }
 
+function assertLeadSingleRunBarrier(live, state) {
+  const leadBarrier = live?.leadRunBarrier;
+  requireProof(leadBarrier?.expectedRunId === state?.rootDispatchRunId,
+    "lead single-run barrier is not bound to the root dispatch run");
+  requireProof(leadBarrier?.wakeOnDemand === false,
+    "lead wake-on-demand barrier was not observed disabled");
+  requireProof(Array.isArray(leadBarrier?.observedRunIds)
+      && leadBarrier.observedRunIds.length === 1
+      && leadBarrier.observedRunIds[0] === state?.rootDispatchRunId,
+    "lead run readback must contain exactly the expected root dispatch run");
+}
+
 function assertLiveRunsAndContributions(evidence) {
   const live = evidence.liveN1;
   const runs = live?.runs;
@@ -538,8 +690,11 @@ function assertLiveRunsAndContributions(evidence) {
   const contributions = state?.contributions;
   const expectedAgentIds = [live?.agents?.lead, ...(live?.agents?.contributors ?? [])];
   assertLiveIdentities(live);
+  assertLiveUsageAccounting(live);
   assertLiveRunSet(live, runs, expectedAgentIds);
   assertLiveContributionSet(live, state, contributions, runs);
+  assertLeadSingleRunBarrier(live, state);
+  assertLiveRunReservations(evidence);
 }
 
 function sameContribution(left, right) {

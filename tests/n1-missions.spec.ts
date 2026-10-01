@@ -21,6 +21,7 @@ import { AdmissionError, readAdmission, reserveAdmission, settleAdmission } from
 import { verifyIntegratedCandidate } from "../src/integration.js";
 import { executeN1BoardCommand, handleN1AgentApi } from "../src/n1-missions.js";
 import type { MissionAggregate } from "../src/missions.js";
+import { reconcileTerminalN1Usage } from "./functional/n1-live.js";
 
 const id = {
   company: randomUUID(),
@@ -190,6 +191,15 @@ function harness(initial = aggregate(), initialVersion = 1) {
     openBudgetIncidents: [],
     invocationBlocks: [],
   }));
+  const agentGet = vi.fn(async (agentId: string) => new Set<string>([id.lead, id.contributorA, id.contributorB, id.reviewer]).has(agentId)
+    ? {
+        id: agentId,
+        companyId: id.company,
+        status: "active",
+        adapterType: "codex_local",
+        adapterConfig: { engine: "cli" },
+      }
+    : null);
   const advanceMission = (mutate: (aggregate: MissionAggregate) => MissionAggregate) => {
     row = {
       ...row,
@@ -203,11 +213,7 @@ function harness(initial = aggregate(), initialVersion = 1) {
     config: { get: configGet },
     companies: { get: vi.fn(async () => ({ id: id.company, defaultResponsibleUserId: id.owner })) },
     projects: { get: vi.fn(async () => ({ id: id.project, companyId: id.company, archivedAt: null })) },
-    agents: {
-      get: vi.fn(async (agentId: string) => new Set<string>([id.lead, id.contributorA, id.contributorB, id.reviewer]).has(agentId)
-        ? { id: agentId, companyId: id.company, status: "active" }
-        : null),
-    },
+    agents: { get: agentGet },
     issues: {
       get: vi.fn(async (issueId: string) => issues.get(issueId) ?? null),
       assertCheckoutOwner,
@@ -229,6 +235,7 @@ function harness(initial = aggregate(), initialVersion = 1) {
     update,
     requestWakeup,
     configGet,
+    agentGet,
     getOrchestration,
     advanceMission,
     row: () => structuredClone(row),
@@ -858,7 +865,7 @@ describe("N1 mission transitions", () => {
     h.requestWakeup.mockImplementation(async () => {
       expect(h.row().aggregate.n1).toMatchObject({
         rootDispatchState: "claimed",
-        rootUsageBaselineUnits: 25,
+        rootUsageBaselineUnits: 22,
       });
       return { queued: true, runId: id.leadRun };
     });
@@ -875,8 +882,273 @@ describe("N1 mission transitions", () => {
       rootDispatchState: "requested",
       rootDispatchRunId: id.leadRun,
       rootDispatchMode: "native",
-      rootUsageBaselineUnits: 25,
+      rootUsageBaselineUnits: 22,
     });
+  });
+
+  it("rejects native lead and child wakeups for agents outside codex_local cli", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const leadValue = activeAggregate();
+    leadValue.n1 = {
+      ...(leadValue.n1 as object),
+      rootDispatchState: undefined,
+      rootDispatchRunId: undefined,
+      rootDispatchMode: undefined,
+    };
+    const activationReservationId = (leadValue.n1 as { activationReservationId: string }).activationReservationId;
+    const leadHarness = harness(leadValue);
+    leadHarness.configGet.mockResolvedValue({ n1OperatingProfile: nativeProfile } as never);
+    leadHarness.issues.set(id.root, nativeIssue({
+      id: id.root, parentId: null, assigneeAgentId: id.lead, status: "backlog",
+    }));
+    leadHarness.agentGet.mockImplementation(async (agentId: string) => ({
+      id: agentId,
+      companyId: id.company,
+      status: "active",
+      adapterType: "process",
+      adapterConfig: { engine: "cli" },
+    }) as never);
+    vi.mocked(readAdmission).mockResolvedValue(nativeEnvelope([{
+      reservationId: activationReservationId,
+      missionId: id.mission,
+      status: "reserved",
+    }]) as never);
+
+    await expect(executeN1BoardCommand(leadHarness.ctx, {
+      companyId: id.company,
+      missionId: id.mission,
+      actorUserId: id.owner,
+      body: { command: "start-lead", commandId: randomUUID(), expectedVersion: 1 },
+    })).rejects.toMatchObject({ status: 409, code: "native_agent_adapter_required" });
+    expect(leadHarness.update).not.toHaveBeenCalled();
+    expect(leadHarness.requestWakeup).not.toHaveBeenCalled();
+
+    const childValue = activeAggregate();
+    childValue.n1 = {
+      ...(childValue.n1 as object),
+      rootDispatchMode: "native",
+      rootUsageBaselineUnits: 0,
+      contributions: [{ ...plan[0], issueState: "confirmed", childIssueId: id.childA }],
+    };
+    const childHarness = harness(childValue);
+    childHarness.configGet.mockResolvedValue({ n1OperatingProfile: nativeProfile } as never);
+    childHarness.issues.set(id.childA, nativeIssue({
+      id: id.childA, parentId: id.root, assigneeAgentId: id.contributorA, status: "backlog",
+    }));
+    childHarness.agentGet.mockImplementation(async (agentId: string) => ({
+      id: agentId,
+      companyId: id.company,
+      status: "active",
+      adapterType: "codex_local",
+      adapterConfig: { engine: agentId === id.contributorA ? "app_server" : "cli" },
+    }) as never);
+    vi.mocked(readAdmission).mockResolvedValue(nativeEnvelope([]) as never);
+
+    const refused = await handleN1AgentApi(agentRequest({
+      command: "dispatch",
+      commandId: randomUUID(),
+      expectedVersion: 1,
+      contributionId: id.contributionA,
+      reservationId: randomUUID(),
+      requestedUnits: nativeProfile.runReservationUnits,
+    }, { agentId: id.lead, runId: id.leadRun }, id.root), childHarness.ctx);
+    expect(refused).toMatchObject({ status: 409, body: { code: "native_agent_adapter_required" } });
+    expect(reserveAdmission).not.toHaveBeenCalled();
+    expect(childHarness.update).not.toHaveBeenCalled();
+    expect(childHarness.requestWakeup).not.toHaveBeenCalled();
+  });
+
+  it("refuses native Beta after failed terminal Alpha settlement without reserving or waking", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const alphaReservationId = randomUUID();
+    const value = activeAggregate();
+    value.n1 = {
+      ...(value.n1 as object),
+      rootDispatchMode: "native",
+      rootUsageBaselineUnits: 0,
+      contributions: [
+        {
+          ...plan[0],
+          issueState: "confirmed",
+          childIssueId: id.childA,
+          dispatchState: "requested",
+          dispatchReservationId: alphaReservationId,
+          dispatchRunId: id.contributorRun,
+          dispatchUsageBaselineUnits: 0,
+        },
+        { ...plan[1], issueState: "confirmed", childIssueId: id.childB },
+      ],
+    };
+    const h = harness(value);
+    h.configGet.mockResolvedValue({ n1OperatingProfile: nativeProfile } as never);
+    h.issues.set(id.childA, nativeIssue({
+      id: id.childA, parentId: id.root, assigneeAgentId: id.contributorA, status: "in_progress",
+    }));
+    h.issues.set(id.childB, nativeIssue({
+      id: id.childB, parentId: id.root, assigneeAgentId: id.contributorB, status: "backlog",
+    }));
+    h.getOrchestration.mockResolvedValue({
+      issueId: id.childA,
+      companyId: id.company,
+      subtreeIssueIds: [id.childA],
+      relations: {},
+      approvals: [],
+      runs: [{
+        id: id.contributorRun,
+        issueId: id.childA,
+        agentId: id.contributorA,
+        status: "failed",
+        invocationSource: "on_demand",
+        triggerDetail: null,
+        startedAt: new Date(0).toISOString(),
+        finishedAt: new Date(1).toISOString(),
+        error: "contribution not recorded",
+        createdAt: new Date(0).toISOString(),
+      }],
+      costs: { costCents: 0, inputTokens: 80, cachedInputTokens: 30, outputTokens: 10, billingCode: null },
+      openBudgetIncidents: [],
+      invocationBlocks: [],
+    } as never);
+    vi.mocked(readAdmission).mockResolvedValue(nativeEnvelope([{
+      reservationId: alphaReservationId,
+      missionId: id.mission,
+      status: "reserved",
+      settlementReceipts: [],
+    }]) as never);
+    vi.mocked(settleAdmission).mockResolvedValue({
+      outcome: "settled",
+      reservation: { reservationId: alphaReservationId, status: "settled" },
+    } as never);
+
+    const alphaSettlement = await executeN1BoardCommand(h.ctx, {
+      companyId: id.company,
+      missionId: id.mission,
+      actorUserId: id.owner,
+      body: {
+        command: "reconcile-contribution-usage",
+        commandId: randomUUID(),
+        contributionId: id.contributionA,
+      },
+    });
+    expect(alphaSettlement).toMatchObject({ outcome: "settled" });
+    vi.mocked(readAdmission).mockResolvedValue(nativeEnvelope([{
+      reservationId: alphaReservationId,
+      missionId: id.mission,
+      status: "settled",
+    }]) as never);
+
+    const refused = await handleN1AgentApi(agentRequest({
+      command: "dispatch",
+      commandId: randomUUID(),
+      expectedVersion: 1,
+      contributionId: id.contributionB,
+      reservationId: randomUUID(),
+      requestedUnits: nativeProfile.runReservationUnits,
+    }, { agentId: id.lead, runId: id.leadRun }, id.root), h.ctx);
+
+    expect(refused).toMatchObject({ status: 409, body: { code: "prior_contribution_incomplete" } });
+    expect(reserveAdmission).not.toHaveBeenCalled();
+    expect(h.update).not.toHaveBeenCalled();
+    expect(h.requestWakeup).not.toHaveBeenCalled();
+    expect(h.execute).not.toHaveBeenCalled();
+  });
+
+  it("settles a terminal child without recording a contribution or dispatching the next child", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const reservationId = randomUUID();
+    const value = activeAggregate();
+    value.n1 = {
+      ...(value.n1 as object),
+      rootDispatchMode: "native",
+      rootUsageBaselineUnits: 0,
+      contributions: [
+        {
+          ...plan[0],
+          issueState: "confirmed",
+          childIssueId: id.childA,
+          dispatchState: "requested",
+          dispatchReservationId: reservationId,
+          dispatchRunId: id.contributorRun,
+          dispatchUsageBaselineUnits: 10,
+        },
+        { ...plan[1], issueState: "confirmed", childIssueId: id.childB },
+      ],
+    };
+    const h = harness(value);
+    h.configGet.mockResolvedValue({ n1OperatingProfile: nativeProfile } as never);
+    vi.mocked(readAdmission).mockResolvedValue(nativeEnvelope([{
+      reservationId,
+      missionId: id.mission,
+      status: "reserved",
+      settlementReceipts: [],
+    }]) as never);
+    h.getOrchestration.mockResolvedValue({
+      issueId: id.childA,
+      companyId: id.company,
+      subtreeIssueIds: [id.childA],
+      relations: {},
+      approvals: [],
+      runs: [{
+        id: id.contributorRun,
+        issueId: id.childA,
+        agentId: id.contributorA,
+        status: "failed",
+        invocationSource: "on_demand",
+        triggerDetail: null,
+        startedAt: new Date(0).toISOString(),
+        finishedAt: new Date(1).toISOString(),
+        error: "contribution not recorded",
+        createdAt: new Date(0).toISOString(),
+      }],
+      costs: { costCents: 0, inputTokens: 180, cachedInputTokens: 90, outputTokens: 20, billingCode: null },
+      openBudgetIncidents: [],
+      invocationBlocks: [],
+    } as never);
+    vi.mocked(settleAdmission)
+      .mockResolvedValueOnce({
+        outcome: "settled",
+        reservation: { reservationId, status: "settled" },
+      } as never)
+      .mockResolvedValueOnce({
+        outcome: "replayed",
+        reservation: { reservationId, status: "settled" },
+      } as never);
+    const before = h.row();
+    const reconciliation = {
+      command: "reconcile-contribution-usage",
+      commandId: randomUUID(),
+      contributionId: id.contributionA,
+    };
+
+    const result = await executeN1BoardCommand(h.ctx, {
+      companyId: id.company,
+      missionId: id.mission,
+      actorUserId: id.owner,
+      body: reconciliation,
+    });
+
+    expect(result).toMatchObject({ outcome: "settled", mission: { aggregate: { phase: "executing" } } });
+    expect(settleAdmission).toHaveBeenCalledWith(h.ctx, expect.objectContaining({
+      reservationId,
+      usage: expect.objectContaining({ units: 190 }),
+      remainingExposure: expect.objectContaining({ units: 0 }),
+    }));
+    expect(h.row()).toEqual(before);
+    expect((h.row().aggregate.n1 as { contributions: Array<Record<string, unknown>> }).contributions).toEqual([
+      expect.not.objectContaining({ commit: expect.anything() }),
+      expect.not.objectContaining({ dispatchRunId: expect.anything() }),
+    ]);
+    expect(h.requestWakeup).not.toHaveBeenCalled();
+
+    const replayed = await executeN1BoardCommand(h.ctx, {
+      companyId: id.company,
+      missionId: id.mission,
+      actorUserId: id.owner,
+      body: reconciliation,
+    });
+    expect(replayed).toMatchObject({ outcome: "replayed" });
+    expect(settleAdmission).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(settleAdmission).mock.calls[0][1]).toEqual(vi.mocked(settleAdmission).mock.calls[1][1]);
   });
 
   it("keeps a native verified candidate integrating until terminal lead usage settles", async () => {
@@ -964,6 +1236,18 @@ describe("N1 mission transitions", () => {
       reservationId: (value.n1 as { activationReservationId: string }).activationReservationId,
       status: settlementReceipts.length === 0 ? "reserved" : "settled",
       settlementReceipts,
+      ...(settlementReceipts.length === 0 ? {} : {
+        usage: {
+          status: "known",
+          source: `paperclip:issues.summaries.getOrchestration:terminal-token-ledger;run=${id.leadRun};issue-baseline=50;monetary-cost=unpriced`,
+          units: 120,
+        },
+        remainingExposure: {
+          status: "known",
+          source: "paperclip:issues.summaries.getOrchestration:terminal-token-ledger;terminal=succeeded",
+          units: 0,
+        },
+      }),
     });
     vi.mocked(readAdmission)
       .mockResolvedValueOnce(nativeEnvelope([...contributionReservations.map((reservationId) => ({
@@ -994,7 +1278,7 @@ describe("N1 mission transitions", () => {
     });
     expect(settled).toMatchObject({ outcome: "replayed", mission: { aggregate: { phase: "ready_for_review" } } });
     expect(settleAdmission).toHaveBeenLastCalledWith(h.ctx, expect.objectContaining({
-      usage: expect.objectContaining({ units: 150 }),
+      usage: expect.objectContaining({ units: 120 }),
     }));
     expect(h.row().aggregate.control).toEqual({ status: "inactive", reason: "candidate_ready_for_review" });
 
@@ -1087,5 +1371,129 @@ describe("N1 mission transitions", () => {
       companyId: id.company, missionId: id.mission, actorUserId: id.owner, body: reconcile,
     })).rejects.toMatchObject({ code: "candidate_not_integrating" });
     expect(settleAdmission).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries terminal usage reconciliation with one stable command body per settlement", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const attempts = new Map<string, number>();
+    const request = vi.fn(async (_actor: string, _method: string, _path: string, body?: unknown) => {
+      const command = body as Record<string, unknown>;
+      requests.push(structuredClone(command));
+      const key = String(command.command);
+      const count = (attempts.get(key) ?? 0) + 1;
+      attempts.set(key, count);
+      return count === 1
+        ? { status: 409, body: { code: "g4_usage_unavailable" }, headers: new Headers() }
+        : { status: 200, body: { outcome: "settled" }, headers: new Headers() };
+    });
+
+    const result = await reconcileTerminalN1Usage({
+      request,
+      getRun: async (runId) => ({
+        id: runId,
+        agentId: id.contributorA,
+        status: "succeeded",
+        startedAt: new Date(0),
+        finishedAt: new Date(1),
+        error: null,
+        usageJson: {},
+      }),
+      commandPath: "/n1/commands",
+      companyId: id.company,
+      leadRun: {
+        id: id.leadRun,
+        agentId: id.lead,
+        status: "succeeded",
+        startedAt: new Date(0),
+        finishedAt: new Date(1),
+        error: null,
+        usageJson: {},
+      },
+      missionBeforeLeadReconciliation: {
+        mission: {
+          version: 7,
+          aggregate: {
+            n1: { contributions: [{ contributionId: id.contributionA, dispatchRunId: id.contributorRun }] },
+          },
+        },
+      },
+      observationOptions: {
+        settlementMaxObservations: 2,
+        settlementDelayMs: 0,
+        terminalTimeoutMs: 10,
+        terminalPollIntervalMs: 0,
+      },
+    });
+
+    expect(result.leadSettlement.status).toBe(200);
+    expect(result.contributionSettlements).toEqual([
+      expect.objectContaining({ contributionId: id.contributionA, response: { status: 200, body: { outcome: "settled" } } }),
+    ]);
+    expect(requests.map((body) => body.command)).toEqual([
+      "reconcile-lead-usage",
+      "reconcile-lead-usage",
+      "reconcile-contribution-usage",
+      "reconcile-contribution-usage",
+    ]);
+    expect(requests[0]).toEqual(requests[1]);
+    expect(requests[2]).toEqual(requests[3]);
+    expect(requests[0].commandId).not.toBe(requests[2].commandId);
+  });
+
+  it("isolates child observation failures and still settles other terminal runs", async () => {
+    const requestedCommands: string[] = [];
+    const result = await reconcileTerminalN1Usage({
+      request: async (_actor, _method, _path, body) => {
+        requestedCommands.push(String((body as Record<string, unknown>).command));
+        return { status: 200, body: { outcome: "settled" }, headers: new Headers() };
+      },
+      getRun: async (runId) => {
+        if (runId === "alpha-run") throw new Error("alpha observation unavailable");
+        return {
+          id: runId,
+          agentId: id.contributorB,
+          status: "failed",
+          startedAt: new Date(0),
+          finishedAt: new Date(1),
+          error: "beta failed after terminal usage was recorded",
+          usageJson: {},
+        };
+      },
+      commandPath: "/n1/commands",
+      companyId: id.company,
+      leadRun: {
+        id: id.leadRun,
+        agentId: id.lead,
+        status: "failed",
+        startedAt: new Date(0),
+        finishedAt: new Date(1),
+        error: "lead failed",
+        usageJson: {},
+      },
+      missionBeforeLeadReconciliation: {
+        mission: {
+          version: 9,
+          aggregate: {
+            n1: { contributions: [
+              { contributionId: id.contributionA, dispatchRunId: "alpha-run" },
+              { contributionId: id.contributionB, dispatchRunId: "beta-run" },
+            ] },
+          },
+        },
+      },
+      observationOptions: {
+        settlementMaxObservations: 1,
+        settlementDelayMs: 0,
+        terminalTimeoutMs: 10,
+        terminalPollIntervalMs: 0,
+      },
+    });
+
+    expect(requestedCommands).toEqual(["reconcile-lead-usage", "reconcile-contribution-usage"]);
+    expect(result.contributionSettlements).toEqual([
+      expect.objectContaining({ contributionId: id.contributionA, response: { status: 0, body: expect.objectContaining({ code: "usage_observation_failed" }) } }),
+      expect.objectContaining({ contributionId: id.contributionB, response: { status: 200, body: { outcome: "settled" } } }),
+    ]);
+    expect(result.runs.map((run) => run.id)).toEqual([id.leadRun, "beta-run"]);
   });
 });

@@ -2,6 +2,7 @@ import type { PluginContext, PluginIssueOrchestrationSummary } from "@paperclipa
 import { isDeepStrictEqual } from "node:util";
 import {
   AdmissionError,
+  readAdmission,
   settleAdmission,
   type AdmissionConfigureInput,
   type AdmissionResult,
@@ -128,6 +129,9 @@ export function assertNativeEnvelope(
   profile: NativeG4Profile,
 ): void {
   const accountingSource = initialAccountingSource(profile);
+  const knownUsageUnits = envelope.allowance.status === "known"
+    ? envelope.allowance.knownUsageUnits
+    : null;
   const mismatch = envelope.periodKey !== profile.periodKey
     || envelope.periodStart !== profile.periodStart
     || envelope.periodEnd !== profile.periodEnd
@@ -138,7 +142,8 @@ export function assertNativeEnvelope(
     || envelope.allowance.source !== accountingSource
     || envelope.allowance.periodUnits !== profile.periodAllowanceUnits
     || envelope.allowance.taskUnits !== profile.runReservationUnits
-    || envelope.allowance.knownUsageUnits !== profile.initialKnownUsageUnits
+    || !Number.isSafeInteger(knownUsageUnits)
+    || knownUsageUnits! < profile.initialKnownUsageUnits
     || envelope.exposure.status !== "known"
     || envelope.exposure.source !== accountingSource
     || envelope.exposure.units !== profile.initialExposureUnits
@@ -171,9 +176,17 @@ async function readNativeOrchestration(
 }
 
 function orchestrationUsageUnits(summary: PluginIssueOrchestrationSummary): number {
-  const usageUnits = summary.costs.inputTokens + summary.costs.cachedInputTokens + summary.costs.outputTokens;
-  if (!Number.isSafeInteger(usageUnits) || usageUnits < 0) {
-    throw new AdmissionError(409, "g4_usage_unavailable", "Paperclip issue token usage is not a nonnegative safe integer");
+  // Codex CLI reports cached input as a detail already included in inputTokens.
+  // Keep cachedInputTokens in the native summary/evidence, but do not count it twice.
+  const { inputTokens, cachedInputTokens, outputTokens } = summary.costs;
+  const counters = [inputTokens, cachedInputTokens, outputTokens];
+  if (!counters.every((counter) => Number.isSafeInteger(counter) && counter >= 0)
+    || cachedInputTokens > inputTokens) {
+    throw new AdmissionError(409, "g4_usage_unavailable", "Paperclip issue token counters are inconsistent or not nonnegative safe integers");
+  }
+  const usageUnits = inputTokens + outputTokens;
+  if (!Number.isSafeInteger(usageUnits)) {
+    throw new AdmissionError(409, "g4_usage_unavailable", "Paperclip issue token usage exceeds the safe integer range");
   }
   return usageUnits;
 }
@@ -212,6 +225,45 @@ export async function settleNativeRunUsage(
     expectedVersion: number;
   },
 ): Promise<AdmissionResult> {
+  if (!Number.isSafeInteger(input.baselineUsageUnits) || input.baselineUsageUnits < 0) {
+    throw new AdmissionError(409, "g4_usage_baseline_unavailable", "Native run usage requires the issue token baseline recorded before wakeup");
+  }
+  const existingEnvelope = await readAdmission(ctx, {
+    companyId: input.companyId,
+    periodKey: input.periodKey,
+  });
+  const existingReservation = existingEnvelope?.reservations
+    .find((reservation) => reservation.reservationId === input.reservationId);
+  const existingReceipt = existingReservation?.settlementReceipts
+    .find((receipt) => receipt.commandId === input.commandId);
+  if (existingReservation && existingReceipt) {
+    const usageSourcePrefix = `${MEASUREMENT_SOURCE};run=${input.runId};issue-baseline=${input.baselineUsageUnits};`;
+    const terminalSourcePrefix = `${MEASUREMENT_SOURCE};terminal=`;
+    const replayUsage = existingReceipt.settlement?.usage ?? existingReservation.usage;
+    const replayExposure = existingReceipt.settlement?.remainingExposure ?? existingReservation.remainingExposure;
+    const terminalStatus = replayExposure.status === "known"
+      && replayExposure.source.startsWith(terminalSourcePrefix)
+      ? replayExposure.source.slice(terminalSourcePrefix.length)
+      : null;
+    if (existingReceipt.command !== "settle"
+        || replayUsage?.status !== "known"
+        || !replayUsage.source.startsWith(usageSourcePrefix)
+        || replayExposure.status !== "known"
+        || replayExposure.units !== 0
+        || !terminalStatus || !TERMINAL_RUN_STATUSES.has(terminalStatus)) {
+      throw new AdmissionError(409, "command_identity_conflict",
+        "commandId was already used with another native run settlement binding");
+    }
+    return settleAdmission(ctx, {
+      commandId: input.commandId,
+      companyId: input.companyId,
+      periodKey: input.periodKey,
+      reservationId: input.reservationId,
+      usage: replayUsage,
+      remainingExposure: replayExposure,
+      expectedVersion: input.expectedVersion,
+    });
+  }
   const summary = await readNativeOrchestration(ctx, input);
   const issueRuns = summary.runs.filter((run) => run.issueId === input.issueId);
   if (summary.runs.length !== 1 || issueRuns.length !== 1 || issueRuns[0].id !== input.runId) {
@@ -223,9 +275,6 @@ export async function settleNativeRunUsage(
   const run = issueRuns[0];
   if (!TERMINAL_RUN_STATUSES.has(run.status) || !run.finishedAt) {
     throw new AdmissionError(409, "g4_run_not_terminal", "Native run usage remains unsettled until the run is terminal");
-  }
-  if (!Number.isSafeInteger(input.baselineUsageUnits) || input.baselineUsageUnits < 0) {
-    throw new AdmissionError(409, "g4_usage_baseline_unavailable", "Native run usage requires the issue token baseline recorded before wakeup");
   }
   const cumulativeUsageUnits = orchestrationUsageUnits(summary);
   const usageUnits = cumulativeUsageUnits - input.baselineUsageUnits;
