@@ -1,6 +1,6 @@
 # N1 — two contributors and an integrated candidate
 
-Updated: 2026-10-01 (Europe/Paris). Scope: Council package on the pinned, ephemeral Paperclip host. The source candidate now contains the installed native path needed for the observable N1 exit. N1 is complete for a particular commit only when the create-only `artifacts/n1-live-<commit>.json`, generated from that clean commit, reports `N1 OBSERVABLE RESULT VALIDATED`; source checks or the historical fixture replay do not substitute for that result.
+Updated: 2026-10-01 (Europe/Paris). Scope: Council package on the pinned, ephemeral Paperclip host. The source candidate now contains the installed native path needed for the observable N1 exit. N1 is complete for a particular commit only when the create-only `artifacts/n1-live-<commit>.json`, generated from that clean commit, reports `N1 OBSERVABLE RESULT VALIDATED` and the exact JSON and screenshot digests are published in a durable review record. Local ignored files, source checks and the historical fixture replay do not substitute for that record.
 
 ## Supported operating profile
 
@@ -55,6 +55,7 @@ COUNCIL_N1_LIVE_EFFORT=high \
 COUNCIL_N1_LIVE_RUN_UNITS=<positive-reservation> \
 COUNCIL_N1_LIVE_PERIOD_UNITS=<at-least-three-times-reservation> \
 corepack pnpm qualification:live:n1
+sha256sum artifacts/n1-live-<commit>.json artifacts/n1-live-<commit>-ready-for-review.png
 ```
 
 The launcher refuses a dirty/uncommitted candidate, missing Codex auth, an unprepared host, a model/effort substitution or an insufficient allowance. Its default evidence target is commit-qualified as `artifacts/n1-live-<commit>.json`, and it refuses any pre-existing configured or default target before host preparation or provider launch rather than overwriting evidence. It creates only an owned ephemeral Paperclip instance and repository, uses native board APIs for the live company/project/agents/issues, installs this exact package, runs one lead and two contributors, captures browser evidence, and removes its owned runtime after shutdown. It never wakes the reviewer or creates a PR through Council.

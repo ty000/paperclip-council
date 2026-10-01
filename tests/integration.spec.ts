@@ -18,8 +18,10 @@ afterEach(async () => {
 
 type FixtureOptions = {
   candidateAddThenRevert?: boolean;
+  candidateRewritesAlpha?: boolean;
   extraCandidateChange?: boolean;
   hiddenAlphaHistory?: boolean;
+  literalPathspecAlpha?: boolean;
   reverseContributionOrder?: boolean;
   stacked?: boolean;
   stackedBetaChangesAlpha?: boolean;
@@ -49,13 +51,14 @@ async function createAlphaContribution(repository: string, options: FixtureOptio
     execFileSync("git", ["add", "unowned.txt"], { cwd: repository });
     execFileSync("git", ["commit", "-m", "unowned historical change"], { cwd: repository });
   }
+  const alphaPath = options.literalPathspecAlpha ? ":(exclude)*" : "alpha.txt";
   await writeFile(
-    resolve(repository, "alpha.txt"),
+    resolve(repository, alphaPath),
     options.oversizedObject
       ? Buffer.alloc((16 * 1024 * 1024) + 1)
       : options.whitespaceError ? "trailing whitespace \n" : "alpha\n",
   );
-  execFileSync("git", ["add", "alpha.txt"], { cwd: repository });
+  execFileSync("git", ["--literal-pathspecs", "add", alphaPath], { cwd: repository });
   execFileSync("git", ["commit", "-m", "alpha contribution"], { cwd: repository });
   return currentCommit(repository);
 }
@@ -91,6 +94,12 @@ async function createCandidate(repository: string, options: FixtureOptions): Pro
   execFileSync("git", ["switch", "-c", "candidate"], { cwd: repository });
   if (options.stacked) {
     execFileSync("git", ["commit", "--allow-empty", "-m", "integrate contributions"], { cwd: repository });
+  } else if (options.candidateRewritesAlpha) {
+    execFileSync("git", ["merge", "--no-ff", "--no-commit", "contribution-a"], { cwd: repository });
+    const alphaPath = options.literalPathspecAlpha ? ":(exclude)*" : "alpha.txt";
+    await writeFile(resolve(repository, alphaPath), "integration replaced alpha\n");
+    execFileSync("git", ["--literal-pathspecs", "add", alphaPath], { cwd: repository });
+    execFileSync("git", ["commit", "-m", "integrate contributions"], { cwd: repository });
   } else {
     execFileSync("git", ["merge", "--no-ff", "contribution-a", "-m", "integrate contributions"], { cwd: repository });
   }
@@ -156,7 +165,11 @@ async function fixture(options: FixtureOptions = {}) {
     baseCommit,
     candidateCommit,
     contributions: [
-      { contributionId: "alpha", commit: alphaCommit, ownedPaths: ["alpha.txt"] },
+      {
+        contributionId: "alpha",
+        commit: alphaCommit,
+        ownedPaths: [options.literalPathspecAlpha ? ":(exclude)*" : "alpha.txt"],
+      },
       { contributionId: "beta", commit: betaCommit, ownedPaths: ["beta.txt"] },
     ],
   };
@@ -317,6 +330,17 @@ describe("integrated Git candidate verification", () => {
 
   it("rejects an integration revision that drops a contribution from the final tree", async () => {
     const { ctx, input } = await fixture({ revertAlpha: true });
+
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow(
+      "contribution-tree-preservation failed: alpha changed paths do not survive in the candidate tree",
+    );
+  });
+
+  it("treats magic-looking changed paths literally when checking tree preservation", async () => {
+    const { ctx, input } = await fixture({
+      candidateRewritesAlpha: true,
+      literalPathspecAlpha: true,
+    });
 
     await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow(
       "contribution-tree-preservation failed: alpha changed paths do not survive in the candidate tree",

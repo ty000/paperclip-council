@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -62,7 +63,7 @@ async function main() {
 
   const host = await prepareQualificationHost();
   const evidencePath = process.env.COUNCIL_PACKAGE_EVIDENCE_PATH
-    ?? resolve(repositoryRoot, "artifacts/functional.json");
+    ?? resolve(repositoryRoot, `artifacts/functional-${candidateCommit}.json`);
   const proofManifest = JSON.parse(readFileSync(resolve(repositoryRoot, "qualification/proof-manifest.json"), "utf8"));
   if (proofManifest.schema_version !== "proof-manifest.v1"
       || proofManifest.proof_id !== "paperclip-council-n1-safe-boundary-qualification-v1"
@@ -95,8 +96,11 @@ async function main() {
       },
     });
 
-    const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
+    const evidenceBytes = readFileSync(evidencePath);
+    const evidence = JSON.parse(evidenceBytes.toString("utf8"));
     assertQualificationEvidence(evidence, { mode: "safe", candidateCommit, notBefore });
+    const evidenceSha256 = createHash("sha256").update(evidenceBytes).digest("hex");
+    console.log(`Bounded qualification evidence: ${evidencePath} sha256=${evidenceSha256}`);
   });
 }
 

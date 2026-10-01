@@ -443,7 +443,7 @@ async function verifyContributionTreePreservation(
 ): Promise<void> {
   await requireGitCheck(
     "contribution-tree-preservation",
-    ["diff", "--quiet", contribution.commit, candidateCommit, "--", ...contribution.changedPaths],
+    ["--literal-pathspecs", "diff", "--quiet", contribution.commit, candidateCommit, "--", ...contribution.changedPaths],
     repositoryPath,
     `${contribution.contributionId} changed paths do not survive in the candidate tree`,
   );

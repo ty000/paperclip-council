@@ -10,9 +10,9 @@
       "id": "exact-candidate-sandbox",
       "category": "functional",
       "kind": "runtime-observation",
-      "location": "artifacts/functional.json",
+      "location": "artifacts/functional-<candidate-commit>.json",
       "replayable": true,
-      "notes": "Generated and ignored by Git. Check proofId, candidate.commit, host identity, all named results, n1Boundary and cleanup. All N1 identities, allowances and usage are fixtures; no model/provider launch."
+      "notes": "Generated and ignored by Git at a commit-qualified path. Check proofId, candidate.commit, host identity, all named results, n1Boundary, cleanup and the SHA-256 printed by the launcher. All N1 identities, allowances and usage are fixtures; no model/provider launch. The local file is replay evidence, not an immutable closure archive."
     },
     {
       "id": "parallel-fast-checks",
@@ -33,7 +33,7 @@
   ],
   "replay": {
     "preconditions": [
-      "Run from a clean committed Council candidate based on main 9ae33f13968be4d8d5d20dc511deb2215c552ab0 (merged PR #14).",
+      "Run from a clean committed Council candidate based on main 1e8c2ec52a16a8fc8d47ab663fdfde51e1e09dcc (merged PR #14 plus the PR #17 policy clarification).",
       "Repo-owned host configuration pins Paperclip 61b3fd57a695614dc4a37e2303f426a34a9795cf; local ephemeral PostgreSQL, loopback and cached dependencies are available.",
       "No durable Paperclip instance, model or provider is used."
     ],
@@ -41,11 +41,11 @@
       "COREPACK_HOME=/tmp/council-n1-corepack corepack pnpm install --offline --frozen-lockfile",
       "COREPACK_HOME=/tmp/council-n1-corepack node scripts/ci/run-checks.mjs",
       "COREPACK_HOME=/tmp/council-n1-corepack corepack pnpm qualification:bounded",
-      "sha256sum artifacts/functional.json"
+      "sha256sum \"artifacts/functional-$(git rev-parse HEAD).json\""
     ],
     "expected_artifacts": [
       "All fast checks pass; generated evidence uses this proof_id and exact replay HEAD.",
-      "All named functional results pass with outcome N1 SAFE BOUNDARY VALIDATED; n1Boundary explicitly lists incomplete N1 behavior.",
+      "All named functional results pass with outcome N1 SAFE BOUNDARY VALIDATED; n1Boundary explicitly lists incomplete N1 behavior; the commit-qualified path and printed SHA-256 identify the exact local bytes.",
       "Pinned host identity and ephemeral application/database cleanup are recorded."
     ]
   },
@@ -53,8 +53,9 @@
     "decision": "keep-open",
     "rationale": "The observable N1 exit needs authoritative G4 measurement, real admitted dispatch, two attributed contributions and a verified integrated candidate; fixture-safe proof cannot close it.",
     "next_required_actions": [
-      "Expose and qualify trusted task/period usage and remaining-exposure readback bound to Paperclip run identity.",
-      "Replay N1 with two admitted native contributor runs, real attributed commits, integrated candidate and failed-integration refusal."
+      "Resolve the token-only versus monetary-admission scope decision before treating native activation or dispatch as G4-qualified.",
+      "Provide a path-confined commit mechanism and API-level prevention of blocker self-wakeup, then separately authorize and replay N1 with two native contributor runs, real attributed commits, integrated candidate and failed-integration refusal.",
+      "Publish the exact live JSON and screenshot digests in durable review evidence before any complete verdict; local ignored files alone cannot close N1."
     ]
   }
 }
