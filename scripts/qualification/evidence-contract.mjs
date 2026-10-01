@@ -29,6 +29,7 @@ const LIVE_STOP_BOUNDARY = "ready_for_review; N2 not started";
 const EXPECTED_HOST_COMMIT = "61b3fd57a695614dc4a37e2303f426a34a9795cf";
 const COMMIT = /^[0-9a-f]{40}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 export const SAFE_RESULT_KEYS = Object.freeze([
@@ -593,9 +594,26 @@ function assertRunReservation(live, reservationById, input) {
   assertReservationSource(reservation.usage?.source, input.run.id, input.baseline);
 }
 
+function activationEffectId(live, aggregate) {
+  const activationReceipts = Array.isArray(aggregate?.commandReceipts)
+    ? aggregate.commandReceipts.filter((receipt) => receipt?.command === "activate")
+    : [];
+  requireProof(activationReceipts.length === 1,
+    "live mission must contain exactly one applied activation command receipt");
+  const activationReceipt = activationReceipts[0];
+  requireProof(UUID.test(activationReceipt?.commandId)
+      && Number.isSafeInteger(activationReceipt?.appliedVersion)
+      && activationReceipt.appliedVersion > 0
+      && activationReceipt?.result?.missionId === live.missionId
+      && activationReceipt?.result?.version === activationReceipt.appliedVersion,
+  "live activation command receipt is malformed or not bound to the mission");
+  return activationReceipt.commandId;
+}
+
 function assertLiveRunReservations(evidence) {
   const live = evidence.liveN1;
-  const state = live?.mission?.mission?.aggregate?.n1;
+  const aggregate = live?.mission?.mission?.aggregate;
+  const state = aggregate?.n1;
   const runs = live?.runs;
   const reservations = liveReservations(evidence).reservations;
   const reservationById = new Map(reservations.map((reservation) => [reservation?.reservationId, reservation]));
@@ -607,6 +625,7 @@ function assertLiveRunReservations(evidence) {
     reservationId: state?.activationReservationId,
     baseline: state?.rootUsageBaselineUnits,
     run: runById.get(state?.rootDispatchRunId),
+    effectId: activationEffectId(live, aggregate),
   });
   for (const slot of state.contributions) {
     assertRunReservation(live, reservationById, {

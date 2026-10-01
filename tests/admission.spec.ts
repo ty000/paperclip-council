@@ -9,6 +9,11 @@ import {
   settleAdmission,
   type AdmissionConfigureInput,
 } from "../src/admission.js";
+import {
+  assertNativeEnvelope,
+  nativeAdmissionConfiguration,
+  type NativeG4Profile,
+} from "../src/g4-native.js";
 
 type StoredRow = {
   company_id: string;
@@ -95,6 +100,89 @@ function reservation(overrides: Record<string, unknown> = {}) {
 }
 
 describe("G4 admission envelopes", () => {
+  it("accepts settled native usage growth through the complete sequential N1 ledger", async () => {
+    const store = admissionStore();
+    const profile: NativeG4Profile = {
+      kind: "paperclip-orchestration-tokens-v1",
+      periodKey: "native-sequential-ledger",
+      periodStart: new Date(Date.now() - 60_000).toISOString(),
+      periodEnd: new Date(Date.now() + 60_000).toISOString(),
+      periodAllowanceUnits: 1_000,
+      runReservationUnits: 100,
+      initialKnownUsageUnits: 10,
+      initialExposureUnits: 5,
+      initialTokenAccountingSource: "test:fresh-company-period",
+    };
+    const configuration = nativeAdmissionConfiguration(profile, companyId, randomUUID());
+    const configured = await configureAdmission(store.context(), configuration);
+    assertNativeEnvelope(configured.envelope, profile);
+
+    const reserve = async (reservationId: string, effect: string, expectedVersion: number) => reserveAdmission(
+      store.context(),
+      {
+        companyId,
+        periodKey: profile.periodKey,
+        reservationId,
+        missionId,
+        effectId: effect,
+        requestedUnits: profile.runReservationUnits,
+        attempt: { kind: "initial", ordinal: 0 },
+        expectedVersion,
+      },
+    );
+    const settle = async (reservationId: string, units: number, expectedVersion: number, commandId = randomUUID()) => {
+      const input = {
+        commandId,
+        companyId,
+        periodKey: profile.periodKey,
+        reservationId,
+        usage: { status: "known" as const, source: `native-run:${reservationId}`, units },
+        remainingExposure: { status: "known" as const, source: `native-run:${reservationId}`, units: 0 },
+        expectedVersion,
+      };
+      return { input, result: await settleAdmission(store.context(), input) };
+    };
+
+    const leadReservationId = randomUUID();
+    const alphaReservationId = randomUUID();
+    const betaReservationId = randomUUID();
+    const lead = await reserve(leadReservationId, randomUUID(), configured.envelope.version);
+    const alpha = await reserve(alphaReservationId, randomUUID(), lead.envelope.version);
+    const alphaSettlement = await settle(alphaReservationId, 20, alpha.envelope.version);
+    expect(alphaSettlement.result.envelope.allowance).toMatchObject({ knownUsageUnits: 30 });
+    expect(() => assertNativeEnvelope(alphaSettlement.result.envelope, profile)).not.toThrow();
+
+    const beta = await reserve(betaReservationId, randomUUID(), alphaSettlement.result.envelope.version);
+    const betaSettlement = await settle(betaReservationId, 25, beta.envelope.version);
+    expect(() => assertNativeEnvelope(betaSettlement.result.envelope, profile)).not.toThrow();
+    const leadSettlement = await settle(leadReservationId, 30, betaSettlement.result.envelope.version);
+    expect(leadSettlement.result.envelope).toMatchObject({
+      version: 7,
+      status: "admissible",
+      allowance: { knownUsageUnits: 85 },
+      accountedUnits: 90,
+      availablePeriodUnits: 910,
+    });
+    expect(() => assertNativeEnvelope(leadSettlement.result.envelope, profile)).not.toThrow();
+
+    const replay = await settleAdmission(store.context(), alphaSettlement.input);
+    expect(replay).toMatchObject({
+      outcome: "replayed",
+      envelope: { version: 7, allowance: { knownUsageUnits: 85 } },
+      reservation: { reservationId: alphaReservationId, status: "settled" },
+    });
+    const finalAllowance = leadSettlement.result.envelope.allowance;
+    if (finalAllowance.status !== "known") throw new Error("native allowance unexpectedly became unknown");
+    expect(() => assertNativeEnvelope({
+      ...leadSettlement.result.envelope,
+      allowance: { ...finalAllowance, knownUsageUnits: 9 },
+    }, profile)).toThrow(/does not match/);
+    expect(() => assertNativeEnvelope({
+      ...leadSettlement.result.envelope,
+      allowance: { ...finalAllowance, knownUsageUnits: Number.MAX_SAFE_INTEGER + 1 },
+    }, profile)).toThrow(/does not match/);
+  });
+
   it("persists unknown inputs as blockers and refuses reservation without inventing amounts", async () => {
     const store = admissionStore();
     const configured = await configureAdmission(store.context(), knownConfiguration({

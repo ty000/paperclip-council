@@ -128,6 +128,9 @@ export function assertNativeEnvelope(
   profile: NativeG4Profile,
 ): void {
   const accountingSource = initialAccountingSource(profile);
+  const knownUsageUnits = envelope.allowance.status === "known"
+    ? envelope.allowance.knownUsageUnits
+    : null;
   const mismatch = envelope.periodKey !== profile.periodKey
     || envelope.periodStart !== profile.periodStart
     || envelope.periodEnd !== profile.periodEnd
@@ -138,7 +141,8 @@ export function assertNativeEnvelope(
     || envelope.allowance.source !== accountingSource
     || envelope.allowance.periodUnits !== profile.periodAllowanceUnits
     || envelope.allowance.taskUnits !== profile.runReservationUnits
-    || envelope.allowance.knownUsageUnits !== profile.initialKnownUsageUnits
+    || !Number.isSafeInteger(knownUsageUnits)
+    || knownUsageUnits! < profile.initialKnownUsageUnits
     || envelope.exposure.status !== "known"
     || envelope.exposure.source !== accountingSource
     || envelope.exposure.units !== profile.initialExposureUnits

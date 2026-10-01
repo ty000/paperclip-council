@@ -152,6 +152,12 @@ function qualificationEvidence(mode: "safe" | "live"): any {
             aggregate: {
               phase: "ready_for_review",
               control: { status: "inactive" },
+              commandReceipts: [{
+                commandId: reservationEffects[0],
+                command: "activate",
+                appliedVersion: 2,
+                result: { missionId: "mission", version: 2 },
+              }],
               journal: [{ action: "integration_check_failed" }],
               n1: {
                 activationReservationId: reservationIds[0],
@@ -754,6 +760,20 @@ describe("bounded qualification launcher", () => {
       /mission identity/);
     reject((evidence) => { evidence.liveN1.admission.envelope.reservations[1].effectId = "beta-contribution"; },
       /effect identity/);
+    reject((evidence) => { delete evidence.liveN1.mission.mission.aggregate.commandReceipts; },
+      /exactly one applied activation command receipt/);
+    reject((evidence) => {
+      evidence.liveN1.mission.mission.aggregate.commandReceipts.push({
+        ...evidence.liveN1.mission.mission.aggregate.commandReceipts[0],
+        commandId: "20000000-0000-4000-8000-000000000002",
+      });
+    }, /exactly one applied activation command receipt/);
+    reject((evidence) => {
+      evidence.liveN1.mission.mission.aggregate.commandReceipts[0].commandId = "not-a-uuid";
+    }, /activation command receipt is malformed/);
+    reject((evidence) => {
+      evidence.liveN1.admission.envelope.reservations[0].effectId = "20000000-0000-4000-8000-000000000002";
+    }, /effect identity/);
 
     const validCachedUsage = qualificationEvidence("live");
     expect(validCachedUsage.liveN1.runs[0].usageJson.cachedInputTokens).toBeGreaterThan(0);
