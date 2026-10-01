@@ -22,6 +22,8 @@ The unmerged [N1 candidate `9bedaa8`](https://github.com/ty000/paperclip-council
 
 Token admission and monetary admission are distinct claims. A token allowance does not establish available currency budget or priced remaining exposure. Authorization for a bounded pilot does not by itself replace DEC-G4-01; acceptance of a token-only profile as a substitute would need an explicit scope decision. Report the measured unit, source, reservation assumptions and monetary unknowns separately. This clarification neither supplies that policy change nor demands a new billing engine.
 
+**N1-only owner scope decision, October 1, 2026.** For N1 only, the owner accepts `paperclip-orchestration-tokens-v1` as the bounded pilot admission control. This decision permits the token-only profile despite potentially unpriced monetary cost, without constituting general qualification of DEC-G4-01 or permanent provider authorization. The profile's allowance, reservations, usage and exposure fields are denominated in tokens; `known/0` exposure means no prior token exposure in the newly configured period, never zero monetary exposure. Monetary cost remains separately visible as `unpriced` when the native runtime cannot price it. Every provider campaign still requires its own explicit authorization and numeric activation inputs.
+
 Use the smallest supported operating profile. Prudent reservation estimates need not predict exact future provider charges; retain the accepted overrun risk and stop rules. If the existing native interfaces cannot qualify the required policy, identify the missing fact and smallest owner arbitration instead of silently weakening the rule or expanding implementation into general financial control.
 
 ## DEC-G3-01 — Historical native readback direction (superseded for V1)
@@ -48,7 +50,7 @@ The [receipt contract](DECISION-RECEIPTS-V1.md) replaces mandatory D-H for this 
 
 | Item | Decision status | Technical status / next action |
 | --- | --- | --- |
-| G4 budget policy | Accepted, PRD revised | Open: qualify the selected admission/usage contract before affected activation or L2 dispatch |
+| G4 budget policy | Accepted, PRD revised; bounded token-only exception accepted for N1 | N1 may qualify only its explicit token pilot; general monetary admission remains open and no provider run is permanently authorized |
 | G3 V1 receipts and uncertainty | DEC-G3-02 supersedes mandatory host readback | Qualify plugin-private attempt persistence, no blind resend, durable hold and authenticated human handling |
 | Owner-bound continuation | Existing requirement retained | Open: bind authoritative owner, mandate/submission and actual native response in L3 |
 | L1/L2 | No completion granted by these decisions | Retain active-mission proof and remaining L2 acceptance criteria; draft persistence alone does not close them |

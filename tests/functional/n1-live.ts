@@ -282,7 +282,7 @@ export async function runLiveN1(input: {
       taskUnits: runReservationUnits,
       knownUsageUnits: 0,
     },
-    exposure: { status: "known", source: "plugin-config:n1OperatingProfile:no-prior-exposure", units: 0 },
+    exposure: { status: "known", source: "plugin-config:n1OperatingProfile:no-prior-token-exposure", units: 0 },
     limits: { maxConcurrent: 2, maxRetries: 0, maxCorrections: 0 },
     commandId: randomUUID(),
   };

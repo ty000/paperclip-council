@@ -14,7 +14,7 @@ Council supports one intentionally narrow native profile, configured per company
 - settlement only from the exact terminal run returned by `issues.summaries.getOrchestration`, using input, cached-input and output tokens;
 - zero monetary cost labelled `unpriced`, and zero reported tokens treated as unavailable rather than zero consumption.
 
-This is an admission control, not a provider billing engine or an absolute future-cost ceiling. The configured reservation is exposure, while terminal tokens are observed consumption. The pre-existing atomic reservation CAS, persistent unsettled state and no-blind-retry rules remain unchanged. The native operating profile required no additional migration beyond the additive `005_admission.sql` already included in this increment.
+The owner accepted this profile as an N1-only bounded pilot on October 1, 2026. This is an admission control, not a provider billing engine, a general qualification of DEC-G4-01, permanent provider authorization or an absolute future-cost ceiling. Allowance, reservations, usage and exposure in the admission envelope are token-denominated; initial `known/0` exposure means no prior token exposure in the new period, not zero monetary exposure. Monetary cost remains separately `unpriced` when unavailable. The configured reservation is token exposure, while terminal tokens are observed consumption. The pre-existing atomic reservation CAS, persistent unsettled state and no-blind-retry rules remain unchanged. The native operating profile required no additional migration beyond the additive `005_admission.sql` already included in this increment.
 
 ## N1 acceptance map
 

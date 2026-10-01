@@ -11,7 +11,7 @@ import {
 const PROFILE_KIND = "paperclip-orchestration-tokens-v1";
 const MEASUREMENT_SOURCE = "paperclip:issues.summaries.getOrchestration:terminal-token-ledger";
 const ALLOWANCE_SOURCE = "plugin-config:n1OperatingProfile";
-const EXPOSURE_SOURCE = "plugin-config:n1OperatingProfile:no-prior-exposure";
+const EXPOSURE_SOURCE = "plugin-config:n1OperatingProfile:no-prior-token-exposure";
 const TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed", "cancelled", "timed_out", "interrupted"]);
 
 export type NativeG4Profile = {

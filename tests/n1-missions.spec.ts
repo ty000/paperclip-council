@@ -291,7 +291,7 @@ function nativeEnvelope(reservations: Array<Record<string, unknown>>) {
       status: "known", source: "plugin-config:n1OperatingProfile",
       periodUnits: nativeProfile.periodAllowanceUnits, taskUnits: nativeProfile.runReservationUnits, knownUsageUnits: 0,
     },
-    exposure: { status: "known", source: "plugin-config:n1OperatingProfile:no-prior-exposure", units: 0 },
+    exposure: { status: "known", source: "plugin-config:n1OperatingProfile:no-prior-token-exposure", units: 0 },
     limits: { maxConcurrent: 2, maxRetries: 0, maxCorrections: 0 },
     reservations,
   };
