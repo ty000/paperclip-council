@@ -3,7 +3,7 @@
 Current V1 decision (September 30, 2026, priority rescope): [DEC-G3-02](G3-G4-DECISIONS.md#dec-g3-02--plugin-only-receipts-and-preserved-uncertainty) replaces mandatory host D-H/readback and automatic ambiguous-result recovery with plugin-private receipts, a persistent uncertainty hold and authenticated human acknowledgement/abandonment. No Paperclip change or upstream PR acceptance is a V1 dependency. Human handling never confirms native success or unlocks an equivalent uncertain action. Other acceptance criteria and G4 remain mandatory. Historical reports retain their original verdicts.
 
 Status: V1 scope selected (H1 + H2, implementation through PR and project coordination); later horizons remain conditional.
-Document version: 0.4 — September 30, 2026.
+Document version: 0.5 — October 1, 2026.
 Product reference: [PRD](PRD.md).
 
 This roadmap describes potential major evolutions, their value, their product dependencies, and the observations needed to decide what comes next. It is neither a schedule, a technical backlog, nor a commitment to deliver every horizon.
@@ -11,6 +11,8 @@ This roadmap describes potential major evolutions, their value, their product de
 The PRD is authoritative on needs and behavior. The roadmap identifies what may be taken forward; it cannot silently remove a requirement or extend delegated authority. A change in need requires a PRD update; a change in priority may affect only this roadmap.
 
 The September 30 decisions select H1 and H2 together, including C16–C23: teams, technical planning, skill-based execution/QA, PR handoff, durable multi-mission coordination and on-demand facilitation. H1 is an intermediate demonstration, not complete V1. Reusable knowledge and learning (H3–H5) follow later; current project work state belongs to V1. See [V1 scope](V1-SCOPE.md), [TAD](TAD.md) and [implementation lots](IMPLEMENTATION-PLAN.md).
+
+**October 1 priority.** Reach Council usability in Paperclip through M1: N4 supplies the first representative-use evidence and N5 completes the mission through its PR. N6/M2 follows M1 and remains selected V1 scope. Executive implementation is paused; its integration, plugin consolidation and a shared core library are outside the immediate path. Council PR #16 was closed with its branch retained for a later Executive restart, not accepted as completed work. N1 closure and N2 development may overlap under the [sprint plan's isolation and qualification rules](SPRINT-PLAN.md#october-1-delivery-checkpoint). This changes delivery priority, not the PRD's acceptance criteria or proof requirements.
 
 ## 1. Starting point
 

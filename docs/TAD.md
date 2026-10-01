@@ -1,6 +1,6 @@
 # Paperclip Council — V1 technical architecture
 
-Version 0.3 — September 30, 2026. **Design for bounded implementation; runtime qualification pending.**
+Version 0.4 — October 1, 2026. **Design for bounded implementation; runtime qualification pending.**
 
 Product authority: [PRD 0.5](PRD.md) and [V1 scope](V1-SCOPE.md). Sequence and exit checks: [implementation plan](IMPLEMENTATION-PLAN.md). Proposed responsibilities: [agent catalogue](AGENT-CATALOG.md). This document specifies contracts, not installed behavior or authorization to operate an instance.
 
@@ -132,6 +132,14 @@ Core invariants: no self-acceptance; no cross-company references; no approval wi
 
 New result bytes create a new submission and review round. New evidence alone increments its evidence revision; earlier opinions may be explicitly reaffirmed for that revision, with attribution and rationale, but are not counted automatically. A mandate or active participant change supersedes affected un-applied decisions and opinions. Reconfiguration during `applying`/`application_unknown` waits for reconciliation.
 
+### N1-to-N2 integration boundary
+
+N1 supplies an identified, verified integrated candidate; N2 consumes it for independent review and one ordinary correction/review/acceptance cycle. Bind the mission, mandate revision, submission/evidence revision, commit, bundle digest and eligible reviewer to each round. A correction creates a new submission and round while preserving the prior candidate and verdict; it cannot mutate the identity already reviewed or inherit its acceptance.
+
+The [N1 profile at `9bedaa8`](https://github.com/ty000/paperclip-council/blob/9bedaa81d873d755ec679e174c70279118d8deef/src/g4-native.ts) has zero allowed corrections and requires exactly one expected native run per issue for settlement. N2 must qualify a supported correction route with explicit admission and effect/run identity. Do not assume another run on the same issue remains compatible with issue-aggregated usage, or count an accumulated total again as new consumption. Reuse the reservation and decision-receipt mechanisms; this boundary calls for a targeted continuation contract, not a second dispatcher, ledger or general recovery engine.
+
+Develop this extension on an isolated N1-based branch while the N1 owner completes its changes. Resolve common-interface differences against the final N1 base before claiming the native N2 exit. Fixtures can test the extension in advance; they do not replace the qualified N1 candidate or the correction's observed native execution. [The sprint plan](SPRINT-PLAN.md#october-1-delivery-checkpoint) owns delivery sequencing.
+
 ## 5. Execution teams and council protocol
 
 The root issue represents the integrated mission and remains assigned to the integration lead until native review handoff. Each contribution uses a child issue with one native assignee; dependencies are an acyclic graph checked before dispatch. The planner owns plan revisions, the orchestrator owns dispatch and the lead owns integration; one identity may hold these responsibilities. Agent unavailability or a cycle produces an explicit blocker. Use isolated workspaces/branches for concurrent writes, or explicitly serialize access; never assign conflicting writes to a shared checkout silently.
@@ -189,6 +197,8 @@ Store the entire PRD §6.3 mandate as a versioned snapshot plus criterion-linked
 When reserved or decisively uncertain, create a native interaction with `resolverPolicy: human_only`, `addresseeUserId` equal to the configured owner and `continuationPolicy: none` for the initial path, so Council reconciles the owner response before deliberately waking dependent work. Record interaction ID, exact question/options, mandate/submission binding and originating command. On resolution read native persisted responder identity, response and time; require the actual owner, reject system/other-agent resolutions and reject stale bindings. Human approval authorizes the named action only; it does not fabricate review evidence or auto-accept the result. A changed result/decision asks for fresh consent when material to the authorization.
 
 Task and period budgets are checked together with native agent controls. Reserve the task allowance and shared period allowance in one CAS update of the applicable company budget envelope before marking a mission effect dispatchable. The reservation ID is stable per mission/effect; a subsequent mission CAS references it. A crash between the two leaves a conservative reserved allowance, not permission to spend twice. Reconciliation may release it only after proving no dispatch or settling the incurred usage and remaining exposure; uncertain in-flight work retains its reservation. Late usage must be reconciled, never silently discarded to free allowance.
+
+Keep the accounting unit and policy explicit. The [October 1 token-pilot clarification](G3-G4-DECISIONS.md#october-1-clarification--token-pilot-and-monetary-policy) records the N1 implementation boundary; token limits with unpriced currency usage do not establish the monetary policy above. An authorized pilot is not an implicit policy replacement or permission to add a billing subsystem.
 
 Do not implement a separate read-then-increment period counter. Aggregate known usage over the mission and configured period; label missing/unpriced subscription usage. Before dispatch require an authorized reservation with no concurrent admission oversubscription, available budget and an explicitly assessed remaining exposure under DEC-G4-01. Reservations/estimates are not guaranteed maximum provider charges.
 

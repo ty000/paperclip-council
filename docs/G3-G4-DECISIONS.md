@@ -1,6 +1,6 @@
 # Paperclip Council — G3/G4 owner decisions
 
-Date: September 30, 2026. Status: owner decisions accepted; technical qualification open.
+Date: September 30, 2026; documentary clarification October 1, 2026. Status: owner decisions accepted; technical qualification open.
 
 Authority: the owner accepted the prudent G4 recommendation ("oui je suis ta recommandation"), then accepted the minimal G3 lot, including a targeted Paperclip change if existing interfaces are insufficient ("oui j'accepte"). The owner also allowed existing improvement ideas to be recorded in the roadmap. These decisions are recorded from the current discussion, not inferred from a test or another agent's report.
 
@@ -15,6 +15,14 @@ Product authority is [PRD 0.4 §6.3](PRD.md#63-initial-delegation-profile). The 
 **Still required before affected activation/dispatch.** Qualify the applicable measurement/reservation contract through the supported runtime: competing missions cannot overbook admission allowance; operational limits reject further launches; crash/restart retains unsettled reservations; late/unknown usage blocks new admission and is reconciled. A purely mocked counter is insufficient. If the selected runtime cannot supply the information needed by this policy, dispatch remains blocked even though the owner accepted monetary overrun risk.
 
 Amounts, period boundaries, measurement sources and the treatment of reservation estimates remain explicit activation inputs. No values or permission for real provider calls are supplied here. Prior owner decisions for infrastructure cost changes in either direction, essential uses and the p95 mandate remain unchanged. Owner/mandate/submission-bound human continuation remains a separate unqualified `DEP-OWNER` requirement planned in L3.
+
+### October 1 clarification — token pilot and monetary policy
+
+The unmerged [N1 candidate `9bedaa8`](https://github.com/ty000/paperclip-council/blob/9bedaa81d873d755ec679e174c70279118d8deef/src/g4-native.ts) implements `paperclip-orchestration-tokens-v1`: explicit token allowances/reservations and terminal native usage, while monetary cost may remain `unpriced`. Its [report](https://github.com/ty000/paperclip-council/blob/9bedaa81d873d755ec679e174c70279118d8deef/docs/reviews/n1/REPORT.md) records one authorized campaign, not a successful N1 exit. These are candidate-specific observations, not claims about installed main.
+
+Token admission and monetary admission are distinct claims. A token allowance does not establish available currency budget or priced remaining exposure. Authorization for a bounded pilot does not by itself replace DEC-G4-01; acceptance of a token-only profile as a substitute would need an explicit scope decision. Report the measured unit, source, reservation assumptions and monetary unknowns separately. This clarification neither supplies that policy change nor demands a new billing engine.
+
+Use the smallest supported operating profile. Prudent reservation estimates need not predict exact future provider charges; retain the accepted overrun risk and stop rules. If the existing native interfaces cannot qualify the required policy, identify the missing fact and smallest owner arbitration instead of silently weakening the rule or expanding implementation into general financial control.
 
 ## DEC-G3-01 — Historical native readback direction (superseded for V1)
 
