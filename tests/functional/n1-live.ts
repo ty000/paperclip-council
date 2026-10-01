@@ -18,6 +18,23 @@ type RunSnapshot = {
 
 const terminalStatuses = new Set(["succeeded", "failed", "cancelled", "timed_out", "interrupted"]);
 
+function hasKnownPositiveUsage(reservation: any): boolean {
+  return reservation.usage?.status === "known"
+    && Number.isSafeInteger(reservation.usage.units)
+    && reservation.usage.units > 0;
+}
+
+function hasNoRemainingExposure(reservation: any): boolean {
+  return reservation.remainingExposure?.status === "known"
+    && reservation.remainingExposure.units === 0;
+}
+
+function isFullySettledReservation(reservation: any): boolean {
+  return reservation.status === "settled"
+    && hasKnownPositiveUsage(reservation)
+    && hasNoRemainingExposure(reservation);
+}
+
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required for the explicitly authorized N1 live run`);
@@ -390,12 +407,7 @@ export async function runLiveN1(input: {
   assert.equal(admissionFinal.status, 200, JSON.stringify(admissionFinal.body));
   const settledReservations = admissionFinal.body.envelope.reservations as any[];
   assert.equal(settledReservations.length, 3);
-  assert(settledReservations.every((reservation: any) => reservation.status === "settled"
-    && reservation.usage?.status === "known"
-    && Number.isSafeInteger(reservation.usage.units)
-    && reservation.usage.units > 0
-    && reservation.remainingExposure?.status === "known"
-    && reservation.remainingExposure.units === 0));
+  assert(settledReservations.every(isFullySettledReservation));
   const knownUsageUnits = admissionFinal.body.envelope.allowance?.knownUsageUnits;
   assert(Number.isSafeInteger(knownUsageUnits) && knownUsageUnits > 0);
   assert.equal(knownUsageUnits, settledReservations.reduce((total: number, reservation: any) => total + reservation.usage.units, 0));

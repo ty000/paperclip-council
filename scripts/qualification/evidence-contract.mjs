@@ -232,33 +232,41 @@ function assertCleanup(evidence) {
   if (cleanupErrors.length > 0) fail(`error fields are present: [${cleanupErrors.join(", ")}]`);
 }
 
-function assertSafeBoundary(evidence) {
+function assertSafeProviderBoundary(evidence) {
   if (evidence.n1Boundary?.providerInvocation !== SAFE_PROVIDER_BOUNDARY
       || evidence.configuration?.fixtureBoundary === undefined) {
     fail("safe fixture/provider boundary proof is missing");
   }
+}
+
+function assertSafeCapabilityLists(evidence) {
   if (!Array.isArray(evidence.n1Boundary?.demonstrated) || evidence.n1Boundary.demonstrated.length === 0
       || !Array.isArray(evidence.n1Boundary?.incomplete) || evidence.n1Boundary.incomplete.length === 0) {
     fail("safe boundary must identify demonstrated and incomplete capabilities");
   }
 }
 
-function assertLiveSettlement(evidence) {
+function liveReservations(evidence) {
   const admission = evidence.liveN1?.admission?.envelope;
   const reservations = admission?.reservations;
   if (!Array.isArray(reservations) || reservations.length !== 3) {
     fail("live admission must contain exactly three reservations");
   }
-  for (const reservation of reservations) {
-    if (reservation?.status !== "settled"
-        || reservation?.usage?.status !== "known"
-        || !Number.isSafeInteger(reservation.usage.units)
-        || reservation.usage.units < 1
-        || reservation?.remainingExposure?.status !== "known"
-        || reservation.remainingExposure.units !== 0) {
-      fail("every live reservation must be settled with positive known usage and zero known remaining exposure");
-    }
+  return { admission, reservations };
+}
+
+function assertSettledReservation(reservation) {
+  if (reservation?.status !== "settled"
+      || reservation?.usage?.status !== "known"
+      || !Number.isSafeInteger(reservation.usage.units)
+      || reservation.usage.units < 1
+      || reservation?.remainingExposure?.status !== "known"
+      || reservation.remainingExposure.units !== 0) {
+    fail("every live reservation must be settled with positive known usage and zero known remaining exposure");
   }
+}
+
+function assertKnownUsageTotal(admission, reservations) {
   const knownUsageUnits = admission?.allowance?.knownUsageUnits;
   const summedUsageUnits = reservations.reduce((total, reservation) => total + reservation.usage.units, 0);
   if (admission?.allowance?.status !== "known"
@@ -267,6 +275,17 @@ function assertLiveSettlement(evidence) {
       || knownUsageUnits !== summedUsageUnits) {
     fail("allowance.knownUsageUnits must equal the positive settled reservation usage total");
   }
+}
+
+function assertLiveSettlement(evidence) {
+  const { admission, reservations } = liveReservations(evidence);
+  reservations.forEach(assertSettledReservation);
+  assertKnownUsageTotal(admission, reservations);
+}
+
+function assertSafeBoundary(evidence) {
+  assertSafeProviderBoundary(evidence);
+  assertSafeCapabilityLists(evidence);
 }
 
 export function assertQualificationEvidence(evidence, { mode, candidateCommit, notBefore }) {

@@ -90,6 +90,11 @@ type MissionInspection = {
   };
 };
 
+type MissionLookupContext = {
+  companyId: string;
+  refreshKey: number;
+};
+
 const stack: CSSProperties = { display: "grid", gap: "1rem" };
 const card: CSSProperties = {
   border: "1px solid var(--border)",
@@ -130,6 +135,39 @@ const grid: CSSProperties = {
 function message(error: unknown): string {
   if (error && typeof error === "object" && "message" in error) return String(error.message);
   return String(error);
+}
+
+function isCurrentMissionLookup(
+  controller: AbortController,
+  companyChanged: boolean,
+  refreshChanged: boolean,
+): boolean {
+  return !controller.signal.aborted
+    && !companyChanged
+    && !refreshChanged;
+}
+
+function mergeMissionInspection(
+  current: MissionInspection[],
+  inspected: MissionInspection,
+): MissionInspection[] {
+  const inspectedId = inspected.mission.missionId;
+  if (!current.some((item) => item.mission.missionId === inspectedId)) return [...current, inspected];
+  return current.map((item) => item.mission.missionId === inspectedId ? inspected : item);
+}
+
+async function requestMissionInspection(
+  lookupContext: MissionLookupContext,
+  missionId: string,
+  signal: AbortSignal,
+): Promise<MissionInspection> {
+  const path = "/api/plugins/private.paperclip-council/api/companies/" +
+    encodeURIComponent(lookupContext.companyId) + "/missions/" + encodeURIComponent(missionId) +
+    "?companyId=" + encodeURIComponent(lookupContext.companyId);
+  const response = await fetch(path, { credentials: "same-origin", signal });
+  const body = await response.json() as MissionInspection & { error?: string };
+  if (!response.ok) throw new Error(body.error ?? "Mission lookup failed");
+  return body;
 }
 
 function Status({ value }: { value: string }) {
@@ -499,36 +537,35 @@ export function CouncilMissionsPage({ context }: PluginPageProps) {
     const controller = new AbortController();
     lookupControllerRef.current = controller;
     const lookupContext = { companyId, refreshKey };
+    function lookupIsCurrent() {
+      return isCurrentMissionLookup(
+        controller,
+        lookupContextRef.current.companyId !== lookupContext.companyId,
+        lookupContextRef.current.refreshKey !== lookupContext.refreshKey,
+      );
+    }
+    function reportLookupFailure(cause: unknown) {
+      if (lookupIsCurrent()) setLookupError(message(cause));
+    }
+    function finishLookup() {
+      if (lookupControllerRef.current !== controller) return;
+      lookupControllerRef.current = null;
+      setLookupLoading(false);
+    }
     setLookupLoading(true);
     setLookupError(null);
     setLookupNotice(null);
-    const path = "/api/plugins/private.paperclip-council/api/companies/" +
-      encodeURIComponent(companyId) + "/missions/" + encodeURIComponent(missionId) +
-      "?companyId=" + encodeURIComponent(companyId);
     try {
-      const response = await fetch(path, { credentials: "same-origin", signal: controller.signal });
-      const body = await response.json() as MissionInspection & { error?: string };
-      if (!response.ok) throw new Error(body.error ?? "Mission lookup failed");
-      if (controller.signal.aborted
-          || lookupContextRef.current.companyId !== lookupContext.companyId
-          || lookupContextRef.current.refreshKey !== lookupContext.refreshKey) return;
-      setMissions((current) => current.some((item) => item.mission.missionId === body.mission.missionId)
-        ? current.map((item) => item.mission.missionId === body.mission.missionId ? body : item)
-        : [...current, body]);
-      setSelectedId(body.mission.missionId);
-      setLookupId(body.mission.missionId);
+      const inspected = await requestMissionInspection(lookupContext, missionId, controller.signal);
+      if (!lookupIsCurrent()) return;
+      setMissions((current) => mergeMissionInspection(current, inspected));
+      setSelectedId(inspected.mission.missionId);
+      setLookupId(inspected.mission.missionId);
       setLookupNotice("Mission found and selected.");
     } catch (cause: unknown) {
-      if (!controller.signal.aborted
-          && lookupContextRef.current.companyId === lookupContext.companyId
-          && lookupContextRef.current.refreshKey === lookupContext.refreshKey) {
-        setLookupError(message(cause));
-      }
+      reportLookupFailure(cause);
     } finally {
-      if (lookupControllerRef.current === controller) {
-        lookupControllerRef.current = null;
-        setLookupLoading(false);
-      }
+      finishLookup();
     }
   }
 

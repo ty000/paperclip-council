@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 
@@ -63,6 +63,12 @@ export type IntegratedCandidateVerification = {
     changedPaths: string[];
   }>;
   checks: IntegratedCandidateCheck[];
+};
+
+type ValidatedContribution = {
+  contributionId: string;
+  commit: string;
+  ownedPaths: string[];
 };
 
 function requiredString(value: unknown, label: string, maxLength = 256): string {
@@ -296,27 +302,11 @@ function validateContributions(input: IntegratedCandidateInput): Array<{
   return parsed;
 }
 
-export async function verifyIntegratedCandidate(
+async function readIssueBoundBundle(
   ctx: PluginContext,
   input: IntegratedCandidateInput,
-): Promise<IntegratedCandidateVerification> {
-  const expectedSha256 = digest(input.expectedSha256);
-  const baseCommit = commit(input.baseCommit, "baseCommit");
-  const candidateCommit = commit(input.candidateCommit, "candidateCommit");
-  if (baseCommit === candidateCommit) throw new Error("Candidate commit must differ from base commit");
-  if (input.expectedByteSize !== undefined
-    && (!Number.isSafeInteger(input.expectedByteSize) || input.expectedByteSize < 1
-      || input.expectedByteSize > MAX_INTEGRATED_BUNDLE_BYTES)) {
-    throw new Error("expectedByteSize must be a positive bounded integer");
-  }
-  const contributions = validateContributions(input);
-  if (contributions.some((contribution) => contribution.commit === baseCommit)) {
-    throw new Error("Contribution commits must differ from the base commit");
-  }
-  if (contributions.some((contribution) => contribution.commit === candidateCommit)) {
-    throw new Error("Candidate commit must be a distinct integration revision");
-  }
-
+  expectedSha256: string,
+): Promise<{ bytes: Buffer; sha256: string }> {
   const attachments = await ctx.issues.listAttachments(input.issueId, input.companyId);
   if (!attachments.some((attachment) => attachment.id === input.attachmentId)) {
     throw new Error("Integrated candidate attachment is not attached to this issue");
@@ -341,6 +331,153 @@ export async function verifyIntegratedCandidate(
   if (sha256 !== attachment.sha256 || sha256 !== expectedSha256) {
     throw new Error("Integrated candidate attachment SHA-256 mismatch");
   }
+  return { bytes, sha256 };
+}
+
+async function importAndValidateRepository(
+  bytes: Buffer,
+  bundlePath: string,
+  repositoryPath: string,
+  baseCommit: string,
+  candidateCommit: string,
+  checks: IntegratedCandidateCheck[],
+): Promise<void> {
+  await writeFile(bundlePath, bytes, { mode: 0o600 });
+  await git(["init", "--bare", repositoryPath], dirname(bundlePath));
+  await configureGitImportBounds(repositoryPath);
+  checks.push({
+    name: "git-import-configuration",
+    status: "passed",
+    detail: "bounded Git delta cache, packed-file mappings and single-thread pack window configured",
+  });
+  await requireGitCheck("git-bundle-verify", ["bundle", "verify", bundlePath], repositoryPath, "invalid or incomplete Git bundle");
+  checks.push({ name: "git-bundle-verify", status: "passed", detail: "self-contained bundle verified" });
+
+  await requireGitCheck("git-ref-import", [
+    "fetch",
+    "--no-tags",
+    bundlePath,
+    "refs/heads/base:refs/council/base",
+    "refs/heads/candidate:refs/council/candidate",
+  ], repositoryPath, "required base or candidate ref is missing");
+  const observedBase = (await git(["rev-parse", "refs/council/base^{commit}"], repositoryPath)).trim();
+  const observedCandidate = (await git(["rev-parse", "refs/council/candidate^{commit}"], repositoryPath)).trim();
+  if (observedBase !== baseCommit || observedCandidate !== candidateCommit) {
+    throw new Error("Integrated candidate bundle refs do not match the declared commits");
+  }
+  checks.push({ name: "declared-refs", status: "passed", detail: "base and candidate refs match declared commits" });
+
+  const objectBounds = await inspectGitObjectBounds(repositoryPath);
+  checks.push({
+    name: "git-object-bounds",
+    status: "passed",
+    detail: `${objectBounds.objectCount} objects; ${objectBounds.expandedBytes} expanded bytes`,
+  });
+  await requireGitCheck("git-object-integrity", ["fsck", "--strict", "--no-reflogs"], repositoryPath, "Git object integrity check rejected the bundle");
+  checks.push({ name: "git-object-integrity", status: "passed", detail: "git fsck --strict passed" });
+  await requireGitCheck("base-ancestry", ["merge-base", "--is-ancestor", baseCommit, candidateCommit], repositoryPath, "base is not an ancestor of candidate");
+  checks.push({ name: "base-ancestry", status: "passed", detail: "candidate descends from declared base" });
+}
+
+async function verifyContribution(
+  contribution: ValidatedContribution,
+  baseCommit: string,
+  candidateCommit: string,
+  repositoryPath: string,
+): Promise<IntegratedCandidateVerification["contributions"][number]> {
+  await requireGitCheck(
+    "contribution-ancestry",
+    ["merge-base", "--is-ancestor", baseCommit, contribution.commit],
+    repositoryPath,
+    `${contribution.contributionId} does not descend from base`,
+  );
+  await requireGitCheck(
+    "contribution-integration",
+    ["merge-base", "--is-ancestor", contribution.commit, candidateCommit],
+    repositoryPath,
+    `${contribution.contributionId} is not included in candidate`,
+  );
+  await inspectContributionHistory(baseCommit, contribution, repositoryPath);
+  const changedPaths = await changedPathsBetween(baseCommit, contribution.commit, repositoryPath);
+  if (changedPaths.length === 0) {
+    throw new Error(`Contribution ${contribution.contributionId} has no changed paths`);
+  }
+  if (changedPaths.length > MAX_CHANGED_PATHS_PER_CONTRIBUTION) {
+    throw new Error(`Contribution ${contribution.contributionId} exceeds the changed-path limit`);
+  }
+  const outsideOwnership = changedPaths.find((path) => (
+    !contribution.ownedPaths.some((declared) => pathIsOwned(declared, path))
+  ));
+  if (outsideOwnership) {
+    throw new Error(`Contribution ${contribution.contributionId} changed unowned path ${outsideOwnership}`);
+  }
+  await requireGitCheck(
+    "contribution-tree-preservation",
+    ["diff", "--quiet", contribution.commit, candidateCommit, "--", ...changedPaths],
+    repositoryPath,
+    `${contribution.contributionId} changed paths do not survive in the candidate tree`,
+  );
+  return { ...contribution, changedPaths };
+}
+
+async function verifyCandidateDelta(
+  verifiedContributions: IntegratedCandidateVerification["contributions"],
+  baseCommit: string,
+  candidateCommit: string,
+  repositoryPath: string,
+): Promise<void> {
+  const attributedPaths = new Set(verifiedContributions.flatMap((contribution) => contribution.changedPaths));
+  const candidateChangedPaths = await changedPathsBetween(baseCommit, candidateCommit, repositoryPath);
+  const unattributedPath = candidateChangedPaths.find((path) => !attributedPaths.has(path));
+  if (unattributedPath) {
+    throw new Error(`Candidate changed unattributed path ${unattributedPath}`);
+  }
+  const omittedPath = [...attributedPaths].find((path) => !candidateChangedPaths.includes(path));
+  if (omittedPath) {
+    throw new Error(`Candidate omits attributed path ${omittedPath}`);
+  }
+}
+
+async function verifyCandidateOnlyHistory(
+  contributions: ValidatedContribution[],
+  baseCommit: string,
+  candidateCommit: string,
+  repositoryPath: string,
+): Promise<void> {
+  const candidateOnlyCommits = (await git([
+    "rev-list",
+    "--max-count=2",
+    candidateCommit,
+    "--not",
+    baseCommit,
+    ...contributions.map((contribution) => contribution.commit),
+  ], repositoryPath)).split("\n").filter((candidate) => candidate !== "");
+  if (candidateOnlyCommits.length !== 1 || candidateOnlyCommits[0] !== candidateCommit) {
+    throw new Error("Candidate-only history must contain exactly the declared integration commit");
+  }
+}
+
+export async function verifyIntegratedCandidate(
+  ctx: PluginContext,
+  input: IntegratedCandidateInput,
+): Promise<IntegratedCandidateVerification> {
+  const expectedSha256 = digest(input.expectedSha256);
+  const baseCommit = commit(input.baseCommit, "baseCommit");
+  const candidateCommit = commit(input.candidateCommit, "candidateCommit");
+  if (baseCommit === candidateCommit) throw new Error("Candidate commit must differ from base commit");
+  if (input.expectedByteSize !== undefined
+    && (!Number.isSafeInteger(input.expectedByteSize) || input.expectedByteSize < 1
+      || input.expectedByteSize > MAX_INTEGRATED_BUNDLE_BYTES)) {
+    throw new Error("expectedByteSize must be a positive bounded integer");
+  }
+  const contributions = validateContributions(input);
+  if (contributions.some((contribution) => contribution.commit === baseCommit)) {
+    throw new Error("Contribution commits must differ from the base commit");
+  }
+  if (contributions.some((contribution) => contribution.commit === candidateCommit)) {
+    throw new Error("Candidate commit must be a distinct integration revision");
+  }
+  const { bytes, sha256 } = await readIssueBoundBundle(ctx, input, expectedSha256);
 
   const checks: IntegratedCandidateCheck[] = [
     { name: "issue-bound-bundle", status: "passed", detail: `${bytes.byteLength} bytes; SHA-256 verified` },
@@ -349,112 +486,30 @@ export async function verifyIntegratedCandidate(
   try {
     const bundlePath = resolve(root, "candidate.bundle");
     const repositoryPath = resolve(root, "repository.git");
-    await writeFile(bundlePath, bytes, { mode: 0o600 });
-    await git(["init", "--bare", repositoryPath], root);
-    await configureGitImportBounds(repositoryPath);
-    checks.push({
-      name: "git-import-configuration",
-      status: "passed",
-      detail: "bounded Git delta cache, packed-file mappings and single-thread pack window configured",
-    });
-    await requireGitCheck("git-bundle-verify", ["bundle", "verify", bundlePath], repositoryPath, "invalid or incomplete Git bundle");
-    checks.push({ name: "git-bundle-verify", status: "passed", detail: "self-contained bundle verified" });
-
-    await requireGitCheck("git-ref-import", [
-      "fetch",
-      "--no-tags",
-      bundlePath,
-      "refs/heads/base:refs/council/base",
-      "refs/heads/candidate:refs/council/candidate",
-    ], repositoryPath, "required base or candidate ref is missing");
-    const observedBase = (await git(["rev-parse", "refs/council/base^{commit}"], repositoryPath)).trim();
-    const observedCandidate = (await git(["rev-parse", "refs/council/candidate^{commit}"], repositoryPath)).trim();
-    if (observedBase !== baseCommit || observedCandidate !== candidateCommit) {
-      throw new Error("Integrated candidate bundle refs do not match the declared commits");
-    }
-    checks.push({ name: "declared-refs", status: "passed", detail: "base and candidate refs match declared commits" });
-
-    const objectBounds = await inspectGitObjectBounds(repositoryPath);
-    checks.push({
-      name: "git-object-bounds",
-      status: "passed",
-      detail: `${objectBounds.objectCount} objects; ${objectBounds.expandedBytes} expanded bytes`,
-    });
-
-    await requireGitCheck("git-object-integrity", ["fsck", "--strict", "--no-reflogs"], repositoryPath, "Git object integrity check rejected the bundle");
-    checks.push({ name: "git-object-integrity", status: "passed", detail: "git fsck --strict passed" });
-
-    await requireGitCheck("base-ancestry", ["merge-base", "--is-ancestor", baseCommit, candidateCommit], repositoryPath, "base is not an ancestor of candidate");
-    checks.push({ name: "base-ancestry", status: "passed", detail: "candidate descends from declared base" });
+    await importAndValidateRepository(bytes, bundlePath, repositoryPath, baseCommit, candidateCommit, checks);
 
     const verifiedContributions: IntegratedCandidateVerification["contributions"] = [];
     for (const contribution of contributions) {
-      await requireGitCheck(
-        "contribution-ancestry",
-        ["merge-base", "--is-ancestor", baseCommit, contribution.commit],
+      verifiedContributions.push(await verifyContribution(
+        contribution,
+        baseCommit,
+        candidateCommit,
         repositoryPath,
-        `${contribution.contributionId} does not descend from base`,
-      );
-      await requireGitCheck(
-        "contribution-integration",
-        ["merge-base", "--is-ancestor", contribution.commit, candidateCommit],
-        repositoryPath,
-        `${contribution.contributionId} is not included in candidate`,
-      );
-      await inspectContributionHistory(baseCommit, contribution, repositoryPath);
-      const changedPaths = await changedPathsBetween(baseCommit, contribution.commit, repositoryPath);
-      if (changedPaths.length === 0) {
-        throw new Error(`Contribution ${contribution.contributionId} has no changed paths`);
-      }
-      if (changedPaths.length > MAX_CHANGED_PATHS_PER_CONTRIBUTION) {
-        throw new Error(`Contribution ${contribution.contributionId} exceeds the changed-path limit`);
-      }
-      const outsideOwnership = changedPaths.find((path) => (
-        !contribution.ownedPaths.some((declared) => pathIsOwned(declared, path))
       ));
-      if (outsideOwnership) {
-        throw new Error(`Contribution ${contribution.contributionId} changed unowned path ${outsideOwnership}`);
-      }
-      await requireGitCheck(
-        "contribution-tree-preservation",
-        ["diff", "--quiet", contribution.commit, candidateCommit, "--", ...changedPaths],
-        repositoryPath,
-        `${contribution.contributionId} changed paths do not survive in the candidate tree`,
-      );
-      verifiedContributions.push({ ...contribution, changedPaths });
     }
     checks.push({ name: "contribution-ancestry", status: "passed", detail: "two distinct contribution commits are included" });
     checks.push({ name: "contribution-history-topology", status: "passed", detail: "each contribution is a bounded linear history rooted at base" });
     checks.push({ name: "write-ownership", status: "passed", detail: "every contribution commit changed only its declared paths" });
     checks.push({ name: "contribution-tree-preservation", status: "passed", detail: "both contributions survive in the candidate tree" });
 
-    const attributedPaths = new Set(verifiedContributions.flatMap((contribution) => contribution.changedPaths));
-    const candidateChangedPaths = await changedPathsBetween(baseCommit, candidateCommit, repositoryPath);
-    const unattributedPath = candidateChangedPaths.find((path) => !attributedPaths.has(path));
-    if (unattributedPath) {
-      throw new Error(`Candidate changed unattributed path ${unattributedPath}`);
-    }
-    const omittedPath = [...attributedPaths].find((path) => !candidateChangedPaths.includes(path));
-    if (omittedPath) {
-      throw new Error(`Candidate omits attributed path ${omittedPath}`);
-    }
+    await verifyCandidateDelta(verifiedContributions, baseCommit, candidateCommit, repositoryPath);
     checks.push({
       name: "candidate-delta-attribution",
       status: "passed",
       detail: "complete candidate delta equals the union of attributed contribution deltas",
     });
 
-    const candidateOnlyCommits = (await git([
-      "rev-list",
-      "--max-count=2",
-      candidateCommit,
-      "--not",
-      baseCommit,
-      ...contributions.map((contribution) => contribution.commit),
-    ], repositoryPath)).split("\n").filter((candidate) => candidate !== "");
-    if (candidateOnlyCommits.length !== 1 || candidateOnlyCommits[0] !== candidateCommit) {
-      throw new Error("Candidate-only history must contain exactly the declared integration commit");
-    }
+    await verifyCandidateOnlyHistory(contributions, baseCommit, candidateCommit, repositoryPath);
     checks.push({
       name: "candidate-history-topology",
       status: "passed",
