@@ -526,9 +526,8 @@ function assertLiveRunUsage(run) {
   const allowedKeys = new Set([...LIVE_USAGE_COUNTERS, "usageSource"]);
   requireProof(Object.keys(usage).every((key) => allowedKeys.has(key)),
     "native run usageJson contains non-accounting provider metadata");
-  if (usage.usageSource !== undefined) {
-    requireProof(nonemptyString(usage.usageSource), "native run usageSource is malformed");
-  }
+  requireProof(usage.usageSource === "per_run",
+    "native run usageSource must be per_run for the pinned codex_local/cli profile");
 }
 
 function assertRecordedContribution(slot, contributorIds, runById) {
@@ -582,11 +581,11 @@ function assertRunReservation(live, reservationById, input) {
       : reservation.effectId === input.effectId,
   `${input.label} reservation effect identity does not match`);
   const usage = input.run.usageJson;
-  const expectedUnits = usage.inputTokens + usage.outputTokens - input.baseline;
+  const expectedUnits = usage.inputTokens + usage.outputTokens;
   requireProof(Number.isSafeInteger(expectedUnits) && expectedUnits > 0,
     `${input.label} native run usage delta must be positive`);
   requireProof(reservation.usage?.units === expectedUnits,
-    `${input.label} reservation usage does not equal inputTokens + outputTokens - baseline`);
+    `${input.label} reservation usage does not equal per-run inputTokens + outputTokens`);
   assertReservationSource(reservation.usage?.source, input.run.id, input.baseline);
 }
 

@@ -59,7 +59,7 @@ function qualificationEvidence(mode: "safe" | "live"): any {
     status: "settled",
     usage: {
       status: "known",
-      units: run.inputTokens + run.outputTokens - run.baseline,
+      units: run.inputTokens + run.outputTokens,
       source: `paperclip:issues.summaries.getOrchestration:terminal-token-ledger;run=${run.id};issue-baseline=${run.baseline};monetary-cost=unpriced`,
     },
     remainingExposure: { status: "known", units: 0 },
@@ -124,7 +124,7 @@ function qualificationEvidence(mode: "safe" | "live"): any {
             rawInputTokens: run.inputTokens,
             rawCachedInputTokens: run.cachedInputTokens,
             rawOutputTokens: run.outputTokens,
-            usageSource: "native-run-readback",
+            usageSource: "per_run",
           },
         })),
         leadRunBarrier: {
@@ -404,7 +404,7 @@ describe("bounded qualification launcher", () => {
       rawInputTokens: 700,
       rawCachedInputTokens: 500,
       rawOutputTokens: 40,
-      usageSource: "native-run-readback",
+      usageSource: "per_run",
       providerSessionId: "must-not-leak",
       providerMetadata: { private: true },
     };
@@ -430,7 +430,7 @@ describe("bounded qualification launcher", () => {
         rawInputTokens: 700,
         rawCachedInputTokens: 500,
         rawOutputTokens: 40,
-        usageSource: "native-run-readback",
+        usageSource: "per_run",
       },
     });
 
@@ -720,6 +720,9 @@ describe("bounded qualification launcher", () => {
       /rawCachedInputTokens exceeds rawInputTokens/);
     reject((evidence) => { evidence.liveN1.runs[0].usageJson.providerSessionId = "secret"; },
       /non-accounting provider metadata/);
+    reject((evidence) => { delete evidence.liveN1.runs[0].usageJson.usageSource; }, /usageSource must be per_run/);
+    reject((evidence) => { evidence.liveN1.runs[0].usageJson.usageSource = "session_delta"; },
+      /usageSource must be per_run/);
     reject((evidence) => { evidence.liveN1.usageAccounting.profile = "other/cli"; }, /profile/);
     reject((evidence) => { evidence.liveN1.usageAccounting.formula = "inputTokens + cachedInputTokens + outputTokens"; },
       /formula/);
@@ -750,8 +753,7 @@ describe("bounded qualification launcher", () => {
     expect(validCachedUsage.liveN1.runs[0].usageJson.cachedInputTokens).toBeGreaterThan(0);
     expect(validCachedUsage.liveN1.admission.envelope.reservations[0].usage.units).toBe(
       validCachedUsage.liveN1.runs[0].usageJson.inputTokens
-        + validCachedUsage.liveN1.runs[0].usageJson.outputTokens
-        - validCachedUsage.liveN1.mission.mission.aggregate.n1.rootUsageBaselineUnits,
+        + validCachedUsage.liveN1.runs[0].usageJson.outputTokens,
     );
     expect(() => assertQualificationEvidence(validCachedUsage, options)).not.toThrow();
   });
