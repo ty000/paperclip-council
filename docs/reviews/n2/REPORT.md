@@ -33,8 +33,9 @@ data is changed.
   stable operation and existing durable decision receipt. An indeterminate or
   unusable native observation becomes `application_unknown`, never acceptance.
 - Admit exactly one ordinary correction by the pinned Integration Lead. V2
-  must be independently verified and change both commit and bundle digest. Its
-  usage baseline must retain the exact correction run.
+  must be independently verified for the same company/root issue and immutable
+  mandate, preserve the reviewed base commit, and change both candidate commit
+  and bundle digest. Its usage baseline must retain the exact correction run.
 - Create a fresh second review round for V2. Approval is accepted only for V2,
   after the single correction, with a usable `native_observed` receipt tied to
   the exact second reviewer run.
@@ -62,6 +63,8 @@ Local deterministic checks cover:
 
 - verified-candidate and one-correction entry guards;
 - reviewer independence and exact native handoff/run matching;
+- refusal of duplicate/reused reviewer runs and changed V2 subject, base or
+  mandate;
 - durable unknown handoff and indeterminate decision blocking;
 - exact actor/run/operation/receipt binding for changes requested;
 - correction-run attribution and changed V2 identity;

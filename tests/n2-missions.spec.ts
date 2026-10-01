@@ -21,13 +21,17 @@ const ids = {
   submission1: randomUUID(), submission2: randomUUID(), operation1: randomUUID(), operation2: randomUUID(),
 };
 
-function candidate(commit = "c".repeat(40), sha = "d".repeat(64)): IntegratedCandidateVerification {
+function candidate(
+  commit = "c".repeat(40),
+  sha = "d".repeat(64),
+  baseCommit = "a".repeat(40),
+): IntegratedCandidateVerification {
   return {
     outcome: "verified",
     publicationEligible: true,
     candidate: {
       attachmentId: randomUUID(), byteSize: 120, sha256: sha,
-      baseCommit: "a".repeat(40), candidateCommit: commit,
+      baseCommit, candidateCommit: commit,
     },
     contributions: [
       { contributionId: randomUUID(), commit: "1".repeat(40), ownedPaths: ["src/a/"], changedPaths: ["src/a/a.ts"] },
@@ -143,6 +147,12 @@ describe("N2 ordinary correction and confirmed acceptance", () => {
       status: "in_review", assigneeAgentId: ids.reviewer, currentParticipantAgentId: ids.reviewer,
       returnAssigneeAgentId: ids.lead, observedRunIds: [ids.reviewerRun1, randomUUID()], reviewerRunId: ids.reviewerRun1,
     })).toThrowError(/do not match/);
+    const baselineRun = randomUUID();
+    const duplicate = startN2Review(clean, { baselineRunIds: [baselineRun], baselineTokenTotal: 100 });
+    expect(() => confirmN2ReviewHandoff(duplicate, clean, {
+      status: "in_review", assigneeAgentId: ids.reviewer, currentParticipantAgentId: ids.reviewer,
+      returnAssigneeAgentId: ids.lead, observedRunIds: [baselineRun, baselineRun], reviewerRunId: baselineRun,
+    })).toThrowError(/do not match/);
   });
 
   it("preserves an uncertain handoff and blocks confirmation or a duplicate transition", () => {
@@ -153,6 +163,7 @@ describe("N2 ordinary correction and confirmed acceptance", () => {
     expect(inspectN2State(persisted)).toMatchObject({
       review: { handoff: { state: "unknown", reason: "Native PATCH response was lost" } },
       blockage: { code: "review_handoff_unknown" },
+      nextAction: { actorKind: "operator", label: expect.stringContaining("do not retry") },
     });
     expect(() => confirmN2ReviewHandoff(unknown, source, {
       status: "in_review", assigneeAgentId: ids.reviewer, currentParticipantAgentId: ids.reviewer,
@@ -204,19 +215,35 @@ describe("N2 ordinary correction and confirmed acceptance", () => {
       receipt: observedReceipt({ operationId: ids.operation1, verdict: "changes_requested", runId: ids.reviewerRun1 }),
     });
     const correcting = bindN2CorrectionRun(requested, source, { actorAgentId: ids.lead, runId: ids.correctionRun });
+    const validResubmission = {
+      actorAgentId: ids.lead, runId: ids.correctionRun,
+      candidate: candidate("e".repeat(40), "f".repeat(64)),
+      baselineRunIds: [ids.reviewerRun1, ids.correctionRun], baselineTokenTotal: 300,
+      verificationSubject: { companyId: ids.company, issueId: ids.root }, evidenceRevision: 13,
+    };
+    expect(() => resubmitN2Candidate(correcting, source, {
+      ...validResubmission, verificationSubject: { companyId: ids.company, issueId: randomUUID() },
+    })).toThrowError(/mission root issue and company/);
+    expect(() => resubmitN2Candidate(correcting, source, {
+      ...validResubmission, candidate: candidate("e".repeat(40), "f".repeat(64), "b".repeat(40)),
+    })).toThrowError(/base commit/);
+    source.aggregate.mandate.objective = "Different mandate";
+    expect(() => resubmitN2Candidate(correcting, source, validResubmission)).toThrowError(/same immutable review mandate/);
+    source.aggregate.mandate.objective = "Review one corrected integrated candidate";
     expect(() => resubmitN2Candidate(correcting, source, {
       actorAgentId: ids.lead, runId: ids.correctionRun,
       candidate: candidate("e".repeat(40), "f".repeat(64)), baselineRunIds: [ids.reviewerRun1], baselineTokenTotal: 200,
-      evidenceRevision: 13,
+      verificationSubject: { companyId: ids.company, issueId: ids.root }, evidenceRevision: 13,
     })).toThrowError(/exact correction run identity/);
     expect(() => resubmitN2Candidate(correcting, source, {
       actorAgentId: ids.lead, runId: ids.correctionRun, candidate: candidate(), baselineRunIds: [], baselineTokenTotal: 200,
-      evidenceRevision: 13,
+      verificationSubject: { companyId: ids.company, issueId: ids.root }, evidenceRevision: 13,
     })).toThrowError(/changed commit and bytes/);
     const resubmitted = resubmitN2Candidate(correcting, source, {
       actorAgentId: ids.lead, runId: ids.correctionRun,
       candidate: candidate("e".repeat(40), "f".repeat(64)), baselineRunIds: [ids.reviewerRun1, ids.correctionRun],
-      baselineTokenTotal: 300, evidenceRevision: 13, submissionId: ids.submission2,
+      baselineTokenTotal: 300, verificationSubject: { companyId: ids.company, issueId: ids.root },
+      evidenceRevision: 13, submissionId: ids.submission2,
     });
     expect(resubmitted).toMatchObject({ status: "review_handoff", activeSubmissionId: ids.submission2, submissions: [{ ordinal: 1 }, { ordinal: 2, predecessorSubmissionId: ids.submission1 }] });
   });
@@ -232,7 +259,7 @@ describe("N2 ordinary correction and confirmed acceptance", () => {
     const round2 = resubmitN2Candidate(correcting, source, {
       actorAgentId: ids.lead, runId: ids.correctionRun, candidate: candidate("e".repeat(40), "f".repeat(64)),
       baselineRunIds: [ids.reviewerRun1, ids.correctionRun], baselineTokenTotal: 300,
-      evidenceRevision: 13, submissionId: ids.submission2,
+      verificationSubject: { companyId: ids.company, issueId: ids.root }, evidenceRevision: 13, submissionId: ids.submission2,
     });
     const reviewing2 = confirmN2ReviewHandoff(round2, source, {
       status: "in_review", assigneeAgentId: ids.reviewer, currentParticipantAgentId: ids.reviewer,

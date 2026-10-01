@@ -207,11 +207,14 @@ export function confirmN2ReviewHandoff(
   }
   const reviewer = mission.aggregate.responsibilities.finalReviewerAgentId;
   const lead = mission.aggregate.responsibilities.integrationLeadAgentId;
+  const observedUnique = new Set(input.observedRunIds);
   const expectedRuns = [...round.handoff.baselineRunIds, input.reviewerRunId].sort();
   const observedRuns = [...input.observedRunIds].sort();
   const exact = expectedRuns.length === observedRuns.length && expectedRuns.every((value, index) => value === observedRuns[index]);
   if (input.status !== "in_review" || input.assigneeAgentId !== reviewer
-      || input.currentParticipantAgentId !== reviewer || input.returnAssigneeAgentId !== lead || !exact) {
+      || input.currentParticipantAgentId !== reviewer || input.returnAssigneeAgentId !== lead
+      || round.handoff.baselineRunIds.includes(input.reviewerRunId)
+      || observedUnique.size !== input.observedRunIds.length || !exact) {
     throw new MissionError(409, "native_review_handoff_mismatch", "Native review stage, actors, or run identity do not match the pinned mission", {
       expectedReviewerAgentId: reviewer,
       expectedReturnAssigneeAgentId: lead,
@@ -430,6 +433,7 @@ export function resubmitN2Candidate(
     actorAgentId: string;
     runId: string;
     candidate: IntegratedCandidateVerification;
+    verificationSubject: { companyId: string; issueId: string };
     baselineRunIds: string[];
     baselineTokenTotal: number;
     evidenceRevision: number;
@@ -445,10 +449,21 @@ export function resubmitN2Candidate(
   }
   const previous = state.submissions.at(-1)!;
   const candidate = input.candidate;
+  const currentMandateHash = mandateHash(mission);
+  if (input.verificationSubject.companyId !== mission.companyId
+      || input.verificationSubject.issueId !== mission.rootIssueId) {
+    throw new MissionError(409, "candidate_subject_mismatch", "V2 verification must address this mission root issue and company");
+  }
   if (candidate.outcome !== "verified" || candidate.publicationEligible !== true
       || candidate.candidate.candidateCommit === previous.candidateCommit
       || candidate.candidate.sha256 === previous.sha256) {
     throw new MissionError(422, "candidate_unchanged", "V2 must be a newly verified candidate with changed commit and bytes");
+  }
+  if (candidate.candidate.baseCommit !== previous.baseCommit) {
+    throw new MissionError(409, "candidate_lineage_mismatch", "V2 must preserve the reviewed candidate base commit");
+  }
+  if (currentMandateHash !== previous.mandateHash) {
+    throw new MissionError(409, "mandate_changed", "V2 must correct the candidate under the same immutable review mandate");
   }
   if (!Number.isSafeInteger(input.baselineTokenTotal) || input.baselineTokenTotal < 0
       || new Set(input.baselineRunIds).size !== input.baselineRunIds.length) {
@@ -502,6 +517,9 @@ function n2Blockage(state: N2State, round: N2ReviewRound | null) {
 }
 
 function n2NextAction(state: N2State, round: N2ReviewRound | null) {
+  if (round?.handoff.state === "unknown") {
+    return { actorKind: "operator" as const, actorId: null, label: "Reconcile the uncertain native handoff; do not retry or confirm from local state." };
+  }
   const reviewActions = {
     review_handoff: "Confirm the native review handoff and exact reviewer run.",
     reviewing: "Review the active immutable submission and record one receipt-backed verdict.",
