@@ -141,7 +141,7 @@ export async function runLiveN1(input: {
   const lead = await createAgent("N1 Integration Lead", "engineer", leadInstructions());
   const contributorA = await createAgent("N1 Contributor Alpha", "engineer", contributorInstructions());
   const contributorB = await createAgent("N1 Contributor Beta", "engineer", contributorInstructions());
-  const reviewer = await createAgent("N1 Independent Reviewer", "reviewer", [
+  const reviewer = await createAgent("N1 Independent Reviewer", "qa", [
     "You are reserved for the later independent Council review. N1 must stop before waking you.",
     "",
     promptPolicy("ordinary final reviewer; not launched during N1"),
