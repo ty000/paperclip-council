@@ -111,11 +111,11 @@ function promptPolicy(target: string): string {
   ].join("\n");
 }
 
-function contributorInstructions(): string {
+export function contributorInstructions(): string {
   return [
     "You are one bounded Council N1 contributor. Work only on the currently assigned Paperclip child issue and current shared Git workspace.",
     "Read the issue title and description. Create the one requested owned file with exactly the requested one-line content and a trailing newline. Do not modify any other path.",
-    "Commit that file with a concise commit message. Then use the authenticated Council endpoint named in the issue description: POST command=inspect, read body.version, then POST command=record-contribution with a fresh UUID commandId, that expectedVersion, the stated missionId and contributionId, and git rev-parse HEAD as commit. The current issue ID is available in the Paperclip task context and PAPERCLIP_TASK_ID.",
+    'Commit that file with a concise commit message. Then use the authenticated Council endpoint named in the issue description. The first request body is exactly {"command":"inspect","missionId":"<mission-id>"}; replace <mission-id> with the stated Mission ID. Read body.version, then POST command=record-contribution with missionId, a fresh UUID commandId, that expectedVersion, the stated contributionId, and git rev-parse HEAD as commit. The current issue ID is available in the Paperclip task context and PAPERCLIP_TASK_ID.',
     "Use PAPERCLIP_API_URL, PAPERCLIP_API_KEY, and PAPERCLIP_RUN_ID. Normalize a trailing /api before constructing /api/plugins/... paths. Never print credentials.",
     "Only after record-contribution returns HTTP 200, PATCH this child issue status to done. Stop immediately on any non-2xx response; do not retry a model run or change unowned files.",
     "On failure, do not PATCH an issue status and do not create an issue comment: either may violate the native route contract or wake another run. Report the blocker only in your final response.",
@@ -124,11 +124,11 @@ function contributorInstructions(): string {
   ].join("\n");
 }
 
-function leadInstructions(): string {
+export function leadInstructions(): string {
   return [
     "You are the Council N1 Integration Lead. Execute the root issue exactly. You coordinate two sequential native contribution runs and publish one verified Git candidate; you do not author either contribution file.",
-    "All mission transitions must POST to /api/plugins/<plugin-id>/api/issues/<root-issue-id>/council/commands with the injected bearer token and run header. Call command=inspect before every state-changing command and use the returned version as expectedVersion. Use fresh UUIDs for commandId and reservationId. Never use direct database access or synthetic run binding.",
-    "After dispatching a child, retain its childIssueId and dispatchRunId from the response. Poll GET /api/issues/<childIssueId> until status=done and GET /api/heartbeat-runs/<dispatchRunId> until a terminal status with finishedAt. Then call reconcile-usage for that contribution using one stable commandId. If reconciliation returns only g4_run_not_terminal or g4_usage_unavailable while Paperclip finalizes its token ledger, repeat that same command after two seconds for at most 30 observations; any other refusal is a blocker. This polling is observation, never a provider/model retry. Do not dispatch the second child before the first reconciliation succeeds.",
+    'All mission transitions must POST to /api/plugins/<plugin-id>/api/issues/<root-issue-id>/council/commands with the injected bearer token and run header. Before every state-changing command, send exactly {"command":"inspect","missionId":"<mission-id>"} with the actual Mission ID, then use the returned version as expectedVersion. Use fresh UUIDs for commandId and reservationId. Never use direct database access or synthetic run binding.',
+    "After dispatching a child, retain its childIssueId and dispatchRunId from the response. Poll GET /api/heartbeat-runs/<dispatchRunId> until a terminal status with finishedAt, then call reconcile-usage immediately for that contribution using one stable commandId, regardless of run success or whether the child issue is done. If reconciliation returns only g4_run_not_terminal or g4_usage_unavailable while Paperclip finalizes its token ledger, repeat that same command after two seconds for at most 30 observations; any other refusal is a blocker. After settlement, require the child issue to be done and inspect the mission to require its commit before dispatching the next child. A terminal run without a recorded contribution is a blocker: do not dispatch the next child. This polling is observation, never a provider/model retry.",
     "After both contributions are done and reconciled, create a distinct empty integration commit with git commit --allow-empty. Create refs/heads/base at the stated base commit and refs/heads/candidate at the integration commit, then create and verify a self-contained Git bundle containing those exact refs.",
     "Prove failure blocking once: call publish with a fresh random attachmentId and syntactically valid identities/digest, require HTTP 422 integration_failed, and verify inspect still has no candidate. Do not repeat the failed publish.",
     "Upload the valid bundle with multipart field file to /api/companies/<company-id>/issues/<root-issue-id>/attachments using the same auth headers, compute its SHA-256, then call publish with the returned attachment ID, base commit, integration commit, and digest. Require HTTP 200 and outcome=applied. Finally PATCH the root issue status to done.",
@@ -150,6 +150,69 @@ async function waitForTerminalRun(
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 2_000));
   }
   throw new Error(`Native Paperclip run ${runId} did not reach a terminal state within ${timeoutMs} ms`);
+}
+
+async function requestUsageReconciliation(
+  request: ApiRequest,
+  commandPath: string,
+  body: Record<string, unknown>,
+): Promise<ApiResult> {
+  let result: ApiResult | null = null;
+  for (let observation = 0; observation < 30; observation += 1) {
+    result = await request("human", "POST", commandPath, body);
+    if (result.status === 200) break;
+    if (result.status !== 409 || !["g4_run_not_terminal", "g4_usage_unavailable"].includes(result.body?.code)) {
+      break;
+    }
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 2_000));
+  }
+  assert(result);
+  return result;
+}
+
+export async function reconcileTerminalN1Usage(input: {
+  request: ApiRequest;
+  getRun: (runId: string) => Promise<RunSnapshot | null>;
+  commandPath: string;
+  companyId: string;
+  leadRun: RunSnapshot;
+  missionBeforeLeadReconciliation: any;
+}): Promise<{
+  runs: RunSnapshot[];
+  contributionSettlements: Array<Record<string, unknown>>;
+  leadSettlement: ApiResult;
+}> {
+  const contributions = input.missionBeforeLeadReconciliation.mission.aggregate.n1.contributions as any[];
+  const dispatched = contributions.filter((slot) => typeof slot.dispatchRunId === "string" && slot.dispatchRunId.length > 0);
+  const contributionSettlements: Array<Record<string, unknown>> = [];
+  const runs: RunSnapshot[] = [input.leadRun];
+  for (const slot of dispatched) {
+    const run = await waitForTerminalRun(slot.dispatchRunId, input.getRun);
+    runs.push(run);
+    const command = {
+      companyId: input.companyId,
+      command: "reconcile-contribution-usage",
+      commandId: randomUUID(),
+      contributionId: slot.contributionId,
+    };
+    const result = await requestUsageReconciliation(input.request, input.commandPath, command);
+    contributionSettlements.push({
+      contributionId: slot.contributionId,
+      runId: slot.dispatchRunId,
+      runStatus: run.status,
+      request: command,
+      response: { status: result.status, body: result.body },
+    });
+  }
+
+  const leadCommand = {
+    companyId: input.companyId,
+    command: "reconcile-lead-usage",
+    commandId: randomUUID(),
+    expectedVersion: input.missionBeforeLeadReconciliation.mission.version,
+  };
+  const leadSettlement = await requestUsageReconciliation(input.request, input.commandPath, leadCommand);
+  return { runs, contributionSettlements, leadSettlement };
 }
 
 // fallow-ignore-next-line complexity
@@ -408,7 +471,7 @@ export async function runLiveN1(input: {
     `Contribution Alpha: id=${contributionAId}; assignee=${contributorA.id}; title=Create alpha.txt with exact content alpha contribution; ownedPaths=[alpha.txt]`,
     `Contribution Beta: id=${contributionBId}; assignee=${contributorB.id}; title=Create beta.txt with exact content beta contribution; ownedPaths=[beta.txt]`,
     "Plan exactly those two slots, materialize both, then dispatch and reconcile Alpha before dispatching Beta. Follow your AGENTS.md integration and failure-blocking procedure.",
-    "Agent command bodies always include missionId. inspect needs only command=inspect. plan additionally needs commandId, expectedVersion and contributions=[{contributionId,assigneeAgentId,title,ownedPaths},...]. materialize needs commandId, expectedVersion and contributionId. dispatch needs commandId, expectedVersion, contributionId, a fresh reservationId and requestedUnits. reconcile-usage needs commandId and contributionId. publish needs commandId, expectedVersion, attachmentId, baseCommit, candidateCommit and expectedSha256.",
+    `Agent command bodies always include missionId. The exact inspect body is {"command":"inspect","missionId":"${missionId}"}. plan additionally needs commandId, expectedVersion and contributions=[{contributionId,assigneeAgentId,title,ownedPaths},...]. materialize needs commandId, expectedVersion and contributionId. dispatch needs commandId, expectedVersion, contributionId, a fresh reservationId and requestedUnits. reconcile-usage needs commandId and contributionId. publish needs commandId, expectedVersion, attachmentId, baseCommit, candidateCommit and expectedSha256.`,
     "For every POST use Content-Type application/json, Authorization Bearer $PAPERCLIP_API_KEY and X-Paperclip-Run-Id $PAPERCLIP_RUN_ID. The agent command URL uses the root issue ID from this task context.",
     "Do not wake the reviewer and do not start N2.",
     "",
@@ -471,45 +534,38 @@ export async function runLiveN1(input: {
   const postLeadMission = await input.request("human", "GET", `${missionBase}/${missionId}?companyId=${companyId}`);
   assert.equal(postLeadMission.status, 200, JSON.stringify(postLeadMission.body));
   liveEvidence.missionAfterLead = postLeadMission.body;
-  const dispatchedRunIds = (postLeadMission.body.mission.aggregate.n1.contributions as any[])
-    .map((slot) => slot.dispatchRunId)
-    .filter((runId: unknown): runId is string => typeof runId === "string" && runId.length > 0);
-  const observedRuns = await Promise.all([leadRunId, ...dispatchedRunIds].map((runId) => input.getRun(runId)));
-  liveEvidence.runs = observedRuns.map(nativeRunEvidence);
-
-  const leadUsageExpectedVersion = postLeadMission.body.mission.version;
-  assert(Number.isSafeInteger(leadUsageExpectedVersion) && leadUsageExpectedVersion > 0);
-  const leadUsageCommand = {
+  const phaseBeforeLeadReconciliation = postLeadMission.body.mission.aggregate.phase;
+  const usageReconciliation = await reconcileTerminalN1Usage({
+    request: input.request,
+    getRun: input.getRun,
+    commandPath,
     companyId,
-    command: "reconcile-lead-usage",
-    commandId: randomUUID(),
-    expectedVersion: leadUsageExpectedVersion,
+    leadRun,
+    missionBeforeLeadReconciliation: postLeadMission.body,
+  });
+  liveEvidence.runs = usageReconciliation.runs.map(nativeRunEvidence);
+  liveEvidence.contributionUsageSettlements = usageReconciliation.contributionSettlements;
+  liveEvidence.usageSettlement = {
+    status: usageReconciliation.leadSettlement.status,
+    body: usageReconciliation.leadSettlement.body,
   };
-  let leadUsage: ApiResult | null = null;
-  for (let observation = 0; observation < 30; observation += 1) {
-    leadUsage = await input.request("human", "POST", commandPath, leadUsageCommand);
-    if (leadUsage.status === 200) break;
-    if (leadUsage.status !== 409 || !["g4_run_not_terminal", "g4_usage_unavailable"].includes(leadUsage.body?.code)) {
-      break;
-    }
-    await new Promise((resolveDelay) => setTimeout(resolveDelay, 2_000));
-  }
-  assert(leadUsage);
-  liveEvidence.usageSettlement = { status: leadUsage.status, body: leadUsage.body };
 
   const postReconciliationMission = await input.request("human", "GET", `${missionBase}/${missionId}?companyId=${companyId}`);
   assert.equal(postReconciliationMission.status, 200, JSON.stringify(postReconciliationMission.body));
   const admissionAfterLead = await input.request("human", "GET", `${admissionPath}?companyId=${companyId}&periodKey=${encodeURIComponent(profile.periodKey)}`);
   assert.equal(admissionAfterLead.status, 200, JSON.stringify(admissionAfterLead.body));
-  liveEvidence.stage = leadUsage.status === 200 ? "lead_usage_reconciled" : "lead_usage_reconciliation_refused";
+  liveEvidence.stage = usageReconciliation.leadSettlement.status === 200
+    ? "terminal_usage_reconciled"
+    : "lead_usage_reconciliation_refused";
   liveEvidence.mission = postReconciliationMission.body;
   liveEvidence.admission = admissionAfterLead.body;
-  assert.equal(leadUsage.status, 200, JSON.stringify(leadUsage.body));
+  assert(usageReconciliation.contributionSettlements.every((entry: any) => entry.response.status === 200),
+    JSON.stringify(usageReconciliation.contributionSettlements));
+  assert.equal(usageReconciliation.leadSettlement.status, 200, JSON.stringify(usageReconciliation.leadSettlement.body));
   assert.equal(leadRun.status, "succeeded", `lead run failed: ${leadRun.error ?? "unknown error"}`);
-  assert.equal(postReconciliationMission.body.mission.aggregate.phase, "integrating");
+  assert.equal(phaseBeforeLeadReconciliation, "integrating");
 
-  const finalMission = await input.request("human", "GET", `${missionBase}/${missionId}?companyId=${companyId}`);
-  assert.equal(finalMission.status, 200, JSON.stringify(finalMission.body));
+  const finalMission = postReconciliationMission;
   const finalState = finalMission.body.mission.aggregate.n1;
   assert.equal(finalMission.body.mission.aggregate.phase, "ready_for_review");
   assert.equal(finalMission.body.mission.aggregate.control.status, "inactive");
@@ -555,7 +611,10 @@ export async function runLiveN1(input: {
     runs: issueRuns.map(nativeRunEvidence),
     mission: finalMission.body,
     admission: admissionFinal.body,
-    usageSettlement: { status: leadUsage.status, body: leadUsage.body },
+    usageSettlement: {
+      status: usageReconciliation.leadSettlement.status,
+      body: usageReconciliation.leadSettlement.body,
+    },
     leadRunBarrier: {
       expectedRunId: leadRunId,
       wakeOnDemand: leadRunBarrier.body.runtimeConfig.heartbeat.wakeOnDemand,

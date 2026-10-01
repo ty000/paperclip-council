@@ -11,7 +11,16 @@ import { ProcessGroupDrainError, runProcessGroup } from "../scripts/qualificatio
 import { prepareQualificationHost, withOwnedQualificationRuntime } from "../scripts/qualification/run-bounded.mjs";
 // @ts-expect-error The qualification evidence contract is intentionally plain ESM.
 import { __claimLiveEvidencePathsForTest, assertQualificationEvidence, claimLiveEvidencePaths, LIVE_RESULT_KEYS, SAFE_RESULT_KEYS, writeClaimedArtifact } from "../scripts/qualification/evidence-contract.mjs";
-import { assertNoReviewerRuns, assertOnlyExpectedAgentRun, n1DeliveryAdapterConfig, nativeRunEvidence } from "./functional/n1-live.js";
+import {
+  assertNoReviewerRuns,
+  assertOnlyExpectedAgentRun,
+  contributorInstructions,
+  leadInstructions,
+  n1DeliveryAdapterConfig,
+  nativeRunEvidence,
+  reconcileTerminalN1Usage,
+} from "./functional/n1-live.js";
+import { contributionDescription } from "../src/n1-missions.js";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const liveCommit = "a".repeat(40);
@@ -348,7 +357,7 @@ describe("bounded qualification launcher", () => {
     )).toThrow(/exactly the expected native run/);
   });
 
-  it("preserves raw terminal usage and reconciles the lead before asserting integration", () => {
+  it("preserves raw terminal usage and keeps the phase check on the pre-reconciliation snapshot", () => {
     const usageJson = {
       inputTokens: 700,
       cachedInputTokens: 500,
@@ -368,12 +377,133 @@ describe("bounded qualification launcher", () => {
     })).toMatchObject({ id: "lead-run", status: "succeeded", usageJson });
 
     const source = readFileSync(resolve(packageRoot, "tests/functional/n1-live.ts"), "utf8");
-    expect(source.indexOf("const leadUsageCommand")).toBeLessThan(
-      source.indexOf('assert.equal(postReconciliationMission.body.mission.aggregate.phase, "integrating")'),
+    expect(source.indexOf("const phaseBeforeLeadReconciliation")).toBeLessThan(
+      source.indexOf("reconcileTerminalN1Usage({"),
     );
-    expect(source.indexOf("const leadUsageCommand")).toBeLessThan(
+    expect(source.indexOf("reconcileTerminalN1Usage({")).toBeLessThan(
+      source.indexOf('assert.equal(phaseBeforeLeadReconciliation, "integrating")'),
+    );
+    expect(source.indexOf("reconcileTerminalN1Usage({")).toBeLessThan(
       source.indexOf('assert.equal(leadRun.status, "succeeded",'),
     );
+  });
+
+  it("uses explicit inspect payloads and reaches ready_for_review only after terminal usage settlement", async () => {
+    const missionId = "11111111-1111-4111-8111-111111111111";
+    const contributionA = "22222222-2222-4222-8222-222222222222";
+    const contributionB = "33333333-3333-4333-8333-333333333333";
+    const inspectPayload = `{"command":"inspect","missionId":"${missionId}"}`;
+    expect(contributorInstructions()).toContain('{"command":"inspect","missionId":"<mission-id>"}');
+    expect(leadInstructions()).toContain('{"command":"inspect","missionId":"<mission-id>"}');
+    expect(contributionDescription({ missionId, contributionId: contributionA, ownedPaths: ["alpha.txt"] }))
+      .toContain(inspectPayload);
+    const source = readFileSync(resolve(packageRoot, "tests/functional/n1-live.ts"), "utf8");
+    expect(source).not.toContain("inspect needs only command=inspect");
+    expect(source).toContain('The exact inspect body is {"command":"inspect","missionId":"${missionId}"}');
+
+    const requests: Array<Record<string, any>> = [];
+    const request = async (_actor: string, _method: string, _path: string, body?: unknown) => {
+      requests.push(body as Record<string, any>);
+      const ready = (body as any).command === "reconcile-lead-usage";
+      return {
+        status: 200,
+        body: ready
+          ? { outcome: "settled", mission: { aggregate: { phase: "ready_for_review" } } }
+          : { outcome: "settled", reservation: { status: "settled" } },
+        headers: new Headers(),
+      };
+    };
+    const runs = new Map([
+      ["alpha-run", { id: "alpha-run", agentId: "alpha", status: "succeeded", startedAt: "start", finishedAt: "finish", error: null, usageJson: {} }],
+      ["beta-run", { id: "beta-run", agentId: "beta", status: "succeeded", startedAt: "start", finishedAt: "finish", error: null, usageJson: {} }],
+    ]);
+    const result = await reconcileTerminalN1Usage({
+      request,
+      getRun: async (runId) => runs.get(runId) ?? null,
+      commandPath: `/missions/${missionId}/commands`,
+      companyId: "company",
+      leadRun: { id: "lead-run", agentId: "lead", status: "succeeded", startedAt: "start", finishedAt: "finish", error: null, usageJson: {} },
+      missionBeforeLeadReconciliation: {
+        mission: {
+          version: 12,
+          aggregate: {
+            phase: "integrating",
+            n1: { contributions: [
+              { contributionId: contributionA, dispatchRunId: "alpha-run", commit: "a".repeat(40) },
+              { contributionId: contributionB, dispatchRunId: "beta-run", commit: "b".repeat(40) },
+            ] },
+          },
+        },
+      },
+    });
+
+    expect(requests.map((body) => body.command)).toEqual([
+      "reconcile-contribution-usage",
+      "reconcile-contribution-usage",
+      "reconcile-lead-usage",
+    ]);
+    expect(requests[0]).toEqual({
+      companyId: "company",
+      command: "reconcile-contribution-usage",
+      commandId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
+      contributionId: contributionA,
+    });
+    expect(requests[2]).toEqual({
+      companyId: "company",
+      command: "reconcile-lead-usage",
+      commandId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
+      expectedVersion: 12,
+    });
+    expect(result.runs.map((run) => run.id)).toEqual(["lead-run", "alpha-run", "beta-run"]);
+    expect(result.leadSettlement.body.mission.aggregate.phase).toBe("ready_for_review");
+  });
+
+  it("settles a terminal child without a contribution and does not authorize another dispatch", async () => {
+    const requests: Array<Record<string, any>> = [];
+    const request = async (_actor: string, _method: string, _path: string, body?: unknown) => {
+      requests.push(body as Record<string, any>);
+      return {
+        status: 200,
+        body: (body as any).command === "reconcile-contribution-usage"
+          ? { outcome: "settled", reservation: { status: "settled", usage: { units: 91 } } }
+          : { outcome: "settled", mission: { aggregate: { phase: "executing" } } },
+        headers: new Headers(),
+      };
+    };
+    const result = await reconcileTerminalN1Usage({
+      request,
+      getRun: async (runId) => runId === "alpha-run"
+        ? { id: runId, agentId: "alpha", status: "failed", startedAt: "start", finishedAt: "finish", error: "no contribution", usageJson: {} }
+        : null,
+      commandPath: "/missions/mission/commands",
+      companyId: "company",
+      leadRun: { id: "lead-run", agentId: "lead", status: "succeeded", startedAt: "start", finishedAt: "finish", error: null, usageJson: {} },
+      missionBeforeLeadReconciliation: {
+        mission: {
+          version: 8,
+          aggregate: {
+            phase: "executing",
+            n1: { contributions: [
+              { contributionId: "alpha", dispatchRunId: "alpha-run" },
+              { contributionId: "beta" },
+            ] },
+          },
+        },
+      },
+    });
+
+    expect(result.contributionSettlements).toHaveLength(1);
+    expect(result.contributionSettlements[0]).toMatchObject({
+      contributionId: "alpha",
+      runStatus: "failed",
+      response: { status: 200, body: { reservation: { status: "settled", usage: { units: 91 } } } },
+    });
+    expect(result.leadSettlement.body.mission.aggregate.phase).toBe("executing");
+    expect(requests.map((body) => body.command)).toEqual([
+      "reconcile-contribution-usage",
+      "reconcile-lead-usage",
+    ]);
+    expect(requests.some((body) => body.command === "dispatch")).toBe(false);
   });
 
   it("rolls back only its empty JSON claim when the screenshot O_EXCL create fails", async () => {

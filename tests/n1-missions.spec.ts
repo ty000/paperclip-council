@@ -879,6 +879,88 @@ describe("N1 mission transitions", () => {
     });
   });
 
+  it("settles a terminal child without recording a contribution or dispatching the next child", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const reservationId = randomUUID();
+    const value = activeAggregate();
+    value.n1 = {
+      ...(value.n1 as object),
+      rootDispatchMode: "native",
+      rootUsageBaselineUnits: 0,
+      contributions: [
+        {
+          ...plan[0],
+          issueState: "confirmed",
+          childIssueId: id.childA,
+          dispatchState: "requested",
+          dispatchReservationId: reservationId,
+          dispatchRunId: id.contributorRun,
+          dispatchUsageBaselineUnits: 10,
+        },
+        { ...plan[1], issueState: "confirmed", childIssueId: id.childB },
+      ],
+    };
+    const h = harness(value);
+    h.configGet.mockResolvedValue({ n1OperatingProfile: nativeProfile } as never);
+    vi.mocked(readAdmission).mockResolvedValue(nativeEnvelope([{
+      reservationId,
+      missionId: id.mission,
+      status: "reserved",
+      settlementReceipts: [],
+    }]) as never);
+    h.getOrchestration.mockResolvedValue({
+      issueId: id.childA,
+      companyId: id.company,
+      subtreeIssueIds: [id.childA],
+      relations: {},
+      approvals: [],
+      runs: [{
+        id: id.contributorRun,
+        issueId: id.childA,
+        agentId: id.contributorA,
+        status: "failed",
+        invocationSource: "on_demand",
+        triggerDetail: null,
+        startedAt: new Date(0).toISOString(),
+        finishedAt: new Date(1).toISOString(),
+        error: "contribution not recorded",
+        createdAt: new Date(0).toISOString(),
+      }],
+      costs: { costCents: 0, inputTokens: 180, cachedInputTokens: 90, outputTokens: 20, billingCode: null },
+      openBudgetIncidents: [],
+      invocationBlocks: [],
+    } as never);
+    vi.mocked(settleAdmission).mockResolvedValue({
+      outcome: "settled",
+      reservation: { reservationId, status: "settled" },
+    } as never);
+    const before = h.row();
+
+    const result = await executeN1BoardCommand(h.ctx, {
+      companyId: id.company,
+      missionId: id.mission,
+      actorUserId: id.owner,
+      body: {
+        command: "reconcile-contribution-usage",
+        commandId: randomUUID(),
+        contributionId: id.contributionA,
+      },
+    });
+
+    expect(result).toMatchObject({ outcome: "settled", mission: { aggregate: { phase: "executing" } } });
+    expect(settleAdmission).toHaveBeenCalledWith(h.ctx, expect.objectContaining({
+      reservationId,
+      usage: expect.objectContaining({ units: 190 }),
+      remainingExposure: expect.objectContaining({ units: 0 }),
+    }));
+    expect(h.row()).toEqual(before);
+    expect((h.row().aggregate.n1 as { contributions: Array<Record<string, unknown>> }).contributions).toEqual([
+      expect.not.objectContaining({ commit: expect.anything() }),
+      expect.not.objectContaining({ dispatchRunId: expect.anything() }),
+    ]);
+    expect(h.requestWakeup).not.toHaveBeenCalled();
+  });
+
   it("keeps a native verified candidate integrating until terminal lead usage settles", async () => {
     vi.stubEnv("NODE_ENV", "production");
     const contributionReservations = [randomUUID(), randomUUID()];

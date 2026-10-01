@@ -619,7 +619,8 @@ export async function handleMissionApi(input: PluginApiRequestInput, ctx: Plugin
       const body = asRecord(input.body);
       const missionId = input.params.missionId ? uuid(input.params.missionId, "missionId") : undefined;
       const result = (body.command === "activate" || body.command === "start-lead"
-        || body.command === "fixture-bind-lead-run" || body.command === "reconcile-lead-usage") && missionId
+        || body.command === "fixture-bind-lead-run" || body.command === "reconcile-lead-usage"
+        || body.command === "reconcile-contribution-usage") && missionId
         ? await executeN1BoardCommand(ctx, { companyId, missionId, actorUserId, body })
         : await executeMissionCommand(ctx, {
         companyId,
