@@ -718,6 +718,12 @@ describe("bounded qualification launcher", () => {
       /cachedInputTokens exceeds inputTokens/);
     reject((evidence) => { evidence.liveN1.runs[0].usageJson.rawCachedInputTokens = 1_201; },
       /rawCachedInputTokens exceeds rawInputTokens/);
+    reject((evidence) => { evidence.liveN1.runs[0].usageJson.rawInputTokens += 1; },
+      /raw usage counters do not match normalized per_run counters/);
+    reject((evidence) => { evidence.liveN1.runs[0].usageJson.rawCachedInputTokens -= 1; },
+      /raw usage counters do not match normalized per_run counters/);
+    reject((evidence) => { evidence.liveN1.runs[0].usageJson.rawOutputTokens += 1; },
+      /raw usage counters do not match normalized per_run counters/);
     reject((evidence) => { evidence.liveN1.runs[0].usageJson.providerSessionId = "secret"; },
       /non-accounting provider metadata/);
     reject((evidence) => { delete evidence.liveN1.runs[0].usageJson.usageSource; }, /usageSource must be per_run/);

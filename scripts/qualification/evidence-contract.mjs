@@ -523,6 +523,10 @@ function assertLiveRunUsage(run) {
     "native run cachedInputTokens exceeds inputTokens");
   requireProof(usage.rawCachedInputTokens <= usage.rawInputTokens,
     "native run rawCachedInputTokens exceeds rawInputTokens");
+  requireProof(usage.rawInputTokens === usage.inputTokens
+    && usage.rawCachedInputTokens === usage.cachedInputTokens
+    && usage.rawOutputTokens === usage.outputTokens,
+  "native run raw usage counters do not match normalized per_run counters");
   const allowedKeys = new Set([...LIVE_USAGE_COUNTERS, "usageSource"]);
   requireProof(Object.keys(usage).every((key) => allowedKeys.has(key)),
     "native run usageJson contains non-accounting provider metadata");

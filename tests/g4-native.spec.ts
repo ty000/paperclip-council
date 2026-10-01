@@ -99,6 +99,18 @@ describe("native G4 profile", () => {
     await expect(assertNativeLaunchAllowed(context({}, summary({ runs: [] })), { companyId, issueId })).resolves.toBe(130);
   });
 
+  it("fails closed on malformed individual token counters", async () => {
+    const malformedCosts = [
+      { costCents: 0, inputTokens: -10, cachedInputTokens: 0, outputTokens: 20, billingCode: null },
+      { costCents: 0, inputTokens: 10, cachedInputTokens: 11, outputTokens: 20, billingCode: null },
+      { costCents: 0, inputTokens: Number.MAX_SAFE_INTEGER, cachedInputTokens: 0, outputTokens: 1, billingCode: null },
+    ];
+    for (const costs of malformedCosts) {
+      await expect(assertNativeLaunchAllowed(context({}, summary({ runs: [], costs })), { companyId, issueId }))
+        .rejects.toMatchObject({ code: "g4_usage_unavailable" });
+    }
+  });
+
   it("honors host invocation and budget blocks before a native launch", async () => {
     await expect(assertNativeLaunchAllowed(context({}, summary({
       runs: [],

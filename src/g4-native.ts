@@ -173,9 +173,15 @@ async function readNativeOrchestration(
 function orchestrationUsageUnits(summary: PluginIssueOrchestrationSummary): number {
   // Codex CLI reports cached input as a detail already included in inputTokens.
   // Keep cachedInputTokens in the native summary/evidence, but do not count it twice.
-  const usageUnits = summary.costs.inputTokens + summary.costs.outputTokens;
-  if (!Number.isSafeInteger(usageUnits) || usageUnits < 0) {
-    throw new AdmissionError(409, "g4_usage_unavailable", "Paperclip issue token usage is not a nonnegative safe integer");
+  const { inputTokens, cachedInputTokens, outputTokens } = summary.costs;
+  const counters = [inputTokens, cachedInputTokens, outputTokens];
+  if (!counters.every((counter) => Number.isSafeInteger(counter) && counter >= 0)
+    || cachedInputTokens > inputTokens) {
+    throw new AdmissionError(409, "g4_usage_unavailable", "Paperclip issue token counters are inconsistent or not nonnegative safe integers");
+  }
+  const usageUnits = inputTokens + outputTokens;
+  if (!Number.isSafeInteger(usageUnits)) {
+    throw new AdmissionError(409, "g4_usage_unavailable", "Paperclip issue token usage exceeds the safe integer range");
   }
   return usageUnits;
 }
