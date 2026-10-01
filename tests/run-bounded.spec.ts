@@ -37,10 +37,31 @@ function liveOptions(notBefore: number) {
 function qualificationEvidence(mode: "safe" | "live"): any {
   const live = mode === "live";
   const results = Object.fromEntries((live ? LIVE_RESULT_KEYS : SAFE_RESULT_KEYS).map((key: string) => [key, "PASS"]));
-  const reservations = [1, 2, 3].map((ordinal) => ({
-    reservationId: `reservation-${ordinal}`,
+  const runEvidence = [
+    { id: "lead-run", agentId: "lead", inputTokens: 1_200, cachedInputTokens: 600, outputTokens: 140, baseline: 100 },
+    { id: "alpha-run", agentId: "alpha", inputTokens: 900, cachedInputTokens: 200, outputTokens: 110, baseline: 10 },
+    { id: "beta-run", agentId: "beta", inputTokens: 800, cachedInputTokens: 0, outputTokens: 90, baseline: 40 },
+  ];
+  const reservationIds = [
+    "10000000-0000-4000-8000-000000000001",
+    "10000000-0000-4000-8000-000000000002",
+    "10000000-0000-4000-8000-000000000003",
+  ];
+  const reservationEffects = [
+    "20000000-0000-4000-8000-000000000001",
+    "alpha-contribution",
+    "beta-contribution",
+  ];
+  const reservations = runEvidence.map((run, index) => ({
+    reservationId: reservationIds[index],
+    missionId: "mission",
+    effectId: reservationEffects[index],
     status: "settled",
-    usage: { status: "known", units: ordinal },
+    usage: {
+      status: "known",
+      units: run.inputTokens + run.outputTokens - run.baseline,
+      source: `paperclip:issues.summaries.getOrchestration:terminal-token-ledger;run=${run.id};issue-baseline=${run.baseline};monetary-cost=unpriced`,
+    },
     remainingExposure: { status: "known", units: 0 },
   }));
   return {
@@ -87,11 +108,25 @@ function qualificationEvidence(mode: "safe" | "live"): any {
         rootIssueId: "root-issue",
         baseCommit: "0".repeat(40),
         agents: { lead: "lead", contributors: ["alpha", "beta"], reviewer: "reviewer" },
-        runs: [
-          { id: "lead-run", agentId: "lead", status: "succeeded", finishedAt: "2026-10-01T10:00:20.000Z" },
-          { id: "alpha-run", agentId: "alpha", status: "succeeded", finishedAt: "2026-10-01T10:00:40.000Z" },
-          { id: "beta-run", agentId: "beta", status: "succeeded", finishedAt: "2026-10-01T10:00:50.000Z" },
-        ],
+        usageAccounting: {
+          profile: "codex_local/cli",
+          formula: "inputTokens + outputTokens",
+        },
+        runs: runEvidence.map((run, index) => ({
+          id: run.id,
+          agentId: run.agentId,
+          status: "succeeded",
+          finishedAt: `2026-10-01T10:00:${20 + index * 15}.000Z`,
+          usageJson: {
+            inputTokens: run.inputTokens,
+            cachedInputTokens: run.cachedInputTokens,
+            outputTokens: run.outputTokens,
+            rawInputTokens: run.inputTokens,
+            rawCachedInputTokens: run.cachedInputTokens,
+            rawOutputTokens: run.outputTokens,
+            usageSource: "native-run-readback",
+          },
+        })),
         leadRunBarrier: {
           expectedRunId: "lead-run",
           wakeOnDemand: false,
@@ -119,14 +154,18 @@ function qualificationEvidence(mode: "safe" | "live"): any {
               control: { status: "inactive" },
               journal: [{ action: "integration_check_failed" }],
               n1: {
+                activationReservationId: reservationIds[0],
+                rootUsageBaselineUnits: runEvidence[0].baseline,
                 rootDispatchRunId: "lead-run",
                 contributions: [
                   {
                     contributionId: "alpha-contribution", assigneeAgentId: "alpha", dispatchRunId: "alpha-run",
+                    dispatchReservationId: reservationIds[1], dispatchUsageBaselineUnits: runEvidence[1].baseline,
                     commit: "1".repeat(40), ownedPaths: ["alpha.txt"],
                   },
                   {
                     contributionId: "beta-contribution", assigneeAgentId: "beta", dispatchRunId: "beta-run",
+                    dispatchReservationId: reservationIds[2], dispatchUsageBaselineUnits: runEvidence[2].baseline,
                     commit: "2".repeat(40), ownedPaths: ["beta.txt"],
                   },
                 ],
@@ -151,7 +190,7 @@ function qualificationEvidence(mode: "safe" | "live"): any {
         reviewerRunCount: 0,
         admission: {
           envelope: {
-            allowance: { status: "known", knownUsageUnits: 6 },
+            allowance: { status: "known", knownUsageUnits: reservations.reduce((total, item) => total + item.usage.units, 0) },
             reservations,
           },
         },
@@ -357,7 +396,7 @@ describe("bounded qualification launcher", () => {
     )).toThrow(/exactly the expected native run/);
   });
 
-  it("preserves raw terminal usage and keeps the phase check on the pre-reconciliation snapshot", () => {
+  it("preserves only allowlisted terminal usage and keeps the phase check on the pre-reconciliation snapshot", () => {
     const usageJson = {
       inputTokens: 700,
       cachedInputTokens: 500,
@@ -365,6 +404,9 @@ describe("bounded qualification launcher", () => {
       rawInputTokens: 700,
       rawCachedInputTokens: 500,
       rawOutputTokens: 40,
+      usageSource: "native-run-readback",
+      providerSessionId: "must-not-leak",
+      providerMetadata: { private: true },
     };
     expect(nativeRunEvidence({
       id: "lead-run",
@@ -374,7 +416,23 @@ describe("bounded qualification launcher", () => {
       finishedAt: "2026-10-01T00:01:00.000Z",
       error: null,
       usageJson,
-    })).toMatchObject({ id: "lead-run", status: "succeeded", usageJson });
+    })).toEqual({
+      id: "lead-run",
+      agentId: "lead-agent",
+      status: "succeeded",
+      startedAt: "2026-10-01T00:00:00.000Z",
+      finishedAt: "2026-10-01T00:01:00.000Z",
+      error: null,
+      usageJson: {
+        inputTokens: 700,
+        cachedInputTokens: 500,
+        outputTokens: 40,
+        rawInputTokens: 700,
+        rawCachedInputTokens: 500,
+        rawOutputTokens: 40,
+        usageSource: "native-run-readback",
+      },
+    });
 
     const source = readFileSync(resolve(packageRoot, "tests/functional/n1-live.ts"), "utf8");
     expect(source.indexOf("const phaseBeforeLeadReconciliation")).toBeLessThan(
@@ -438,17 +496,17 @@ describe("bounded qualification launcher", () => {
     });
 
     expect(requests.map((body) => body.command)).toEqual([
-      "reconcile-contribution-usage",
-      "reconcile-contribution-usage",
       "reconcile-lead-usage",
+      "reconcile-contribution-usage",
+      "reconcile-contribution-usage",
     ]);
-    expect(requests[0]).toEqual({
+    expect(requests[1]).toEqual({
       companyId: "company",
       command: "reconcile-contribution-usage",
       commandId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
       contributionId: contributionA,
     });
-    expect(requests[2]).toEqual({
+    expect(requests[0]).toEqual({
       companyId: "company",
       command: "reconcile-lead-usage",
       commandId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
@@ -500,8 +558,8 @@ describe("bounded qualification launcher", () => {
     });
     expect(result.leadSettlement.body.mission.aggregate.phase).toBe("executing");
     expect(requests.map((body) => body.command)).toEqual([
-      "reconcile-contribution-usage",
       "reconcile-lead-usage",
+      "reconcile-contribution-usage",
     ]);
     expect(requests.some((body) => body.command === "dispatch")).toBe(false);
   });
@@ -631,6 +689,71 @@ describe("bounded qualification launcher", () => {
     const unsettled = qualificationEvidence("live");
     unsettled.liveN1.admission.envelope.reservations[1].status = "unsettled";
     expect(() => assertQualificationEvidence(unsettled, options)).toThrow(/every live reservation must be settled/);
+  });
+
+  it("requires exact safe token counters, pinned accounting, and run-bound reservation deltas", () => {
+    const options = liveOptions(Date.parse("2026-10-01T09:59:59.000Z"));
+    const counters = [
+      "inputTokens",
+      "cachedInputTokens",
+      "outputTokens",
+      "rawInputTokens",
+      "rawCachedInputTokens",
+      "rawOutputTokens",
+    ];
+    const reject = (mutate: (evidence: any) => void, message: RegExp) => {
+      const evidence = qualificationEvidence("live");
+      mutate(evidence);
+      expect(() => assertQualificationEvidence(evidence, options)).toThrow(message);
+    };
+
+    reject((evidence) => { delete evidence.liveN1.runs[0].usageJson; }, /usageJson is missing/);
+    for (const counter of counters) {
+      reject((evidence) => { delete evidence.liveN1.runs[0].usageJson[counter]; }, new RegExp(`usageJson\\.${counter}`));
+      reject((evidence) => { evidence.liveN1.runs[0].usageJson[counter] = -1; }, new RegExp(`usageJson\\.${counter}`));
+      reject((evidence) => { evidence.liveN1.runs[0].usageJson[counter] = Number.MAX_SAFE_INTEGER + 1; },
+        new RegExp(`usageJson\\.${counter}`));
+    }
+    reject((evidence) => { evidence.liveN1.runs[0].usageJson.cachedInputTokens = 1_201; },
+      /cachedInputTokens exceeds inputTokens/);
+    reject((evidence) => { evidence.liveN1.runs[0].usageJson.rawCachedInputTokens = 1_201; },
+      /rawCachedInputTokens exceeds rawInputTokens/);
+    reject((evidence) => { evidence.liveN1.runs[0].usageJson.providerSessionId = "secret"; },
+      /non-accounting provider metadata/);
+    reject((evidence) => { evidence.liveN1.usageAccounting.profile = "other/cli"; }, /profile/);
+    reject((evidence) => { evidence.liveN1.usageAccounting.formula = "inputTokens + cachedInputTokens + outputTokens"; },
+      /formula/);
+
+    reject((evidence) => {
+      evidence.liveN1.admission.envelope.reservations[0].usage.units += 1;
+      evidence.liveN1.admission.envelope.allowance.knownUsageUnits += 1;
+    },
+      /reservation usage does not equal/);
+    reject((evidence) => { evidence.liveN1.admission.envelope.reservations[0].usage.source = "wrong"; },
+      /exact native run and usage baseline/);
+    reject((evidence) => {
+      evidence.liveN1.admission.envelope.reservations[0].usage.source =
+        evidence.liveN1.admission.envelope.reservations[0].usage.source.replace("run=lead-run", "run=other-run");
+    }, /exact native run and usage baseline/);
+    reject((evidence) => { evidence.liveN1.mission.mission.aggregate.n1.rootUsageBaselineUnits += 1; },
+      /reservation usage does not equal|exact native run and usage baseline/);
+    reject((evidence) => {
+      evidence.liveN1.mission.mission.aggregate.n1.activationReservationId =
+        evidence.liveN1.mission.mission.aggregate.n1.contributions[0].dispatchReservationId;
+    }, /reservation usage does not equal|effect identity/);
+    reject((evidence) => { evidence.liveN1.admission.envelope.reservations[1].missionId = "other-mission"; },
+      /mission identity/);
+    reject((evidence) => { evidence.liveN1.admission.envelope.reservations[1].effectId = "beta-contribution"; },
+      /effect identity/);
+
+    const validCachedUsage = qualificationEvidence("live");
+    expect(validCachedUsage.liveN1.runs[0].usageJson.cachedInputTokens).toBeGreaterThan(0);
+    expect(validCachedUsage.liveN1.admission.envelope.reservations[0].usage.units).toBe(
+      validCachedUsage.liveN1.runs[0].usageJson.inputTokens
+        + validCachedUsage.liveN1.runs[0].usageJson.outputTokens
+        - validCachedUsage.liveN1.mission.mission.aggregate.n1.rootUsageBaselineUnits,
+    );
+    expect(() => assertQualificationEvidence(validCachedUsage, options)).not.toThrow();
   });
 
   it("binds live proof to host, models, native runs, contributions, candidate, failure refusal, and PNG UI", () => {

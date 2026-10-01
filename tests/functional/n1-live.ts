@@ -18,6 +18,20 @@ type RunSnapshot = {
 
 export function nativeRunEvidence(run: RunSnapshot | null): Record<string, unknown> | null {
   if (!run) return null;
+  const allowedUsageKeys = [
+    "inputTokens",
+    "cachedInputTokens",
+    "outputTokens",
+    "rawInputTokens",
+    "rawCachedInputTokens",
+    "rawOutputTokens",
+    "usageSource",
+  ] as const;
+  const usageJson = run.usageJson === null
+    ? null
+    : Object.fromEntries(allowedUsageKeys
+      .filter((key) => run.usageJson?.[key] !== undefined)
+      .map((key) => [key, run.usageJson?.[key]]));
   return {
     id: run.id,
     agentId: run.agentId,
@@ -25,7 +39,7 @@ export function nativeRunEvidence(run: RunSnapshot | null): Record<string, unkno
     startedAt: run.startedAt,
     finishedAt: run.finishedAt,
     error: run.error,
-    usageJson: run.usageJson,
+    usageJson,
   };
 }
 
@@ -142,12 +156,13 @@ async function waitForTerminalRun(
   runId: string,
   getRun: (runId: string) => Promise<RunSnapshot | null>,
   timeoutMs = 20 * 60_000,
+  pollIntervalMs = 2_000,
 ): Promise<RunSnapshot> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const run = await getRun(runId);
     if (run && terminalStatuses.has(run.status)) return run;
-    await new Promise((resolveDelay) => setTimeout(resolveDelay, 2_000));
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, pollIntervalMs));
   }
   throw new Error(`Native Paperclip run ${runId} did not reach a terminal state within ${timeoutMs} ms`);
 }
@@ -156,18 +171,32 @@ async function requestUsageReconciliation(
   request: ApiRequest,
   commandPath: string,
   body: Record<string, unknown>,
+  options: { maxObservations: number; delayMs: number },
 ): Promise<ApiResult> {
   let result: ApiResult | null = null;
-  for (let observation = 0; observation < 30; observation += 1) {
+  for (let observation = 0; observation < options.maxObservations; observation += 1) {
     result = await request("human", "POST", commandPath, body);
     if (result.status === 200) break;
     if (result.status !== 409 || !["g4_run_not_terminal", "g4_usage_unavailable"].includes(result.body?.code)) {
       break;
     }
-    await new Promise((resolveDelay) => setTimeout(resolveDelay, 2_000));
+    if (observation + 1 < options.maxObservations) {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, options.delayMs));
+    }
   }
   assert(result);
   return result;
+}
+
+function failedUsageObservation(error: unknown): ApiResult {
+  return {
+    status: 0,
+    body: {
+      code: "usage_observation_failed",
+      error: error instanceof Error ? error.message : String(error),
+    },
+    headers: new Headers(),
+  };
 }
 
 export async function reconcileTerminalN1Usage(input: {
@@ -177,6 +206,12 @@ export async function reconcileTerminalN1Usage(input: {
   companyId: string;
   leadRun: RunSnapshot;
   missionBeforeLeadReconciliation: any;
+  observationOptions?: {
+    terminalTimeoutMs?: number;
+    terminalPollIntervalMs?: number;
+    settlementMaxObservations?: number;
+    settlementDelayMs?: number;
+  };
 }): Promise<{
   runs: RunSnapshot[];
   contributionSettlements: Array<Record<string, unknown>>;
@@ -186,24 +221,16 @@ export async function reconcileTerminalN1Usage(input: {
   const dispatched = contributions.filter((slot) => typeof slot.dispatchRunId === "string" && slot.dispatchRunId.length > 0);
   const contributionSettlements: Array<Record<string, unknown>> = [];
   const runs: RunSnapshot[] = [input.leadRun];
-  for (const slot of dispatched) {
-    const run = await waitForTerminalRun(slot.dispatchRunId, input.getRun);
-    runs.push(run);
-    const command = {
-      companyId: input.companyId,
-      command: "reconcile-contribution-usage",
-      commandId: randomUUID(),
-      contributionId: slot.contributionId,
-    };
-    const result = await requestUsageReconciliation(input.request, input.commandPath, command);
-    contributionSettlements.push({
-      contributionId: slot.contributionId,
-      runId: slot.dispatchRunId,
-      runStatus: run.status,
-      request: command,
-      response: { status: result.status, body: result.body },
-    });
-  }
+  const observationOptions = {
+    terminalTimeoutMs: input.observationOptions?.terminalTimeoutMs ?? 20 * 60_000,
+    terminalPollIntervalMs: input.observationOptions?.terminalPollIntervalMs ?? 2_000,
+    settlementMaxObservations: input.observationOptions?.settlementMaxObservations ?? 30,
+    settlementDelayMs: input.observationOptions?.settlementDelayMs ?? 2_000,
+  };
+  const settlementOptions = {
+    maxObservations: observationOptions.settlementMaxObservations,
+    delayMs: observationOptions.settlementDelayMs,
+  };
 
   const leadCommand = {
     companyId: input.companyId,
@@ -211,7 +238,57 @@ export async function reconcileTerminalN1Usage(input: {
     commandId: randomUUID(),
     expectedVersion: input.missionBeforeLeadReconciliation.mission.version,
   };
-  const leadSettlement = await requestUsageReconciliation(input.request, input.commandPath, leadCommand);
+  let leadSettlement: ApiResult;
+  try {
+    leadSettlement = await requestUsageReconciliation(
+      input.request,
+      input.commandPath,
+      leadCommand,
+      settlementOptions,
+    );
+  } catch (error) {
+    leadSettlement = failedUsageObservation(error);
+  }
+
+  for (const slot of dispatched) {
+    const command = {
+      companyId: input.companyId,
+      command: "reconcile-contribution-usage",
+      commandId: randomUUID(),
+      contributionId: slot.contributionId,
+    };
+    try {
+      const run = await waitForTerminalRun(
+        slot.dispatchRunId,
+        input.getRun,
+        observationOptions.terminalTimeoutMs,
+        observationOptions.terminalPollIntervalMs,
+      );
+      runs.push(run);
+      const result = await requestUsageReconciliation(
+        input.request,
+        input.commandPath,
+        command,
+        settlementOptions,
+      );
+      contributionSettlements.push({
+        contributionId: slot.contributionId,
+        runId: slot.dispatchRunId,
+        runStatus: run.status,
+        request: command,
+        response: { status: result.status, body: result.body },
+      });
+    } catch (error) {
+      const failed = failedUsageObservation(error);
+      contributionSettlements.push({
+        contributionId: slot.contributionId,
+        runId: slot.dispatchRunId,
+        runStatus: "observation_failed",
+        request: command,
+        response: { status: failed.status, body: failed.body },
+      });
+    }
+  }
   return { runs, contributionSettlements, leadSettlement };
 }
 

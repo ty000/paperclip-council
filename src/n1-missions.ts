@@ -463,6 +463,10 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
         || !["active", "idle", "running"].includes(leadAgent.status)) {
       throw new MissionError(409, "root_dispatch_ineligible", "Root issue or lead is no longer eligible");
     }
+    if (nativeProfile && !isNativeCliAgent(leadAgent)) {
+      throw new MissionError(409, "native_agent_adapter_required",
+        "Native N1 dispatch requires a codex_local agent configured with the cli engine");
+    }
     const next: MissionAggregate = {
       ...mission.aggregate,
       n1: { ...state, rootDispatchState: "claimed", rootUsageBaselineUnits },
@@ -686,6 +690,17 @@ async function isOwnedFixtureRuntime(ctx: PluginContext, companyId: string): Pro
   return config.n1FixtureMode === "ephemeral-local-sandbox";
 }
 
+function isNativeCliAgent(agent: unknown): boolean {
+  if (!agent || typeof agent !== "object" || Array.isArray(agent)) return false;
+  const record = agent as Record<string, unknown>;
+  const adapterConfig = record.adapterConfig;
+  return record.adapterType === "codex_local"
+    && Boolean(adapterConfig)
+    && typeof adapterConfig === "object"
+    && !Array.isArray(adapterConfig)
+    && (adapterConfig as Record<string, unknown>).engine === "cli";
+}
+
 export async function handleN1AdmissionApi(input: PluginApiRequestInput, ctx: PluginContext) {
   try {
     const companyId = boundedString(input.params.companyId, "companyId", 64);
@@ -885,6 +900,20 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
           || !["active", "idle", "running"].includes(agent.status)) {
         throw new MissionError(409, "native_dispatch_ineligible", "Native child or assignee is no longer eligible for dispatch");
       }
+      for (const prior of state.contributions.slice(0, index)) {
+        const priorIssue = prior.childIssueId
+          ? await ctx.issues.get(prior.childIssueId, mission.companyId)
+          : null;
+        if (!prior.commit || !prior.authorRunId || prior.dispatchState !== "requested"
+            || !prior.dispatchReservationId || !prior.dispatchRunId
+            || prior.authorRunId !== prior.dispatchRunId
+            || !priorIssue || priorIssue.companyId !== mission.companyId
+            || priorIssue.projectId !== mission.projectId || priorIssue.parentId !== mission.rootIssueId
+            || priorIssue.assigneeAgentId !== prior.assigneeAgentId || priorIssue.status !== "done") {
+          throw new MissionError(409, "prior_contribution_incomplete",
+            "Every earlier contribution must be attributed to its confirmed native run and its mapped child issue must be done");
+        }
+      }
       const reservationId = uuid(body.reservationId, "reservationId");
       const requestedUnits = integer(body.requestedUnits, "requestedUnits");
       requireFreshCommand(mission, body);
@@ -897,6 +926,10 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         throw new MissionError(409, "g4_measurement_unqualified", "No supported native N1 operating profile is configured");
       }
       if (nativeProfile) {
+        if (!isNativeCliAgent(agent)) {
+          throw new MissionError(409, "native_agent_adapter_required",
+            "Native N1 dispatch requires a codex_local agent configured with the cli engine");
+        }
         assertNativeEnvelope(envelope, nativeProfile);
         if (requestedUnits !== nativeProfile.runReservationUnits) {
           throw new MissionError(422, "g4_profile_mismatch", "Child dispatch must use the configured run reservation estimate");

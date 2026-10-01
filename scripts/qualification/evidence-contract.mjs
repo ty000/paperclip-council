@@ -495,6 +495,42 @@ function assertLiveRun(run, expectedAgentIds) {
   requireProof(nonemptyString(run?.finishedAt), "native run terminal timestamp is missing");
 }
 
+const LIVE_USAGE_COUNTERS = [
+  "inputTokens",
+  "cachedInputTokens",
+  "outputTokens",
+  "rawInputTokens",
+  "rawCachedInputTokens",
+  "rawOutputTokens",
+];
+
+function assertLiveUsageAccounting(live) {
+  requireProof(live?.usageAccounting?.profile === "codex_local/cli",
+    "live usage accounting profile must be codex_local/cli");
+  requireProof(live?.usageAccounting?.formula === "inputTokens + outputTokens",
+    "live usage accounting formula must be inputTokens + outputTokens");
+}
+
+function assertLiveRunUsage(run) {
+  const usage = run?.usageJson;
+  requireProof(usage && typeof usage === "object" && !Array.isArray(usage),
+    "native run usageJson is missing");
+  for (const counter of LIVE_USAGE_COUNTERS) {
+    requireProof(Number.isSafeInteger(usage[counter]) && usage[counter] >= 0,
+      `native run usageJson.${counter} must be a nonnegative safe integer`);
+  }
+  requireProof(usage.cachedInputTokens <= usage.inputTokens,
+    "native run cachedInputTokens exceeds inputTokens");
+  requireProof(usage.rawCachedInputTokens <= usage.rawInputTokens,
+    "native run rawCachedInputTokens exceeds rawInputTokens");
+  const allowedKeys = new Set([...LIVE_USAGE_COUNTERS, "usageSource"]);
+  requireProof(Object.keys(usage).every((key) => allowedKeys.has(key)),
+    "native run usageJson contains non-accounting provider metadata");
+  if (usage.usageSource !== undefined) {
+    requireProof(nonemptyString(usage.usageSource), "native run usageSource is malformed");
+  }
+}
+
 function assertRecordedContribution(slot, contributorIds, runById) {
   requireProof(nonemptyString(slot?.contributionId), "contribution identity is missing");
   requireProof(contributorIds.includes(slot?.assigneeAgentId), "contribution assignee is not an expected contributor");
@@ -515,10 +551,69 @@ function assertLiveIdentities(live) {
 function assertLiveRunSet(live, runs, expectedAgentIds) {
   requireProof(distinctStrings(expectedAgentIds), "lead and contributor identities must be distinct");
   requireProof(Array.isArray(runs) && runs.length === 3, "exactly three native runs are required");
-  runs.forEach((run) => assertLiveRun(run, expectedAgentIds));
+  runs.forEach((run) => {
+    assertLiveRun(run, expectedAgentIds);
+    assertLiveRunUsage(run);
+  });
   requireProof(sameStringSet(runs.map((run) => run.agentId), expectedAgentIds),
     "native runs must belong to the exact lead and two contributors");
   requireProof(distinctStrings(runs.map((run) => run.id)), "native run identities must be distinct");
+}
+
+function assertReservationSource(source, runId, baseline) {
+  requireProof(nonemptyString(source)
+      && source.includes(`;run=${runId};`)
+      && source.includes(`;issue-baseline=${baseline};`),
+  "reservation usage source must identify the exact native run and usage baseline");
+}
+
+function assertRunReservation(live, reservationById, input) {
+  requireProof(nonemptyString(input.reservationId), `${input.label} reservation identity is missing`);
+  requireProof(Number.isSafeInteger(input.baseline) && input.baseline >= 0,
+    `${input.label} usage baseline is missing or invalid`);
+  requireProof(input.run && typeof input.run === "object" && !Array.isArray(input.run),
+    `${input.label} native run is missing from live evidence`);
+  const reservation = reservationById.get(input.reservationId);
+  requireProof(Boolean(reservation), `${input.label} reservation is missing from live admission`);
+  requireProof(reservation.missionId === live.missionId,
+    `${input.label} reservation mission identity does not match`);
+  requireProof(input.effectId === undefined
+      ? nonemptyString(reservation.effectId)
+      : reservation.effectId === input.effectId,
+  `${input.label} reservation effect identity does not match`);
+  const usage = input.run.usageJson;
+  const expectedUnits = usage.inputTokens + usage.outputTokens - input.baseline;
+  requireProof(Number.isSafeInteger(expectedUnits) && expectedUnits > 0,
+    `${input.label} native run usage delta must be positive`);
+  requireProof(reservation.usage?.units === expectedUnits,
+    `${input.label} reservation usage does not equal inputTokens + outputTokens - baseline`);
+  assertReservationSource(reservation.usage?.source, input.run.id, input.baseline);
+}
+
+function assertLiveRunReservations(evidence) {
+  const live = evidence.liveN1;
+  const state = live?.mission?.mission?.aggregate?.n1;
+  const runs = live?.runs;
+  const reservations = liveReservations(evidence).reservations;
+  const reservationById = new Map(reservations.map((reservation) => [reservation?.reservationId, reservation]));
+  requireProof(reservationById.size === reservations.length,
+    "live reservation identities must be distinct");
+  const runById = new Map(runs.map((run) => [run.id, run]));
+  assertRunReservation(live, reservationById, {
+    label: "lead",
+    reservationId: state?.activationReservationId,
+    baseline: state?.rootUsageBaselineUnits,
+    run: runById.get(state?.rootDispatchRunId),
+  });
+  for (const slot of state.contributions) {
+    assertRunReservation(live, reservationById, {
+      label: `contribution ${slot.contributionId}`,
+      reservationId: slot.dispatchReservationId,
+      baseline: slot.dispatchUsageBaselineUnits,
+      run: runById.get(slot.dispatchRunId),
+      effectId: slot.contributionId,
+    });
+  }
 }
 
 function assertLiveContributionSet(live, state, contributions, runs) {
@@ -551,9 +646,11 @@ function assertLiveRunsAndContributions(evidence) {
   const contributions = state?.contributions;
   const expectedAgentIds = [live?.agents?.lead, ...(live?.agents?.contributors ?? [])];
   assertLiveIdentities(live);
+  assertLiveUsageAccounting(live);
   assertLiveRunSet(live, runs, expectedAgentIds);
   assertLiveContributionSet(live, state, contributions, runs);
   assertLeadSingleRunBarrier(live, state);
+  assertLiveRunReservations(evidence);
 }
 
 function sameContribution(left, right) {
