@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { AdmissionError } from "./admission.js";
 import { executeN1BoardCommand, inspectN1State, readN1AdmissionForMission } from "./n1-missions.js";
+import { inspectN2State, type N2State } from "./n2-missions.js";
 import {
   RosterError,
   validateRosterPair,
@@ -53,7 +54,7 @@ export type MissionAggregate = {
     finalReviewerAgentId: string;
     requiredPerspectives: string[];
   };
-  phase: "draft" | "executing" | "integrating" | "ready_for_review" | "blocked";
+  phase: "draft" | "executing" | "integrating" | "ready_for_review" | "review_handoff" | "reviewing" | "correction_requested" | "correcting" | "application_unknown" | "accepted" | "blocked";
   control: { status: "inactive"; reason: "mission_not_enabled" | "candidate_ready_for_review" } | { status: "active" } | { status: "blocked"; reason: string };
   readiness: {
     mission: "recorded";
@@ -65,6 +66,7 @@ export type MissionAggregate = {
   commandReceipts: MissionReceipt[];
   effectIntents: Array<Record<string, unknown>>;
   n1?: Record<string, unknown>;
+  n2?: N2State;
 };
 
 export type PinnedRoster = {
@@ -582,6 +584,7 @@ function companyIdFromRequest(input: PluginApiRequestInput): string {
 
 export function inspectMission(mission: MissionRecord) {
   const n1 = inspectN1State(mission);
+  const n2 = inspectN2State(mission);
   return {
     mission,
     state: {
@@ -590,8 +593,9 @@ export function inspectMission(mission: MissionRecord) {
       executable: mission.aggregate.control.status === "active",
     },
     prerequisites: n1?.prerequisites ?? mission.aggregate.readiness.blockers,
-    nextAction: n1?.nextAction ?? "Resolve and qualify G4 before adding any dispatch or activation command.",
+    nextAction: n2?.nextAction.label ?? n1?.nextAction ?? "Resolve and qualify G4 before adding any dispatch or activation command.",
     n1,
+    n2,
   };
 }
 

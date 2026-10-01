@@ -37,6 +37,23 @@ explicit provider authorization and a clean committed candidate. N2 verdict
 and review handoff are not part of this slice. See the
 [N1 report](docs/reviews/n1/REPORT.md) for the exact profile and proof boundary.
 
+## N2 development boundary
+
+Version 0.6 adds the fail-closed domain contract for one ordinary correction:
+an immutable N1 candidate snapshot, an independent pinned reviewer, two fresh
+review rounds, one correction run, a changed V2 candidate, and receipt-backed
+native application. An uncertain handoff or decision remains visible and
+blocks dependent work. The mission page shows the active submission, reviewer,
+handoff, correction, application state, blockage and next action.
+
+Native N2 execution is not claimed by this package revision. It still requires
+a qualified N1 candidate and an adapter that performs and observes the public
+Paperclip review handoff before these transitions are persisted. The explicit
+`n1OperatingProfile.maxCorrections: 1` option and sequential token-delta helper
+prepare the narrow G4 envelope; the legacy/default N1 profile remains zero
+corrections. See the [N2 report](docs/reviews/n2/REPORT.md) for the exact proof
+boundary.
+
 ## Compatibility
 
 This extraction is tested against Paperclip commit
@@ -131,7 +148,8 @@ Create a company-scoped configuration with Paperclip's plugin configuration API:
       "runReservationUnits": 60000,
       "initialKnownUsageUnits": 0,
       "initialExposureUnits": 0,
-      "initialTokenAccountingSource": "owner-attested:fresh-company-and-period:<IDENTIFIER>"
+      "initialTokenAccountingSource": "owner-attested:fresh-company-and-period:<IDENTIFIER>",
+      "maxCorrections": 0
     }
   }
 }
@@ -150,6 +168,7 @@ explicit admission policy; they do not claim a future provider bill ceiling.
 Initial known usage and exposure are required activation inputs, and
 `initialTokenAccountingSource` must identify the company/period readback or
 bounded fresh-period attestation that supports them. Zero is never inferred.
+`maxCorrections` defaults to `0`; the N2 profile must set it explicitly to `1`.
 
 Using a board session authorized for the target company:
 

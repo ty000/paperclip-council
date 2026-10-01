@@ -24,6 +24,7 @@ export type NativeG4Profile = {
   initialKnownUsageUnits: number;
   initialExposureUnits: number;
   initialTokenAccountingSource: string;
+  maxCorrections: 0 | 1;
 };
 
 function requiredString(value: unknown, label: string, max = 200): string {
@@ -82,6 +83,10 @@ export async function readNativeG4Profile(
   const runReservationUnits = positiveInteger(record.runReservationUnits, "n1OperatingProfile.runReservationUnits");
   const initialKnownUsageUnits = nonnegativeInteger(record.initialKnownUsageUnits, "n1OperatingProfile.initialKnownUsageUnits");
   const initialExposureUnits = nonnegativeInteger(record.initialExposureUnits, "n1OperatingProfile.initialExposureUnits");
+  const maxCorrections = record.maxCorrections === undefined ? 0 : record.maxCorrections;
+  if (maxCorrections !== 0 && maxCorrections !== 1) {
+    throw new AdmissionError(422, "g4_profile_invalid", "n1OperatingProfile.maxCorrections must be zero or one");
+  }
   const initialCommittedUnits = initialKnownUsageUnits + initialExposureUnits + runReservationUnits;
   if (!Number.isSafeInteger(initialCommittedUnits) || initialCommittedUnits > periodAllowanceUnits) {
     throw new AdmissionError(422, "g4_profile_invalid", "Initial token usage, exposure, and one run reservation exceed the period allowance");
@@ -96,6 +101,7 @@ export async function readNativeG4Profile(
     initialKnownUsageUnits,
     initialExposureUnits,
     initialTokenAccountingSource: requiredString(record.initialTokenAccountingSource, "n1OperatingProfile.initialTokenAccountingSource"),
+    maxCorrections,
   };
 }
 
@@ -120,7 +126,7 @@ export function nativeAdmissionConfiguration(
       knownUsageUnits: profile.initialKnownUsageUnits,
     },
     exposure: { status: "known", source: accountingSource, units: profile.initialExposureUnits },
-    limits: { maxConcurrent: 2, maxRetries: 0, maxCorrections: 0 },
+    limits: { maxConcurrent: 2, maxRetries: 0, maxCorrections: profile.maxCorrections },
   };
 }
 
@@ -149,7 +155,7 @@ export function assertNativeEnvelope(
     || envelope.exposure.units !== profile.initialExposureUnits
     || envelope.limits.maxConcurrent !== 2
     || envelope.limits.maxRetries !== 0
-    || envelope.limits.maxCorrections !== 0;
+    || envelope.limits.maxCorrections !== profile.maxCorrections;
   if (mismatch) {
     throw new AdmissionError(409, "g4_profile_mismatch", "Admission envelope does not match the configured native N1 operating profile");
   }
@@ -298,6 +304,100 @@ export async function settleNativeRunUsage(
       status: "known",
       source: `${MEASUREMENT_SOURCE};run=${run.id};issue-baseline=${input.baselineUsageUnits};${pricing}`,
       units: usageUnits,
+    },
+    remainingExposure: {
+      status: "known",
+      source: `${MEASUREMENT_SOURCE};terminal=${run.status}`,
+      units: 0,
+    },
+    expectedVersion: input.expectedVersion,
+  });
+}
+
+export type NativeSequentialUsageBaseline = {
+  runIds: string[];
+  tokenTotal: number;
+};
+
+function tokenTotal(summary: PluginIssueOrchestrationSummary): number {
+  const total = summary.costs.inputTokens + summary.costs.cachedInputTokens + summary.costs.outputTokens;
+  if (!Number.isSafeInteger(total) || total < 0) {
+    throw new AdmissionError(409, "g4_usage_unavailable", "Native orchestration returned an invalid aggregate token total");
+  }
+  return total;
+}
+
+export async function readNativeSequentialUsageBaseline(
+  ctx: PluginContext,
+  input: { companyId: string; issueId: string },
+): Promise<NativeSequentialUsageBaseline> {
+  const summary = await readNativeOrchestration(ctx, input);
+  const runs = summary.runs.filter((run) => run.issueId === input.issueId);
+  if (new Set(runs.map((run) => run.id)).size !== runs.length) {
+    throw new AdmissionError(409, "g4_run_identity_unqualified", "Native orchestration returned duplicate run identities");
+  }
+  return { runIds: runs.map((run) => run.id).sort(), tokenTotal: tokenTotal(summary) };
+}
+
+/**
+ * Attributes one sequential native run from a previously persisted issue-level
+ * checkpoint. The host exposes aggregate issue tokens, so an unexpected extra
+ * run makes the delta unattributable and fails closed.
+ */
+export async function settleNativeSequentialRunUsage(
+  ctx: PluginContext,
+  input: {
+    commandId: string;
+    companyId: string;
+    issueId: string;
+    expectedRunId: string;
+    baseline: NativeSequentialUsageBaseline;
+    periodKey: string;
+    reservationId: string;
+    expectedVersion: number;
+  },
+): Promise<AdmissionResult> {
+  if (!Number.isSafeInteger(input.baseline.tokenTotal) || input.baseline.tokenTotal < 0
+      || new Set(input.baseline.runIds).size !== input.baseline.runIds.length
+      || input.baseline.runIds.includes(input.expectedRunId)) {
+    throw new AdmissionError(422, "g4_baseline_invalid", "Sequential usage baseline is malformed or already contains the expected run");
+  }
+  const summary = await readNativeOrchestration(ctx, input);
+  const issueRuns = summary.runs.filter((run) => run.issueId === input.issueId);
+  const expectedIds = [...input.baseline.runIds, input.expectedRunId].sort();
+  const observedIds = issueRuns.map((run) => run.id).sort();
+  if (!isDeepStrictEqual(observedIds, expectedIds)) {
+    throw new AdmissionError(409, "g4_run_identity_unqualified", "Sequential usage requires exactly one expected run beyond the persisted baseline", {
+      expectedRunId: input.expectedRunId,
+      baselineRunIds: input.baseline.runIds,
+      observedRunIds: observedIds,
+    });
+  }
+  const run = issueRuns.find((item) => item.id === input.expectedRunId)!;
+  if (!TERMINAL_RUN_STATUSES.has(run.status) || !run.finishedAt) {
+    throw new AdmissionError(409, "g4_run_not_terminal", "Native run usage remains unsettled until the expected run is terminal");
+  }
+  const currentTotal = tokenTotal(summary);
+  const delta = currentTotal - input.baseline.tokenTotal;
+  if (!Number.isSafeInteger(delta) || delta <= 0) {
+    throw new AdmissionError(409, "g4_usage_unavailable", "The expected terminal run has no positive attributable token delta", {
+      runId: run.id,
+      baselineTokenTotal: input.baseline.tokenTotal,
+      currentTokenTotal: currentTotal,
+    });
+  }
+  const pricing = summary.costs.costCents > 0
+    ? `aggregate-priced-cost-cents=${summary.costs.costCents}`
+    : "monetary-cost=unpriced";
+  return settleAdmission(ctx, {
+    commandId: input.commandId,
+    companyId: input.companyId,
+    periodKey: input.periodKey,
+    reservationId: input.reservationId,
+    usage: {
+      status: "known",
+      source: `${MEASUREMENT_SOURCE};sequential-run=${run.id};baseline-tokens=${input.baseline.tokenTotal};${pricing}`,
+      units: delta,
     },
     remainingExposure: {
       status: "known",

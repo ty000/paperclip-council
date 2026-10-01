@@ -5,7 +5,7 @@ export const PLUGIN_ID = "private.paperclip-council";
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
-  version: "0.5.0",
+  version: "0.6.0",
   displayName: "Paperclip Council",
   description: "Private Council integration with revisioned rosters, bounded admission and checked candidate preparation.",
   author: "Local Paperclip integration",
@@ -74,7 +74,7 @@ const manifest: PaperclipPluginManifestV1 = {
           "initialKnownUsageUnits", "initialExposureUnits", "initialTokenAccountingSource",
         ],
         title: "N1 bounded operating profile",
-        description: "One native token-ledger profile for sequential N1 contribution runs.",
+        description: "One native token-ledger profile for sequential N1 contribution runs and an explicitly bounded N2 correction.",
         properties: {
           kind: { type: "string", enum: ["paperclip-orchestration-tokens-v1"] },
           periodKey: { type: "string", minLength: 1, maxLength: 200 },
@@ -85,6 +85,7 @@ const manifest: PaperclipPluginManifestV1 = {
           initialKnownUsageUnits: { type: "integer", minimum: 0 },
           initialExposureUnits: { type: "integer", minimum: 0 },
           initialTokenAccountingSource: { type: "string", minLength: 1, maxLength: 200 },
+          maxCorrections: { type: "integer", enum: [0, 1], default: 0 },
         },
       },
     },
