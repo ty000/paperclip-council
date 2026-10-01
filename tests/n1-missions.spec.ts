@@ -276,6 +276,9 @@ const nativeProfile = {
   periodEnd: "2099-10-01T00:00:00.000Z",
   periodAllowanceUnits: 100_000,
   runReservationUnits: 20_000,
+  initialKnownUsageUnits: 0,
+  initialExposureUnits: 0,
+  initialTokenAccountingSource: "fixture:fresh-company-and-period",
 };
 
 function nativeEnvelope(reservations: Array<Record<string, unknown>>) {
@@ -288,10 +291,12 @@ function nativeEnvelope(reservations: Array<Record<string, unknown>>) {
       status: "known", source: "paperclip:issues.summaries.getOrchestration:terminal-token-ledger", unit: "tokens",
     },
     allowance: {
-      status: "known", source: "plugin-config:n1OperatingProfile",
+      status: "known", source: "plugin-config:n1OperatingProfile:initial-token-accounting:fixture:fresh-company-and-period",
       periodUnits: nativeProfile.periodAllowanceUnits, taskUnits: nativeProfile.runReservationUnits, knownUsageUnits: 0,
     },
-    exposure: { status: "known", source: "plugin-config:n1OperatingProfile:no-prior-token-exposure", units: 0 },
+    exposure: {
+      status: "known", source: "plugin-config:n1OperatingProfile:initial-token-accounting:fixture:fresh-company-and-period", units: 0,
+    },
     limits: { maxConcurrent: 2, maxRetries: 0, maxCorrections: 0 },
     reservations,
   };

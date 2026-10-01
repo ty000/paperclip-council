@@ -128,7 +128,10 @@ Create a company-scoped configuration with Paperclip's plugin configuration API:
       "periodStart": "<ISO_TIMESTAMP>",
       "periodEnd": "<ISO_TIMESTAMP>",
       "periodAllowanceUnits": 180000,
-      "runReservationUnits": 60000
+      "runReservationUnits": 60000,
+      "initialKnownUsageUnits": 0,
+      "initialExposureUnits": 0,
+      "initialTokenAccountingSource": "owner-attested:fresh-company-and-period:<IDENTIFIER>"
     }
   }
 }
@@ -144,6 +147,9 @@ or reports.
 `n1OperatingProfile` is optional unless native N1 execution is requested. Its
 units are tokens, not currency. The allowance and reservation values are an
 explicit admission policy; they do not claim a future provider bill ceiling.
+Initial known usage and exposure are required activation inputs, and
+`initialTokenAccountingSource` must identify the company/period readback or
+bounded fresh-period attestation that supports them. Zero is never inferred.
 
 Using a board session authorized for the target company:
 

@@ -64,9 +64,9 @@ async function installChromium(host, playwrightBrowsersPath) {
 }
 
 // fallow-ignore-next-line complexity
-function assertPassingEvidence(serializedEvidence, candidateCommit, notBefore) {
+function assertPassingEvidence(serializedEvidence, candidateCommit, notBefore, screenshotPath, screenshotBytes) {
   const evidence = JSON.parse(serializedEvidence);
-  assertQualificationEvidence(evidence, { mode: "live", candidateCommit, notBefore });
+  assertQualificationEvidence(evidence, { mode: "live", candidateCommit, notBefore, screenshotPath, screenshotBytes });
 }
 
 async function runNativeQualification(runtime, options) {
@@ -94,6 +94,9 @@ async function main() {
   authorizedProfile();
   assertCodexAuthentication();
   const candidateCommit = committedCandidate();
+  const host = preparedHost();
+  const playwrightBrowsersPath = resolve(repositoryRoot, ".paperclip/qualification/playwright");
+  await installChromium(host, playwrightBrowsersPath);
   const claim = claimLiveEvidencePaths(
     repositoryRoot,
     candidateCommit,
@@ -101,9 +104,6 @@ async function main() {
   );
   let validated = false;
   try {
-    const host = preparedHost();
-    const playwrightBrowsersPath = resolve(repositoryRoot, ".paperclip/qualification/playwright");
-    await installChromium(host, playwrightBrowsersPath);
     const notBefore = await withOwnedQualificationRuntime((runtime) => runNativeQualification(runtime, {
       candidateCommit,
       host,
@@ -113,7 +113,9 @@ async function main() {
       evidenceIdentity: claim.evidenceIdentity,
       screenshotIdentity: claim.screenshotIdentity,
     }));
-    assertPassingEvidence(claim.readEvidence(), candidateCommit, notBefore);
+    assertPassingEvidence(
+      claim.readEvidence(), candidateCommit, notBefore, claim.screenshotPath, claim.readScreenshot(),
+    );
     validated = true;
   } finally {
     claim.release({ validate: validated });

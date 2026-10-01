@@ -194,6 +194,9 @@ export async function runLiveN1(input: {
     periodEnd: new Date(now + 45 * 60_000).toISOString(),
     periodAllowanceUnits,
     runReservationUnits,
+    initialKnownUsageUnits: 0,
+    initialExposureUnits: 0,
+    initialTokenAccountingSource: `live-harness:fresh-company:${companyId}`,
   };
   const configured = await input.request("human", "POST", `/api/plugins/${input.pluginId}/config`, {
     companyId,
@@ -277,12 +280,16 @@ export async function runLiveN1(input: {
     },
     allowance: {
       status: "known",
-      source: "plugin-config:n1OperatingProfile",
+      source: `plugin-config:n1OperatingProfile:initial-token-accounting:${profile.initialTokenAccountingSource}`,
       periodUnits: periodAllowanceUnits,
       taskUnits: runReservationUnits,
       knownUsageUnits: 0,
     },
-    exposure: { status: "known", source: "plugin-config:n1OperatingProfile:no-prior-token-exposure", units: 0 },
+    exposure: {
+      status: "known",
+      source: `plugin-config:n1OperatingProfile:initial-token-accounting:${profile.initialTokenAccountingSource}`,
+      units: 0,
+    },
     limits: { maxConcurrent: 2, maxRetries: 0, maxCorrections: 0 },
     commandId: randomUUID(),
   };
@@ -471,5 +478,7 @@ export async function runLiveN1(input: {
     issuePrefix: company.body.issuePrefix as string,
     missionId,
     rootIssueId: root.body.id as string,
+    mission: finalMission.body,
+    admission: admissionFinal.body,
   };
 }

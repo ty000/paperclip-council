@@ -1676,6 +1676,32 @@ try {
       await page.getByRole("heading", { name: "Contributions" }).waitFor();
       await page.getByRole("heading", { name: "Admission and usage" }).waitFor();
       await page.getByText(/terminal-token-ledger/).waitFor();
+      const rendered = await page.locator("body").innerText();
+      const renderedValues = [
+        live.mission.nextAction,
+        live.mission.mission.aggregate.responsibilities.integrationLeadAgentId,
+        live.mission.mission.aggregate.responsibilities.finalReviewerAgentId,
+        live.mission.n1.candidate.candidate.candidateCommit,
+        live.mission.n1.candidate.candidate.baseCommit,
+        live.mission.n1.candidate.candidate.sha256,
+        live.admission.envelope.periodKey,
+        live.admission.envelope.measurement.source,
+        ...live.mission.n1.participants.flatMap((slot: any) => [
+          slot.title, slot.assigneeAgentId, slot.dispatchRunId, slot.commit, ...slot.ownedPaths,
+        ]),
+        ...live.mission.n1.candidate.checks.flatMap((check: any) => [check.name, check.status, check.detail]),
+        ...live.admission.envelope.reservations.flatMap((reservation: any) => [
+          reservation.reservationId,
+          String(reservation.requestedUnits),
+          String(reservation.usage.units),
+          reservation.usage.source,
+          String(reservation.remainingExposure.units),
+          reservation.remainingExposure.source,
+        ]),
+      ];
+      for (const value of renderedValues) {
+        assert(value !== undefined && value !== null && rendered.includes(String(value)), `N1 UI is missing observed value: ${String(value)}`);
+      }
       const liveScreenshotPath = process.env.COUNCIL_N1_LIVE_SCREENSHOT_PATH;
       assert(liveScreenshotPath, "live screenshot path must be claimed by the N1 launcher");
       await mkdir(dirname(liveScreenshotPath), { recursive: true });

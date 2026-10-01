@@ -9,12 +9,12 @@ Council supports one intentionally narrow native profile, configured per company
 - one identified company, project, mission and period;
 - one Integration Lead plus two contributors; contributors run sequentially while the lead remains active;
 - fixed limits `maxConcurrent=2`, `maxRetries=0`, `maxCorrections=0`;
-- explicit token allowance and per-run reservation estimate supplied by `n1OperatingProfile`;
+- explicit token allowance, per-run reservation, initial known usage, initial exposure and accounting provenance supplied by `n1OperatingProfile`;
 - launch refusal when Paperclip reports an invocation block, open budget incident or prior run on the target issue;
 - settlement only from the exact terminal run returned by `issues.summaries.getOrchestration`, using input, cached-input and output tokens;
 - zero monetary cost labelled `unpriced`, and zero reported tokens treated as unavailable rather than zero consumption.
 
-The owner accepted this profile as an N1-only bounded pilot on October 1, 2026. This is an admission control, not a provider billing engine, a general qualification of DEC-G4-01, permanent provider authorization or an absolute future-cost ceiling. Allowance, reservations, usage and exposure in the admission envelope are token-denominated; initial `known/0` exposure means no prior token exposure in the new period, not zero monetary exposure. Monetary cost remains separately `unpriced` when unavailable. The configured reservation is token exposure, while terminal tokens are observed consumption. The pre-existing atomic reservation CAS, persistent unsettled state and no-blind-retry rules remain unchanged. The native operating profile required no additional migration beyond the additive `005_admission.sql` already included in this increment.
+The owner accepted this profile as an N1-only bounded pilot on October 1, 2026. This is an admission control, not a provider billing engine, a general qualification of DEC-G4-01, permanent provider authorization or an absolute future-cost ceiling. Allowance, reservations, usage and exposure in the admission envelope are token-denominated. Initial usage and exposure are never inferred: the profile requires both amounts plus a source identifying their company/period readback or bounded fresh-period attestation. Configured `known/0` therefore means the named source establishes no prior token usage/exposure for that period, not zero monetary exposure. Monetary cost remains separately `unpriced` when unavailable. The configured reservation is token exposure, while terminal tokens are observed consumption. The pre-existing atomic reservation CAS, persistent unsettled state and no-blind-retry rules remain unchanged. The native operating profile required no additional migration beyond the additive `005_admission.sql` already included in this increment.
 
 ## N1 acceptance map
 

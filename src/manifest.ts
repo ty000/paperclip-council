@@ -69,7 +69,10 @@ const manifest: PaperclipPluginManifestV1 = {
       n1OperatingProfile: {
         type: "object",
         additionalProperties: false,
-        required: ["kind", "periodKey", "periodStart", "periodEnd", "periodAllowanceUnits", "runReservationUnits"],
+        required: [
+          "kind", "periodKey", "periodStart", "periodEnd", "periodAllowanceUnits", "runReservationUnits",
+          "initialKnownUsageUnits", "initialExposureUnits", "initialTokenAccountingSource",
+        ],
         title: "N1 bounded operating profile",
         description: "One native token-ledger profile for sequential N1 contribution runs.",
         properties: {
@@ -79,6 +82,9 @@ const manifest: PaperclipPluginManifestV1 = {
           periodEnd: { type: "string", format: "date-time" },
           periodAllowanceUnits: { type: "integer", minimum: 1 },
           runReservationUnits: { type: "integer", minimum: 1 },
+          initialKnownUsageUnits: { type: "integer", minimum: 0 },
+          initialExposureUnits: { type: "integer", minimum: 0 },
+          initialTokenAccountingSource: { type: "string", minLength: 1, maxLength: 200 },
         },
       },
     },

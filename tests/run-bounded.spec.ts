@@ -14,6 +14,16 @@ import { __claimLiveEvidencePathsForTest, assertQualificationEvidence, claimLive
 import { assertNoReviewerRuns } from "./functional/n1-live.js";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const liveCommit = "a".repeat(40);
+const liveScreenshotPath = resolve("/tmp", `n1-live-${liveCommit}-ready-for-review.png`);
+const liveScreenshotBytes = Buffer.concat([
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  Buffer.from("bounded-png-fixture"),
+]);
+
+function liveOptions(notBefore: number) {
+  return { mode: "live", candidateCommit: liveCommit, notBefore, screenshotPath: liveScreenshotPath, screenshotBytes: liveScreenshotBytes };
+}
 
 function qualificationEvidence(mode: "safe" | "live"): any {
   const live = mode === "live";
@@ -31,12 +41,27 @@ function qualificationEvidence(mode: "safe" | "live"): any {
       : "paperclip-council-n1-safe-boundary-qualification-v1",
     startedAt: "2026-10-01T10:00:00.000Z",
     finishedAt: "2026-10-01T10:01:00.000Z",
-    candidate: { commit: "a".repeat(40), clean: true },
+    head: "61b3fd57a695614dc4a37e2303f426a34a9795cf",
+    hostTrackedFilesClean: true,
+    candidate: {
+      commit: liveCommit,
+      branch: "codex/council-n1",
+      clean: true,
+      source: "git archive of the exact candidate commit, built in an isolated temporary directory",
+      sourceArchiveSha256: "b".repeat(64),
+      distSha256: "c".repeat(64),
+    },
     outcome: live ? "N1 OBSERVABLE RESULT VALIDATED" : "N1 SAFE BOUNDARY VALIDATED",
     results,
     appCleanup: "stopped only the plugin worker, listener, and application created by this run",
     databaseCleanup: "fresh isolated PostgreSQL cluster removed; parent-owned temporary instance retained",
     configuration: {
+      models: live ? {
+        authorized: { model: "gpt-5.6-sol", effort: "high" },
+        observedAgentConfiguration: ["lead", "alpha", "beta"].map((agentId) => ({
+          agentId, adapterType: "codex_local", model: "gpt-5.6-sol", effort: "high",
+        })),
+      } : "none",
       fixtureBoundary: live
         ? "The safe-boundary suite uses fixtures; the N1 live campaign below uses native APIs, native wakeups, exact Paperclip run IDs, and run-derived terminal token settlement."
         : "agents, issues, policies, and heartbeat runs are synthetic test preparation",
@@ -48,6 +73,50 @@ function qualificationEvidence(mode: "safe" | "live"): any {
     },
     ...(live ? {
       liveN1: {
+        companyId: "company",
+        missionId: "mission",
+        rootIssueId: "root-issue",
+        baseCommit: "0".repeat(40),
+        agents: { lead: "lead", contributors: ["alpha", "beta"], reviewer: "reviewer" },
+        runs: [
+          { id: "lead-run", agentId: "lead", status: "succeeded", finishedAt: "2026-10-01T10:00:20.000Z" },
+          { id: "alpha-run", agentId: "alpha", status: "succeeded", finishedAt: "2026-10-01T10:00:40.000Z" },
+          { id: "beta-run", agentId: "beta", status: "succeeded", finishedAt: "2026-10-01T10:00:50.000Z" },
+        ],
+        mission: {
+          nextAction: "N2 may begin after this N1 stop boundary.",
+          n1: {
+            nextAction: "N2 may begin after this N1 stop boundary.",
+            participants: [
+              { contributionId: "alpha-contribution", assigneeAgentId: "alpha", dispatchRunId: "alpha-run", commit: "1".repeat(40) },
+              { contributionId: "beta-contribution", assigneeAgentId: "beta", dispatchRunId: "beta-run", commit: "2".repeat(40) },
+            ],
+            candidate: { outcome: "verified" },
+          },
+          mission: {
+            aggregate: {
+              phase: "ready_for_review",
+              control: { status: "inactive" },
+              journal: [{ action: "integration_check_failed" }],
+              n1: {
+                rootDispatchRunId: "lead-run",
+                contributions: [
+                  { contributionId: "alpha-contribution", assigneeAgentId: "alpha", dispatchRunId: "alpha-run", commit: "1".repeat(40) },
+                  { contributionId: "beta-contribution", assigneeAgentId: "beta", dispatchRunId: "beta-run", commit: "2".repeat(40) },
+                ],
+                candidate: {
+                  outcome: "verified",
+                  publicationEligible: true,
+                  candidate: {
+                    attachmentId: "attachment", baseCommit: "0".repeat(40), candidateCommit: "3".repeat(40), sha256: "4".repeat(64),
+                  },
+                  checks: [{ name: "fixture", status: "passed", detail: "checked" }],
+                },
+              },
+            },
+          },
+        },
+        ui: { screenshot: liveScreenshotPath, missionId: "mission", rootIssueId: "root-issue" },
         stopBoundary: "ready_for_review; N2 not started",
         reviewerRunCount: 0,
         admission: {
@@ -88,16 +157,18 @@ describe("bounded qualification launcher", () => {
     }
   });
 
-  it("claims live artifact paths before host inspection or provider-capable work", () => {
+  it("claims live artifact paths after preflight and before provider-capable work", () => {
     const launcherSource = readFileSync(resolve(packageRoot, "scripts/qualification/run-live-n1.mjs"), "utf8");
     const claimAt = launcherSource.indexOf("const claim = claimLiveEvidencePaths(");
-    const hostAt = launcherSource.indexOf("const host = preparedHost();", claimAt);
-    const browserAt = launcherSource.indexOf("await installChromium(host", claimAt);
+    const hostAt = launcherSource.indexOf("const host = preparedHost();");
+    const browserAt = launcherSource.indexOf("await installChromium(host");
     const runtimeAt = launcherSource.indexOf("await withOwnedQualificationRuntime", claimAt);
     expect(claimAt).toBeGreaterThan(-1);
-    expect(hostAt).toBeGreaterThan(claimAt);
+    expect(hostAt).toBeLessThan(claimAt);
     expect(browserAt).toBeGreaterThan(hostAt);
+    expect(browserAt).toBeLessThan(claimAt);
     expect(runtimeAt).toBeGreaterThan(browserAt);
+    expect(runtimeAt).toBeGreaterThan(claimAt);
   });
 
   it("refuses pre-existing files, directories, and symlinks without overwriting them", async () => {
@@ -316,7 +387,7 @@ describe("bounded qualification launcher", () => {
       mode: "safe", candidateCommit: "a".repeat(40), notBefore,
     })).not.toThrow();
     expect(() => assertQualificationEvidence(qualificationEvidence("live"), {
-      mode: "live", candidateCommit: "a".repeat(40), notBefore,
+      ...liveOptions(notBefore),
     })).not.toThrow();
 
     for (const results of [undefined, {}, { ...qualificationEvidence("safe").results }]) {
@@ -331,18 +402,18 @@ describe("bounded qualification launcher", () => {
     const unexpected = qualificationEvidence("live");
     unexpected.results.unexpectedProof = "PASS";
     expect(() => assertQualificationEvidence(unexpected, {
-      mode: "live", candidateCommit: "a".repeat(40), notBefore,
+      ...liveOptions(notBefore),
     })).toThrow(/unexpected=\[unexpectedProof\]/);
 
     const incompleteLive = qualificationEvidence("live");
     delete incompleteLive.results.n1InstalledBrowserObservableState;
     expect(() => assertQualificationEvidence(incompleteLive, {
-      mode: "live", candidateCommit: "a".repeat(40), notBefore,
+      ...liveOptions(notBefore),
     })).toThrow(/missing=\[n1InstalledBrowserObservableState\]/);
   });
 
   it("rejects stale, cleanup-incomplete, boundary-incomplete, and unsettled evidence", () => {
-    const options = { mode: "live", candidateCommit: "a".repeat(40), notBefore: Date.parse("2026-10-01T09:59:59.000Z") };
+    const options = liveOptions(Date.parse("2026-10-01T09:59:59.000Z"));
     const stale = qualificationEvidence("live");
     stale.startedAt = "2026-09-30T10:00:00.000Z";
     expect(() => assertQualificationEvidence(stale, options)).toThrow(/stale/);
@@ -358,6 +429,27 @@ describe("bounded qualification launcher", () => {
     const unsettled = qualificationEvidence("live");
     unsettled.liveN1.admission.envelope.reservations[1].status = "unsettled";
     expect(() => assertQualificationEvidence(unsettled, options)).toThrow(/every live reservation must be settled/);
+  });
+
+  it("binds live proof to host, models, native runs, contributions, candidate, failure refusal, and PNG UI", () => {
+    const options = liveOptions(Date.parse("2026-10-01T09:59:59.000Z"));
+    const mutations: Array<(evidence: any) => void> = [
+      (evidence) => { delete evidence.head; },
+      (evidence) => { evidence.configuration.models.observedAgentConfiguration[1].effort = "medium"; },
+      (evidence) => { evidence.liveN1.runs.pop(); },
+      (evidence) => { delete evidence.liveN1.mission.mission.aggregate.n1.contributions[0].commit; },
+      (evidence) => { delete evidence.liveN1.mission.mission.aggregate.n1.candidate; },
+      (evidence) => { evidence.liveN1.mission.mission.aggregate.journal = []; },
+      (evidence) => { delete evidence.liveN1.ui; },
+    ];
+    for (const mutate of mutations) {
+      const evidence = qualificationEvidence("live");
+      mutate(evidence);
+      expect(() => assertQualificationEvidence(evidence, options)).toThrow(/Qualification evidence contract failed/);
+    }
+    expect(() => assertQualificationEvidence(qualificationEvidence("live"), {
+      ...options, screenshotBytes: Buffer.from("not-a-png"),
+    })).toThrow(/PNG claim/);
   });
 
   it("stops after blocked host preparation without inspecting or starting a later phase", async () => {

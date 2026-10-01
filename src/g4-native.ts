@@ -11,7 +11,6 @@ import {
 const PROFILE_KIND = "paperclip-orchestration-tokens-v1";
 const MEASUREMENT_SOURCE = "paperclip:issues.summaries.getOrchestration:terminal-token-ledger";
 const ALLOWANCE_SOURCE = "plugin-config:n1OperatingProfile";
-const EXPOSURE_SOURCE = "plugin-config:n1OperatingProfile:no-prior-token-exposure";
 const TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed", "cancelled", "timed_out", "interrupted"]);
 
 export type NativeG4Profile = {
@@ -21,6 +20,9 @@ export type NativeG4Profile = {
   periodEnd: string;
   periodAllowanceUnits: number;
   runReservationUnits: number;
+  initialKnownUsageUnits: number;
+  initialExposureUnits: number;
+  initialTokenAccountingSource: string;
 };
 
 function requiredString(value: unknown, label: string, max = 200): string {
@@ -34,6 +36,17 @@ function positiveInteger(value: unknown, label: string): number {
     throw new AdmissionError(422, "g4_profile_invalid", `${label} must be a positive safe integer`);
   }
   return Number(value);
+}
+
+function nonnegativeInteger(value: unknown, label: string): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 0) {
+    throw new AdmissionError(422, "g4_profile_invalid", `${label} must be a nonnegative safe integer`);
+  }
+  return Number(value);
+}
+
+function initialAccountingSource(profile: NativeG4Profile): string {
+  return `${ALLOWANCE_SOURCE}:initial-token-accounting:${profile.initialTokenAccountingSource}`;
 }
 
 function isoTimestamp(value: unknown, label: string): string {
@@ -66,8 +79,11 @@ export async function readNativeG4Profile(
   }
   const periodAllowanceUnits = positiveInteger(record.periodAllowanceUnits, "n1OperatingProfile.periodAllowanceUnits");
   const runReservationUnits = positiveInteger(record.runReservationUnits, "n1OperatingProfile.runReservationUnits");
-  if (runReservationUnits > periodAllowanceUnits) {
-    throw new AdmissionError(422, "g4_profile_invalid", "Run reservation exceeds the period allowance");
+  const initialKnownUsageUnits = nonnegativeInteger(record.initialKnownUsageUnits, "n1OperatingProfile.initialKnownUsageUnits");
+  const initialExposureUnits = nonnegativeInteger(record.initialExposureUnits, "n1OperatingProfile.initialExposureUnits");
+  const initialCommittedUnits = initialKnownUsageUnits + initialExposureUnits + runReservationUnits;
+  if (!Number.isSafeInteger(initialCommittedUnits) || initialCommittedUnits > periodAllowanceUnits) {
+    throw new AdmissionError(422, "g4_profile_invalid", "Initial token usage, exposure, and one run reservation exceed the period allowance");
   }
   return {
     kind: PROFILE_KIND,
@@ -76,6 +92,9 @@ export async function readNativeG4Profile(
     periodEnd,
     periodAllowanceUnits,
     runReservationUnits,
+    initialKnownUsageUnits,
+    initialExposureUnits,
+    initialTokenAccountingSource: requiredString(record.initialTokenAccountingSource, "n1OperatingProfile.initialTokenAccountingSource"),
   };
 }
 
@@ -84,6 +103,7 @@ export function nativeAdmissionConfiguration(
   companyId: string,
   commandId: string,
 ): AdmissionConfigureInput {
+  const accountingSource = initialAccountingSource(profile);
   return {
     commandId,
     companyId,
@@ -93,12 +113,12 @@ export function nativeAdmissionConfiguration(
     measurement: { status: "known", source: MEASUREMENT_SOURCE, unit: "tokens" },
     allowance: {
       status: "known",
-      source: ALLOWANCE_SOURCE,
+      source: accountingSource,
       periodUnits: profile.periodAllowanceUnits,
       taskUnits: profile.runReservationUnits,
-      knownUsageUnits: 0,
+      knownUsageUnits: profile.initialKnownUsageUnits,
     },
-    exposure: { status: "known", source: EXPOSURE_SOURCE, units: 0 },
+    exposure: { status: "known", source: accountingSource, units: profile.initialExposureUnits },
     limits: { maxConcurrent: 2, maxRetries: 0, maxCorrections: 0 },
   };
 }
@@ -107,6 +127,7 @@ export function assertNativeEnvelope(
   envelope: AdmissionSnapshot,
   profile: NativeG4Profile,
 ): void {
+  const accountingSource = initialAccountingSource(profile);
   const mismatch = envelope.periodKey !== profile.periodKey
     || envelope.periodStart !== profile.periodStart
     || envelope.periodEnd !== profile.periodEnd
@@ -114,12 +135,13 @@ export function assertNativeEnvelope(
     || envelope.measurement.source !== MEASUREMENT_SOURCE
     || envelope.measurement.unit !== "tokens"
     || envelope.allowance.status !== "known"
-    || envelope.allowance.source !== ALLOWANCE_SOURCE
+    || envelope.allowance.source !== accountingSource
     || envelope.allowance.periodUnits !== profile.periodAllowanceUnits
     || envelope.allowance.taskUnits !== profile.runReservationUnits
+    || envelope.allowance.knownUsageUnits !== profile.initialKnownUsageUnits
     || envelope.exposure.status !== "known"
-    || envelope.exposure.source !== EXPOSURE_SOURCE
-    || envelope.exposure.units !== 0
+    || envelope.exposure.source !== accountingSource
+    || envelope.exposure.units !== profile.initialExposureUnits
     || envelope.limits.maxConcurrent !== 2
     || envelope.limits.maxRetries !== 0
     || envelope.limits.maxCorrections !== 0;

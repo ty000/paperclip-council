@@ -25,6 +25,9 @@ function profile() {
     periodEnd: "2026-10-02T00:00:00.000Z",
     periodAllowanceUnits: 100_000,
     runReservationUnits: 20_000,
+    initialKnownUsageUnits: 7_000,
+    initialExposureUnits: 3_000,
+    initialTokenAccountingSource: "owner-readback:company-period-2026-10-01",
   };
 }
 
@@ -64,8 +67,14 @@ describe("native G4 profile", () => {
     const configuration = nativeAdmissionConfiguration(parsed!, companyId, "50000000-0000-4000-8000-000000000005");
     expect(configuration).toMatchObject({
       measurement: { status: "known", unit: "tokens" },
-      allowance: { status: "known", periodUnits: 100_000, taskUnits: 20_000, knownUsageUnits: 0 },
-      exposure: { status: "known", units: 0 },
+      allowance: {
+        status: "known", periodUnits: 100_000, taskUnits: 20_000, knownUsageUnits: 7_000,
+        source: "plugin-config:n1OperatingProfile:initial-token-accounting:owner-readback:company-period-2026-10-01",
+      },
+      exposure: {
+        status: "known", units: 3_000,
+        source: "plugin-config:n1OperatingProfile:initial-token-accounting:owner-readback:company-period-2026-10-01",
+      },
       limits: { maxConcurrent: 2, maxRetries: 0, maxCorrections: 0 },
     });
     expect(() => assertNativeConfigurationRequest(configuration, configuration)).not.toThrow();
@@ -73,6 +82,17 @@ describe("native G4 profile", () => {
       { ...configuration, limits: { ...configuration.limits, maxConcurrent: 3 } },
       configuration,
     )).toThrow(/exactly match/);
+  });
+
+  it("refuses missing or already-exhausted initial token accounting", async () => {
+    const missing = { ...profile() } as Record<string, unknown>;
+    delete missing.initialTokenAccountingSource;
+    await expect(readNativeG4Profile(context({ n1OperatingProfile: missing }), companyId))
+      .rejects.toMatchObject({ code: "g4_profile_invalid" });
+
+    await expect(readNativeG4Profile(context({
+      n1OperatingProfile: { ...profile(), initialKnownUsageUnits: 80_000, initialExposureUnits: 1 },
+    }), companyId)).rejects.toMatchObject({ code: "g4_profile_invalid" });
   });
 
   it("honors host invocation and budget blocks before a native launch", async () => {

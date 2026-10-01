@@ -26,6 +26,10 @@ const SAFE_FIXTURE_BOUNDARY = "agents, issues, policies, and heartbeat runs are 
 const LIVE_FIXTURE_BOUNDARY = "The safe-boundary suite uses fixtures; the N1 live campaign below uses native APIs, native wakeups, exact Paperclip run IDs, and run-derived terminal token settlement.";
 const SAFE_PROVIDER_BOUNDARY = "none; dispatch was deliberately not invoked because it requests native wakeup";
 const LIVE_STOP_BOUNDARY = "ready_for_review; N2 not started";
+const EXPECTED_HOST_COMMIT = "61b3fd57a695614dc4a37e2303f426a34a9795cf";
+const COMMIT = /^[0-9a-f]{40}$/;
+const DIGEST = /^[0-9a-f]{64}$/;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 export const SAFE_RESULT_KEYS = Object.freeze([
   "installation",
@@ -182,6 +186,18 @@ function readOpenClaim(fd, status) {
   return buffer.toString("utf8");
 }
 
+function readOpenClaimBytes(fd, status, kind) {
+  if (status.size > BigInt(Number.MAX_SAFE_INTEGER)) fail(`live ${kind} exceeds the readable size limit`);
+  const buffer = Buffer.alloc(Number(status.size));
+  let offset = 0;
+  while (offset < buffer.length) {
+    const read = readSync(fd, buffer, offset, buffer.length - offset, offset);
+    if (read === 0) fail(`live ${kind} claim ended before its recorded size`);
+    offset += read;
+  }
+  return buffer;
+}
+
 function assertSerializedIdentity(identity, kind) {
   if (!identity || typeof identity !== "object"
       || !/^[0-9]+$/.test(identity.dev) || !/^[0-9]+$/.test(identity.ino)) {
@@ -283,6 +299,14 @@ function claimLiveEvidencePathsInternal(repositoryRoot, candidateCommit, configu
         assertClaimedPath(evidencePath, evidenceFd, evidenceIdentity, "evidence");
         assertClaimedPath(screenshotPath, screenshotFd, screenshotIdentity, "screenshot");
         return serialized;
+      },
+      readScreenshot() {
+        if (released) fail("live artifact pair claim was already released");
+        const screenshotStatus = assertClaimedPath(screenshotPath, screenshotFd, screenshotIdentity, "screenshot");
+        if (screenshotStatus.size === 0n) fail("live screenshot claim must be populated before validation");
+        const screenshot = readOpenClaimBytes(screenshotFd, screenshotStatus, "screenshot");
+        assertClaimedPath(screenshotPath, screenshotFd, screenshotIdentity, "screenshot");
+        return screenshot;
       },
       release({ validate = false } = {}) {
         if (released) return;
@@ -425,12 +449,95 @@ function assertLiveSettlement(evidence) {
   assertKnownUsageTotal(admission, reservations);
 }
 
+function nonemptyString(value) {
+  return typeof value === "string" && value.trim() === value && value.length > 0;
+}
+
+function assertLiveHostAndModels(evidence) {
+  const models = evidence.configuration?.models;
+  const observed = models?.observedAgentConfiguration;
+  if (evidence.head !== EXPECTED_HOST_COMMIT || evidence.hostTrackedFilesClean !== true
+      || models?.authorized?.model !== "gpt-5.6-sol" || models?.authorized?.effort !== "high"
+      || !Array.isArray(observed) || observed.length !== 3
+      || observed.some((item) => !nonemptyString(item?.agentId) || item?.adapterType !== "codex_local"
+        || item?.model !== models.authorized.model || item?.effort !== models.authorized.effort)
+      || new Set(observed.map((item) => item.agentId)).size !== 3) {
+    fail("live host identity, cleanliness, or observed model settings are missing or inconsistent");
+  }
+}
+
+function assertLiveRunsAndContributions(evidence) {
+  const live = evidence.liveN1;
+  const runs = live?.runs;
+  const state = live?.mission?.mission?.aggregate?.n1;
+  const contributions = state?.contributions;
+  const expectedAgentIds = [live?.agents?.lead, ...(live?.agents?.contributors ?? [])];
+  if (!nonemptyString(live?.companyId) || !nonemptyString(live?.missionId) || !nonemptyString(live?.rootIssueId)
+      || !COMMIT.test(live?.baseCommit) || !Array.isArray(runs) || runs.length !== 3
+      || runs.some((run) => !nonemptyString(run?.id) || run?.status !== "succeeded" || !nonemptyString(run?.finishedAt))
+      || new Set(runs.map((run) => run.id)).size !== 3
+      || expectedAgentIds.length !== 3 || expectedAgentIds.some((id) => !nonemptyString(id))
+      || new Set(expectedAgentIds).size !== 3 || runs.some((run) => !expectedAgentIds.includes(run.agentId))
+      || !Array.isArray(contributions) || contributions.length !== 2
+      || contributions.some((slot) => !nonemptyString(slot?.contributionId)
+        || !live.agents.contributors.includes(slot?.assigneeAgentId)
+        || !runs.some((run) => run.id === slot?.dispatchRunId)
+        || !COMMIT.test(slot?.commit))
+      || new Set(contributions.map((slot) => slot.contributionId)).size !== 2
+      || new Set(contributions.map((slot) => slot.dispatchRunId)).size !== 2
+      || new Set(contributions.map((slot) => slot.commit)).size !== 2
+      || !runs.some((run) => run.id === state?.rootDispatchRunId && run.agentId === live.agents.lead)) {
+    fail("live mission must bind three distinct native runs to the lead and two attributed contributions");
+  }
+}
+
+function assertLiveCandidate(evidence) {
+  const live = evidence.liveN1;
+  const aggregate = live?.mission?.mission?.aggregate;
+  const verified = aggregate?.n1?.candidate;
+  const candidate = verified?.candidate;
+  if (aggregate?.phase !== "ready_for_review" || aggregate?.control?.status !== "inactive"
+      || verified?.outcome !== "verified" || verified?.publicationEligible !== true
+      || candidate?.baseCommit !== live?.baseCommit || !COMMIT.test(candidate?.candidateCommit)
+      || !DIGEST.test(candidate?.sha256) || !nonemptyString(candidate?.attachmentId)
+      || !Array.isArray(verified?.checks) || verified.checks.length === 0
+      || verified.checks.some((check) => check?.status !== "passed")
+      || !Array.isArray(aggregate?.journal)
+      || !aggregate.journal.some((entry) => entry?.action === "integration_check_failed")) {
+    fail("live mission must contain the verified candidate and observed failed-integration refusal");
+  }
+}
+
+function assertLiveUiProof(evidence, candidateCommit, screenshotPath, screenshotBytes) {
+  const live = evidence.liveN1;
+  const ui = live?.ui;
+  const observed = live?.mission?.n1;
+  if (!nonemptyString(screenshotPath) || ui?.screenshot !== screenshotPath
+      || !screenshotPath.endsWith(".png") || !screenshotPath.includes(candidateCommit)
+      || ui?.missionId !== live?.missionId || ui?.rootIssueId !== live?.rootIssueId
+      || !Array.isArray(observed?.participants) || observed.participants.length !== 2
+      || !nonemptyString(observed?.nextAction) || observed?.candidate?.outcome !== "verified"
+      || !Buffer.isBuffer(screenshotBytes) || screenshotBytes.length <= PNG_SIGNATURE.length
+      || !screenshotBytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
+    fail("live UI proof must bind the rendered mission values and a populated commit-qualified PNG claim");
+  }
+}
+
+function assertLiveNativeProof(evidence, candidateCommit, screenshotPath, screenshotBytes) {
+  assertLiveHostAndModels(evidence);
+  assertLiveRunsAndContributions(evidence);
+  assertLiveCandidate(evidence);
+  assertLiveUiProof(evidence, candidateCommit, screenshotPath, screenshotBytes);
+}
+
 function assertSafeBoundary(evidence) {
   assertSafeProviderBoundary(evidence);
   assertSafeCapabilityLists(evidence);
 }
 
-export function assertQualificationEvidence(evidence, { mode, candidateCommit, notBefore }) {
+export function assertQualificationEvidence(evidence, {
+  mode, candidateCommit, notBefore, screenshotPath, screenshotBytes,
+}) {
   if (!evidence || typeof evidence !== "object" || Array.isArray(evidence)) {
     fail("evidence must be an object");
   }
@@ -459,6 +566,7 @@ export function assertQualificationEvidence(evidence, { mode, candidateCommit, n
       fail("live ready_for_review/N2 stop boundary proof is missing");
     }
     assertLiveSettlement(evidence);
+    assertLiveNativeProof(evidence, candidateCommit, screenshotPath, screenshotBytes);
   }
   return evidence;
 }
