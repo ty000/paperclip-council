@@ -1,0 +1,99 @@
+{
+  "schema_version": "static-code-audit-gate.v1",
+  "wrapper_version": "0.4.1",
+  "status": "pass",
+  "mode": "diff-gate",
+  "tool": "fallow",
+  "tool_version": "fallow 3.23.0",
+  "command": [
+    "/home/davy-lp/.codex/worktrees/council-n3/paperclip-council/node_modules/.bin/fallow",
+    "audit",
+    "--base",
+    "origin/main",
+    "--format",
+    "json",
+    "--quiet"
+  ],
+  "repo": "/home/davy-lp/.codex/worktrees/council-n3/paperclip-council",
+  "base_ref": "origin/main",
+  "blocking_findings": [],
+  "non_blocking_findings": [],
+  "raw_summary": {
+    "attribution": {
+      "complexity_inherited": 0,
+      "complexity_introduced": 0,
+      "dead_code_inherited": 0,
+      "dead_code_introduced": 0,
+      "duplication_demoted": 0,
+      "duplication_inherited": 0,
+      "duplication_introduced": 0,
+      "gate": "new-only",
+      "styling_inherited": 0,
+      "styling_introduced": 0
+    },
+    "exit_code": 0,
+    "finding_count": 0,
+    "finding_type_counts": {},
+    "legacy_candidate_count": 10,
+    "nullquad_count": 0,
+    "resolution": "repo node_modules",
+    "rule_counts": {},
+    "source_section_counts": {},
+    "summary": {
+      "complexity_findings": 0,
+      "dead_code_has_errors": false,
+      "dead_code_issues": 0,
+      "duplication_clone_groups": 0,
+      "max_cyclomatic": null
+    },
+    "unclassified_count": 10,
+    "verdict": "pass"
+  },
+  "policy": {
+    "phase": "integration-stable",
+    "telemetry_disabled": true,
+    "cloud_runtime_saas_disabled": true,
+    "auto_fix_forbidden": true,
+    "missing_fallow": "skipped",
+    "pinned_fallow_npm_spec": "fallow@3.23.0",
+    "bootstrap": "explicit-only",
+    "supported_install_strategies": [
+      "repo devDependency with exact fallow@3.23.0 and lockfile",
+      "dedicated Codex tool cache with exact fallow@3.23.0"
+    ],
+    "implicit_install_forbidden_modes": [
+      "probe",
+      "diff-gate",
+      "repo-audit",
+      "metrics",
+      "metrics-delta"
+    ],
+    "diff_gate_blocks": [
+      "introduced unresolved imports",
+      "introduced unlisted dependencies",
+      "introduced unused dependencies",
+      "introduced unused exports or dead-code regressions",
+      "introduced cycles or boundary violations",
+      "critical complexity attributed to the current diff",
+      "uninterpretable Fallow JSON after execution"
+    ],
+    "non_blocking": [
+      "pre-existing debt outside the diff",
+      "inherited findings on touched files unless Fallow marks them introduced",
+      "unattributed findings on touched files when Fallow does not report a failing diff signal",
+      "framework convention warnings and suspected framework entry-point false positives",
+      "non-JS/TS repository",
+      "missing Fallow during stable integration",
+      "low-severity warnings",
+      "probable false positives"
+    ],
+    "forbidden": [
+      "license activate",
+      "telemetry enable",
+      "coverage upload-*",
+      "--cloud",
+      "fix --yes",
+      "runtime or production coverage activation"
+    ]
+  }
+}
