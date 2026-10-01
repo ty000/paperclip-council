@@ -1,18 +1,20 @@
 # N2 — ordinary correction and confirmed acceptance
 
-Updated: 2026-10-01 (Europe/Paris). Status: **development partial / native qualification blocked**.
+Updated: 2026-10-02 (Europe/Paris). Status: **candidate and guarded campaign command prepared; LIVE authorization still required / not N2-qualified**.
 
 ## Exact base and scope
 
-The N2 branch was created in its own durable worktree from published N1 commit
-`9bedaa81d873d755ec679e174c70279118d8deef` on `codex/council-n1`. The N1
-worktree, branch, PR #15, artifacts and qualification instance were not
-modified. A final synchronization against the published N1 branch is required
-before the complete N2 checks and PR handoff.
+The N2 worktree was rebased from historical candidate `a7760eb4a7088377fe447611a7176144d8a6baab`
+onto `origin/main` at `d4d4a6032a96b6bd1e9c5cb6b9b754b05f08f28b`, which includes merged N1 PR #19
+and documentary decisions PR #20. Only the three N2 commits were replayed;
+obsolete N1 branch implementations were not restored. The authoritative exact
+candidate is the published head of draft PR #18 after its base is retargeted to
+`main`; PR readback records the SHA because a tracked report cannot truthfully
+self-embed the hash of the commit that contains it.
 
-This increment implements only the N2 domain and inspection delta. It does not
-redo N1, run a provider campaign, merge or activate Council, modify Paperclip,
-resume Executive, or add N3-N6 behavior.
+This increment implements the N2 mission/native adapter and inspection delta.
+It does not rerun a provider campaign, merge or activate Council, modify
+Paperclip core, resume Executive, or add N3-N6 behavior.
 
 `migration_prewrite: not-applicable`. The existing mission aggregate JSONB,
 command journal, admission records and `decision_receipts` table can hold this
@@ -32,13 +34,22 @@ data is changed.
 - Bind each verdict to the active submission, pinned reviewer, confirmed run,
   stable operation and existing durable decision receipt. An indeterminate or
   unusable native observation becomes `application_unknown`, never acceptance.
-- Admit exactly one ordinary correction by the pinned Integration Lead. V2
+- Accept an initially conforming V1 directly; a correction is not manufactured
+  merely to satisfy the qualification scenario.
+- Admit at most one ordinary correction by the pinned Integration Lead. The
+  correction reservation is durable before the `changes_requested` effect.
+  The initial reviewer run must then be terminal and settled before the owner
+  captures the finalized native run baseline and explicitly wakes the lead.
+  V2
   must be independently verified for the same company/root issue and immutable
   mandate, preserve the reviewed base commit, and change both candidate commit
   and bundle digest. Its usage baseline must retain the exact correction run.
-- Create a fresh second review round for V2. Approval is accepted only for V2,
-  after the single correction, with a usable `native_observed` receipt tied to
-  the exact second reviewer run.
+- Create a fresh second review round for V2. Corrected-candidate approval needs
+  a usable `native_observed` receipt tied to the exact second reviewer run.
+- Persist `start-review`, handoff confirmation, decision application,
+  correction wake/run binding, V2 preparation, second-review start and usage settlement through mission
+  CAS/command receipts. Persist intent before each native mutation; a lost or
+  mismatched response becomes `unknown` and is not retried.
 - Expose the current candidate, reviewer eligibility, round/handoff/verdict,
   correction, native application, blocker and next action through the existing
   owner-only Council mission inspection page.
@@ -68,31 +79,111 @@ Local deterministic checks cover:
 - durable unknown handoff and indeterminate decision blocking;
 - exact actor/run/operation/receipt binding for changes requested;
 - correction-run attribution and changed V2 identity;
-- fresh V2 review and acceptance only after a usable observed native response;
+- direct V1 acceptance and fresh V2 review/acceptance after a usable observed
+  native response;
+- the persisted owner → native review → reviewer → correction → settled
+  correction → verified V2 → second native-review command path;
 - legacy G4 default zero, explicit one-correction profile, envelope matching,
   sequential token-delta attribution and extra-run/nonpositive-delta refusal;
 - TypeScript source/test compilation and UI bundle compilation.
 
-These are local implementation proofs, not proof of a Paperclip-native journey.
+The repository also contains `qualification:live:n2`, a real guarded launcher
+for the six-run journey. Its evidence contract accepts only the complete result:
+three settled N1 runs; initial independent review and native
+`changes_requested`; a separately settled lead correction; changed V2; fresh
+approval run; six settled reservations; accepted restart readback; and the
+commit-qualified installed UI PNG. The launcher is implementation, not proof
+that such a provider campaign has run.
 
 ## Open native dependency and exit criteria
 
-N1 remains unqualified on this base. Its report records a non-conclusive native
-campaign with no verified integrated candidate, so no legitimate N2 campaign
-input exists yet. PR #15 being merged would not itself satisfy this dependency.
+Merged N1 produced two contributions, a verified integrated candidate and
+settled N1 reservations. Its final browser capture timed out and the original
+campaign artifact remains non-conclusive; the owner explicitly carried the
+small locator correction and capture into the next authorized N2 campaign.
+This branch changes the locator to select the exact mission through the UUID
+lookup before asserting its state. That source correction is not runtime proof.
 
 The following N2 criteria remain open until an explicitly authorized campaign
 starts from a qualified N1 candidate and persists/reloads the result:
 
-1. perform and observe the public/native handoff to the eligible reviewer;
-2. persist each N2 transition through the mission CAS/command path;
-3. observe the V1 `changes_requested` native effect and bounded correction run;
-4. verify and submit V2, then wake a fresh reviewer run;
-5. observe acceptance actually applied to V2 through the existing receipt;
-6. replay operator inspection after restart in the installed Paperclip UI.
+1. observe the persisted public/native handoff to the eligible reviewer;
+2. observe the V1 `changes_requested` effect and the single admitted correction
+   run, including exact-run settlement;
+3. verify and submit changed V2, then observe a fresh reviewer run;
+4. observe acceptance actually applied to V2 through the durable receipt;
+5. settle the admitted review runs and confirm `usage.complete=true`;
+6. replay operator inspection after restart and capture the installed mission
+   UI using the exact UUID locator.
 
 No N2 provider authorization is present. The N1 campaign authority and its PR
-review-loop bound do not transfer. The next useful action is to integrate the
-final published N1 correction, finish the native N2 adapter/persistence wiring,
-and prepare a bounded campaign request rather than calling local tests N2
-completion.
+review-loop bound do not transfer. Commit/publication authority for this lot is
+separate from LIVE authority. Once draft PR #18 readback identifies a clean
+head on `main` and the local bounded qualification passes on that same head,
+the only remaining launch gate is explicit authorization for one N2 provider
+campaign with the named agents and fresh token envelope. Until that campaign
+succeeds, the strongest verdict is **ready to request the N2 campaign**, never
+**N2 qualified**.
+
+## N3 interface checkpoint
+
+The contract is bound to the exact published PR #18 head recorded by PR
+readback. N3 may develop its opinion adapter while an N2 review is in progress:
+it consumes the active immutable submission identity (`missionId`,
+`rootIssueId`, submission ID/ordinal, candidate commit and bundle digest,
+evidence revision and mandate hash), and emits attributed opinions for that
+same review subject. Opinions are review inputs; they are not an acceptance
+claim and do not have to wait for an accepted mission.
+
+The final N3 synthesis may additionally consume reviewer actor/run, review
+round, verdict, decision receipt/application state and settled usage. The
+reusable code boundary is `N2State` with `N2Submission` and `N2ReviewRound`.
+N3 must not infer acceptance from an opinion, contribution, local test, PR
+state or unobserved native effect, and only the designated Council reviewer may
+issue the final verdict and native application.
+
+This checkpoint deliberately adds no generic review API, scheduler, specialist
+engine or N3 behavior. The PR description carries the exact SHA association
+after publication without creating a self-referential documentation commit.
+N3 receives this interface summary plus the immutable submission identity;
+accepted runtime evidence is added later if and when N2 qualifies.
+
+## Proposed bounded campaign request
+
+- **Instance:** one fresh ephemeral Paperclip qualification instance at pinned
+  host `61b3fd57a695614dc4a37e2303f426a34a9795cf`; no installed-state reuse.
+- **Scenario:** produce the N1 candidate with the existing Integration Lead and
+  two sequential contributors, then submit V1 to one distinct Generalist
+  Reviewer, require one concrete regression correction from the Integration
+  Lead, verify changed V2, run a fresh review and apply approval. Capture the
+  same mission by exact UUID in the installed UI after restart/readback.
+- **Agents:** one Integration Lead, Contributor Alpha, Contributor Beta and one
+  distinct Generalist Reviewer, all `codex_local/cli`; no specialist, N3 or
+  automatic provisioning is added. Recommended launch selection remains
+  `gpt-5.6-sol` / `high`; availability and effective settings must be observed
+  at launch.
+- **Envelope:** fresh identified period, `runReservationUnits=2_000_000`,
+  `periodAllowanceUnits=12_000_000`, `maxConcurrent=2`, `maxRetries=0`,
+  `maxCorrections=1`, initial known usage `0` and exposure `0` only with a
+  fresh-company/period owner attestation. Six runs are budgeted: lead, two
+  contributors, review V1, correction, review V2. Reservation is exposure, not
+  a hard model cutoff.
+- **Stop rules:** no provider retry; any extra run, stale candidate, wrong actor,
+  unknown native effect, nonterminal/unattributable usage or exhausted envelope
+  stops the campaign. A direct V1 approval remains supported generally but is
+  not substituted for the required correction qualification scenario.
+
+Exact guarded command, intentionally not executed without LIVE authorization:
+
+```sh
+COUNCIL_N2_LIVE_AUTHORIZED=1 \
+COUNCIL_N2_LIVE_MODEL=gpt-5.6-sol \
+COUNCIL_N2_LIVE_EFFORT=high \
+COUNCIL_N2_LIVE_RUN_UNITS=2000000 \
+COUNCIL_N2_LIVE_PERIOD_UNITS=12000000 \
+pnpm qualification:live:n2
+```
+
+The model/effort recommendation comes from the independent mapping dated
+2026-09-05. Availability and effective runtime settings remain unverified until
+launch and must be read back; no substitution is silent.

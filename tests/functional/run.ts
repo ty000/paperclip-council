@@ -8,7 +8,8 @@ import { tmpdir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { prepareCandidatePackage } from "./candidate-package.js";
-import { runLiveN1 } from "./n1-live.js";
+import { nativeRunEvidence, runLiveN1 } from "./n1-live.js";
+import { runLiveN2 } from "./n2-live.js";
 import { createFunctionalRuntimeCleanup } from "./runtime-cleanup.js";
 // @ts-expect-error The qualification evidence contract is intentionally plain ESM.
 import { writeClaimedArtifact } from "../../scripts/qualification/evidence-contract.mjs";
@@ -34,20 +35,24 @@ const candidateBranch = execFileSync("git", ["branch", "--show-current"], {
   encoding: "utf8",
 }).trim();
 const liveN1Authorized = process.env.COUNCIL_N1_LIVE_AUTHORIZED === "1";
+const liveN2Authorized = process.env.COUNCIL_N2_LIVE_AUTHORIZED === "1";
+assert(!(liveN1Authorized && liveN2Authorized), "N1 and N2 live campaigns cannot be authorized together");
+const liveNativeAuthorized = liveN1Authorized || liveN2Authorized;
+const liveEnvironmentPrefix = liveN2Authorized ? "COUNCIL_N2_LIVE" : "COUNCIL_N1_LIVE";
 type ArtifactIdentity = { dev: string; ino: string };
 function claimedArtifactIdentity(name: string): ArtifactIdentity {
   const serialized = process.env[name];
-  if (!serialized) throw new Error(`${name} is required for the explicitly authorized N1 live run`);
+  if (!serialized) throw new Error(`${name} is required for the explicitly authorized native live run`);
   try {
     return JSON.parse(serialized) as ArtifactIdentity;
   } catch {
     throw new Error(`${name} must contain the serialized create-only claim identity`);
   }
 }
-const liveEvidenceIdentity = liveN1Authorized
-  ? claimedArtifactIdentity("COUNCIL_N1_LIVE_EVIDENCE_IDENTITY") : undefined;
-const liveScreenshotIdentity = liveN1Authorized
-  ? claimedArtifactIdentity("COUNCIL_N1_LIVE_SCREENSHOT_IDENTITY") : undefined;
+const liveEvidenceIdentity = liveNativeAuthorized
+  ? claimedArtifactIdentity(`${liveEnvironmentPrefix}_EVIDENCE_IDENTITY`) : undefined;
+const liveScreenshotIdentity = liveNativeAuthorized
+  ? claimedArtifactIdentity(`${liveEnvironmentPrefix}_SCREENSHOT_IDENTITY`) : undefined;
 const hostRootInput = process.env.PAPERCLIP_TEST_HOST_ROOT;
 if (!hostRootInput) {
   throw new Error("PAPERCLIP_TEST_HOST_ROOT must point to the Paperclip checkout under test");
@@ -106,7 +111,9 @@ const requireServer = createRequire(resolve(root, "server/package.json"));
 const { eq } = requireServer("drizzle-orm");
 const evidence: Record<string, any> = {
   schemaVersion: 1,
-  proofId: liveN1Authorized
+  proofId: liveN2Authorized
+    ? "paperclip-council-n2-observable-native-qualification-v1"
+    : liveN1Authorized
     ? "paperclip-council-n1-observable-native-qualification-v1"
     : "paperclip-council-n1-safe-boundary-qualification-v1",
   startedAt: new Date().toISOString(),
@@ -114,7 +121,9 @@ const evidence: Record<string, any> = {
   hostTrackedFilesClean: hostStatus === "",
   branch: execFileSync("git", ["branch", "--show-current"], { cwd: root, encoding: "utf8" }).trim(),
   node: process.version,
-  command: liveN1Authorized
+  command: liveN2Authorized
+    ? "COUNCIL_N2_LIVE_AUTHORIZED=1 COUNCIL_N2_LIVE_MODEL=gpt-5.6-sol COUNCIL_N2_LIVE_EFFORT=high COUNCIL_N2_LIVE_RUN_UNITS=<positive> COUNCIL_N2_LIVE_PERIOD_UNITS=<exactly-6x-run> pnpm qualification:live:n2"
+    : liveN1Authorized
     ? "COUNCIL_N1_LIVE_AUTHORIZED=1 COUNCIL_N1_LIVE_MODEL=gpt-5.6-sol COUNCIL_N1_LIVE_EFFORT=high COUNCIL_N1_LIVE_RUN_UNITS=<positive> COUNCIL_N1_LIVE_PERIOD_UNITS=<at-least-3x-run> pnpm qualification:live:n1"
     : "COUNCIL_PACKAGE_EXPECTED_COMMIT=<candidate-sha> PAPERCLIP_TEST_HOST_ROOT=<checkout> PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH=<chromium> pnpm test:functional",
   candidate: {
@@ -1637,7 +1646,7 @@ try {
     replacementAndRevocation: "documented-only",
     reason: "the required package journey used native ephemeral keys; durable key mutation was not requested",
   };
-  if (liveN1Authorized) {
+  if (liveNativeAuthorized) {
     const live = await runLiveN1({
       request,
       getRun: async (runId) => db.select({
@@ -1654,7 +1663,57 @@ try {
       baseUrl,
       ownerUserId: userId,
       evidence,
+      campaign: liveN2Authorized ? "n2" : "n1",
     });
+    let liveMission = live.mission;
+    if (liveN2Authorized) {
+      const n2 = await runLiveN2({
+        request,
+        getRun: async (runId) => db.select({
+          id: tables.heartbeatRuns.id,
+          agentId: tables.heartbeatRuns.agentId,
+          status: tables.heartbeatRuns.status,
+          startedAt: tables.heartbeatRuns.startedAt,
+          finishedAt: tables.heartbeatRuns.finishedAt,
+          error: tables.heartbeatRuns.error,
+          usageJson: tables.heartbeatRuns.usageJson,
+        }).from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.id, runId)).then((rows: any[]) => rows[0] ?? null),
+        listRuns: async (agentId) => db.select({
+          id: tables.heartbeatRuns.id,
+          agentId: tables.heartbeatRuns.agentId,
+          status: tables.heartbeatRuns.status,
+          startedAt: tables.heartbeatRuns.startedAt,
+          finishedAt: tables.heartbeatRuns.finishedAt,
+          error: tables.heartbeatRuns.error,
+          usageJson: tables.heartbeatRuns.usageJson,
+        }).from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.agentId, agentId)),
+        pluginId,
+        evidence,
+        n1: live,
+        runEvidence: nativeRunEvidence,
+      });
+      liveMission = n2.finalMission;
+
+      await closeApp();
+      workerManager = createPluginWorkerManager();
+      app = await createApp(db, opts("vite-dev"));
+      server = createServer(app);
+      await new Promise<void>((resolveListen, reject) => {
+        server!.once("error", reject);
+        server!.listen(address.port, "127.0.0.1", resolveListen);
+      });
+      await app.locals.bundledPluginsStartup;
+      assert(workerManager.isRunning(pluginId), "installed package worker must reload after N2 acceptance");
+      const restartReadback = await request("human", "GET",
+        `/api/plugins/${pluginId}/api/companies/${live.companyId}/missions/${live.missionId}?companyId=${live.companyId}`);
+      assert.equal(restartReadback.status, 200, JSON.stringify(restartReadback.body));
+      assert.equal(restartReadback.body.mission.aggregate.phase, "accepted");
+      assert.equal(restartReadback.body.n2.status, "accepted");
+      assert.deepEqual(restartReadback.body.n2.submission, liveMission.n2.submission);
+      evidence.liveN2.restartReadback = restartReadback.body;
+      evidence.results.n2RestartReadback = "PASS";
+      liveMission = restartReadback.body;
+    }
     const { chromium: liveChromium } = requireServer("@playwright/test");
     const liveBrowser = await liveChromium.launch({
       headless: true,
@@ -1671,26 +1730,49 @@ try {
       const page = await context.newPage();
       await page.goto(`${baseUrl}/${live.issuePrefix}/council-missions`, { waitUntil: "networkidle" });
       await page.getByRole("heading", { name: "Council missions" }).waitFor();
-      await page.getByLabel("Select mission").selectOption(live.missionId);
-      await page.getByText("ready_for_review").first().waitFor();
+      await page.getByLabel("Mission UUID").fill(live.missionId);
+      await page.getByRole("button", { name: "Find mission" }).click();
+      await page.getByText("Mission found and selected.", { exact: true }).waitFor();
+      const selectedMission = page.locator('section[aria-labelledby="mission-state-title"]');
+      await selectedMission.locator("#mission-state-title").waitFor();
+      assert.equal(
+        await selectedMission.locator("#mission-state-title").textContent(),
+        liveMission.mission.aggregate.mandate.objective,
+      );
+      await selectedMission.getByText(liveN2Authorized ? "accepted" : "ready_for_review", { exact: true }).waitFor();
       await page.getByRole("heading", { name: "Contributions" }).waitFor();
       await page.getByRole("heading", { name: "Admission and usage" }).waitFor();
       await page.getByText(/terminal-token-ledger/).waitFor();
+      if (liveN2Authorized) {
+        await page.getByRole("heading", { name: "Independent review and correction" }).waitFor();
+        await page.getByText("V2 / evidence revision 2", { exact: true }).waitFor();
+        await page.getByText("eligible and independent", { exact: true }).waitFor();
+      }
       const rendered = await page.locator("body").innerText();
       const renderedValues = [
-        live.mission.nextAction,
-        live.mission.mission.aggregate.responsibilities.integrationLeadAgentId,
-        live.mission.mission.aggregate.responsibilities.finalReviewerAgentId,
-        live.mission.n1.candidate.candidate.candidateCommit,
-        live.mission.n1.candidate.candidate.baseCommit,
-        live.mission.n1.candidate.candidate.sha256,
-        live.admission.envelope.periodKey,
-        live.admission.envelope.measurement.source,
-        ...live.mission.n1.participants.flatMap((slot: any) => [
+        liveMission.nextAction,
+        liveMission.mission.aggregate.responsibilities.integrationLeadAgentId,
+        liveMission.mission.aggregate.responsibilities.finalReviewerAgentId,
+        liveMission.n1.candidate.candidate.candidateCommit,
+        liveMission.n1.candidate.candidate.baseCommit,
+        liveMission.n1.candidate.candidate.sha256,
+        liveMission.admission.periodKey,
+        liveMission.admission.measurement.source,
+        ...liveMission.n1.participants.flatMap((slot: any) => [
           slot.title, slot.assigneeAgentId, slot.dispatchRunId, slot.commit, ...slot.ownedPaths,
         ]),
-        ...live.mission.n1.candidate.checks.flatMap((check: any) => [check.name, check.status, check.detail]),
-        ...live.admission.envelope.reservations.flatMap((reservation: any) => [
+        ...liveMission.n1.candidate.checks.flatMap((check: any) => [check.name, check.status, check.detail]),
+        ...(liveN2Authorized ? [
+          liveMission.n2.submission.submissionId,
+          liveMission.n2.submission.candidateCommit,
+          liveMission.n2.submission.sha256,
+          liveMission.n2.review.handoff.reviewerRunId,
+          liveMission.n2.review.verdict.verdict,
+          liveMission.n2.application.state,
+          liveMission.n2.application.operationId,
+          liveMission.n2.application.receiptState,
+        ] : []),
+        ...(liveN2Authorized ? evidence.liveN2.admission.envelope.reservations : live.admission.envelope.reservations).flatMap((reservation: any) => [
           reservation.reservationId,
           String(reservation.requestedUnits),
           String(reservation.usage.units),
@@ -1700,21 +1782,30 @@ try {
         ]),
       ];
       for (const value of renderedValues) {
-        assert(value !== undefined && value !== null && rendered.includes(String(value)), `N1 UI is missing observed value: ${String(value)}`);
+        assert(value !== undefined && value !== null && rendered.includes(String(value)),
+          `${liveN2Authorized ? "N2" : "N1"} UI is missing observed value: ${String(value)}`);
       }
-      const liveScreenshotPath = process.env.COUNCIL_N1_LIVE_SCREENSHOT_PATH;
-      assert(liveScreenshotPath, "live screenshot path must be claimed by the N1 launcher");
+      const liveScreenshotPath = process.env[`${liveEnvironmentPrefix}_SCREENSHOT_PATH`];
+      assert(liveScreenshotPath, "live screenshot path must be claimed by the launcher");
       await mkdir(dirname(liveScreenshotPath), { recursive: true });
-      assert(liveScreenshotIdentity, "live screenshot identity must be claimed by the N1 launcher");
+      assert(liveScreenshotIdentity, "live screenshot identity must be claimed by the launcher");
       const screenshot = await page.screenshot({ type: "png", fullPage: true });
       writeClaimedArtifact(liveScreenshotPath, liveScreenshotIdentity, screenshot, "screenshot");
-      evidence.liveN1.ui = { screenshot: liveScreenshotPath, missionId: live.missionId, rootIssueId: live.rootIssueId };
-      evidence.results.n1InstalledBrowserObservableState = "PASS";
+      const uiEvidence = { screenshot: liveScreenshotPath, missionId: live.missionId, rootIssueId: live.rootIssueId };
+      if (liveN2Authorized) {
+        evidence.liveN2.ui = uiEvidence;
+        evidence.results.n2InstalledBrowserObservableState = "PASS";
+      } else {
+        evidence.liveN1.ui = uiEvidence;
+        evidence.results.n1InstalledBrowserObservableState = "PASS";
+      }
       await context.close();
     } finally {
       await liveBrowser.close();
     }
-    evidence.outcome = "N1 OBSERVABLE RESULT VALIDATED";
+    evidence.outcome = liveN2Authorized
+      ? "N2 OBSERVABLE RESULT VALIDATED"
+      : "N1 OBSERVABLE RESULT VALIDATED";
   } else {
     evidence.outcome = "N1 SAFE BOUNDARY VALIDATED";
   }

@@ -1,0 +1,95 @@
+{
+  "schema_version": "proof-manifest.v1",
+  "proof_id": "paperclip-council-n2-campaign-candidate-2026-10-02",
+  "subject": "Published draft PR #18 candidate based on origin/main d4d4a6032a96b6bd1e9c5cb6b9b754b05f08f28b; the exact head is recorded by PR readback and Paperclip-native N2 qualification remains excluded",
+  "status": "ready-to-request-live-campaign",
+  "summary": "The committed N2 implementation, executable guarded launcher, local checks and clean-candidate bounded qualification are replayable. No provider run, native N2 acceptance, live restart readback, or accepted-state UI capture is claimed.",
+  "categories": [
+    "functional",
+    "quality",
+    "documentation",
+    "operations"
+  ],
+  "evidence": [
+    {
+      "id": "n2-test-suite",
+      "category": "functional",
+      "kind": "automated-test",
+      "location": "pnpm test -- --maxWorkers=2",
+      "replayable": true,
+      "notes": "Observed pass: 20 test files and 212 tests, including direct V1 acceptance, material correction/resubmission, durable receipts, native handoff race guards, six-run evidence validation, usage settlement, and the persisted N2 command path."
+    },
+    {
+      "id": "n2-typecheck",
+      "category": "quality",
+      "kind": "command-output",
+      "location": "pnpm typecheck",
+      "replayable": true,
+      "notes": "Observed exit 0 on the local candidate."
+    },
+    {
+      "id": "n2-build",
+      "category": "quality",
+      "kind": "command-output",
+      "location": "pnpm build",
+      "replayable": true,
+      "notes": "Observed exit 0 on the local candidate."
+    },
+    {
+      "id": "n2-static-audit",
+      "category": "quality",
+      "kind": "command-output",
+      "location": "python3 /home/davy-lp/.codex/plugins/cache/home-local/static-code-audit/0.4.1/scripts/static_audit_gate.py diff-gate --repo /home/davy-lp/.codex/worktrees/council-n2/paperclip-council --base-ref origin/main",
+      "replayable": true,
+      "notes": "Observed canonical gate status pass with Fallow 3.23.0 and no blocking finding; raw legacy findings remain non-blocking under the wrapper contract."
+    },
+    {
+      "id": "n2-clean-bounded-qualification",
+      "category": "operations",
+      "kind": "command-output",
+      "location": "pnpm qualification:bounded",
+      "replayable": true,
+      "notes": "Run only after commit on the clean exact PR-head candidate. This remains local/non-provider qualification and does not establish N2 native acceptance."
+    },
+    {
+      "id": "n2-live-launcher-contract",
+      "category": "functional",
+      "kind": "source-and-test",
+      "location": "pnpm qualification:live:n2 and tests/run-bounded.spec.ts",
+      "replayable": false,
+      "notes": "Executable but not invoked: it requires explicit LIVE authorization, exact gpt-5.6-sol/high settings, six 2,000,000-unit reservations inside a fresh 12,000,000-unit period, and create-only commit-qualified artifacts."
+    }
+  ],
+  "replay": {
+    "preconditions": [
+      "Use /home/davy-lp/.codex/worktrees/council-n2/paperclip-council at the exact clean draft PR #18 head identified by publication readback, with base origin/main at d4d4a6032a96b6bd1e9c5cb6b9b754b05f08f28b.",
+      "Use the repository-supported Node and pnpm toolchain with dependencies already installed.",
+      "Do not treat fixture tests or local compilation as Paperclip-native execution proof."
+    ],
+    "steps": [
+      "Run pnpm typecheck.",
+      "Run pnpm test -- --maxWorkers=2.",
+      "Run pnpm build.",
+      "Run the static audit command recorded by evidence n2-static-audit.",
+      "Run pnpm qualification:bounded only from the clean exact candidate.",
+      "Run the LIVE N2 campaign only after separate explicit provider authorization."
+    ],
+    "expected_artifacts": [
+      "TypeScript typecheck exits 0.",
+      "Vitest reports 20 passing files and 212 passing tests.",
+      "The build exits 0 and produces the repository build outputs.",
+      "The canonical static audit wrapper reports status pass.",
+      "Before LIVE qualification, the candidate is only ready to request the campaign and N2 closure remains open."
+    ]
+  },
+  "closure": {
+    "decision": "keep-open",
+    "rationale": "The committed and published candidate can request one bounded campaign, but N2 requires observed native correction, resubmission, acceptance, usage settlement, restart readback, and UI capture.",
+    "next_required_actions": [
+      "Obtain explicit LIVE/provider authorization for the proposed bounded campaign.",
+      "Run the campaign once without blind retry and preserve any unknown native effect.",
+      "Validate native acceptance, usage settlement, restart inspection, exact UUID UI capture, and only then issue an N2 qualification verdict and SHA-bound N3 handoff."
+    ]
+  },
+  "generated_at": "2026-10-02T00:00:00+02:00"
+}

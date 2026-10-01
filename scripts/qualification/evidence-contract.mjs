@@ -16,9 +16,11 @@ import { basename, dirname, extname, resolve } from "node:path";
 
 const SAFE_PROOF_ID = "paperclip-council-n1-safe-boundary-qualification-v1";
 const LIVE_PROOF_ID = "paperclip-council-n1-observable-native-qualification-v1";
+const N2_LIVE_PROOF_ID = "paperclip-council-n2-observable-native-qualification-v1";
 
 const SAFE_OUTCOME = "N1 SAFE BOUNDARY VALIDATED";
 const LIVE_OUTCOME = "N1 OBSERVABLE RESULT VALIDATED";
+const N2_LIVE_OUTCOME = "N2 OBSERVABLE RESULT VALIDATED";
 
 const APP_CLEANUP = "stopped only the plugin worker, listener, and application created by this run";
 const DATABASE_CLEANUP = "fresh isolated PostgreSQL cluster removed; parent-owned temporary instance retained";
@@ -87,6 +89,23 @@ export const LIVE_RESULT_KEYS = Object.freeze([
   "n1NativeG4UsageSettled",
   "n1LeadSingleRunBarrier",
   "n1InstalledBrowserObservableState",
+]);
+
+export const N2_LIVE_RESULT_KEYS = Object.freeze([
+  ...SAFE_RESULT_KEYS,
+  "n1NativeLeadAndTwoContributors",
+  "n1IntegrationFailureBlocked",
+  "n1VerifiedCandidateReadyForReview",
+  "n1NativeG4UsageSettled",
+  "n1LeadSingleRunBarrier",
+  "n2InitialIndependentReview",
+  "n2ChangesRequestedApplied",
+  "n2CorrectionRunSettled",
+  "n2ChangedV2Verified",
+  "n2FreshFinalReviewAccepted",
+  "n2AllSixRunsSettled",
+  "n2RestartReadback",
+  "n2InstalledBrowserObservableState",
 ]);
 
 function fail(message) {
@@ -241,20 +260,26 @@ function requireUnclaimed(path, kind) {
   }
 }
 
-function claimLiveEvidencePathsInternal(repositoryRoot, candidateCommit, configuredPath, beforeScreenshotClaim) {
+function claimLiveEvidencePathsInternal(
+  repositoryRoot,
+  candidateCommit,
+  configuredPath,
+  beforeScreenshotClaim,
+  { prefix = "n1-live", screenshotSuffix = "ready-for-review" } = {},
+) {
   if (!/^[0-9a-f]{40}$/.test(candidateCommit)) {
     fail("candidate commit must be an exact lowercase 40-character Git SHA");
   }
   const evidencePath = resolve(
     repositoryRoot,
-    configuredPath ?? `artifacts/n1-live-${candidateCommit}.json`,
+    configuredPath ?? `artifacts/${prefix}-${candidateCommit}.json`,
   );
   if (extname(evidencePath) !== ".json" || !basename(evidencePath).includes(candidateCommit)) {
     fail(`live evidence filename must be JSON and contain candidate commit ${candidateCommit}`);
   }
   const screenshotPath = resolve(
     dirname(evidencePath),
-    `${basename(evidencePath, ".json")}-ready-for-review.png`,
+    `${basename(evidencePath, ".json")}-${screenshotSuffix}.png`,
   );
   const claimLockPath = resolve(
     dirname(evidencePath),
@@ -344,6 +369,16 @@ function claimLiveEvidencePathsInternal(repositoryRoot, candidateCommit, configu
 
 export function claimLiveEvidencePaths(repositoryRoot, candidateCommit, configuredPath) {
   return claimLiveEvidencePathsInternal(repositoryRoot, candidateCommit, configuredPath, undefined);
+}
+
+export function claimN2LiveEvidencePaths(repositoryRoot, candidateCommit, configuredPath) {
+  return claimLiveEvidencePathsInternal(
+    repositoryRoot,
+    candidateCommit,
+    configuredPath,
+    undefined,
+    { prefix: "n2-live", screenshotSuffix: "accepted" },
+  );
 }
 
 // Test-only fault injection for the interval between the two O_EXCL claims.
@@ -475,18 +510,19 @@ function assertObservedModel(item, authorized) {
   requireProof(item?.effort === authorized.effort, "observed effort differs from the authorized effort");
 }
 
-function assertLiveHostAndModels(evidence) {
+function assertLiveHostAndModels(evidence, includeReviewer = false) {
   const models = evidence.configuration?.models;
   const observed = models?.observedAgentConfiguration;
   const agents = evidence.liveN1?.agents;
-  const expectedAgentIds = [agents?.lead, ...(agents?.contributors ?? [])];
+  const expectedAgentIds = [agents?.lead, ...(agents?.contributors ?? []), ...(includeReviewer ? [agents?.reviewer] : [])];
   requireProof(evidence.head === EXPECTED_HOST_COMMIT, "live host commit is not the pinned candidate");
   requireProof(evidence.hostTrackedFilesClean === true, "live host tracked files were not clean");
   requireProof(models?.authorized?.model === "gpt-5.6-sol", "authorized live model is missing or unexpected");
   requireProof(models?.authorized?.effort === "high", "authorized live effort is missing or unexpected");
-  requireProof(Array.isArray(observed) && observed.length === 3, "three observed model settings are required");
+  requireProof(Array.isArray(observed) && observed.length === expectedAgentIds.length,
+    `${expectedAgentIds.length} observed model settings are required`);
   requireProof(sameStringSet(observed.map((item) => item?.agentId), expectedAgentIds),
-    "observed model settings must identify the exact lead and two contributors");
+    "observed model settings must identify the exact campaign agents");
   observed.forEach((item) => assertObservedModel(item, models.authorized));
 }
 
@@ -797,6 +833,141 @@ function assertLiveNativeProof(evidence, candidateCommit, screenshotPath, screen
   assertLiveUiProof(evidence, candidateCommit, screenshotPath, screenshotBytes);
 }
 
+function assertN2Settlement(evidence) {
+  const admission = evidence.liveN2?.admission?.envelope;
+  const reservations = admission?.reservations;
+  requireProof(Array.isArray(reservations) && reservations.length === 6,
+    "N2 admission must contain exactly six reservations");
+  reservations.forEach(assertSettledReservation);
+  assertKnownUsageTotal(admission, reservations);
+}
+
+function assertN2RunSet(evidence) {
+  const liveN1 = evidence.liveN1;
+  const liveN2 = evidence.liveN2;
+  const runs = liveN2?.runs;
+  const expectedAgentIds = [liveN1?.agents?.reviewer, liveN1?.agents?.lead, liveN1?.agents?.reviewer];
+  requireProof(Array.isArray(runs) && runs.length === 3, "N2 must record reviewer, correction, and reviewer runs");
+  runs.forEach((run, index) => {
+    assertLiveRun(run, [expectedAgentIds[index]]);
+    assertLiveRunUsage(run);
+  });
+  requireProof(distinctStrings(runs.map((run) => run.id)), "N2 native run identities must be distinct");
+  requireProof(distinctStrings([...(liveN1?.runs ?? []), ...runs].map((run) => run.id)),
+    "all six N1 and N2 native run identities must be distinct");
+}
+
+function assertN2State(evidence) {
+  const liveN2 = evidence.liveN2;
+  const inspection = liveN2?.mission;
+  const state = inspection?.mission?.aggregate?.n2;
+  requireProof(inspection?.mission?.aggregate?.phase === "accepted", "N2 mission phase is not accepted");
+  requireProof(inspection?.mission?.aggregate?.control?.status === "inactive", "accepted N2 mission control did not stop");
+  requireProof(state?.status === "accepted" && state?.correctionLimit === 1 && state?.correctionsUsed === 1,
+    "N2 accepted state or correction bound is missing");
+  requireProof(Array.isArray(state?.submissions) && state.submissions.length === 2,
+    "N2 must retain exactly two immutable submissions");
+  const [v1, v2] = state.submissions;
+  requireProof(v1?.ordinal === 1 && v2?.ordinal === 2 && v2?.predecessorSubmissionId === v1?.submissionId,
+    "N2 V2 is not linked to V1");
+  requireProof(COMMIT.test(v1?.candidateCommit) && COMMIT.test(v2?.candidateCommit)
+      && v1.candidateCommit !== v2.candidateCommit,
+  "N2 V1 and V2 commit identities are missing or unchanged");
+  requireProof(DIGEST.test(v1?.sha256) && DIGEST.test(v2?.sha256) && v1.sha256 !== v2.sha256,
+    "N2 V1 and V2 bundle digests are missing or unchanged");
+  requireProof(v1?.baseCommit === v2?.baseCommit && v1?.mandateHash === v2?.mandateHash,
+    "N2 correction changed the base or mandate subject");
+  requireProof(Array.isArray(state?.rounds) && state.rounds.length === 2,
+    "N2 must retain exactly two review rounds");
+  const [round1, round2] = state.rounds;
+  requireProof(round1?.round === 1 && round1?.submissionId === v1.submissionId
+      && round1?.verdict?.verdict === "changes_requested",
+  "N2 initial review verdict is not changes_requested on V1");
+  requireProof(round2?.round === 2 && round2?.submissionId === v2.submissionId
+      && round2?.verdict?.verdict === "approved",
+  "N2 final review verdict is not approved on V2");
+  for (const round of state.rounds) {
+    requireProof(round.reviewerAgentId === evidence.liveN1?.agents?.reviewer
+        && round.handoff?.state === "confirmed"
+        && round.handoff?.reviewerRunId === round.verdict?.runId
+        && round.handoff?.usageSettledAt,
+    "N2 review round is not bound to the independent reviewer run and terminal settlement");
+  }
+  requireProof(state?.correction?.executorAgentId === evidence.liveN1?.agents?.lead
+      && state?.correction?.runId === liveN2?.runs?.[1]?.id
+      && state?.correction?.usageSettledAt
+      && JSON.stringify(state?.correction?.correctedPaths) === JSON.stringify(["alpha.txt"]),
+  "N2 correction is not bound to the lead run, settlement, and attributed path");
+  requireProof(state?.application?.state === "observed"
+      && state?.application?.submissionId === v2.submissionId
+      && state?.application?.receiptState === "native_observed",
+  "N2 final native acceptance was not observed for V2");
+  requireProof(inspection?.n2?.usage?.complete === true, "N2 usage inspection is not complete");
+}
+
+function assertN2Reservations(evidence) {
+  const live = evidence.liveN2;
+  const state = live?.mission?.mission?.aggregate?.n2;
+  const reservations = live?.admission?.envelope?.reservations ?? [];
+  const reservationById = new Map(reservations.map((reservation) => [reservation?.reservationId, reservation]));
+  const runById = new Map((live?.runs ?? []).map((run) => [run.id, run]));
+  for (const round of state?.rounds ?? []) {
+    assertRunReservation({ missionId: live.missionId }, reservationById, {
+      label: `N2 review round ${round.round}`,
+      reservationId: round.handoff?.reservationId,
+      baseline: round.handoff?.baselineTokenTotal,
+      run: runById.get(round.handoff?.reviewerRunId),
+      effectId: `n2-review:${round.submissionId}`,
+    });
+  }
+  assertRunReservation({ missionId: live.missionId }, reservationById, {
+    label: "N2 correction",
+    reservationId: state?.correction?.reservationId,
+    baseline: state?.correction?.baselineTokenTotal,
+    run: runById.get(state?.correction?.runId),
+    effectId: `n2-correction:${state?.correction?.requestedByOperationId}`,
+  });
+}
+
+function assertN2Receipts(evidence) {
+  const receipts = evidence.liveN2?.decisionReceipts;
+  const state = evidence.liveN2?.mission?.mission?.aggregate?.n2;
+  requireProof(Array.isArray(receipts) && receipts.length === 2,
+    "N2 must retain exactly two decision receipts");
+  requireProof(receipts[0]?.verdict === "changes_requested" && receipts[1]?.verdict === "approved",
+    "N2 decision receipt sequence is unexpected");
+  receipts.forEach((receipt, index) => requireProof(
+    receipt?.state === "native_observed"
+      && receipt?.actorAgentId === evidence.liveN1?.agents?.reviewer
+      && receipt?.runId === state?.rounds?.[index]?.handoff?.reviewerRunId
+      && receipt?.operationId === state?.rounds?.[index]?.verdict?.operationId,
+    "N2 decision receipt is not bound to its reviewer run and verdict",
+  ));
+}
+
+function assertN2RestartAndUi(evidence, candidateCommit, screenshotPath, screenshotBytes) {
+  const live = evidence.liveN2;
+  requireProof(JSON.stringify(live?.restartReadback?.mission?.aggregate?.n2)
+      === JSON.stringify(live?.mission?.mission?.aggregate?.n2),
+  "N2 restart readback does not preserve the accepted aggregate");
+  requireProof(live?.restartReadback?.mission?.aggregate?.phase === "accepted",
+    "N2 restart readback is not accepted");
+  assertScreenshotClaim(live?.ui, live, candidateCommit, screenshotPath, screenshotBytes);
+  requireProof(screenshotPath.endsWith("-accepted.png"), "N2 screenshot is not the accepted-state artifact");
+}
+
+function assertN2NativeProof(evidence, candidateCommit, screenshotPath, screenshotBytes) {
+  assertLiveHostAndModels(evidence, true);
+  assertLiveRunsAndContributions(evidence);
+  assertLiveCandidate(evidence);
+  assertN2Settlement(evidence);
+  assertN2RunSet(evidence);
+  assertN2State(evidence);
+  assertN2Reservations(evidence);
+  assertN2Receipts(evidence);
+  assertN2RestartAndUi(evidence, candidateCommit, screenshotPath, screenshotBytes);
+}
+
 function assertSafeBoundary(evidence) {
   assertSafeProviderBoundary(evidence);
   assertSafeCapabilityLists(evidence);
@@ -809,10 +980,11 @@ export function assertQualificationEvidence(evidence, {
     fail("evidence must be an object");
   }
   const live = mode === "live";
-  if (!live && mode !== "safe") fail(`unsupported mode ${String(mode)}`);
-  const expectedProofId = live ? LIVE_PROOF_ID : SAFE_PROOF_ID;
-  const expectedOutcome = live ? LIVE_OUTCOME : SAFE_OUTCOME;
-  const expectedResults = live ? LIVE_RESULT_KEYS : SAFE_RESULT_KEYS;
+  const liveN2 = mode === "live-n2";
+  if (!live && !liveN2 && mode !== "safe") fail(`unsupported mode ${String(mode)}`);
+  const expectedProofId = liveN2 ? N2_LIVE_PROOF_ID : live ? LIVE_PROOF_ID : SAFE_PROOF_ID;
+  const expectedOutcome = liveN2 ? N2_LIVE_OUTCOME : live ? LIVE_OUTCOME : SAFE_OUTCOME;
+  const expectedResults = liveN2 ? N2_LIVE_RESULT_KEYS : live ? LIVE_RESULT_KEYS : SAFE_RESULT_KEYS;
   if (evidence.schemaVersion !== 1
       || evidence.proofId !== expectedProofId
       || evidence.outcome !== expectedOutcome
@@ -824,7 +996,7 @@ export function assertQualificationEvidence(evidence, {
   assertExactResults(evidence.results, expectedResults, mode);
   assertCleanup(evidence);
   assertSafeBoundary(evidence);
-  const expectedFixtureBoundary = live ? LIVE_FIXTURE_BOUNDARY : SAFE_FIXTURE_BOUNDARY;
+  const expectedFixtureBoundary = live || liveN2 ? LIVE_FIXTURE_BOUNDARY : SAFE_FIXTURE_BOUNDARY;
   if (evidence.configuration.fixtureBoundary !== expectedFixtureBoundary) {
     fail(`${mode} fixture boundary is missing or unexpected`);
   }
@@ -835,5 +1007,6 @@ export function assertQualificationEvidence(evidence, {
     assertLiveSettlement(evidence);
     assertLiveNativeProof(evidence, candidateCommit, screenshotPath, screenshotBytes);
   }
+  if (liveN2) assertN2NativeProof(evidence, candidateCommit, screenshotPath, screenshotBytes);
   return evidence;
 }

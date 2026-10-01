@@ -1,7 +1,22 @@
 import { createHash, randomUUID } from "node:crypto";
+import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
+import { AdmissionError, readAdmission, reserveAdmission } from "./admission.js";
 import type { DecisionReceipt } from "./decision-receipts.js";
-import type { IntegratedCandidateVerification } from "./integration.js";
-import { MissionError, type MissionRecord } from "./missions.js";
+import {
+  assertNativeEnvelope,
+  readNativeG4Profile,
+  readNativeSequentialUsageBaseline,
+  settleNativeSequentialRunUsage,
+} from "./g4-native.js";
+import { verifyIntegratedCandidate, type IntegratedCandidateVerification } from "./integration.js";
+import {
+  canonicalPayloadHash,
+  getMission,
+  MissionError,
+  type MissionAggregate,
+  type MissionRecord,
+  type MissionReceipt,
+} from "./missions.js";
 
 export type N2Submission = {
   submissionId: string;
@@ -24,6 +39,8 @@ export type N2NativeHandoff = {
   reviewerRunId: string | null;
   reason: string | null;
   observedAt: string | null;
+  reservationId?: string;
+  usageSettledAt?: string;
 };
 
 export type N2Verdict = {
@@ -53,13 +70,21 @@ export type N2State = {
   submissions: N2Submission[];
   rounds: N2ReviewRound[];
   activeSubmissionId: string;
-  status: "review_handoff" | "reviewing" | "correction_requested" | "correcting" | "application_unknown" | "accepted";
+  status: "review_handoff" | "reviewing" | "correction_requested" | "correcting" | "resubmission_prepared" | "application_unknown" | "accepted";
   correction: null | {
     requestedByOperationId: string;
     criteria: string[];
     reasons: string[];
     executorAgentId: string;
     runId: string | null;
+    reservationId?: string;
+    baselineRunIds?: string[];
+    baselineTokenTotal?: number;
+    usageSettledAt?: string;
+    wakeState?: "claimed" | "requested" | "unknown";
+    wakeReason?: string;
+    preparedSubmission?: N2Submission;
+    correctedPaths?: string[];
   };
   application: {
     state: "none" | "observed" | "unknown";
@@ -131,7 +156,7 @@ function reviewerConflicts(mission: MissionRecord): string[] {
 
 export function startN2Review(
   mission: MissionRecord,
-  input: { baselineRunIds: string[]; baselineTokenTotal: number; submissionId?: string; at?: string },
+  input: { baselineRunIds: string[]; baselineTokenTotal: number; reservationId?: string; submissionId?: string; at?: string },
 ): N2State {
   if (mission.aggregate.phase !== "ready_for_review") {
     throw new MissionError(409, "n2_entry_unavailable", "N2 starts only from a candidate ready for review");
@@ -170,6 +195,7 @@ export function startN2Review(
         reviewerRunId: null,
         reason: null,
         observedAt: null,
+        reservationId: input.reservationId,
       },
       verdict: null,
     }],
@@ -401,9 +427,6 @@ export function applyN2Decision(
       application: observedApplication(input),
     };
   }
-  if (round.round !== 2 || state.correctionsUsed !== 1) {
-    throw new MissionError(409, "ordinary_correction_required", "This N2 lot accepts only the corrected V2 submission after a fresh second review");
-  }
   return {
     ...state,
     rounds,
@@ -415,7 +438,13 @@ export function applyN2Decision(
 export function bindN2CorrectionRun(
   state: N2State,
   mission: MissionRecord,
-  input: { actorAgentId: string; runId: string },
+  input: {
+    actorAgentId: string;
+    runId: string;
+    reservationId?: string;
+    baselineRunIds?: string[];
+    baselineTokenTotal?: number;
+  },
 ): N2State {
   if (state.status !== "correction_requested" || !state.correction || state.correction.runId) {
     throw new MissionError(409, "correction_run_unavailable", "No correction run is awaiting binding");
@@ -423,19 +452,30 @@ export function bindN2CorrectionRun(
   if (input.actorAgentId !== mission.aggregate.responsibilities.integrationLeadAgentId) {
     throw new MissionError(403, "integration_lead_required", "Only the pinned integration lead may execute the correction");
   }
-  return { ...state, status: "correcting", correction: { ...state.correction, runId: input.runId } };
+  return {
+    ...state,
+    status: "correcting",
+    correction: {
+      ...state.correction,
+      runId: input.runId,
+      reservationId: input.reservationId,
+      baselineRunIds: input.baselineRunIds,
+      baselineTokenTotal: input.baselineTokenTotal,
+      wakeState: "requested",
+      wakeReason: undefined,
+    },
+  };
 }
 
-export function resubmitN2Candidate(
+export function prepareN2Resubmission(
   state: N2State,
   mission: MissionRecord,
   input: {
     actorAgentId: string;
     runId: string;
     candidate: IntegratedCandidateVerification;
-    baselineRunIds: string[];
-    baselineTokenTotal: number;
     evidenceRevision: number;
+    correctedPaths: string[];
     submissionId?: string;
     at?: string;
   },
@@ -464,15 +504,12 @@ export function resubmitN2Candidate(
   if (currentMandateHash !== previous.mandateHash) {
     throw new MissionError(409, "mandate_changed", "V2 must correct the candidate under the same immutable review mandate");
   }
-  if (!Number.isSafeInteger(input.baselineTokenTotal) || input.baselineTokenTotal < 0
-      || new Set(input.baselineRunIds).size !== input.baselineRunIds.length) {
-    throw new MissionError(422, "g4_baseline_invalid", "Second review baseline is invalid");
-  }
   if (!Number.isSafeInteger(input.evidenceRevision) || input.evidenceRevision <= previous.evidenceRevision) {
     throw new MissionError(422, "evidence_revision_stale", "V2 must bind a newer persisted mission evidence revision");
   }
-  if (!input.baselineRunIds.includes(state.correction.runId)) {
-    throw new MissionError(409, "correction_usage_unattributed", "Second review baseline must retain the exact correction run identity");
+  if (!Array.isArray(input.correctedPaths) || input.correctedPaths.length === 0
+      || input.correctedPaths.some((path) => typeof path !== "string" || !path.trim())) {
+    throw new MissionError(422, "correction_evidence_missing", "V2 must identify at least one materially corrected attributed path");
   }
   const submission = submissionFromCandidate(mission, candidate, {
     ordinal: 2,
@@ -481,6 +518,38 @@ export function resubmitN2Candidate(
     submissionId: input.submissionId,
     at: input.at,
   });
+  return {
+    ...state,
+    status: "resubmission_prepared",
+    correction: {
+      ...state.correction,
+      preparedSubmission: submission,
+      correctedPaths: [...input.correctedPaths],
+    },
+  };
+}
+
+export function startN2ResubmittedReview(
+  state: N2State,
+  mission: MissionRecord,
+  input: {
+    baselineRunIds: string[];
+    baselineTokenTotal: number;
+    reservationId?: string;
+  },
+): N2State {
+  const correction = state.correction;
+  const submission = correction?.preparedSubmission;
+  if (state.status !== "resubmission_prepared" || !correction?.runId || !correction.usageSettledAt || !submission) {
+    throw new MissionError(409, "resubmission_handoff_unavailable", "A verified V2 and settled correction run are required before second review");
+  }
+  if (!Number.isSafeInteger(input.baselineTokenTotal) || input.baselineTokenTotal < 0
+      || new Set(input.baselineRunIds).size !== input.baselineRunIds.length) {
+    throw new MissionError(422, "g4_baseline_invalid", "Second review baseline is invalid");
+  }
+  if (!input.baselineRunIds.includes(correction.runId)) {
+    throw new MissionError(409, "correction_usage_unattributed", "Second review baseline must retain the exact settled correction run identity");
+  }
   const reviewer = mission.aggregate.responsibilities.finalReviewerAgentId;
   return {
     ...state,
@@ -496,11 +565,13 @@ export function resubmitN2Candidate(
         reviewerRunId: null,
         reason: null,
         observedAt: null,
+        reservationId: input.reservationId,
       },
       verdict: null,
     }],
     activeSubmissionId: submission.submissionId,
     status: "review_handoff",
+    correction: { ...correction, preparedSubmission: undefined },
     application: { state: "none", submissionId: null, operationId: null, receiptState: null, nativeStatus: null },
   };
 }
@@ -512,12 +583,18 @@ function n2Blockage(state: N2State, round: N2ReviewRound | null) {
   if (round?.handoff.state === "unknown") {
     return { code: "review_handoff_unknown", message: round.handoff.reason ?? "Native review handoff is uncertain.", nextActorId: null };
   }
+  if (state.correction?.wakeState === "unknown") {
+    return { code: "correction_wakeup_unknown", message: state.correction.wakeReason ?? "Native correction wakeup is uncertain.", nextActorId: null };
+  }
   return null;
 }
 
 function n2NextAction(state: N2State, round: N2ReviewRound | null) {
   if (round?.handoff.state === "unknown") {
     return { actorKind: "operator" as const, actorId: null, label: "Reconcile the uncertain native handoff; do not retry or confirm from local state." };
+  }
+  if (state.correction?.wakeState === "unknown") {
+    return { actorKind: "operator" as const, actorId: null, label: "Reconcile the uncertain correction wakeup; do not retry." };
   }
   const reviewActions = {
     review_handoff: "Confirm the native review handoff and exact reviewer run.",
@@ -528,15 +605,16 @@ function n2NextAction(state: N2State, round: N2ReviewRound | null) {
   }
   const correctionActions = {
     correction_requested: "Execute the one admitted correction through the native return path.",
-    correcting: "Verify and submit changed candidate V2.",
+    correcting: "Verify and prepare changed candidate V2.",
+    resubmission_prepared: "Settle the exact correction run, then start the second native review.",
   } as const;
-  if (state.status === "correction_requested" || state.status === "correcting") {
+  if (state.status === "correction_requested" || state.status === "correcting" || state.status === "resubmission_prepared") {
     return { actorKind: "agent" as const, actorId: state.correction?.executorAgentId ?? null, label: correctionActions[state.status] };
   }
   if (state.status === "application_unknown") {
     return { actorKind: "operator" as const, actorId: null, label: "Inspect the durable receipt; do not retry or accept." };
   }
-  return { actorKind: "operator" as const, actorId: null, label: "Acceptance is applied to the exact reviewed V2 submission." };
+  return { actorKind: "operator" as const, actorId: null, label: "Acceptance is applied to the exact active reviewed submission." };
 }
 
 export function inspectN2State(mission: MissionRecord) {
@@ -545,6 +623,23 @@ export function inspectN2State(mission: MissionRecord) {
   const submission = state.submissions.find((item) => item.submissionId === state.activeSubmissionId) ?? null;
   const round = state.rounds.at(-1) ?? null;
   const conflicts = reviewerConflicts(mission);
+  const usage = {
+    reviews: state.rounds.map((entry) => ({
+      round: entry.round,
+      runId: entry.handoff.reviewerRunId,
+      reservationId: entry.handoff.reservationId ?? null,
+      settled: Boolean(entry.handoff.usageSettledAt),
+      settledAt: entry.handoff.usageSettledAt ?? null,
+    })),
+    correction: state.correction?.runId ? {
+      runId: state.correction.runId,
+      reservationId: state.correction.reservationId ?? null,
+      settled: Boolean(state.correction.usageSettledAt),
+      settledAt: state.correction.usageSettledAt ?? null,
+    } : null,
+  };
+  const usageComplete = usage.reviews.every((entry) => entry.runId && entry.settled)
+    && (!usage.correction || usage.correction.settled);
   return {
     submission,
     submissions: state.submissions,
@@ -558,7 +653,765 @@ export function inspectN2State(mission: MissionRecord) {
     status: state.status,
     correction: state.correction,
     application: state.application,
+    usage: { ...usage, complete: usageComplete },
     blockage: n2Blockage(state, round),
-    nextAction: n2NextAction(state, round),
+    nextAction: state.status === "accepted" && !usageComplete
+      ? { actorKind: "operator" as const, actorId: null, label: "Settle every admitted N2 run before qualification closure." }
+      : n2NextAction(state, round),
   };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const COMMIT = /^[a-f0-9]{40}$/;
+const DIGEST = /^[a-f0-9]{64}$/;
+
+function runtimeBody(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new MissionError(400, "malformed_request", "request body must be an object");
+  }
+  return value as Record<string, unknown>;
+}
+
+function runtimeString(value: unknown, label: string, max = 1_000): string {
+  if (typeof value !== "string" || !value.trim() || value !== value.trim() || value.length > max) {
+    throw new MissionError(400, "malformed_request", `${label} must be a bounded nonempty string`);
+  }
+  return value;
+}
+
+function runtimeUuid(value: unknown, label: string): string {
+  const result = runtimeString(value, label, 64);
+  if (!UUID.test(result)) throw new MissionError(400, "malformed_request", `${label} must be a UUID`);
+  return result;
+}
+
+function runtimeInteger(value: unknown, label: string): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 1) {
+    throw new MissionError(400, "malformed_request", `${label} must be a positive safe integer`);
+  }
+  return Number(value);
+}
+
+function missionTable(ctx: PluginContext): string {
+  if (!/^[a-z_][a-z0-9_]*$/.test(ctx.db.namespace)) throw new Error("Unsafe plugin database namespace");
+  return `${ctx.db.namespace}.missions`;
+}
+
+function storedN2(mission: MissionRecord): N2State {
+  const state = mission.aggregate.n2;
+  if (!state || typeof state !== "object" || Array.isArray(state)) {
+    throw new MissionError(409, "n2_not_started", "N2 review state is not recorded");
+  }
+  return state;
+}
+
+async function n2Cas(
+  ctx: PluginContext,
+  mission: MissionRecord,
+  aggregate: MissionAggregate,
+): Promise<MissionRecord> {
+  const changed = await ctx.db.execute(
+    `UPDATE ${missionTable(ctx)} SET aggregate = $1::jsonb, version = version + 1, updated_at = now()
+      WHERE company_id = $2 AND mission_id = $3 AND version = $4`,
+    [JSON.stringify(aggregate), mission.companyId, mission.missionId, mission.version],
+  );
+  const after = await getMission(ctx, mission.companyId, mission.missionId);
+  if (!after) throw new Error("Mission disappeared after N2 CAS");
+  if (changed.rowCount !== 1) {
+    throw new MissionError(409, "version_conflict", "Mission changed concurrently", { currentVersion: after.version });
+  }
+  return after;
+}
+
+function runtimeReceipt(
+  mission: MissionRecord,
+  commandId: string,
+  actorId: string,
+  payloadHash: string,
+): MissionReceipt | null {
+  const prior = mission.aggregate.commandReceipts.find((item) => item.commandId === commandId);
+  if (!prior) return null;
+  if (prior.actorId !== actorId || prior.payloadHash !== payloadHash) {
+    throw new MissionError(409, "command_identity_conflict", "commandId belongs to another actor or payload");
+  }
+  return prior;
+}
+
+async function n2CommandCas(
+  ctx: PluginContext,
+  mission: MissionRecord,
+  body: Record<string, unknown>,
+  actorType: "user" | "agent",
+  actorId: string,
+  next: MissionAggregate,
+) {
+  const commandId = runtimeUuid(body.commandId, "commandId");
+  const expectedVersion = runtimeInteger(body.expectedVersion, "expectedVersion");
+  const payloadHash = canonicalPayloadHash(body);
+  const prior = runtimeReceipt(mission, commandId, actorId, payloadHash);
+  if (prior) return { outcome: "replayed" as const, mission, receipt: prior };
+  if (mission.version !== expectedVersion) {
+    throw new MissionError(409, "version_conflict", "Mission version is stale", { currentVersion: mission.version });
+  }
+  if (mission.aggregate.commandReceipts.length >= 100) {
+    throw new MissionError(409, "command_limit_reached", "Mission command receipt limit reached");
+  }
+  const command = runtimeString(body.command, "command", 80) as MissionReceipt["command"];
+  const receipt: MissionReceipt = {
+    commandId,
+    command,
+    actorType,
+    actorId,
+    payloadHash,
+    appliedVersion: mission.version + 1,
+    result: { missionId: mission.missionId, version: mission.version + 1 },
+    recordedAt: new Date().toISOString(),
+  };
+  next.commandReceipts = [...mission.aggregate.commandReceipts, receipt];
+  return { outcome: "applied" as const, mission: await n2Cas(ctx, mission, next), receipt };
+}
+
+async function requireMissionOwner(ctx: PluginContext, mission: MissionRecord, actorUserId: string | null) {
+  const company = await ctx.companies.get(mission.companyId);
+  if (!company?.defaultResponsibleUserId || !actorUserId
+      || actorUserId !== company.defaultResponsibleUserId || actorUserId !== mission.ownerUserId) {
+    throw new MissionError(403, "owner_required", "Configured mission owner required");
+  }
+}
+
+function executionPrincipals(issue: unknown) {
+  const record = issue && typeof issue === "object" && !Array.isArray(issue)
+    ? issue as Record<string, unknown> : {};
+  const execution = record.executionState && typeof record.executionState === "object" && !Array.isArray(record.executionState)
+    ? record.executionState as Record<string, unknown> : {};
+  const participant = execution.currentParticipant && typeof execution.currentParticipant === "object"
+    ? execution.currentParticipant as Record<string, unknown> : {};
+  const returning = execution.returnAssignee && typeof execution.returnAssignee === "object"
+    ? execution.returnAssignee as Record<string, unknown> : {};
+  return {
+    status: record.status,
+    assigneeAgentId: record.assigneeAgentId ?? null,
+    participantAgentId: participant.agentId ?? null,
+    returnAgentId: returning.agentId ?? null,
+    lastDecisionOutcome: execution.lastDecisionOutcome ?? null,
+  };
+}
+
+async function nativeN2Profile(ctx: PluginContext, mission: MissionRecord) {
+  const profile = await readNativeG4Profile(ctx, mission.companyId);
+  if (!profile || profile.maxCorrections !== 1) {
+    throw new MissionError(409, "n2_correction_profile_required", "Native N2 requires maxCorrections=1 in the configured operating profile");
+  }
+  const envelope = await readAdmission(ctx, { companyId: mission.companyId, periodKey: profile.periodKey });
+  if (!envelope) throw new MissionError(422, "g4_not_configured", "No task/period admission envelope is configured");
+  assertNativeEnvelope(envelope, profile);
+  return { profile, envelope };
+}
+
+async function reserveN2Run(
+  ctx: PluginContext,
+  mission: MissionRecord,
+  input: { reservationId: string; effectId: string; kind: "initial" | "correction" },
+) {
+  const { profile, envelope } = await nativeN2Profile(ctx, mission);
+  const result = await reserveAdmission(ctx, {
+    companyId: mission.companyId,
+    periodKey: profile.periodKey,
+    reservationId: input.reservationId,
+    missionId: mission.missionId,
+    effectId: input.effectId,
+    requestedUnits: profile.runReservationUnits,
+    attempt: { kind: input.kind, ordinal: input.kind === "initial" ? 0 : 1 },
+    expectedVersion: envelope.version,
+  });
+  if (!result.reservation) throw new MissionError(409, "g4_reservation_unavailable", "N2 run reservation is unavailable");
+  return result;
+}
+
+function n2Effect(
+  aggregate: MissionAggregate,
+  predicate: (entry: Record<string, unknown>) => boolean,
+) {
+  return aggregate.effectIntents.find(predicate);
+}
+
+async function finishReviewHandoff(
+  ctx: PluginContext,
+  mission: MissionRecord,
+  input: { state: "requested" | "unknown"; reason?: string },
+) {
+  const state = storedN2(mission);
+  const nextState = input.state === "unknown"
+    ? markN2ReviewHandoffUnknown(state, { reason: input.reason ?? "Native review handoff could not be confirmed" })
+    : state;
+  const aggregate: MissionAggregate = {
+    ...mission.aggregate,
+    phase: input.state === "unknown" ? "blocked" : "review_handoff",
+    control: input.state === "unknown" ? { status: "blocked", reason: "native_review_handoff_unknown" } : mission.aggregate.control,
+    n2: nextState,
+    effectIntents: mission.aggregate.effectIntents.map((entry) => entry.kind === "n2_review_handoff" && entry.state === "claimed"
+      ? { ...entry, state: input.state, reason: input.reason ?? null } : entry),
+  };
+  return n2Cas(ctx, mission, aggregate);
+}
+
+async function requestNativeReviewTransition(
+  ctx: PluginContext,
+  mission: MissionRecord,
+  claim: Awaited<ReturnType<typeof n2CommandCas>>,
+  actorUserId: string,
+  label: string,
+) {
+  if (claim.outcome !== "applied") return claim;
+  const confirmedMission = async () => {
+    const latest = await getMission(ctx, mission.companyId, mission.missionId);
+    if (!latest) throw new Error("Mission disappeared during native review handoff");
+    const latestState = storedN2(latest);
+    const latestRound = latestState.rounds.at(-1);
+    return {
+      latest,
+      confirmed: latestState.status === "reviewing" && latestRound?.handoff.state === "confirmed",
+    };
+  };
+  try {
+    const updated = await ctx.issues.update(
+      mission.rootIssueId,
+      { status: "in_review" },
+      mission.companyId,
+      { actorUserId },
+    );
+    const observed = executionPrincipals(updated);
+    const expectedReviewer = mission.aggregate.responsibilities.finalReviewerAgentId;
+    const expectedLead = mission.aggregate.responsibilities.integrationLeadAgentId;
+    if (observed.status !== "in_review" || observed.assigneeAgentId !== expectedReviewer
+        || observed.participantAgentId !== expectedReviewer || observed.returnAgentId !== expectedLead) {
+      const blocked = await finishReviewHandoff(ctx, claim.mission, {
+        state: "unknown",
+        reason: `Native ${label} review transition returned mismatched stage or actors`,
+      });
+      return { outcome: "unknown" as const, mission: blocked, receipt: claim.receipt };
+    }
+    const current = await confirmedMission();
+    if (current.confirmed) {
+      return { outcome: "requested" as const, mission: current.latest, receipt: claim.receipt };
+    }
+    const after = await finishReviewHandoff(ctx, current.latest, { state: "requested" });
+    return { outcome: "requested" as const, mission: after, receipt: claim.receipt };
+  } catch (error) {
+    const current = await confirmedMission();
+    if (current.confirmed) {
+      return { outcome: "requested" as const, mission: current.latest, receipt: claim.receipt };
+    }
+    const blocked = await finishReviewHandoff(ctx, current.latest, {
+      state: "unknown",
+      reason: `Native ${label} review response unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    });
+    return { outcome: "unknown" as const, mission: blocked, receipt: claim.receipt };
+  }
+}
+
+export async function executeN2BoardCommand(ctx: PluginContext, input: {
+  companyId: string;
+  missionId: string;
+  actorUserId: string | null;
+  body: Record<string, unknown>;
+}) {
+  const mission = await getMission(ctx, input.companyId, input.missionId);
+  if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
+  await requireMissionOwner(ctx, mission, input.actorUserId);
+  if (input.body.command === "settle-n2-usage") {
+    const commandId = runtimeUuid(input.body.commandId, "commandId");
+    const payloadHash = canonicalPayloadHash(input.body);
+    const prior = runtimeReceipt(mission, commandId, input.actorUserId!, payloadHash);
+    if (prior) return { outcome: "replayed" as const, mission, receipt: prior };
+    if (mission.version !== runtimeInteger(input.body.expectedVersion, "expectedVersion")) {
+      throw new MissionError(409, "version_conflict", "Mission version is stale", { currentVersion: mission.version });
+    }
+    const state = storedN2(mission);
+    const target = runtimeString(input.body.target, "target", 20);
+    const settlementCommandId = runtimeUuid(input.body.settlementCommandId, "settlementCommandId");
+    const expectedAdmissionVersion = runtimeInteger(input.body.expectedAdmissionVersion, "expectedAdmissionVersion");
+    const { profile } = await nativeN2Profile(ctx, mission);
+    const settledAt = new Date().toISOString();
+    let nextState: N2State;
+    if (target === "review") {
+      const roundNumber = runtimeInteger(input.body.round, "round");
+      const round = state.rounds.find((entry) => entry.round === roundNumber);
+      if (!round?.handoff.reviewerRunId || !round.handoff.reservationId) {
+        throw new MissionError(409, "review_usage_binding_missing", "Review run and reservation must be confirmed before settlement");
+      }
+      await settleNativeSequentialRunUsage(ctx, {
+        commandId: settlementCommandId,
+        companyId: mission.companyId,
+        issueId: mission.rootIssueId,
+        expectedRunId: round.handoff.reviewerRunId,
+        baseline: { runIds: round.handoff.baselineRunIds, tokenTotal: round.handoff.baselineTokenTotal },
+        periodKey: profile.periodKey,
+        reservationId: round.handoff.reservationId,
+        expectedVersion: expectedAdmissionVersion,
+      });
+      nextState = {
+        ...state,
+        rounds: state.rounds.map((entry) => entry.round === roundNumber
+          ? { ...entry, handoff: { ...entry.handoff, usageSettledAt: settledAt } } : entry),
+      };
+    } else if (target === "correction") {
+      const correction = state.correction;
+      if (!correction?.runId || !correction.reservationId || !correction.baselineRunIds
+          || !Number.isSafeInteger(correction.baselineTokenTotal)) {
+        throw new MissionError(409, "correction_usage_binding_missing", "Correction run and reservation must be bound before settlement");
+      }
+      await settleNativeSequentialRunUsage(ctx, {
+        commandId: settlementCommandId,
+        companyId: mission.companyId,
+        issueId: mission.rootIssueId,
+        expectedRunId: correction.runId,
+        baseline: { runIds: correction.baselineRunIds, tokenTotal: correction.baselineTokenTotal! },
+        periodKey: profile.periodKey,
+        reservationId: correction.reservationId,
+        expectedVersion: expectedAdmissionVersion,
+      });
+      nextState = { ...state, correction: { ...correction, usageSettledAt: settledAt } };
+    } else {
+      throw new MissionError(400, "unknown_usage_target", "target must be review or correction");
+    }
+    return n2CommandCas(ctx, mission, input.body, "user", input.actorUserId!, {
+      ...mission.aggregate,
+      n2: nextState,
+      journal: [...mission.aggregate.journal, {
+        action: "n2_usage_settled", target, round: target === "review" ? input.body.round : null,
+        settlementCommandId, actorUserId: input.actorUserId, at: settledAt,
+      }],
+    });
+  }
+  if (input.body.command === "start-correction") {
+    const commandId = runtimeUuid(input.body.commandId, "commandId");
+    const payloadHash = canonicalPayloadHash(input.body);
+    const prior = runtimeReceipt(mission, commandId, input.actorUserId!, payloadHash);
+    if (prior) {
+      const claimed = n2Effect(mission.aggregate, (entry) => entry.kind === "n2_correction_wakeup"
+        && entry.commandId === commandId && entry.state === "claimed");
+      if (claimed) {
+        const state = storedN2(mission);
+        const reason = "Correction wakeup claim was recovered without a confirmed native response";
+        const blocked = await n2Cas(ctx, mission, {
+          ...mission.aggregate,
+          phase: "blocked",
+          control: { status: "blocked", reason: "native_correction_wakeup_unknown" },
+          n2: { ...state, correction: state.correction ? { ...state.correction, wakeState: "unknown", wakeReason: reason } : null },
+          effectIntents: mission.aggregate.effectIntents.map((entry) => entry.kind === "n2_correction_wakeup"
+            && entry.commandId === commandId && entry.state === "claimed" ? { ...entry, state: "unknown", reason } : entry),
+        });
+        return { outcome: "unknown" as const, mission: blocked, receipt: prior };
+      }
+      return { outcome: "replayed" as const, mission, receipt: prior };
+    }
+    if (mission.version !== runtimeInteger(input.body.expectedVersion, "expectedVersion")) {
+      throw new MissionError(409, "version_conflict", "Mission version is stale", { currentVersion: mission.version });
+    }
+    const state = storedN2(mission);
+    const round = state.rounds[0];
+    const correction = state.correction;
+    if (state.status !== "correction_requested" || !correction?.reservationId || correction.runId
+        || round?.verdict?.verdict !== "changes_requested" || !round.handoff.usageSettledAt) {
+      throw new MissionError(409, "correction_wakeup_unavailable", "Settled initial review and admitted correction are required before correction wakeup");
+    }
+    const issue = await ctx.issues.get(mission.rootIssueId, mission.companyId);
+    const native = executionPrincipals(issue);
+    const lead = mission.aggregate.responsibilities.integrationLeadAgentId;
+    if (!issue || native.status !== "in_progress" || native.assigneeAgentId !== lead
+        || native.lastDecisionOutcome !== "changes_requested") {
+      throw new MissionError(409, "native_correction_mismatch", "Native issue is not returned to the pinned integration lead after changes requested");
+    }
+    const baseline = await readNativeSequentialUsageBaseline(ctx, { companyId: mission.companyId, issueId: mission.rootIssueId });
+    const claimedState: N2State = {
+      ...state,
+      correction: {
+        ...correction,
+        baselineRunIds: baseline.runIds,
+        baselineTokenTotal: baseline.tokenTotal,
+        wakeState: "claimed",
+        wakeReason: undefined,
+      },
+    };
+    const claim = await n2CommandCas(ctx, mission, input.body, "user", input.actorUserId!, {
+      ...mission.aggregate,
+      n2: claimedState,
+      effectIntents: [...mission.aggregate.effectIntents, {
+        kind: "n2_correction_wakeup", state: "claimed", commandId,
+        reservationId: correction.reservationId, assigneeAgentId: lead,
+        baselineRunIds: baseline.runIds, baselineTokenTotal: baseline.tokenTotal,
+        actorUserId: input.actorUserId, at: new Date().toISOString(),
+      }],
+      journal: [...mission.aggregate.journal, {
+        action: "n2_correction_wakeup_claimed", reservationId: correction.reservationId,
+        actorUserId: input.actorUserId, at: new Date().toISOString(),
+      }],
+    });
+    if (claim.outcome !== "applied") return claim;
+    let wake: { queued: boolean; runId: string | null } | null = null;
+    try {
+      wake = await ctx.issues.requestWakeup(mission.rootIssueId, mission.companyId, {
+        idempotencyKey: `council:n2:correction:${correction.reservationId}`,
+        reason: "council_n2_correction",
+        actorUserId: input.actorUserId!,
+      });
+    } catch {
+      // A lost response cannot authorize a second correction wakeup.
+    }
+    const afterClaim = await getMission(ctx, mission.companyId, mission.missionId);
+    if (!afterClaim) throw new Error("Mission disappeared after N2 correction wakeup");
+    const afterState = storedN2(afterClaim);
+    const confirmed = Boolean(wake?.queued && wake.runId);
+    const reason = confirmed ? undefined : "Native correction wakeup response was unavailable or unconfirmed";
+    const nextState = confirmed
+      ? bindN2CorrectionRun(afterState, afterClaim, {
+        actorAgentId: lead,
+        runId: wake!.runId!,
+        reservationId: correction.reservationId,
+        baselineRunIds: baseline.runIds,
+        baselineTokenTotal: baseline.tokenTotal,
+      })
+      : {
+        ...afterState,
+        correction: afterState.correction ? { ...afterState.correction, wakeState: "unknown" as const, wakeReason: reason } : null,
+      };
+    const finalMission = await n2Cas(ctx, afterClaim, {
+      ...afterClaim.aggregate,
+      phase: confirmed ? "correcting" : "blocked",
+      control: confirmed ? { status: "active" } : { status: "blocked", reason: "native_correction_wakeup_unknown" },
+      n2: nextState,
+      effectIntents: afterClaim.aggregate.effectIntents.map((entry) => entry.kind === "n2_correction_wakeup"
+        && entry.commandId === commandId ? { ...entry, state: confirmed ? "requested" : "unknown", runId: wake?.runId ?? null, reason: reason ?? null } : entry),
+    });
+    return { outcome: confirmed ? "requested" as const : "unknown" as const, mission: finalMission, receipt: claim.receipt };
+  }
+  if (input.body.command === "start-resubmitted-review") {
+    const commandId = runtimeUuid(input.body.commandId, "commandId");
+    const payloadHash = canonicalPayloadHash(input.body);
+    const prior = runtimeReceipt(mission, commandId, input.actorUserId!, payloadHash);
+    if (prior) {
+      const claimed = n2Effect(mission.aggregate, (entry) => entry.kind === "n2_review_handoff"
+        && entry.commandId === commandId && entry.state === "claimed");
+      if (claimed) {
+        const blocked = await finishReviewHandoff(ctx, mission, {
+          state: "unknown",
+          reason: "Second review handoff claim was recovered without a confirmed native response",
+        });
+        return { outcome: "unknown" as const, mission: blocked, receipt: prior };
+      }
+      return { outcome: "replayed" as const, mission, receipt: prior };
+    }
+    if (mission.version !== runtimeInteger(input.body.expectedVersion, "expectedVersion")) {
+      throw new MissionError(409, "version_conflict", "Mission version is stale", { currentVersion: mission.version });
+    }
+    const state = storedN2(mission);
+    const prepared = state.correction?.preparedSubmission;
+    if (state.status !== "resubmission_prepared" || !prepared || !state.correction?.usageSettledAt) {
+      throw new MissionError(409, "resubmission_handoff_unavailable", "Verified V2 and settled correction usage are required");
+    }
+    const issue = await ctx.issues.get(mission.rootIssueId, mission.companyId);
+    const native = executionPrincipals(issue);
+    if (!issue || native.status !== "in_progress"
+        || native.assigneeAgentId !== mission.aggregate.responsibilities.integrationLeadAgentId) {
+      throw new MissionError(409, "native_review_entry_mismatch", "Root issue must remain under the pinned integration lead before V2 review");
+    }
+    const reservationId = runtimeUuid(input.body.reservationId, "reservationId");
+    const baseline = await readNativeSequentialUsageBaseline(ctx, { companyId: mission.companyId, issueId: mission.rootIssueId });
+    await reserveN2Run(ctx, mission, { reservationId, effectId: `n2-review:${prepared.submissionId}`, kind: "initial" });
+    const nextState = startN2ResubmittedReview(state, mission, {
+      baselineRunIds: baseline.runIds,
+      baselineTokenTotal: baseline.tokenTotal,
+      reservationId,
+    });
+    const claim = await n2CommandCas(ctx, mission, input.body, "user", input.actorUserId!, {
+      ...mission.aggregate,
+      phase: "review_handoff",
+      control: { status: "active" },
+      n2: nextState,
+      effectIntents: [...mission.aggregate.effectIntents, {
+        kind: "n2_review_handoff", state: "claimed", commandId,
+        submissionId: prepared.submissionId, reservationId,
+        actorUserId: input.actorUserId, at: new Date().toISOString(),
+      }],
+      journal: [...mission.aggregate.journal, {
+        action: "n2_candidate_resubmitted", submissionId: prepared.submissionId,
+        candidateCommit: prepared.candidateCommit, reservationId,
+        actorUserId: input.actorUserId, at: new Date().toISOString(),
+      }],
+    });
+    return requestNativeReviewTransition(ctx, mission, claim, input.actorUserId!, "V2");
+  }
+  if (input.body.command !== "start-review") {
+    throw new MissionError(400, "unknown_command", "Unknown N2 board command");
+  }
+  const commandId = runtimeUuid(input.body.commandId, "commandId");
+  const payloadHash = canonicalPayloadHash(input.body);
+  const prior = runtimeReceipt(mission, commandId, input.actorUserId!, payloadHash);
+  if (prior) {
+    const claimed = n2Effect(mission.aggregate, (entry) => entry.kind === "n2_review_handoff" && entry.commandId === commandId && entry.state === "claimed");
+    if (claimed) {
+      const blocked = await finishReviewHandoff(ctx, mission, { state: "unknown", reason: "Review handoff claim was recovered without a confirmed native response" });
+      return { outcome: "unknown" as const, mission: blocked, receipt: prior };
+    }
+    return { outcome: "replayed" as const, mission, receipt: prior };
+  }
+  if (mission.aggregate.n2) throw new MissionError(409, "n2_already_started", "N2 review is already recorded");
+  const submissionId = runtimeUuid(input.body.submissionId, "submissionId");
+  const reservationId = runtimeUuid(input.body.reservationId, "reservationId");
+  const issue = await ctx.issues.get(mission.rootIssueId, mission.companyId);
+  const native = executionPrincipals(issue);
+  if (!issue || native.status !== "in_progress"
+      || native.assigneeAgentId !== mission.aggregate.responsibilities.integrationLeadAgentId) {
+    throw new MissionError(409, "native_review_entry_mismatch", "Root issue must still be in progress under the pinned integration lead");
+  }
+  const baseline = await readNativeSequentialUsageBaseline(ctx, { companyId: mission.companyId, issueId: mission.rootIssueId });
+  await reserveN2Run(ctx, mission, { reservationId, effectId: `n2-review:${submissionId}`, kind: "initial" });
+  const state = startN2Review(mission, {
+    baselineRunIds: baseline.runIds,
+    baselineTokenTotal: baseline.tokenTotal,
+    reservationId,
+    submissionId,
+  });
+  const claimedAggregate: MissionAggregate = {
+    ...mission.aggregate,
+    phase: "review_handoff",
+    control: { status: "active" },
+    n2: state,
+    effectIntents: [...mission.aggregate.effectIntents, {
+      kind: "n2_review_handoff", state: "claimed", commandId, submissionId, reservationId,
+      actorUserId: input.actorUserId, at: new Date().toISOString(),
+    }],
+    journal: [...mission.aggregate.journal, { action: "n2_review_handoff_claimed", submissionId, reservationId, actorUserId: input.actorUserId, at: new Date().toISOString() }],
+  };
+  const claim = await n2CommandCas(ctx, mission, input.body, "user", input.actorUserId!, claimedAggregate);
+  return requestNativeReviewTransition(ctx, mission, claim, input.actorUserId!, "initial");
+}
+
+async function confirmReviewCommand(
+  ctx: PluginContext,
+  mission: MissionRecord,
+  input: PluginApiRequestInput,
+  body: Record<string, unknown>,
+) {
+  const reviewer = mission.aggregate.responsibilities.finalReviewerAgentId;
+  if (input.actor.actorType !== "agent" || input.actor.agentId !== reviewer || !input.actor.runId) {
+    throw new MissionError(403, "reviewer_run_required", "Pinned reviewer run required");
+  }
+  if (input.params.issueId !== mission.rootIssueId) throw new MissionError(403, "root_issue_required", "N2 command must address the mission root issue");
+  const issue = await ctx.issues.get(mission.rootIssueId, mission.companyId);
+  const native = executionPrincipals(issue);
+  const observed = await readNativeSequentialUsageBaseline(ctx, { companyId: mission.companyId, issueId: mission.rootIssueId });
+  const nextState = confirmN2ReviewHandoff(storedN2(mission), mission, {
+    status: String(native.status ?? ""),
+    assigneeAgentId: typeof native.assigneeAgentId === "string" ? native.assigneeAgentId : null,
+    currentParticipantAgentId: typeof native.participantAgentId === "string" ? native.participantAgentId : null,
+    returnAssigneeAgentId: typeof native.returnAgentId === "string" ? native.returnAgentId : null,
+    observedRunIds: observed.runIds,
+    reviewerRunId: input.actor.runId,
+  });
+  const aggregate: MissionAggregate = {
+    ...mission.aggregate,
+    phase: "reviewing",
+    control: { status: "active" },
+    n2: nextState,
+    journal: [...mission.aggregate.journal, { action: "n2_review_handoff_confirmed", actorAgentId: reviewer, runId: input.actor.runId, at: new Date().toISOString() }],
+  };
+  return n2CommandCas(ctx, mission, body, "agent", reviewer, aggregate);
+}
+
+async function prepareResubmissionCommand(
+  ctx: PluginContext,
+  mission: MissionRecord,
+  input: PluginApiRequestInput,
+  body: Record<string, unknown>,
+) {
+  const lead = mission.aggregate.responsibilities.integrationLeadAgentId;
+  if (input.actor.actorType !== "agent" || input.actor.agentId !== lead || !input.actor.runId) {
+    throw new MissionError(403, "integration_lead_required", "Pinned integration lead correction run required");
+  }
+  const state = storedN2(mission);
+  if (state.correction?.runId !== input.actor.runId) throw new MissionError(409, "correction_run_required", "The bound correction run must resubmit V2");
+  const n1 = mission.aggregate.n1 as { contributions?: Array<{ contributionId?: string; commit?: string; ownedPaths?: string[] }> } | undefined;
+  if (!n1?.contributions || n1.contributions.length !== 2 || n1.contributions.some((entry) => !entry.contributionId || !entry.commit || !entry.ownedPaths)) {
+    throw new MissionError(409, "n1_evidence_unavailable", "N1 contribution evidence is unavailable for V2 verification");
+  }
+  const attachmentId = runtimeUuid(body.attachmentId, "attachmentId");
+  const baseCommit = runtimeString(body.baseCommit, "baseCommit", 40);
+  const candidateCommit = runtimeString(body.candidateCommit, "candidateCommit", 40);
+  const expectedSha256 = runtimeString(body.expectedSha256, "expectedSha256", 64);
+  const correctedPaths = Array.isArray(body.correctedPaths)
+    ? body.correctedPaths.map((path, index) => runtimeString(path, `correctedPaths[${index}]`, 512))
+    : [];
+  if (!COMMIT.test(baseCommit) || !COMMIT.test(candidateCommit) || !DIGEST.test(expectedSha256)) {
+    throw new MissionError(422, "invalid_candidate_identity", "V2 Git and digest identity is malformed");
+  }
+  if (correctedPaths.length === 0 || new Set(correctedPaths).size !== correctedPaths.length) {
+    throw new MissionError(422, "correction_evidence_missing", "V2 must identify distinct materially corrected attributed paths");
+  }
+  const verified = await verifyIntegratedCandidate(ctx, {
+    companyId: mission.companyId,
+    issueId: mission.rootIssueId,
+    attachmentId,
+    baseCommit,
+    candidateCommit,
+    expectedSha256,
+    correctedPaths,
+    contributions: n1.contributions.map((entry) => ({
+      contributionId: entry.contributionId!, commit: entry.commit!, ownedPaths: entry.ownedPaths!,
+    })) as [
+      { contributionId: string; commit: string; ownedPaths: string[] },
+      { contributionId: string; commit: string; ownedPaths: string[] },
+    ],
+  });
+  const submissionId = runtimeUuid(body.submissionId, "submissionId");
+  const nextState = prepareN2Resubmission(state, mission, {
+    actorAgentId: lead,
+    runId: input.actor.runId,
+    candidate: verified,
+    evidenceRevision: mission.version + 1,
+    correctedPaths,
+    submissionId,
+  });
+  const aggregate: MissionAggregate = {
+    ...mission.aggregate,
+    phase: "correcting",
+    n2: nextState,
+    journal: [...mission.aggregate.journal, {
+      action: "n2_resubmission_prepared", submissionId, candidate: verified.candidate,
+      correctedPaths, actorAgentId: lead, runId: input.actor.runId, at: new Date().toISOString(),
+    }],
+  };
+  return n2CommandCas(ctx, mission, body, "agent", lead, aggregate);
+}
+
+export async function handleN2AgentApi(input: PluginApiRequestInput, ctx: PluginContext) {
+  try {
+    const body = runtimeBody(input.body);
+    const missionId = runtimeUuid(body.missionId, "missionId");
+    const mission = await getMission(ctx, input.companyId, missionId);
+    if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
+    if (input.params.issueId !== mission.rootIssueId) throw new MissionError(404, "mission_issue_not_found", "N2 commands address the mission root issue");
+    if (body.command === "confirm-review-handoff") {
+      const result = await confirmReviewCommand(ctx, mission, input, body);
+      return { status: 200, body: result };
+    }
+    if (body.command === "prepare-resubmission") {
+      const result = await prepareResubmissionCommand(ctx, mission, input, body);
+      return { status: 200, body: result };
+    }
+    throw new MissionError(400, "unknown_command", "Unknown N2 agent command");
+  } catch (error) {
+    if (error instanceof MissionError || error instanceof AdmissionError) {
+      return { status: error.status, body: { error: error.message, code: error.code, details: error.details } };
+    }
+    throw error;
+  }
+}
+
+export type N2DecisionContext = {
+  operationId: string;
+  verdict: "changes_requested" | "approved";
+  actorAgentId: string;
+  runId: string;
+  resultReference: string;
+  approvedCommit?: string;
+  justification: string;
+};
+
+export async function prepareN2Decision(
+  ctx: PluginContext,
+  mission: MissionRecord,
+  decision: N2DecisionContext,
+  correctionReservationId?: string,
+): Promise<MissionRecord> {
+  const state = storedN2(mission);
+  const round = state.rounds.at(-1);
+  const submission = state.submissions.find((item) => item.submissionId === state.activeSubmissionId);
+  if (!round || !submission || state.status !== "reviewing" || round.handoff.reviewerRunId !== decision.runId
+      || round.reviewerAgentId !== decision.actorAgentId
+      || decision.resultReference !== n2SubmissionResultReference(submission.submissionId)
+      || (decision.verdict === "approved" && decision.approvedCommit !== submission.candidateCommit)) {
+    throw new MissionError(409, "n2_decision_target_mismatch", "Decision does not target the active N2 submission and confirmed reviewer run");
+  }
+  const prior = n2Effect(mission.aggregate, (entry) => entry.kind === "n2_decision" && entry.operationId === decision.operationId);
+  const decisionHash = canonicalPayloadHash(decision);
+  if (prior) {
+    if (prior.decisionHash !== decisionHash) {
+      throw new MissionError(409, "operation_content_conflict", "operationId is already bound to different N2 decision content");
+    }
+    return mission;
+  }
+  let correctionAdmission: Record<string, unknown> = {};
+  if (decision.verdict === "changes_requested") {
+    const reservationId = runtimeUuid(correctionReservationId, "correctionReservationId");
+    await reserveN2Run(ctx, mission, { reservationId, effectId: `n2-correction:${decision.operationId}`, kind: "correction" });
+    correctionAdmission = { reservationId };
+  }
+  return n2Cas(ctx, mission, {
+    ...mission.aggregate,
+    effectIntents: [...mission.aggregate.effectIntents, {
+      kind: "n2_decision", state: "claimed", operationId: decision.operationId,
+      decisionHash,
+      submissionId: submission.submissionId, verdict: decision.verdict,
+      actorAgentId: decision.actorAgentId, actorRunId: decision.runId,
+      ...correctionAdmission, at: new Date().toISOString(),
+    }],
+  });
+}
+
+export async function recordN2Decision(
+  ctx: PluginContext,
+  missionId: string,
+  decision: N2DecisionContext,
+  receipt: DecisionReceipt,
+): Promise<MissionRecord> {
+  const mission = await getMission(ctx, receipt.companyId, missionId);
+  if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found while recording N2 decision");
+  const state = storedN2(mission);
+  const priorRound = state.rounds.find((round) => round.verdict?.operationId === decision.operationId);
+  if (priorRound) return mission;
+  const intent = n2Effect(mission.aggregate, (entry) => entry.kind === "n2_decision" && entry.operationId === decision.operationId);
+  if (!intent) throw new MissionError(409, "n2_decision_intent_missing", "N2 decision has no durable pre-effect intent");
+  if (intent.decisionHash !== canonicalPayloadHash(decision)) {
+    throw new MissionError(409, "operation_content_conflict", "Persisted N2 decision intent does not match the receipt operation content");
+  }
+  let nextState = applyN2Decision(state, mission, {
+    submissionId: state.activeSubmissionId,
+    actorAgentId: decision.actorAgentId,
+    runId: decision.runId,
+    operationId: decision.operationId,
+    verdict: decision.verdict,
+    criteria: mission.aggregate.mandate.acceptanceCriteria.length > 0
+      ? mission.aggregate.mandate.acceptanceCriteria : ["Bounded mission mandate"],
+    reasons: [decision.justification],
+    receipt,
+  });
+  if (nextState.correction && typeof intent.reservationId === "string") {
+    nextState = {
+      ...nextState,
+      correction: {
+        ...nextState.correction,
+        reservationId: intent.reservationId,
+      },
+    };
+  }
+  const unknown = nextState.status === "application_unknown";
+  const accepted = nextState.status === "accepted";
+  return n2Cas(ctx, mission, {
+    ...mission.aggregate,
+    phase: unknown ? "application_unknown" : accepted ? "accepted" : "correction_requested",
+    control: unknown
+      ? { status: "blocked", reason: "native_decision_outcome_unknown" }
+      : accepted ? { status: "inactive", reason: "mission_accepted" } : { status: "active" },
+    n2: nextState,
+    effectIntents: mission.aggregate.effectIntents.map((entry) => entry.kind === "n2_decision" && entry.operationId === decision.operationId
+      ? { ...entry, state: unknown ? "unknown" : "requested", receiptState: receipt.state, nativeStatus: receipt.nativeObservation?.status ?? null }
+      : entry),
+    journal: [...mission.aggregate.journal, {
+      action: "n2_decision_recorded", operationId: decision.operationId, verdict: decision.verdict,
+      receiptState: receipt.state, submissionId: state.activeSubmissionId,
+      actorAgentId: decision.actorAgentId, runId: decision.runId, at: new Date().toISOString(),
+    }],
+  });
 }

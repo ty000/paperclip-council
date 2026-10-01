@@ -34,6 +34,7 @@
     "qualification:host:verify": "node scripts/qualification/paperclip-host.mjs verify",
     "qualification:bounded": "node scripts/qualification/run-bounded.mjs",
     "qualification:live:n1": "node scripts/qualification/run-live-n1.mjs",
+    "qualification:live:n2": "node scripts/qualification/run-live-n2.mjs",
     "test:receipts": "tsx tests/receipts/run.ts"
   },
   "dependencies": {

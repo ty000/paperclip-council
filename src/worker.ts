@@ -16,8 +16,10 @@ import {
 } from "./decision-receipts.js";
 import { ApprovalPreflightError, verifyApprovalCandidate } from "./delivery-manifest.js";
 import { handleFoundationProbe } from "./foundation-probe.js";
-import { handleMissionApi } from "./missions.js";
+import { getMissionByRootIssue, handleMissionApi, MissionError } from "./missions.js";
 import { handleN1AdmissionApi, handleN1AgentApi } from "./n1-missions.js";
+import { handleN2AgentApi, prepareN2Decision, recordN2Decision } from "./n2-missions.js";
+import { AdmissionError } from "./admission.js";
 import { handleRosterApi, registerRosterBridge } from "./rosters.js";
 
 let ctx: PluginContext;
@@ -93,12 +95,36 @@ export async function handleDecision(
     runId,
     ...decision,
   };
+  const mission = await getMissionByRootIssue(context, input.companyId, issueId);
+  if (mission?.aggregate.n2) {
+    try {
+      await prepareN2Decision(
+        context,
+        mission,
+        decisionInput,
+        typeof (input.body as Record<string, unknown>).correctionReservationId === "string"
+          ? (input.body as Record<string, unknown>).correctionReservationId as string
+          : undefined,
+      );
+    } catch (error) {
+      if (error instanceof MissionError || error instanceof AdmissionError) {
+        return { status: error.status, body: { error: error.message, code: error.code, details: error.details } };
+      }
+      throw error;
+    }
+  }
   try {
     const replay = await findDecisionReplay(context, config, decisionInput);
-    if (replay) return decisionResponse(replay.receipt, true);
+    if (replay) {
+      if (mission?.aggregate.n2) await recordN2Decision(context, mission.missionId, decisionInput, replay.receipt);
+      return decisionResponse(replay.receipt, true);
+    }
   } catch (error) {
     if (error instanceof DecisionReceiptError) {
       return { status: error.status, body: { error: error.message, code: error.code, receipt: error.receipt } };
+    }
+    if (error instanceof MissionError || error instanceof AdmissionError) {
+      return { status: error.status, body: { error: error.message, code: error.code, details: error.details } };
     }
     throw error;
   }
@@ -119,10 +145,14 @@ export async function handleDecision(
 
   try {
     const result = await executeCouncilDecision(context, config, decisionInput);
+    if (mission?.aggregate.n2) await recordN2Decision(context, mission.missionId, decisionInput, result.receipt);
     return decisionResponse(result.receipt, result.replayed);
   } catch (error) {
     if (error instanceof DecisionReceiptError) {
       return { status: error.status, body: { error: error.message, code: error.code, receipt: error.receipt } };
+    }
+    if (error instanceof MissionError || error instanceof AdmissionError) {
+      return { status: error.status, body: { error: error.message, code: error.code, details: error.details } };
     }
     throw error;
   }
@@ -132,7 +162,14 @@ export async function handlePluginRequest(input: PluginApiRequestInput, context:
   if (input.routeKey === "decision") return handleDecision(input, context);
   if (input.routeKey.startsWith("council-decision")) return handleDecisionReceiptApi(input, context);
   if (input.routeKey === "admission-read" || input.routeKey === "admission-command") return handleN1AdmissionApi(input, context);
-  if (input.routeKey === "mission-agent-command") return handleN1AgentApi(input, context);
+  if (input.routeKey === "mission-agent-command") {
+    const command = input.body && typeof input.body === "object" && !Array.isArray(input.body)
+      ? (input.body as Record<string, unknown>).command : null;
+    if (command === "confirm-review-handoff" || command === "prepare-resubmission") {
+      return handleN2AgentApi(input, context);
+    }
+    return handleN1AgentApi(input, context);
+  }
   if (input.routeKey.startsWith("roster")) return handleRosterApi(input, context);
   if (input.routeKey.startsWith("mission")) return handleMissionApi(input, context);
   if (input.routeKey !== "foundation-probe") {

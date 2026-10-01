@@ -371,7 +371,7 @@ describe("native G4 profile", () => {
     })).resolves.toEqual({ outcome: "settled" });
     expect(settleAdmission).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       commandId: "50000000-0000-4000-8000-000000000005",
-      usage: expect.objectContaining({ status: "known", units: 120, source: expect.stringContaining(`sequential-run=${runId}`) }),
+      usage: expect.objectContaining({ status: "known", units: 80, source: expect.stringContaining(`sequential-run=${runId}`) }),
     }));
   });
 
@@ -382,7 +382,7 @@ describe("native G4 profile", () => {
       costs: { costCents: 0, inputTokens: 180, cachedInputTokens: 40, outputTokens: 50, billingCode: null },
     })), { companyId, issueId })).resolves.toEqual({
       runIds: [runId, priorRun.id],
-      tokenTotal: 270,
+      tokenTotal: 230,
     });
   });
 

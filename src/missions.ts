@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { AdmissionError } from "./admission.js";
 import { executeN1BoardCommand, inspectN1State, readN1AdmissionForMission } from "./n1-missions.js";
-import { inspectN2State, type N2State } from "./n2-missions.js";
+import { executeN2BoardCommand, inspectN2State, type N2State } from "./n2-missions.js";
 import {
   RosterError,
   validateRosterPair,
@@ -27,7 +27,9 @@ export type MissionMandate = {
 
 export type MissionReceipt = {
   commandId: string;
-  command: "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish";
+  command: "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish"
+    | "start-review" | "confirm-review-handoff" | "start-correction" | "prepare-resubmission"
+    | "start-resubmitted-review" | "settle-n2-usage";
   actorType: "user" | "agent";
   actorId: string;
   payloadHash: string;
@@ -55,7 +57,7 @@ export type MissionAggregate = {
     requiredPerspectives: string[];
   };
   phase: "draft" | "executing" | "integrating" | "ready_for_review" | "review_handoff" | "reviewing" | "correction_requested" | "correcting" | "application_unknown" | "accepted" | "blocked";
-  control: { status: "inactive"; reason: "mission_not_enabled" | "candidate_ready_for_review" } | { status: "active" } | { status: "blocked"; reason: string };
+  control: { status: "inactive"; reason: "mission_not_enabled" | "candidate_ready_for_review" | "mission_accepted" } | { status: "active" } | { status: "blocked"; reason: string };
   readiness: {
     mission: "recorded";
     compositions: "pinned";
@@ -316,6 +318,18 @@ async function getMissionByIdentity(
       ORDER BY CASE WHEN mission_id = $2 THEN 0 ELSE 1 END
       LIMIT 1`,
     [companyId, missionId, rootIssueId],
+  );
+  return rows[0] ? parseMissionRow(rows[0]) : null;
+}
+
+export async function getMissionByRootIssue(
+  ctx: PluginContext,
+  companyId: string,
+  rootIssueId: string,
+): Promise<MissionRecord | null> {
+  const rows = await ctx.db.query<MissionRow>(
+    `SELECT ${selectColumns} FROM ${table(ctx)} WHERE company_id = $1 AND root_issue_id = $2`,
+    [companyId, rootIssueId],
   );
   return rows[0] ? parseMissionRow(rows[0]) : null;
 }
@@ -626,6 +640,9 @@ export async function handleMissionApi(input: PluginApiRequestInput, ctx: Plugin
         || body.command === "fixture-bind-lead-run" || body.command === "reconcile-lead-usage"
         || body.command === "reconcile-contribution-usage") && missionId
         ? await executeN1BoardCommand(ctx, { companyId, missionId, actorUserId, body })
+        : (body.command === "start-review" || body.command === "start-correction"
+          || body.command === "start-resubmitted-review" || body.command === "settle-n2-usage") && missionId
+          ? await executeN2BoardCommand(ctx, { companyId, missionId, actorUserId, body })
         : await executeMissionCommand(ctx, {
         companyId,
         missionId,

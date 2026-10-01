@@ -105,7 +105,7 @@ function isFullySettledReservation(reservation: any): boolean {
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
-  if (!value) throw new Error(`${name} is required for the explicitly authorized N1 live run`);
+  if (!value) throw new Error(`${name} is required for the explicitly authorized native live run`);
   return value;
 }
 
@@ -149,6 +149,34 @@ export function leadInstructions(): string {
     "Use PAPERCLIP_API_URL, PAPERCLIP_API_KEY, and PAPERCLIP_RUN_ID; normalize a trailing /api. Never print credentials. On any unexpected response, do not PATCH an issue status and do not create an issue comment because either may wake another run. Leave the issue open and report the blocker only in your final response.",
     "",
     promptPolicy("Council N1 integration lead"),
+  ].join("\n");
+}
+
+function n2LeadInstructions(): string {
+  return [
+    "You are the Council N2 Integration Lead. This root issue has two mutually exclusive phases.",
+    "If the current issue execution state says lastDecisionOutcome=changes_requested, execute only the correction phase below. Otherwise execute the N1 integration procedure that follows.",
+    "Correction phase: inspect the mission through the authenticated Council command endpoint. If the native wake has started before its returned run ID is persisted, observe inspect again after two seconds, at most 30 times; this is readback polling, not a model retry. Require n2.status=correcting and n2.correction.runId=$PAPERCLIP_RUN_ID before any write. Read the immutable V1 base and candidate commits from the active N2 submission. In this phase only, these correction instructions replace the N1 rule that the lead does not author contribution-file changes.",
+    "Create a replacement V2 integration commit directly on the parent of V1, not on top of V1: git switch -C n2-correction <V1-candidate>^. Change only alpha.txt to exactly 'alpha contribution corrected after independent review' plus a trailing newline, then commit it. The V2 commit must be distinct and its complete base delta must still consist only of alpha.txt and beta.txt.",
+    "Create refs/heads/base at the immutable base and refs/heads/candidate at V2, create and verify a self-contained Git bundle, upload it to the root issue, and compute the exact SHA-256.",
+    "Inspect again for the latest mission version, then POST command=prepare-resubmission with missionId, fresh commandId and submissionId, expectedVersion, attachmentId, baseCommit, candidateCommit, expectedSha256, and correctedPaths=['alpha.txt']. Require HTTP 200 and n2.status=resubmission_prepared.",
+    "Do not PATCH the issue status, start another review, settle usage, or wake another agent. Those effects occur only after this correction run is terminal and its usage is settled by the owner command path.",
+    "On any mismatch or non-2xx response, stop without retrying a model run or changing native status.",
+    "",
+    leadInstructions(),
+  ].join("\n");
+}
+
+function n2ReviewerInstructions(): string {
+  return [
+    "You are the independent Council N2 final reviewer. You never edit the candidate.",
+    "Use PAPERCLIP_API_URL, PAPERCLIP_API_KEY and PAPERCLIP_RUN_ID. Normalize a trailing /api and never print credentials.",
+    "POST inspect to the authenticated Council command endpoint for this root issue and mission. Use the returned version to POST confirm-review-handoff with a fresh commandId. Require HTTP 200, the exact reviewer run, and n2.status=reviewing. Inspect again for the active submission and round.",
+    "For round 1, require submission ordinal 1 and verify alpha.txt still contains exactly 'alpha contribution'. POST once to /api/plugins/<plugin-id>/api/issues/<root-issue-id>/decision with companyId, issueId, actorAgentId, runId, verdict=changes_requested, a fresh stable operationId and correctionReservationId, resultReference=council:n2:submission:<active-submission-id>, and justification='alpha.txt must contain the independently reviewed correction marker'. Use your exact agent and run identities. Require the native response to return the issue to the Integration Lead. Stop; do not wake the lead yourself.",
+    "For round 2, require submission ordinal 2, predecessor identity equal to V1, and alpha.txt exactly 'alpha contribution corrected after independent review'. Require git rev-parse HEAD to equal the active candidateCommit. POST once to the same decision endpoint with companyId, issueId, actorAgentId, runId, verdict=approved, a fresh stable operationId, approvedCommit equal to that candidate, the exact resultReference, and justification='V2 contains the requested bounded correction'. Require native observed acceptance.",
+    "Never approve round 1, never request a second correction, never retry an uncertain decision, and never create or modify a candidate.",
+    "",
+    promptPolicy("independent N2 reviewer for one correction and final verdict"),
   ].join("\n");
 }
 
@@ -301,15 +329,20 @@ export async function runLiveN1(input: {
   baseUrl: string;
   ownerUserId: string;
   evidence: Record<string, any>;
+  campaign?: "n1" | "n2";
 }) {
-  assert.equal(requiredEnv("COUNCIL_N1_LIVE_AUTHORIZED"), "1", "live provider execution needs explicit authorization");
-  const model = requiredEnv("COUNCIL_N1_LIVE_MODEL");
-  const effort = requiredEnv("COUNCIL_N1_LIVE_EFFORT");
+  const campaign = input.campaign ?? "n1";
+  const envPrefix = campaign === "n2" ? "COUNCIL_N2_LIVE" : "COUNCIL_N1_LIVE";
+  const runCount = campaign === "n2" ? 6 : 3;
+  assert.equal(requiredEnv(`${envPrefix}_AUTHORIZED`), "1", "live provider execution needs explicit authorization");
+  const model = requiredEnv(`${envPrefix}_MODEL`);
+  const effort = requiredEnv(`${envPrefix}_EFFORT`);
   assert.equal(model, "gpt-5.6-sol", "authorized live model must match the bounded operating profile");
   assert.equal(effort, "high", "authorized live effort must match the bounded operating profile");
-  const runReservationUnits = assertPositiveInteger(requiredEnv("COUNCIL_N1_LIVE_RUN_UNITS"), "COUNCIL_N1_LIVE_RUN_UNITS");
-  const periodAllowanceUnits = assertPositiveInteger(requiredEnv("COUNCIL_N1_LIVE_PERIOD_UNITS"), "COUNCIL_N1_LIVE_PERIOD_UNITS");
-  assert(periodAllowanceUnits >= runReservationUnits * 3, "period allowance must cover exactly the lead and two contributors");
+  const runReservationUnits = assertPositiveInteger(requiredEnv(`${envPrefix}_RUN_UNITS`), `${envPrefix}_RUN_UNITS`);
+  const periodAllowanceUnits = assertPositiveInteger(requiredEnv(`${envPrefix}_PERIOD_UNITS`), `${envPrefix}_PERIOD_UNITS`);
+  assert(campaign === "n2" ? periodAllowanceUnits === runReservationUnits * runCount : periodAllowanceUnits >= runReservationUnits * runCount,
+    `period allowance must cover the exact ${runCount}-run campaign`);
 
   const repository = resolve(input.runtime, "n1-live-repository");
   await mkdir(repository, { recursive: true });
@@ -353,15 +386,18 @@ export async function runLiveN1(input: {
     return created.body;
   };
 
-  const lead = await createAgent("N1 Integration Lead", "engineer", leadInstructions(), true);
+  const lead = await createAgent("N1 Integration Lead", "engineer", campaign === "n2" ? n2LeadInstructions() : leadInstructions(), true);
   const contributorA = await createAgent("N1 Contributor Alpha", "engineer", contributorInstructions(), true);
   const contributorB = await createAgent("N1 Contributor Beta", "engineer", contributorInstructions(), true);
-  const reviewer = await createAgent("N1 Independent Reviewer", "qa", [
-    "You are reserved for the later independent Council review. N1 must stop before waking you.",
-    "",
-    promptPolicy("ordinary final reviewer; not launched during N1"),
-  ].join("\n"));
-  const observedModelSettings = [lead, contributorA, contributorB].map((agent) => ({
+  const reviewer = await createAgent("N1 Independent Reviewer", "qa", campaign === "n2"
+    ? n2ReviewerInstructions()
+    : [
+      "You are reserved for the later independent Council review. N1 must stop before waking you.",
+      "",
+      promptPolicy("ordinary final reviewer; not launched during N1"),
+    ].join("\n"), campaign === "n2");
+  const observedAgents = campaign === "n2" ? [lead, contributorA, contributorB, reviewer] : [lead, contributorA, contributorB];
+  const observedModelSettings = observedAgents.map((agent) => ({
     agentId: agent.id,
     adapterType: agent.adapterType,
     model: agent.adapterConfig?.model ?? null,
@@ -390,12 +426,13 @@ export async function runLiveN1(input: {
     kind: "paperclip-orchestration-tokens-v1",
     periodKey: `n1-native-${new Date(now).toISOString().slice(0, 10)}-${randomUUID()}`,
     periodStart: new Date(now - 60_000).toISOString(),
-    periodEnd: new Date(now + 45 * 60_000).toISOString(),
+    periodEnd: new Date(now + (campaign === "n2" ? 100 : 45) * 60_000).toISOString(),
     periodAllowanceUnits,
     runReservationUnits,
     initialKnownUsageUnits: 0,
     initialExposureUnits: 0,
     initialTokenAccountingSource: `live-harness:fresh-company:${companyId}`,
+    maxCorrections: campaign === "n2" ? 1 : 0,
   };
   const configured = await input.request("human", "POST", `/api/plugins/${input.pluginId}/config`, {
     companyId,
@@ -489,7 +526,7 @@ export async function runLiveN1(input: {
       source: `plugin-config:n1OperatingProfile:initial-token-accounting:${profile.initialTokenAccountingSource}`,
       units: 0,
     },
-    limits: { maxConcurrent: 2, maxRetries: 0, maxCorrections: 0 },
+    limits: { maxConcurrent: 2, maxRetries: 0, maxCorrections: campaign === "n2" ? 1 : 0 },
     commandId: randomUUID(),
   };
   const admission = await input.request("human", "POST", admissionPath, {
@@ -530,9 +567,9 @@ export async function runLiveN1(input: {
       commitments: ["Use only native Paperclip dispatch and run-derived G4 token settlement", "Stop at ready_for_review"],
       limits: {
         taskPolicy: `${runReservationUnits} token units reserved per native run`,
-        periodPolicy: `${periodAllowanceUnits} token units for exactly three native runs`,
-        correctionLimit: 0,
-        elapsedMinutes: 40,
+        periodPolicy: `${periodAllowanceUnits} token units for exactly ${runCount} native runs`,
+        correctionLimit: campaign === "n2" ? 1 : 0,
+        elapsedMinutes: campaign === "n2" ? 90 : 40,
       },
     },
   });
@@ -550,7 +587,9 @@ export async function runLiveN1(input: {
     "Plan exactly those two slots, materialize both, then dispatch and reconcile Alpha before dispatching Beta. Follow your AGENTS.md integration and failure-blocking procedure.",
     `Agent command bodies always include missionId. The exact inspect body is {"command":"inspect","missionId":"${missionId}"}. plan additionally needs commandId, expectedVersion and contributions=[{contributionId,assigneeAgentId,title,ownedPaths},...]. materialize needs commandId, expectedVersion and contributionId. dispatch needs commandId, expectedVersion, contributionId, a fresh reservationId and requestedUnits. reconcile-usage needs commandId and contributionId. publish needs commandId, expectedVersion, attachmentId, baseCommit, candidateCommit and expectedSha256.`,
     "For every POST use Content-Type application/json, Authorization Bearer $PAPERCLIP_API_KEY and X-Paperclip-Run-Id $PAPERCLIP_RUN_ID. The agent command URL uses the root issue ID from this task context.",
-    "Do not wake the reviewer and do not start N2.",
+    campaign === "n2"
+      ? "Stop N1 at ready_for_review. The owner harness will start N2 only after all three N1 runs are terminal and settled."
+      : "Do not wake the reviewer and do not start N2.",
     "",
     promptPolicy("Council N1 integration lead"),
   ].join("\n");
@@ -713,5 +752,11 @@ export async function runLiveN1(input: {
     rootIssueId: root.body.id as string,
     mission: finalMission.body,
     admission: admissionFinal.body,
+    repository,
+    baseCommit,
+    agents: { lead, contributorA, contributorB, reviewer },
+    periodKey: profile.periodKey,
+    runReservationUnits,
+    periodAllowanceUnits,
   };
 }

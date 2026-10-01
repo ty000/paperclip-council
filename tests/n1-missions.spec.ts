@@ -1184,6 +1184,7 @@ describe("N1 mission transitions", () => {
     vi.mocked(verifyIntegratedCandidate).mockResolvedValue({
       outcome: "verified",
       publicationEligible: true,
+      subject: { companyId: id.company, issueId: id.root },
       candidate: {
         attachmentId: id.root, byteSize: 100, sha256: "d".repeat(64),
         baseCommit: "0".repeat(40), candidateCommit: "c".repeat(40),

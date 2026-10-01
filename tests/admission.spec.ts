@@ -112,6 +112,7 @@ describe("G4 admission envelopes", () => {
       initialKnownUsageUnits: 10,
       initialExposureUnits: 5,
       initialTokenAccountingSource: "test:fresh-company-period",
+      maxCorrections: 0 as const,
     };
     const configuration = nativeAdmissionConfiguration(profile, companyId, randomUUID());
     const configured = await configureAdmission(store.context(), configuration);

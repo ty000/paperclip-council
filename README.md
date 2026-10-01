@@ -33,26 +33,47 @@ sequentially, and settles only from the expected terminal run. A zero monetary
 cost is labelled unpriced, while a zero token total remains unknown and blocks
 publication. The historical `n1FixtureMode: ephemeral-local-sandbox` remains a
 test-only transition proof. The separate `qualification:live:n1` command needs
-explicit provider authorization and a clean committed candidate. N2 verdict
-and review handoff are not part of this slice. See the
+explicit provider authorization and a clean committed candidate. N2 consumes
+this exact persisted candidate without rewriting the N1 path. See the
 [N1 report](docs/reviews/n1/REPORT.md) for the exact profile and proof boundary.
 
 ## N2 development boundary
 
-Version 0.6 adds the fail-closed domain contract for one ordinary correction:
-an immutable N1 candidate snapshot, an independent pinned reviewer, two fresh
-review rounds, one correction run, a changed V2 candidate, and receipt-backed
-native application. An uncertain handoff or decision remains visible and
-blocks dependent work. The mission page shows the active submission, reviewer,
-handoff, correction, application state, blockage and next action.
+Version 0.6 adds the fail-closed native N2 path for an immutable N1 submission,
+an independent pinned reviewer, an optional single correction, a changed V2
+candidate, and receipt-backed native acceptance. The owner starts each review
+only after a run reservation and command intent are durable. Reviewer and
+correction runs confirm their authenticated native identities against persisted
+baselines; V2 is reverified before the second native handoff. An uncertain
+handoff or decision remains visible and blocks dependent work.
 
-Native N2 execution is not claimed by this package revision. It still requires
-a qualified N1 candidate and an adapter that performs and observes the public
-Paperclip review handoff before these transitions are persisted. The explicit
-`n1OperatingProfile.maxCorrections: 1` option and sequential token-delta helper
-prepare the narrow G4 envelope; the legacy/default N1 profile remains zero
-corrections. See the [N2 report](docs/reviews/n2/REPORT.md) for the exact proof
-boundary.
+An initially conforming V1 may be accepted directly. The qualification scenario
+still exercises `changes_requested` → correction → V2 → fresh review → approval.
+`n1OperatingProfile.maxCorrections: 1` is mandatory for this path; the default
+remains zero. `settle-n2-usage` uses the existing exact-run admission settlement
+and the mission page reports whether every recorded N2 run is settled. This is
+implemented and locally tested. The guarded `qualification:live:n2` launcher
+requires a clean committed candidate, exact `gpt-5.6-sol` / `high` settings,
+six explicit per-run reservations, and a period allowance equal to six times
+the per-run amount. It runs N1, then independent V1 review, one lead correction,
+fresh V2 review, terminal settlement, restart readback and the exact-mission UI
+capture. It will not run without separate provider authorization, and its
+presence is not provider-backed N2 proof. See the
+[N2 report](docs/reviews/n2/REPORT.md) for the exact proof boundary.
+
+The proposed campaign command is:
+
+```sh
+COUNCIL_N2_LIVE_AUTHORIZED=1 \
+COUNCIL_N2_LIVE_MODEL=gpt-5.6-sol \
+COUNCIL_N2_LIVE_EFFORT=high \
+COUNCIL_N2_LIVE_RUN_UNITS=2000000 \
+COUNCIL_N2_LIVE_PERIOD_UNITS=12000000 \
+pnpm qualification:live:n2
+```
+
+Do not set the authorization variable until the operator has explicitly
+authorized that provider campaign for the exact published commit.
 
 ## Compatibility
 

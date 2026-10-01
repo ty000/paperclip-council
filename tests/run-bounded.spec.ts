@@ -10,7 +10,7 @@ import { ProcessGroupDrainError, runProcessGroup } from "../scripts/qualificatio
 // @ts-expect-error The qualification launcher is intentionally plain ESM.
 import { prepareQualificationHost, withOwnedQualificationRuntime } from "../scripts/qualification/run-bounded.mjs";
 // @ts-expect-error The qualification evidence contract is intentionally plain ESM.
-import { __claimLiveEvidencePathsForTest, assertQualificationEvidence, claimLiveEvidencePaths, LIVE_RESULT_KEYS, SAFE_RESULT_KEYS, writeClaimedArtifact } from "../scripts/qualification/evidence-contract.mjs";
+import { __claimLiveEvidencePathsForTest, assertQualificationEvidence, claimLiveEvidencePaths, claimN2LiveEvidencePaths, LIVE_RESULT_KEYS, N2_LIVE_RESULT_KEYS, SAFE_RESULT_KEYS, writeClaimedArtifact } from "../scripts/qualification/evidence-contract.mjs";
 import {
   assertNoReviewerRuns,
   assertOnlyExpectedAgentRun,
@@ -29,9 +29,14 @@ const liveScreenshotBytes = Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
   Buffer.from("bounded-png-fixture"),
 ]);
+const n2LiveScreenshotPath = resolve("/tmp", `n2-live-${liveCommit}-accepted.png`);
 
 function liveOptions(notBefore: number) {
   return { mode: "live", candidateCommit: liveCommit, notBefore, screenshotPath: liveScreenshotPath, screenshotBytes: liveScreenshotBytes };
+}
+
+function n2LiveOptions(notBefore: number) {
+  return { mode: "live-n2", candidateCommit: liveCommit, notBefore, screenshotPath: n2LiveScreenshotPath, screenshotBytes: liveScreenshotBytes };
 }
 
 function qualificationEvidence(mode: "safe" | "live"): any {
@@ -205,6 +210,108 @@ function qualificationEvidence(mode: "safe" | "live"): any {
   };
 }
 
+function n2QualificationEvidence(): any {
+  const evidence = qualificationEvidence("live");
+  evidence.proofId = "paperclip-council-n2-observable-native-qualification-v1";
+  evidence.outcome = "N2 OBSERVABLE RESULT VALIDATED";
+  evidence.results = Object.fromEntries(N2_LIVE_RESULT_KEYS.map((key: string) => [key, "PASS"]));
+  evidence.configuration.models.observedAgentConfiguration.push({
+    agentId: "reviewer", adapterType: "codex_local", model: "gpt-5.6-sol", effort: "high",
+  });
+  delete evidence.liveN1.ui;
+  const n2Runs = [
+    { id: "review-run-1", agentId: "reviewer", inputTokens: 700, cachedInputTokens: 100, outputTokens: 80, baseline: 3_240 },
+    { id: "correction-run", agentId: "lead", inputTokens: 650, cachedInputTokens: 50, outputTokens: 90, baseline: 4_020 },
+    { id: "review-run-2", agentId: "reviewer", inputTokens: 720, cachedInputTokens: 120, outputTokens: 75, baseline: 4_760 },
+  ];
+  const n2ReservationIds = [
+    "10000000-0000-4000-8000-000000000004",
+    "10000000-0000-4000-8000-000000000005",
+    "10000000-0000-4000-8000-000000000006",
+  ];
+  const submissionIds = ["30000000-0000-4000-8000-000000000001", "30000000-0000-4000-8000-000000000002"];
+  const operationIds = ["40000000-0000-4000-8000-000000000001", "40000000-0000-4000-8000-000000000002"];
+  const n2Reservations = n2Runs.map((run, index) => ({
+    reservationId: n2ReservationIds[index],
+    missionId: "mission",
+    effectId: index === 1 ? `n2-correction:${operationIds[0]}` : `n2-review:${submissionIds[index === 0 ? 0 : 1]}`,
+    status: "settled",
+    usage: {
+      status: "known",
+      units: run.inputTokens + run.outputTokens,
+      source: `paperclip:issues.summaries.getOrchestration:terminal-token-ledger;run=${run.id};issue-baseline=${run.baseline};monetary-cost=unpriced`,
+    },
+    remainingExposure: { status: "known", units: 0 },
+  }));
+  const submissions = [
+    {
+      submissionId: submissionIds[0], ordinal: 1, predecessorSubmissionId: null,
+      candidateCommit: "3".repeat(40), sha256: "4".repeat(64), baseCommit: "0".repeat(40), mandateHash: "5".repeat(64),
+    },
+    {
+      submissionId: submissionIds[1], ordinal: 2, predecessorSubmissionId: submissionIds[0],
+      candidateCommit: "6".repeat(40), sha256: "7".repeat(64), baseCommit: "0".repeat(40), mandateHash: "5".repeat(64),
+    },
+  ];
+  const rounds = [0, 1].map((index) => ({
+    round: index + 1,
+    submissionId: submissionIds[index],
+    reviewerAgentId: "reviewer",
+    handoff: {
+      state: "confirmed", reviewerRunId: n2Runs[index === 0 ? 0 : 2].id,
+      reservationId: n2ReservationIds[index === 0 ? 0 : 2],
+      baselineTokenTotal: n2Runs[index === 0 ? 0 : 2].baseline,
+      usageSettledAt: "2026-10-01T10:00:58.000Z",
+    },
+    verdict: {
+      verdict: index === 0 ? "changes_requested" : "approved",
+      operationId: operationIds[index], actorAgentId: "reviewer",
+      runId: n2Runs[index === 0 ? 0 : 2].id,
+    },
+  }));
+  const state = {
+    status: "accepted", correctionLimit: 1, correctionsUsed: 1, submissions, rounds,
+    correction: {
+      requestedByOperationId: operationIds[0], executorAgentId: "lead", runId: "correction-run",
+      reservationId: n2ReservationIds[1], baselineTokenTotal: n2Runs[1].baseline,
+      usageSettledAt: "2026-10-01T10:00:57.000Z", correctedPaths: ["alpha.txt"],
+    },
+    application: {
+      state: "observed", submissionId: submissionIds[1], operationId: operationIds[1],
+      receiptState: "native_observed", nativeStatus: 200,
+    },
+  };
+  const allReservations = [...evidence.liveN1.admission.envelope.reservations, ...n2Reservations];
+  const inspection = {
+    mission: { ...evidence.liveN1.mission.mission, aggregate: { ...evidence.liveN1.mission.mission.aggregate, phase: "accepted", control: { status: "inactive" }, n2: state } },
+    n1: evidence.liveN1.mission.n1,
+    n2: { status: "accepted", submission: submissions[1], usage: { complete: true } },
+    nextAction: "Mission accepted; no further action.",
+    admission: { periodKey: "period", measurement: { source: "paperclip:issues.summaries.getOrchestration:terminal-token-ledger" } },
+  };
+  evidence.liveN2 = {
+    companyId: "company", missionId: "mission", rootIssueId: "root-issue",
+    runs: n2Runs.map((run, index) => ({
+      id: run.id, agentId: run.agentId, status: "succeeded",
+      finishedAt: `2026-10-01T10:00:${50 + index}.000Z`,
+      usageJson: {
+        inputTokens: run.inputTokens, cachedInputTokens: run.cachedInputTokens, outputTokens: run.outputTokens,
+        rawInputTokens: run.inputTokens, rawCachedInputTokens: run.cachedInputTokens, rawOutputTokens: run.outputTokens,
+        usageSource: "per_run",
+      },
+    })),
+    mission: inspection,
+    admission: { envelope: { allowance: { status: "known", knownUsageUnits: allReservations.reduce((total, item) => total + item.usage.units, 0) }, reservations: allReservations } },
+    decisionReceipts: rounds.map((round) => ({
+      verdict: round.verdict.verdict, state: "native_observed", actorAgentId: "reviewer",
+      runId: round.handoff.reviewerRunId, operationId: round.verdict.operationId,
+    })),
+    restartReadback: inspection,
+    ui: { screenshot: n2LiveScreenshotPath, missionId: "mission", rootIssueId: "root-issue" },
+  };
+  return evidence;
+}
+
 describe("bounded qualification launcher", () => {
   it("atomically gives only one contender the commit-qualified evidence and screenshot paths", async () => {
     const root = await mkdtemp(resolve(tmpdir(), "council-live-evidence-"));
@@ -225,6 +332,13 @@ describe("bounded qualification launcher", () => {
       const winner = contenders.find((result) => result.status === "fulfilled");
       if (winner?.status === "fulfilled") winner.value.release();
 
+      const n2Claim = claimN2LiveEvidencePaths(root, commit, undefined);
+      expect(n2Claim).toMatchObject({
+        evidencePath: resolve(root, `artifacts/n2-live-${commit}.json`),
+        screenshotPath: resolve(root, `artifacts/n2-live-${commit}-accepted.png`),
+      });
+      n2Claim.release();
+
       expect(() => claimLiveEvidencePaths(root, commit, resolve(root, "unqualified.json")))
         .toThrow(/must be JSON and contain candidate commit/);
     } finally {
@@ -233,9 +347,9 @@ describe("bounded qualification launcher", () => {
   });
 
   it("claims live artifact paths after preflight and before provider-capable work", () => {
-    const launcherSource = readFileSync(resolve(packageRoot, "scripts/qualification/run-live-n1.mjs"), "utf8");
-    const claimAt = launcherSource.indexOf("const claim = claimLiveEvidencePaths(");
-    const hostAt = launcherSource.indexOf("const host = preparedHost();");
+    const launcherSource = readFileSync(resolve(packageRoot, "scripts/qualification/run-live.mjs"), "utf8");
+    const claimAt = launcherSource.indexOf("const claim = contract.claim(");
+    const hostAt = launcherSource.indexOf("const host = preparedHost(contract);");
     const browserAt = launcherSource.indexOf("await installChromium(host");
     const runtimeAt = launcherSource.indexOf("await withOwnedQualificationRuntime", claimAt);
     expect(claimAt).toBeGreaterThan(-1);
@@ -616,7 +730,15 @@ describe("bounded qualification launcher", () => {
       .join("\n");
     const assignedKeys = [...producerSources.matchAll(/\bevidence\.results\.([A-Za-z][A-Za-z0-9_]*)\s*=/g)]
       .map((match) => match[1]);
-    expect([...new Set(assignedKeys)].sort()).toEqual([...LIVE_RESULT_KEYS].sort());
+    expect([...new Set(assignedKeys)].sort()).toEqual([
+      ...LIVE_RESULT_KEYS,
+      "n2InstalledBrowserObservableState",
+      "n2RestartReadback",
+    ].sort());
+    const n2Producer = readFileSync(resolve(packageRoot, "tests/functional/n2-live.ts"), "utf8");
+    for (const key of N2_LIVE_RESULT_KEYS.filter((key: string) => !LIVE_RESULT_KEYS.includes(key))) {
+      expect(`${producerSources}\n${n2Producer}`).toContain(key);
+    }
     expect(SAFE_RESULT_KEYS).toContain("n1MissionExactLookupBeyondLatestList");
   });
 
@@ -625,6 +747,8 @@ describe("bounded qualification launcher", () => {
     for (const path of [
       `artifacts/n1-live-${commit}.json`,
       `artifacts/n1-live-${commit}-ready-for-review.png`,
+      `artifacts/n2-live-${commit}.json`,
+      `artifacts/n2-live-${commit}-accepted.png`,
     ]) {
       expect(() => execFileSync("git", ["check-ignore", "-q", path], { cwd: packageRoot }))
         .not.toThrow();
@@ -654,6 +778,9 @@ describe("bounded qualification launcher", () => {
     })).not.toThrow();
     expect(() => assertQualificationEvidence(qualificationEvidence("live"), {
       ...liveOptions(notBefore),
+    })).not.toThrow();
+    expect(() => assertQualificationEvidence(n2QualificationEvidence(), {
+      ...n2LiveOptions(notBefore),
     })).not.toThrow();
 
     for (const results of [undefined, {}, { ...qualificationEvidence("safe").results }]) {

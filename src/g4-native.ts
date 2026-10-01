@@ -320,11 +320,7 @@ export type NativeSequentialUsageBaseline = {
 };
 
 function tokenTotal(summary: PluginIssueOrchestrationSummary): number {
-  const total = summary.costs.inputTokens + summary.costs.cachedInputTokens + summary.costs.outputTokens;
-  if (!Number.isSafeInteger(total) || total < 0) {
-    throw new AdmissionError(409, "g4_usage_unavailable", "Native orchestration returned an invalid aggregate token total");
-  }
-  return total;
+  return orchestrationUsageUnits(summary);
 }
 
 export async function readNativeSequentialUsageBaseline(

@@ -38,6 +38,7 @@ export type IntegratedCandidateInput = {
   baseCommit: string;
   candidateCommit: string;
   contributions: [IntegratedContributionInput, IntegratedContributionInput];
+  correctedPaths?: string[];
 };
 
 export type IntegratedCandidateCheck = {
@@ -441,13 +442,47 @@ async function verifyContributionTreePreservation(
   contribution: IntegratedCandidateVerification["contributions"][number],
   candidateCommit: string,
   repositoryPath: string,
+  correctedPaths: string[] = [],
 ): Promise<void> {
+  const preservedPaths = contribution.changedPaths.filter((path) => !correctedPaths.includes(path));
+  if (preservedPaths.length === 0) return;
   await requireGitCheck(
     "contribution-tree-preservation",
-    ["--literal-pathspecs", "diff", "--quiet", contribution.commit, candidateCommit, "--", ...contribution.changedPaths],
+    ["--literal-pathspecs", "diff", "--quiet", contribution.commit, candidateCommit, "--", ...preservedPaths],
     repositoryPath,
     `${contribution.contributionId} changed paths do not survive in the candidate tree`,
   );
+}
+
+function correctedPaths(
+  input: IntegratedCandidateInput,
+  contributions: IntegratedCandidateVerification["contributions"],
+): string[] {
+  if (input.correctedPaths === undefined) return [];
+  if (!Array.isArray(input.correctedPaths) || input.correctedPaths.length === 0
+      || input.correctedPaths.length > MAX_CHANGED_PATHS_PER_CONTRIBUTION) {
+    throw new Error("correctedPaths must contain 1-256 bounded repository paths");
+  }
+  const parsed = input.correctedPaths.map((path, index) => ownedPath(path, `correctedPaths[${index}]`));
+  if (new Set(parsed).size !== parsed.length) throw new Error("correctedPaths contains duplicates");
+  const attributed = new Set(contributions.flatMap((contribution) => contribution.changedPaths));
+  const outsideAttribution = parsed.find((path) => !attributed.has(path));
+  if (outsideAttribution) throw new Error(`Corrected path is not attributed to an N1 contribution: ${outsideAttribution}`);
+  return parsed;
+}
+
+async function verifyMaterialCorrection(
+  contributions: IntegratedCandidateVerification["contributions"],
+  correctionPaths: string[],
+  candidateCommit: string,
+  repositoryPath: string,
+): Promise<void> {
+  for (const path of correctionPaths) {
+    const contribution = contributions.find((entry) => entry.changedPaths.includes(path));
+    if (!contribution) throw new Error(`Corrected path has no attributed contribution: ${path}`);
+    const changed = await changedPathsBetween(contribution.commit, candidateCommit, repositoryPath);
+    if (!changed.includes(path)) throw new Error(`Corrected path is unchanged from its attributed contribution: ${path}`);
+  }
 }
 
 async function verifyCandidateDelta(
@@ -532,13 +567,22 @@ export async function verifyIntegratedCandidate(
         repositoryPath,
       ));
     }
+    const correctionPaths = correctedPaths(input, verifiedContributions);
     for (const contribution of verifiedContributions) {
-      await verifyContributionTreePreservation(contribution, candidateCommit, repositoryPath);
+      await verifyContributionTreePreservation(contribution, candidateCommit, repositoryPath, correctionPaths);
     }
     checks.push({ name: "contribution-ancestry", status: "passed", detail: "two distinct contribution commits are included" });
     checks.push({ name: "contribution-history-topology", status: "passed", detail: "each contribution is a bounded linear history rooted at base or a prior declared contribution" });
     checks.push({ name: "write-ownership", status: "passed", detail: "every contribution commit changed only its declared paths" });
     checks.push({ name: "contribution-tree-preservation", status: "passed", detail: "both contributions survive in the candidate tree" });
+    if (correctionPaths.length > 0) {
+      await verifyMaterialCorrection(verifiedContributions, correctionPaths, candidateCommit, repositoryPath);
+      checks.push({
+        name: "bounded-material-correction",
+        status: "passed",
+        detail: `changed attributed paths: ${correctionPaths.join(", ")}`,
+      });
+    }
 
     await verifyCandidateDelta(verifiedContributions, baseCommit, candidateCommit, repositoryPath);
     checks.push({

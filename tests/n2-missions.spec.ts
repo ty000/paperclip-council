@@ -10,8 +10,9 @@ import {
   inspectN2State,
   markN2ReviewHandoffUnknown,
   n2SubmissionResultReference,
-  resubmitN2Candidate,
+  prepareN2Resubmission,
   startN2Review,
+  startN2ResubmittedReview,
 } from "../src/n2-missions.js";
 
 const ids = {
@@ -208,6 +209,25 @@ describe("N2 ordinary correction and confirmed acceptance", () => {
     expect(inspectN2State(persisted)).toMatchObject({ blockage: { code: "application_unknown" } });
   });
 
+  it("accepts a conforming initial candidate without manufacturing a correction", () => {
+    const { source, reviewing } = reviewingRound1();
+    const accepted = applyN2Decision(reviewing, source, {
+      submissionId: ids.submission1, actorAgentId: ids.reviewer, runId: ids.reviewerRun1,
+      operationId: ids.operation1, verdict: "approved", criteria: ["V1 conforms"], reasons: ["No correction is needed"],
+      receipt: observedReceipt({ operationId: ids.operation1, verdict: "approved", runId: ids.reviewerRun1 }),
+    });
+    expect(accepted).toMatchObject({
+      status: "accepted", correctionsUsed: 0,
+      application: { state: "observed", submissionId: ids.submission1, receiptState: "native_observed" },
+    });
+    accepted.rounds[0]!.handoff.usageSettledAt = "2026-10-01T00:00:00.000Z";
+    const persisted = mission(); persisted.aggregate.n2 = accepted; persisted.aggregate.phase = "accepted";
+    expect(inspectN2State(persisted)).toMatchObject({
+      submission: { ordinal: 1, submissionId: ids.submission1 },
+      nextAction: { label: expect.stringContaining("active reviewed submission") },
+    });
+  });
+
   it("requires the exact correction run and a changed verified V2 candidate", () => {
     const { source, reviewing } = reviewingRound1();
     const requested = applyN2Decision(reviewing, source, {
@@ -219,40 +239,45 @@ describe("N2 ordinary correction and confirmed acceptance", () => {
     const validResubmission = {
       actorAgentId: ids.lead, runId: ids.correctionRun,
       candidate: candidate("e".repeat(40), "f".repeat(64)),
-      baselineRunIds: [ids.reviewerRun1, ids.correctionRun], baselineTokenTotal: 300,
-      evidenceRevision: 13,
+      evidenceRevision: 13, correctedPaths: ["src/a.ts"],
     };
-    expect(() => resubmitN2Candidate(correcting, source, {
+    expect(() => prepareN2Resubmission(correcting, source, {
       ...validResubmission, candidate: {
         ...validResubmission.candidate,
         subject: { companyId: ids.company, issueId: randomUUID() },
       },
     })).toThrowError(/mission root issue and company/);
-    expect(() => resubmitN2Candidate(correcting, source, {
+    expect(() => prepareN2Resubmission(correcting, source, {
       ...validResubmission, candidate: candidate("e".repeat(40), "f".repeat(64), "b".repeat(40)),
     })).toThrowError(/base commit/);
     source.aggregate.mandate.objective = "Different mandate";
-    expect(() => resubmitN2Candidate(correcting, source, validResubmission)).toThrowError(/same immutable review mandate/);
+    expect(() => prepareN2Resubmission(correcting, source, validResubmission)).toThrowError(/same immutable review mandate/);
     source.aggregate.mandate.objective = "Review one corrected integrated candidate";
-    expect(() => resubmitN2Candidate(correcting, source, {
-      actorAgentId: ids.lead, runId: ids.correctionRun,
-      candidate: candidate("e".repeat(40), "f".repeat(64)), baselineRunIds: [ids.reviewerRun1], baselineTokenTotal: 200,
-      evidenceRevision: 13,
-    })).toThrowError(/exact correction run identity/);
-    expect(() => resubmitN2Candidate(correcting, source, {
-      actorAgentId: ids.lead, runId: ids.correctionRun, candidate: candidate(), baselineRunIds: [], baselineTokenTotal: 200,
-      evidenceRevision: 13,
+    expect(() => prepareN2Resubmission(correcting, source, {
+      actorAgentId: ids.lead, runId: ids.correctionRun, candidate: candidate(),
+      evidenceRevision: 13, correctedPaths: ["src/a.ts"],
     })).toThrowError(/changed commit and bytes/);
-    const resubmitted = resubmitN2Candidate(correcting, source, {
-      actorAgentId: ids.lead, runId: ids.correctionRun,
-      candidate: candidate("e".repeat(40), "f".repeat(64)), baselineRunIds: [ids.reviewerRun1, ids.correctionRun],
-      baselineTokenTotal: 300,
-      evidenceRevision: 13, submissionId: ids.submission2,
+    const prepared = prepareN2Resubmission(correcting, source, {
+      ...validResubmission, submissionId: ids.submission2,
+    });
+    expect(prepared).toMatchObject({ status: "resubmission_prepared", correction: { preparedSubmission: { submissionId: ids.submission2 } } });
+    expect(() => startN2ResubmittedReview(prepared, source, {
+      baselineRunIds: [ids.reviewerRun1, ids.correctionRun], baselineTokenTotal: 300,
+    })).toThrowError(/settled correction run/);
+    const settled = {
+      ...prepared,
+      correction: { ...prepared.correction!, usageSettledAt: "2026-10-02T00:00:00.000Z" },
+    };
+    expect(() => startN2ResubmittedReview(settled, source, {
+      baselineRunIds: [ids.reviewerRun1], baselineTokenTotal: 200,
+    })).toThrowError(/exact settled correction run identity/);
+    const resubmitted = startN2ResubmittedReview(settled, source, {
+      baselineRunIds: [ids.reviewerRun1, ids.correctionRun], baselineTokenTotal: 300,
     });
     expect(resubmitted).toMatchObject({ status: "review_handoff", activeSubmissionId: ids.submission2, submissions: [{ ordinal: 1 }, { ordinal: 2, predecessorSubmissionId: ids.submission1 }] });
   });
 
-  it("accepts only V2 after a fresh second native review and exact observed approval", () => {
+  it("accepts corrected V2 after a fresh second native review and exact observed approval", () => {
     const { source, reviewing } = reviewingRound1();
     const requested = applyN2Decision(reviewing, source, {
       submissionId: ids.submission1, actorAgentId: ids.reviewer, runId: ids.reviewerRun1,
@@ -260,10 +285,15 @@ describe("N2 ordinary correction and confirmed acceptance", () => {
       receipt: observedReceipt({ operationId: ids.operation1, verdict: "changes_requested", runId: ids.reviewerRun1 }),
     });
     const correcting = bindN2CorrectionRun(requested, source, { actorAgentId: ids.lead, runId: ids.correctionRun });
-    const round2 = resubmitN2Candidate(correcting, source, {
+    const prepared = prepareN2Resubmission(correcting, source, {
       actorAgentId: ids.lead, runId: ids.correctionRun, candidate: candidate("e".repeat(40), "f".repeat(64)),
+      evidenceRevision: 13, correctedPaths: ["src/a.ts"], submissionId: ids.submission2,
+    });
+    const round2 = startN2ResubmittedReview({
+      ...prepared,
+      correction: { ...prepared.correction!, usageSettledAt: "2026-10-02T00:00:00.000Z" },
+    }, source, {
       baselineRunIds: [ids.reviewerRun1, ids.correctionRun], baselineTokenTotal: 300,
-      evidenceRevision: 13, submissionId: ids.submission2,
     });
     const reviewing2 = confirmN2ReviewHandoff(round2, source, {
       status: "in_review", assigneeAgentId: ids.reviewer, currentParticipantAgentId: ids.reviewer,
