@@ -189,6 +189,95 @@ describe("G4 admission envelopes", () => {
     }, profile)).toThrow(/does not match/);
   });
 
+  it("binds one settlement commandId to one reservation without mutating a conflicting target", async () => {
+    const store = admissionStore();
+    const configured = await configureAdmission(store.context(), knownConfiguration());
+    const alphaInput = reservation({ reservationId: randomUUID(), expectedVersion: configured.envelope.version });
+    const alpha = await reserveAdmission(store.context(), alphaInput);
+    const betaInput = reservation({ reservationId: randomUUID(), expectedVersion: alpha.envelope.version });
+    const beta = await reserveAdmission(store.context(), betaInput);
+    const alphaCommandId = randomUUID();
+    const betaCommandId = randomUUID();
+    const settlement = (commandId: string, reservationId: string, units: number, expectedVersion: number) => ({
+      commandId,
+      companyId,
+      periodKey: alphaInput.periodKey,
+      reservationId,
+      usage: { status: "known" as const, source: `native-run:${reservationId}`, units },
+      remainingExposure: { status: "known" as const, source: `native-run:${reservationId}`, units: 0 },
+      expectedVersion,
+    });
+    const alphaSettlement = settlement(alphaCommandId, alphaInput.reservationId, 20, beta.envelope.version);
+    const alphaSettled = await settleAdmission(store.context(), alphaSettlement);
+    const beforeConflict = await readAdmission(store.context(), alphaInput);
+    const crossReservationConflict = settlement(
+      alphaCommandId,
+      betaInput.reservationId,
+      25,
+      alphaSettled.envelope.version,
+    );
+
+    await expect(settleAdmission(store.context(), crossReservationConflict)).rejects.toMatchObject({
+      status: 409,
+      code: "command_identity_conflict",
+    });
+    expect(await readAdmission(store.context(), alphaInput)).toEqual(beforeConflict);
+
+    const betaSettlement = settlement(
+      betaCommandId,
+      betaInput.reservationId,
+      25,
+      alphaSettled.envelope.version,
+    );
+    const betaSettled = await settleAdmission(store.context(), betaSettlement);
+    expect(betaSettled.envelope.allowance).toMatchObject({ knownUsageUnits: 45 });
+
+    await expect(settleAdmission(store.context(), betaSettlement)).resolves.toMatchObject({
+      outcome: "replayed",
+      envelope: { version: betaSettled.envelope.version, allowance: { knownUsageUnits: 45 } },
+    });
+    await expect(settleAdmission(store.context(), alphaSettlement)).resolves.toMatchObject({
+      outcome: "replayed",
+      envelope: { version: betaSettled.envelope.version, allowance: { knownUsageUnits: 45 } },
+      reservation: { reservationId: alphaInput.reservationId },
+    });
+  });
+
+  it("keeps settlement commandId binding unique when two reservations race the same CAS version", async () => {
+    const store = admissionStore();
+    const configured = await configureAdmission(store.context(), knownConfiguration());
+    const alphaInput = reservation({ reservationId: randomUUID(), expectedVersion: configured.envelope.version });
+    const alpha = await reserveAdmission(store.context(), alphaInput);
+    const betaInput = reservation({ reservationId: randomUUID(), expectedVersion: alpha.envelope.version });
+    const beta = await reserveAdmission(store.context(), betaInput);
+    const commandId = randomUUID();
+    const settlement = (reservationId: string, units: number) => ({
+      commandId,
+      companyId,
+      periodKey: alphaInput.periodKey,
+      reservationId,
+      usage: { status: "known" as const, source: `native-run:${reservationId}`, units },
+      remainingExposure: { status: "known" as const, source: `native-run:${reservationId}`, units: 0 },
+      expectedVersion: beta.envelope.version,
+    });
+    const alphaSettlement = settlement(alphaInput.reservationId, 20);
+    const betaSettlement = settlement(betaInput.reservationId, 25);
+
+    const raced = await Promise.allSettled([
+      settleAdmission(store.context(), alphaSettlement),
+      settleAdmission(store.context(), betaSettlement),
+    ]);
+    expect(raced.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(raced.filter((result) => result.status === "rejected")).toEqual([
+      expect.objectContaining({ reason: expect.objectContaining({ code: "command_identity_conflict" }) }),
+    ]);
+
+    const afterRace = (await readAdmission(store.context(), alphaInput))!;
+    expect(afterRace.version).toBe(beta.envelope.version + 1);
+    expect(afterRace.reservations.flatMap((item) => item.settlementReceipts)
+      .filter((receipt) => receipt.commandId === commandId)).toHaveLength(1);
+  });
+
   it("persists unknown inputs as blockers and refuses reservation without inventing amounts", async () => {
     const store = admissionStore();
     const configured = await configureAdmission(store.context(), knownConfiguration({
