@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/admission.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/admission.js")>();
-  return { ...actual, settleAdmission: vi.fn() };
+  return { ...actual, readAdmission: vi.fn(), settleAdmission: vi.fn() };
 });
-import { settleAdmission } from "../src/admission.js";
+import { readAdmission, settleAdmission } from "../src/admission.js";
 import {
   assertNativeConfigurationRequest,
   assertNativeLaunchAllowed,
@@ -16,6 +16,8 @@ import {
 const companyId = "10000000-0000-4000-8000-000000000001";
 const issueId = "20000000-0000-4000-8000-000000000002";
 const runId = "30000000-0000-4000-8000-000000000003";
+const settlementCommandId = "50000000-0000-4000-8000-000000000005";
+const reservationId = "60000000-0000-4000-8000-000000000006";
 
 function profile() {
   return {
@@ -58,8 +60,41 @@ function context(config: Record<string, unknown>, orchestration = summary()) {
   } as never;
 }
 
+function settledEnvelope(input: { commandId?: string; runId?: string; baselineUsageUnits?: number } = {}) {
+  const commandId = input.commandId ?? settlementCommandId;
+  const settledRunId = input.runId ?? runId;
+  const baselineUsageUnits = input.baselineUsageUnits ?? 40;
+  return {
+    version: 4,
+    reservations: [{
+      reservationId,
+      status: "settled",
+      usage: {
+        status: "known",
+        source: `paperclip:issues.summaries.getOrchestration:terminal-token-ledger;run=${settledRunId};issue-baseline=${baselineUsageUnits};monetary-cost=unpriced`,
+        units: 90,
+      },
+      remainingExposure: {
+        status: "known",
+        source: "paperclip:issues.summaries.getOrchestration:terminal-token-ledger;terminal=succeeded",
+        units: 0,
+      },
+      settlementReceipts: [{
+        commandId,
+        command: "settle",
+        payloadHash: "a".repeat(64),
+        appliedVersion: 4,
+        recordedAt: "2026-10-01T10:02:00.000Z",
+      }],
+    }],
+  };
+}
+
 describe("native G4 profile", () => {
-  beforeEach(() => vi.mocked(settleAdmission).mockReset());
+  beforeEach(() => {
+    vi.mocked(readAdmission).mockReset().mockResolvedValue(null);
+    vi.mocked(settleAdmission).mockReset();
+  });
 
   it("derives one fixed sequential token-ledger envelope from explicit plugin config", async () => {
     const parsed = await readNativeG4Profile(context({ n1OperatingProfile: profile() }), companyId);
@@ -138,6 +173,82 @@ describe("native G4 profile", () => {
       usage: expect.objectContaining({ status: "known", units: 90, source: expect.stringContaining("issue-baseline=40") }),
       remainingExposure: expect.objectContaining({ status: "known", units: 0, source: expect.stringContaining("terminal=succeeded") }),
     }));
+  });
+
+  it("replays a lost settlement response before mutable issue counters can change its payload", async () => {
+    const getOrchestration = vi.fn()
+      .mockResolvedValueOnce(summary())
+      .mockResolvedValue(summary({
+        costs: { costCents: 0, inputTokens: 1_000, cachedInputTokens: 200, outputTokens: 30, billingCode: null },
+      }));
+    const ctx = {
+      issues: { summaries: { getOrchestration } },
+    } as never;
+    vi.mocked(readAdmission)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(settledEnvelope() as never);
+    vi.mocked(settleAdmission)
+      .mockResolvedValueOnce({ outcome: "settled" } as never)
+      .mockResolvedValueOnce({ outcome: "replayed" } as never)
+      .mockResolvedValueOnce({ outcome: "settled" } as never);
+    const initial = {
+      commandId: settlementCommandId,
+      companyId,
+      issueId,
+      runId,
+      baselineUsageUnits: 40,
+      periodKey: "n1-qualified-2026-10-01",
+      reservationId,
+      expectedVersion: 3,
+    };
+
+    await expect(settleNativeRunUsage(ctx, initial)).resolves.toEqual({ outcome: "settled" });
+    await expect(settleNativeRunUsage(ctx, initial)).resolves.toEqual({ outcome: "replayed" });
+
+    expect(getOrchestration).toHaveBeenCalledTimes(1);
+    expect(settleAdmission).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(settleAdmission).mock.calls[1][1]).toEqual(vi.mocked(settleAdmission).mock.calls[0][1]);
+    expect(vi.mocked(settleAdmission).mock.calls[1][1]).toMatchObject({
+      commandId: settlementCommandId,
+      reservationId,
+      usage: { status: "known", units: 90 },
+    });
+
+    const newCommandId = "70000000-0000-4000-8000-000000000007";
+    await expect(settleNativeRunUsage(ctx, {
+      ...initial,
+      commandId: newCommandId,
+      expectedVersion: 4,
+    })).resolves.toEqual({ outcome: "settled" });
+    expect(getOrchestration).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(settleAdmission).mock.calls[2][1]).toMatchObject({
+      commandId: newCommandId,
+      reservationId,
+      usage: { status: "known", units: 990 },
+    });
+  });
+
+  it("rejects replay when the recorded native run or baseline binding differs", async () => {
+    vi.mocked(readAdmission).mockResolvedValue(settledEnvelope() as never);
+    const ctx = context({}, summary({
+      costs: { costCents: 0, inputTokens: 1_000, cachedInputTokens: 200, outputTokens: 30, billingCode: null },
+    }));
+    const base = {
+      commandId: settlementCommandId,
+      companyId,
+      issueId,
+      runId,
+      baselineUsageUnits: 40,
+      periodKey: "n1-qualified-2026-10-01",
+      reservationId,
+      expectedVersion: 3,
+    };
+
+    await expect(settleNativeRunUsage(ctx, { ...base, runId: "80000000-0000-4000-8000-000000000008" }))
+      .rejects.toMatchObject({ status: 409, code: "command_identity_conflict" });
+    await expect(settleNativeRunUsage(ctx, { ...base, baselineUsageUnits: 41 }))
+      .rejects.toMatchObject({ status: 409, code: "command_identity_conflict" });
+    expect(settleAdmission).not.toHaveBeenCalled();
   });
 
   it("does not turn a terminal zero-total summary into zero consumption", async () => {

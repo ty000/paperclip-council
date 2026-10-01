@@ -750,6 +750,25 @@ describe("bounded qualification launcher", () => {
       evidence.liveN1.admission.envelope.reservations[0].usage.source =
         evidence.liveN1.admission.envelope.reservations[0].usage.source.replace("run=lead-run", "run=other-run");
     }, /exact native run and usage baseline/);
+    reject((evidence) => {
+      evidence.liveN1.admission.envelope.reservations[0].usage.source =
+        evidence.liveN1.admission.envelope.reservations[0].usage.source.replace(
+          ";issue-baseline=", ";run=lead-run;issue-baseline=",
+        );
+    }, /exact native run and usage baseline/);
+    reject((evidence) => {
+      evidence.liveN1.admission.envelope.reservations[0].usage.source =
+        evidence.liveN1.admission.envelope.reservations[0].usage.source.replace(
+          ";monetary-cost=", ";issue-baseline=100;monetary-cost=",
+        );
+    }, /exact native run and usage baseline/);
+    reject((evidence) => {
+      evidence.liveN1.admission.envelope.reservations[0].usage.source += ";run=other-run";
+    }, /exact native run and usage baseline/);
+    reject((evidence) => {
+      evidence.liveN1.admission.envelope.reservations[0].usage.source =
+        "paperclip:issues.summaries.getOrchestration:terminal-token-ledger;issue-baseline=100;run=lead-run;monetary-cost=unpriced";
+    }, /exact native run and usage baseline/);
     reject((evidence) => { evidence.liveN1.mission.mission.aggregate.n1.rootUsageBaselineUnits += 1; },
       /reservation usage does not equal|exact native run and usage baseline/);
     reject((evidence) => {
@@ -782,6 +801,13 @@ describe("bounded qualification launcher", () => {
         + validCachedUsage.liveN1.runs[0].usageJson.outputTokens,
     );
     expect(() => assertQualificationEvidence(validCachedUsage, options)).not.toThrow();
+
+    const validPricedUsage = qualificationEvidence("live");
+    validPricedUsage.liveN1.admission.envelope.reservations[0].usage.source =
+      validPricedUsage.liveN1.admission.envelope.reservations[0].usage.source.replace(
+        "monetary-cost=unpriced", "priced-cost-cents=42",
+      );
+    expect(() => assertQualificationEvidence(validPricedUsage, options)).not.toThrow();
   });
 
   it("binds live proof to host, models, native runs, contributions, candidate, failure refusal, and PNG UI", () => {

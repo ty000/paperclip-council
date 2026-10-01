@@ -2,6 +2,7 @@ import type { PluginContext, PluginIssueOrchestrationSummary } from "@paperclipa
 import { isDeepStrictEqual } from "node:util";
 import {
   AdmissionError,
+  readAdmission,
   settleAdmission,
   type AdmissionConfigureInput,
   type AdmissionResult,
@@ -224,6 +225,43 @@ export async function settleNativeRunUsage(
     expectedVersion: number;
   },
 ): Promise<AdmissionResult> {
+  if (!Number.isSafeInteger(input.baselineUsageUnits) || input.baselineUsageUnits < 0) {
+    throw new AdmissionError(409, "g4_usage_baseline_unavailable", "Native run usage requires the issue token baseline recorded before wakeup");
+  }
+  const existingEnvelope = await readAdmission(ctx, {
+    companyId: input.companyId,
+    periodKey: input.periodKey,
+  });
+  const existingReservation = existingEnvelope?.reservations
+    .find((reservation) => reservation.reservationId === input.reservationId);
+  const existingReceipt = existingReservation?.settlementReceipts
+    .find((receipt) => receipt.commandId === input.commandId);
+  if (existingReservation && existingReceipt) {
+    const usageSourcePrefix = `${MEASUREMENT_SOURCE};run=${input.runId};issue-baseline=${input.baselineUsageUnits};`;
+    const terminalSourcePrefix = `${MEASUREMENT_SOURCE};terminal=`;
+    const terminalStatus = existingReservation.remainingExposure.status === "known"
+      && existingReservation.remainingExposure.source.startsWith(terminalSourcePrefix)
+      ? existingReservation.remainingExposure.source.slice(terminalSourcePrefix.length)
+      : null;
+    if (existingReceipt.command !== "settle"
+        || existingReservation.usage?.status !== "known"
+        || !existingReservation.usage.source.startsWith(usageSourcePrefix)
+        || existingReservation.remainingExposure.status !== "known"
+        || existingReservation.remainingExposure.units !== 0
+        || !terminalStatus || !TERMINAL_RUN_STATUSES.has(terminalStatus)) {
+      throw new AdmissionError(409, "command_identity_conflict",
+        "commandId was already used with another native run settlement binding");
+    }
+    return settleAdmission(ctx, {
+      commandId: input.commandId,
+      companyId: input.companyId,
+      periodKey: input.periodKey,
+      reservationId: input.reservationId,
+      usage: existingReservation.usage,
+      remainingExposure: existingReservation.remainingExposure,
+      expectedVersion: input.expectedVersion,
+    });
+  }
   const summary = await readNativeOrchestration(ctx, input);
   const issueRuns = summary.runs.filter((run) => run.issueId === input.issueId);
   if (summary.runs.length !== 1 || issueRuns.length !== 1 || issueRuns[0].id !== input.runId) {
@@ -235,9 +273,6 @@ export async function settleNativeRunUsage(
   const run = issueRuns[0];
   if (!TERMINAL_RUN_STATUSES.has(run.status) || !run.finishedAt) {
     throw new AdmissionError(409, "g4_run_not_terminal", "Native run usage remains unsettled until the run is terminal");
-  }
-  if (!Number.isSafeInteger(input.baselineUsageUnits) || input.baselineUsageUnits < 0) {
-    throw new AdmissionError(409, "g4_usage_baseline_unavailable", "Native run usage requires the issue token baseline recorded before wakeup");
   }
   const cumulativeUsageUnits = orchestrationUsageUnits(summary);
   const usageUnits = cumulativeUsageUnits - input.baselineUsageUnits;

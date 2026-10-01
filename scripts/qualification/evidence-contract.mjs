@@ -27,6 +27,7 @@ const LIVE_FIXTURE_BOUNDARY = "The safe-boundary suite uses fixtures; the N1 liv
 const SAFE_PROVIDER_BOUNDARY = "none; dispatch was deliberately not invoked because it requests native wakeup";
 const LIVE_STOP_BOUNDARY = "ready_for_review; N2 not started";
 const EXPECTED_HOST_COMMIT = "61b3fd57a695614dc4a37e2303f426a34a9795cf";
+const NATIVE_USAGE_SOURCE = "paperclip:issues.summaries.getOrchestration:terminal-token-ledger";
 const COMMIT = /^[0-9a-f]{40}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -564,10 +565,31 @@ function assertLiveRunSet(live, runs, expectedAgentIds) {
   requireProof(distinctStrings(runs.map((run) => run.id)), "native run identities must be distinct");
 }
 
+function isCanonicalPricingField(field) {
+  if (field === "monetary-cost=unpriced") return true;
+  const prefix = "priced-cost-cents=";
+  if (typeof field !== "string" || !field.startsWith(prefix)) return false;
+  const rawCents = field.slice(prefix.length);
+  const cents = Number(rawCents);
+  return Number.isFinite(cents) && cents > 0 && String(cents) === rawCents;
+}
+
+function parseReservationSource(source) {
+  if (!nonemptyString(source)) return null;
+  const fields = source.split(";");
+  if (fields.length !== 4 || fields[0] !== NATIVE_USAGE_SOURCE || !isCanonicalPricingField(fields[3])) return null;
+  const runPrefix = "run=";
+  const baselinePrefix = "issue-baseline=";
+  if (!fields[1].startsWith(runPrefix) || !fields[2].startsWith(baselinePrefix)) return null;
+  return {
+    runId: fields[1].slice(runPrefix.length),
+    baseline: fields[2].slice(baselinePrefix.length),
+  };
+}
+
 function assertReservationSource(source, runId, baseline) {
-  requireProof(nonemptyString(source)
-      && source.includes(`;run=${runId};`)
-      && source.includes(`;issue-baseline=${baseline};`),
+  const parsed = parseReservationSource(source);
+  requireProof(parsed?.runId === runId && parsed?.baseline === String(baseline),
   "reservation usage source must identify the exact native run and usage baseline");
 }
 

@@ -1236,6 +1236,18 @@ describe("N1 mission transitions", () => {
       reservationId: (value.n1 as { activationReservationId: string }).activationReservationId,
       status: settlementReceipts.length === 0 ? "reserved" : "settled",
       settlementReceipts,
+      ...(settlementReceipts.length === 0 ? {} : {
+        usage: {
+          status: "known",
+          source: `paperclip:issues.summaries.getOrchestration:terminal-token-ledger;run=${id.leadRun};issue-baseline=50;monetary-cost=unpriced`,
+          units: 120,
+        },
+        remainingExposure: {
+          status: "known",
+          source: "paperclip:issues.summaries.getOrchestration:terminal-token-ledger;terminal=succeeded",
+          units: 0,
+        },
+      }),
     });
     vi.mocked(readAdmission)
       .mockResolvedValueOnce(nativeEnvelope([...contributionReservations.map((reservationId) => ({
