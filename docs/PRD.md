@@ -3,7 +3,7 @@
 Current V1 decision (September 30, 2026, priority rescope): [DEC-G3-02](G3-G4-DECISIONS.md#dec-g3-02--plugin-only-receipts-and-preserved-uncertainty) replaces mandatory host D-H/readback and automatic ambiguous-result recovery with plugin-private receipts, a persistent uncertainty hold and authenticated human acknowledgement/abandonment. No Paperclip change or upstream PR acceptance is a V1 dependency. Human handling never confirms native success or unlocks an equivalent uncertain action. Other acceptance criteria and G4 remain mandatory. Historical reports retain their original verdicts.
 
 Status: V1 product scope selected; implementation and qualification pending. Detailed design choices and activation prerequisites are identified in the companion documents.
-Document version: 0.5 — September 30, 2026.
+Document version: 0.6 — October 1, 2026.
 
 This document defines the target product, its users, journeys, requirements, and the outcomes used to assess its value. The [roadmap](ROADMAP.md) proposes evolution horizons; it does not change this PRD's requirements. Architecture, libraries, infrastructure, tickets, sprints, and delivery dates belong in other documents.
 
@@ -17,7 +17,7 @@ The [V1 scope](V1-SCOPE.md) elaborates this boundary; the [TAD](TAD.md) derives 
 
 A product owner delegating work to agents still has to repeat context, resolve routine disagreements, verify results, and contain unnecessary scope extensions proposed during reviews. Individually correct contributions can form an incoherent result. Experience gained on one request often disappears before the next.
 
-Paperclip Council must organize multidisciplinary implementation and its supervision: turn a scoped product task into a technical plan, coordinate contributions, integrate and verify the result, obtain evidence-based acceptance, and open an identified PR when authorized. Across missions, the owner must see priorities, shared capacity, dependencies and the next accountable actor. Useful decisions and experience must later help other agents work better, with observable effects and reversible changes.
+Paperclip Council must organize multidisciplinary implementation and its supervision: turn scoped work into an executable plan, reusing any prepared technical decomposition, coordinate contributions, integrate and verify the result, obtain evidence-based acceptance, and deliver an identified PR when authorized. Across missions, the owner must see priorities, shared capacity, dependencies and the next accountable actor. Useful decisions and experience must later help other agents work better, with observable effects and reversible changes.
 
 The promise is: **a multidisciplinary team that carries scoped tasks through verified implementation to a traceable PR, coordinates several missions, and preserves human decision authority; reusable collective experience follows later**.
 
@@ -32,7 +32,7 @@ The initial use case is building and evolving software products with a single hu
 | Owner | Define objectives and delegated authority, understand decisions, resolve exceptions, and stop unsuitable operation. |
 | Project Manager | Coordinate the project's mission queue, delegated priorities, shared capacity, dependencies and commitments; surface decisions outside that delegation. |
 | Mission orchestrator | Own execution through the PR handoff: dispatch eligible work, track progress, route blockers and corrections, request replanning and ensure integration has an accountable owner. |
-| Planner | Produce and revise the technical plan, with bounded contributions, dependencies, required skills, interfaces and evidence. |
+| Planner | Consume prepared product/technical work, check execution readiness and complete or revise its operational plan: bounded contributions, dependencies, skills, interfaces and evidence. |
 | Executor | Receive a useful request and context, produce a verifiable result, and understand the corrections required. |
 | Implementation specialists | Frontend/backend developers and, when needed, architects or other specialists produce the planned contributions and their evidence. |
 | Specialized testers | Help define relevant checks during planning, verify contributions and the integrated journey, and report pass/fail/blocked evidence. |
@@ -48,11 +48,13 @@ These are responsibilities, not a mandatory headcount. A small mission may combi
 
 ## 3. Positioning and boundaries
 
-Paperclip Council is an extension of Paperclip. Its scope covers implementation planning and coordination, project-level mission coordination, supervision mandates, reviews and decisions, their effects on acceptance, the authorized PR handoff, and eventually learned knowledge and its evaluation.
+Council is an organization of agents in Paperclip that coordinates work and controls its quality within the owner's mandate. Its scope covers implementation planning and coordination, project-level mission coordination, supervision mandates, reviews and decisions, their effects on acceptance, the authorized PR handoff, and eventually learned knowledge and its evaluation.
 
-The product relies on platform services to organize work and execute agents. The exact technical division of responsibilities must be verified in the TAD. This positioning does not assume that Paperclip already provides every required capability.
+Agents, instructions and skills define the responsibilities and methods; native work, review policies, triggers and routines support their execution. Prefer these existing capabilities wherever they meet the requirement. The plugin is the current technical vehicle for Council-specific gaps and may also distribute native resources; implementing every responsibility in plugin code is not a product requirement. The TAD identifies the supported native path and the precise additions needed. Neither source availability nor this direction proves that Council can already operate entirely through configuration.
 
-Paperclip owns native tasks, agent execution and permissions. Council owns the cooperation rules, scoped planning/coordination and supervision semantics. Executive supplies optional profiles and analysis methods, without a second dispatcher or acceptance authority. An upstream product ticket, including one prepared in Linear, may still need technical decomposition inside its mission; Council does not recreate the upstream product backlog. Project coordination references native work and is not a replacement project-management platform.
+Paperclip owns native tasks, agent execution, permissions and native review transitions. Council defines the cooperation rules, scoped planning/coordination and supervision semantics; this product responsibility does not imply a separate scheduler or duplicate task lifecycle. Executive remains paused; its optional profiles/methods are not a delivery dependency or a second dispatch/acceptance authority. Project coordination references native work and is not a replacement project-management platform.
+
+The owner adopted all 11 [native-reuse decisions](NATIVE-REUSE-DECISIONS.md) on October 1. Initially, the plan lives in Paperclip's native documents and work items. With the later Linear integration, Linear remains authoritative for the prepared project/milestone/feature/technical-contribution hierarchy, published criteria and dependencies; Paperclip holds linked execution state and the operational plan. The planner consumes that decomposition and fills concrete gaps rather than automatically splitting every imported ticket again. Internal implementation steps stay in Paperclip; distinct deliverables or changes to published scope, criteria or dependencies return to Linear through the authorized path. This does not prescribe one ticket per agent, run or PR.
 
 The reviewed Paperclip baseline provides agent identities, execution runs, issue review stages and native decision records. Council connects the mandate, identified submission, evidence, verdict and verified effect. G3 now requires persisted attempts and safe uncertainty handling under DEC-G3-02; automatic reconciliation is not required for V1. The actors and acceptance paths covered by supervision must be declared when it is enabled; the availability of a platform capability does not demonstrate its integration into Council.
 
@@ -88,11 +90,15 @@ For the software-delivery profile, PR creation/update authority is explicit in t
 
 The reference journey is **selected mission → technical plan → serial/parallel contributions → integration → specialized validation → Council acceptance → PR**. Relevant architecture and QA input can begin during planning; specialist review also remains available at consequential checkpoints. A correction returns to the responsible contribution and integration owner, preserving valid evidence and rechecking affected behavior.
 
-The planner owns the proposed plan and its revisions. The orchestrator owns its execution and asks for replanning when dependencies, evidence or blockers invalidate it. The integration lead owns the assembled candidate. The Project Manager coordinates across missions within delegated priorities; it does not compete with the mission orchestrator for individual dispatch. Council owns the verdict. A facilitator can organize a bounded discussion, but acquires none of these decision rights by convening it.
+The planner owns the operational plan and its revisions, preserving an existing published decomposition. The orchestrator owns its execution and asks for replanning when dependencies, evidence or blockers invalidate it. Planning and ordinary continuation proceed automatically within the accepted mandate using native events; no second human plan approval or periodic model polling is required. The integration lead owns the assembled candidate. The Project Manager coordinates across missions within delegated priorities; it does not compete with the mission orchestrator for individual dispatch. Council owns the verdict. A facilitator can organize a bounded discussion, but acquires none of these decision rights by convening it.
 
 Independent contributions can proceed in parallel once shared interfaces, dependencies and write ownership permit it. Unresolved interface decisions or conflicting writes require sequencing. Testers help identify the relevant evidence before implementation and validate the integrated behavior; contributor completion and individually passing checks cannot substitute for that validation.
 
 The selected delivery milestones are **M1: one complete mission through its PR**, including complementary contributions and an actual correction, then **M2: two active missions sharing a constrained resource or dependency**, demonstrating prioritization, explained waiting and resumption. M2 must show real coordination rather than two unrelated successful runs. Both belong to the selected V1 scope; the existing nominal execution lots remain incremental foundations.
+
+The selected first M2 case is a dependency on another mission's accepted result. Existing concurrency/admission limits still apply. A generic exclusive-resource manager is not required: where a real exclusive specialist/workspace is used, prefer existing capacity controls, isolation or serialization and verify the no-double-booking behavior before enabling that path.
+
+An explicitly authorized draft PR may be opened earlier to support integration or discussion. Its head, draft status and actual checks remain visible; it proves neither acceptance nor M1 completion. The final handoff still binds the accepted candidate and evidence to the observed PR. Merge and deployment retain their separate authority.
 
 ## 4. Initial evidence baseline
 
@@ -117,6 +123,7 @@ These results come from a prototype integrated into the reference Paperclip chec
 5. **Supervision remains proportionate.** A finding must relate to a need, a consequence, or an applicable obligation. A cosmetic disagreement does not justify an indefinite loop.
 6. **Resumption preserves continuity.** A new session retrieves the mandate, reviewed version, decisions, and remaining work without replaying the entire conversation.
 7. **Learning can be challenged.** Stored or consulted knowledge is not evidence of improvement; its application and its effect must be distinguished.
+8. **Process follows the mandate and the observed need.** Set bounded reviews and proportionate exit checks before work; correct material defects and defer optional improvements. A further review needs a specific changed or unresolved risk. Reused skills do not add mandatory plan approvals, weekly meetings, screenshot campaigns or review cycles when these serve no selected requirement. Adapt only conflicting instructions; preserve independent acceptance and owner-reserved decisions.
 
 ## 6. Council model and authority
 
@@ -242,11 +249,11 @@ The learning process may be reviewed periodically or in response to a repeated e
 | C16 | Coherence across multiple contributions | Acceptance examines the integrated result; it is not derived from individual statuses alone. | First usable release |
 | C17 | Explicit teams and council composition | The owner can create, revise and retire scoped rosters using existing agents, identify integration and verdict responsibilities, and see which composition governs each active mission. Changes never silently replace an in-flight reviewer or mandate. | First usable release |
 | C18 | Coordinated contribution lifecycle | A mission links assigned contributions, dependencies and integration; unavailable members, replacement, suspension and cancellation preserve an attributable next action without accepting incomplete work. | First usable release |
-| C19 | Technical planning and replanning | A prepared product task becomes a bounded, revisioned technical plan with dependencies, interfaces, skills and evidence; an invalidated plan is revised without silently changing the mandate. | First usable release |
+| C19 | Technical planning and replanning | Prepared product/technical work is reused in a bounded, revisioned execution plan with dependencies, interfaces, skills and evidence; only useful gaps are decomposed further. Replanning stays within the mandate and preserves the authoritative published breakdown. | First usable release |
 | C20 | Skill-based execution and specialized validation | Frontend/backend and other needed contributions have suitable assignees; QA informs the plan and validates the integrated journey. Design authorship and independent review remain distinguishable. | First usable release |
 | C21 | Durable coordination across missions | A Project Manager can coordinate several native missions within delegated priorities and finite capacity, explain waits and dependencies, and resume coordination from recorded state. It cannot double-book an exclusive resource or silently change an owner commitment. | First usable release |
 | C22 | Proportionate facilitation | A concrete coordination blocker can summon a facilitator with a bounded question, participants and expected outcome; resolution or escalation is recorded without adding a mandatory approval or recurring meeting. | First usable release |
-| C23 | Traceable PR handoff | An authorized actor opens or updates the PR for the accepted candidate, records its URL/head/evidence and reports actual checks/review status. Missing authority, failures and ambiguous outcomes stay visible; changed code returns to affected validation and acceptance. | First usable release |
+| C23 | Traceable PR handoff | An authorized actor delivers the PR for the accepted candidate, records its URL/head/evidence and reports actual checks/review status. An earlier authorized draft is allowed but does not prove acceptance or readiness. Missing authority, failures and ambiguous outcomes stay visible; changed code returns to affected validation and acceptance. | First usable release |
 
 This first release does not require a full council for every task or every future memory capability. It must nevertheless reach an acceptance decision that is actually applied, a correction that can be reviewed again, or an understandable blocker. A collection of mechanisms without a usable journey is insufficient.
 
@@ -278,10 +285,10 @@ These scenarios are behavioral requirements to translate into the validation env
 | A20 | Duplicate delivery, concurrent commands or a worker restart occurs | One logical action has at most one accepted Council result; ambiguous external effects are reconciled before further dispatch. | C04–C05, C18 |
 | A21 | A roster is suspended/retired or a mission is suspended/cancelled | Roster changes stop new use while existing missions retain their pinned revision; mission suspension stops new dependent dispatch and accounts for in-flight work. History survives; no task or agent is silently deleted. | C09, C17–C18 |
 | A22 | Another company or an unauthorized member submits a command | The command is refused without changing the mission, impersonating a reviewer or disclosing protected evidence. | C01–C02, C17 |
-| A23 | A prepared feature needs frontend and backend work | The planner defines the shared interface, dependencies and evidence; eligible work proceeds in parallel or in sequence, then integrated validation checks the user journey. | C16, C19–C20 |
+| A23 | A prepared feature needs frontend and backend work | The planner reuses existing technical contributions and completes missing interfaces, dependencies and evidence; eligible work proceeds in parallel or in sequence, then integrated validation checks the user journey. | C16, C19–C20 |
 | A24 | A dependency or failed integration invalidates the plan | The orchestrator requests a bounded revision; affected work is held/reassigned explicitly and unaffected valid work is preserved. A scope change goes to the owner. | C05, C18–C19 |
 | A25 | Two missions need the same exclusive specialist or workspace | Project coordination records a priority/capacity decision; one waits with a reason and resumes after verified release. Work within available capacity may continue. | C21 |
-| A26 | One mission depends on another, then the coordinator restarts or changes | The prerequisite and its required evidence remain identifiable; false completion cannot release dependent work, and coordination resumes without duplicate dispatch. | C05, C21 |
+| A26 | One mission depends on another's accepted result, then the coordinator restarts or changes | The prerequisite candidate, acceptance and required evidence remain identifiable; a bare done status cannot release dependent work, and coordination resumes without duplicate dispatch. This is the selected first M2 case. | C05, C21 |
 | A27 | A handoff disagreement prevents progress | A facilitator resolves the bounded cooperation question or routes it to the accountable authority; no recursive council, changed mandate or mandatory ceremony follows. | C06, C22 |
 | A28 | The implementation is accepted and PR authority is present or absent | With authority, open/identify the PR and verify head and evidence; without it, retain accepted state and expose a delivery wait. Neither case implies merge/deployment or green CI. | C04, C23 |
 | A29 | PR creation times out, or review/CI requires changed code | Reconcile an ambiguous PR before another creation; route a required correction, revalidate/review the changed candidate, and identify the updated PR head. Failed/unknown checks cannot be shown as ready. | C03–C05, C23 |
@@ -295,11 +302,15 @@ Validation must prioritize product journeys and their boundaries, with checks ta
 
 The expected surfaces make the following understandable: the mandate; the result and its version; opinions and the verdict; a required correction; a pending owner decision; a trade-off and its follow-up; and knowledge and its effects when those capabilities are in scope.
 
+Use native Paperclip screens first, supplementing only missing Council information/actions with a compact summary. Retain useful existing Council views; new UI needs observed user friction, not a second board, plan editor, monetary dashboard or PR tracker. Native billed-cost policies remain the monetary reference, supplemented only by the selected mission/token/exposure limits absent there; preserve the bounded N1 pilot and explicit unknowns.
+
+The owner selected later existing-plugin integrations: Linear for prepared work, Slack for notifications and responses to the same native human decisions, and Agent-Pixels for visualizing agents/activity. They follow the working native path and add no current milestone prerequisite. Operational authority and evidence stay in Paperclip/Council; identity/decision binding and connector mapping must be verified when integrating. The [decision record](NATIVE-REUSE-DECISIONS.md#delivery-impact-and-later-integrations) identifies the repositories and narrow remaining checks.
+
 Project inspection also shows the mission queue, delegated ordering, capacity/dependency waits, coordinator and next action. Mission inspection shows plan revision, skill assignments, integration/QA evidence, any facilitation outcome and PR URL/head. Distinguish accepted, awaiting PR authority, PR publication pending/unknown, PR opened, checks pending/failed and ready for review. PR opened is a separate observation from accepted or ready; a draft or unchecked PR cannot silently satisfy a stronger readiness claim.
 
 Business states distinguish at least work in progress, result submitted, correction requested, awaiting a decision, decision awaiting application, accepted, and unsuccessful. They do not prescribe Paperclip's technical state names. A result may be accepted with open follow-up without hiding the remaining problem.
 
-Decisive information must be accessible without reading every conversation. Interactive controls must be keyboard-accessible, states understandable without color alone, and errors accompanied by a possible action. A dedicated interface, its design system, mobile scope, and additional languages remain to be defined; their absence does not justify an incomprehensible supervision experience.
+Decisive information must be accessible without reading every conversation. Interactive controls must be keyboard-accessible, states understandable without color alone, and errors accompanied by a possible action. A dedicated central Council interface or separate design system is not required; mobile-specific scope and additional languages remain deferred.
 
 ## 12. Measuring value and its limits
 
@@ -335,11 +346,11 @@ Decisions still required, without reopening those already agreed:
 
 1. V1 scope is selected: C01–C11, C16–C23, with M1 and M2 as delivery milestones. Choose representative requests and the deployment-specific roster before qualification; memory and learning remain deferred.
 2. Specify the actors and paths covered by acceptance authority, including the visibility of owner intervention.
-3. The V1 design starts with owner-selected existing agents and explicit team/council configuration, with a minimal Paperclip plugin supervision surface. Concrete agent identities and runtime availability are activation inputs. Automatic agent provisioning is deferred; ordinary Paperclip agent/catalogue setup remains available outside the Council mission.
+3. The V1 design composes suitable existing agents and prepares only missing responsibilities through ordinary Paperclip setup, using native screens with targeted Council additions. Concrete agent identities and runtime availability are activation inputs. Automatic Council provisioning remains deferred.
 4. Set usage budgets, proportionate stopping rules, and criteria for judging acceptable council overhead.
 5. Define the visible differences between suspension, withdrawal, reset, and deletion of knowledge before committing to memory capabilities.
 6. Specify the promised Paperclip compatibility and adoption beyond the initial setting before expanding distribution.
-7. Select delegated project priorities, finite shared-capacity rules, PR repository/base and permitted publication actor/path. These are activation inputs, not permission for this documentary change to operate a target project.
+7. Select delegated project priorities, concurrency limits, the accepted-result dependency for M2, PR repository/base and permitted publication actor/path. Define exclusive-resource rules only for a selected path needing them. These are activation inputs, not permission for this documentary change to operate a target project.
 
 ## 14. Sources and status
 
@@ -356,3 +367,5 @@ Version 0.3 records the September 30 owner scope decision, adds team lifecycle r
 Version 0.4 originally recorded owner-approved DEC-G4-01 in §6.3 and DEC-G3-01 for minimal supported decision readback. The later priority decision supersedes DEC-G3-01 for V1 with DEC-G3-02 receipts and persistent uncertainty handling. The former explicitly replaces the absolute monetary-cap interpretation with prudent admission control; all other mandate protections remain. Both technical gates stay open pending qualification. Future stronger guarantees are roadmap candidates, not V1 acceptance additions.
 
 Version 0.5 records the owner's explicit agreement, in the September 30 product-framing conversation, to implementation orchestration through a PR and durable multi-mission coordination. It adds C19–C23, J10–J12, A23–A30 and M1/M2, distinguishes project/mission/facilitation responsibilities and upstream product versus internal technical decomposition. This is a product-scope decision, not implementation, agent provisioning or runtime evidence. Existing mandate protections and deferred learning remain unchanged.
+
+Version 0.6 clarifies Council as an organization of agents and records the owner's 11 native-reuse decisions: native behavior by default, delegated continuation, targeted limits, reuse of prepared Linear decomposition, existing agents/workspaces/publication tools, accepted-result M2, native interactions/UI and proportionate bounded process. Authorized early drafts are distinct from the accepted PR handoff. Linear, Slack and Agent-Pixels are later integrations. The current plugin and N1 work remain the implementation base; this revision does not authorize a rewrite, automatic provisioning, Executive restart or runtime action.
