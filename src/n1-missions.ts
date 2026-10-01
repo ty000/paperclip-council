@@ -44,6 +44,7 @@ type Slot = {
   dispatchState?: "claimed" | "requested" | "unknown";
   dispatchReservationId?: string;
   dispatchRunId?: string | null;
+  dispatchUsageBaselineUnits?: number;
   commit?: string;
   authorRunId?: string;
 };
@@ -55,8 +56,10 @@ type N1State = {
   rootDispatchState?: "claimed" | "requested" | "unknown";
   rootDispatchRunId?: string | null;
   rootDispatchMode?: "native" | "fixture";
+  rootUsageBaselineUnits?: number;
   contributions: Slot[];
   candidate?: IntegratedCandidateVerification;
+  candidateRecordedVersion?: number;
   lastIntegrationFailure?: string;
 };
 
@@ -153,6 +156,38 @@ async function commandCas(
   };
   next.commandReceipts = [...mission.aggregate.commandReceipts, item];
   const after = await cas(ctx, mission, next, expectedVersion);
+  return { outcome: "applied" as const, mission: after, receipt: item };
+}
+
+async function recoveredCommandCas(
+  ctx: PluginContext,
+  mission: MissionRecord,
+  body: Record<string, unknown>,
+  actorType: "user" | "agent",
+  actorId: string,
+  next: MissionAggregate,
+) {
+  const commandId = uuid(body.commandId, "commandId");
+  const requestedVersion = integer(body.expectedVersion, "expectedVersion");
+  const payloadHash = canonicalPayloadHash(body);
+  const old = receipt(mission, commandId, actorId, payloadHash);
+  if (old) return { outcome: "replayed" as const, mission, receipt: old };
+  if (mission.version !== requestedVersion + 1) {
+    throw new MissionError(409, "version_conflict", "Mission recovery requires exactly one intervening version", {
+      currentVersion: mission.version,
+    });
+  }
+  if (mission.aggregate.commandReceipts.length >= 100) {
+    throw new MissionError(409, "command_limit_reached", "Mission command receipt limit reached");
+  }
+  const command = boundedString(body.command, "command") as MissionReceipt["command"];
+  const nextVersion = mission.version + 1;
+  const item: MissionReceipt = {
+    commandId, command, actorType, actorId, payloadHash, appliedVersion: nextVersion,
+    result: { missionId: mission.missionId, version: nextVersion }, recordedAt: new Date().toISOString(),
+  };
+  next.commandReceipts = [...mission.aggregate.commandReceipts, item];
+  const after = await cas(ctx, mission, next, mission.version);
   return { outcome: "applied" as const, mission: after, receipt: item };
 }
 
@@ -276,7 +311,9 @@ export function inspectN1State(mission: MissionRecord) {
   if (!state) return null;
   const unresolved = state.contributions.find((slot) => slot.issueState === "unknown" || slot.issueState === "creation_claimed");
   const nextAction = state.candidate
-    ? "Integration Lead has published a checked candidate; eligible final reviewer may begin N2 review."
+    ? mission.aggregate.phase === "ready_for_review"
+      ? "Integration Lead has published a checked candidate; eligible final reviewer may begin N2 review."
+      : "Owner must reconcile terminal Integration Lead usage before the checked candidate becomes review-ready."
     : unresolved
       ? "Manual native issue reconciliation is required before any further creation or dispatch."
       : state.contributions.length === 0
@@ -373,9 +410,13 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
         || Date.now() < Date.parse(admission!.periodStart) || Date.now() >= Date.parse(admission!.periodEnd)) {
       throw new MissionError(409, "g4_reservation_unavailable", "Root launch requires its durable unsettled reservation");
     }
+    let rootUsageBaselineUnits: number | undefined;
     if (nativeProfile) {
       assertNativeEnvelope(admission!, nativeProfile);
-      await assertNativeLaunchAllowed(ctx, { companyId: mission.companyId, issueId: mission.rootIssueId });
+      rootUsageBaselineUnits = await assertNativeLaunchAllowed(ctx, {
+        companyId: mission.companyId,
+        issueId: mission.rootIssueId,
+      });
     }
     const root = await ctx.issues.get(mission.rootIssueId, mission.companyId);
     const leadAgentId = mission.aggregate.responsibilities.integrationLeadAgentId;
@@ -388,7 +429,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     }
     const next: MissionAggregate = {
       ...mission.aggregate,
-      n1: { ...state, rootDispatchState: "claimed" },
+      n1: { ...state, rootDispatchState: "claimed", rootUsageBaselineUnits },
       effectIntents: [...mission.aggregate.effectIntents, {
         kind: "root_wakeup", state: "claimed", reservationId: state.activationReservationId,
         issueId: mission.rootIssueId, assigneeAgentId: leadAgentId,
@@ -430,25 +471,71 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     return { outcome: confirmed ? "requested" as const : "unknown" as const, mission: finalMission, receipt: claim.receipt };
   }
   if (input.body.command === "reconcile-lead-usage") {
+    const commandId = uuid(input.body.commandId, "commandId");
+    const payloadHash = canonicalPayloadHash(input.body);
+    const replay = receipt(mission, commandId, input.actorUserId!, payloadHash);
+    if (replay) return { outcome: "replayed" as const, mission, receipt: replay };
+    const requestedVersion = integer(input.body.expectedVersion, "expectedVersion");
+    const recoveringSettledCommand = mission.version !== requestedVersion;
+    if (!recoveringSettledCommand) requireFreshCommand(mission, input.body);
     const state = n1State(mission);
-    if (!state?.rootDispatchRunId || state.rootDispatchState !== "requested" || state.rootDispatchMode !== "native") {
+    if (!state?.rootDispatchRunId || state.rootDispatchState !== "requested" || state.rootDispatchMode !== "native"
+        || !Number.isSafeInteger(state.rootUsageBaselineUnits) || state.rootUsageBaselineUnits! < 0) {
       throw new MissionError(409, "root_dispatch_unavailable", "A confirmed native lead run is required for usage reconciliation");
+    }
+    if (state.candidate && (mission.aggregate.phase !== "integrating" || mission.aggregate.control.status !== "active")) {
+      throw new MissionError(409, "candidate_not_integrating", "Only an active integrating candidate can become review-ready");
     }
     const profile = await readNativeG4Profile(ctx, mission.companyId);
     if (!profile) throw new MissionError(409, "g4_measurement_unqualified", "No supported native N1 operating profile is configured");
     const envelope = await readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
     if (!envelope) throw new MissionError(422, "g4_not_configured", "No task/period admission envelope is configured");
     assertNativeEnvelope(envelope, profile);
+    if (recoveringSettledCommand) {
+      const settlementAlreadyRecorded = envelope.reservations
+        .find((item) => item.reservationId === state.activationReservationId)
+        ?.settlementReceipts?.some((item) => item.commandId === commandId);
+      if (mission.version !== requestedVersion + 1
+          || !state.candidate
+          || state.candidateRecordedVersion !== requestedVersion
+          || !settlementAlreadyRecorded) {
+        throw new MissionError(409, "version_conflict", "Mission changed incompatibly with lead usage settlement recovery", {
+          currentVersion: mission.version,
+        });
+      }
+    }
     const settlement = await settleNativeRunUsage(ctx, {
-      commandId: uuid(input.body.commandId, "commandId"),
+      commandId,
       companyId: mission.companyId,
       issueId: mission.rootIssueId,
       runId: state.rootDispatchRunId,
+      baselineUsageUnits: state.rootUsageBaselineUnits!,
       periodKey: state.periodKey,
       reservationId: state.activationReservationId,
       expectedVersion: envelope.version,
     });
-    return { ...settlement, mission };
+    if (recoveringSettledCommand && settlement.outcome !== "replayed") {
+      throw new MissionError(409, "version_conflict", "Lead usage settlement recovery requires an exact admission replay", {
+        currentVersion: mission.version,
+      });
+    }
+    if (!state.candidate) return { ...settlement, mission };
+    const next: MissionAggregate = {
+      ...mission.aggregate,
+      phase: "ready_for_review",
+      control: { status: "inactive", reason: "candidate_ready_for_review" },
+      journal: [...mission.aggregate.journal, {
+        action: "lead_usage_settled_candidate_ready",
+        actorUserId: input.actorUserId,
+        runId: state.rootDispatchRunId,
+        candidate: state.candidate.candidate,
+        at: new Date().toISOString(),
+      }],
+    };
+    const promotion = recoveringSettledCommand
+      ? await recoveredCommandCas(ctx, mission, input.body, "user", input.actorUserId!, next)
+      : await commandCas(ctx, mission, input.body, "user", input.actorUserId!, next);
+    return { ...settlement, mission: promotion.mission, missionReceipt: promotion.receipt };
   }
   if (input.body.command !== "activate") throw new MissionError(400, "unknown_command", "Unsupported N1 board command");
   const commandId = uuid(input.body.commandId, "commandId");
@@ -769,6 +856,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       if (!envelope) throw new MissionError(422, "g4_not_configured", "No task/period admission envelope is configured");
       const fixtureRuntime = await isOwnedFixtureRuntime(ctx, mission.companyId);
       const nativeProfile = fixtureRuntime ? null : await readNativeG4Profile(ctx, mission.companyId);
+      let dispatchUsageBaselineUnits: number | undefined;
       if (!fixtureRuntime && !nativeProfile) {
         throw new MissionError(409, "g4_measurement_unqualified", "No supported native N1 operating profile is configured");
       }
@@ -786,7 +874,10 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
           throw new MissionError(409, "g4_sequential_settlement_required",
             "The previous contribution run must be terminal and its token usage settled before another child launch");
         }
-        await assertNativeLaunchAllowed(ctx, { companyId: mission.companyId, issueId: slot.childIssueId });
+        dispatchUsageBaselineUnits = await assertNativeLaunchAllowed(ctx, {
+          companyId: mission.companyId,
+          issueId: slot.childIssueId,
+        });
       }
       const reserved = await reserveAdmission(ctx, {
         companyId: mission.companyId, periodKey: state.periodKey,
@@ -797,7 +888,12 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         throw new MissionError(409, "g4_reservation_unavailable", "Durable child reservation is unavailable");
       }
       const slots = [...state.contributions];
-      slots[index] = { ...slot, dispatchState: "claimed", dispatchReservationId: reservationId };
+      slots[index] = {
+        ...slot,
+        dispatchState: "claimed",
+        dispatchReservationId: reservationId,
+        dispatchUsageBaselineUnits,
+      };
       const next: MissionAggregate = {
         ...mission.aggregate,
         n1: { ...state, contributions: slots },
@@ -855,7 +951,8 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       await lead(ctx, mission, input);
       const contributionId = uuid(body.contributionId, "contributionId");
       const slot = state.contributions.find((entry) => entry.contributionId === contributionId);
-      if (!slot?.childIssueId || slot.dispatchState !== "requested" || !slot.dispatchReservationId || !slot.dispatchRunId) {
+      if (!slot?.childIssueId || slot.dispatchState !== "requested" || !slot.dispatchReservationId || !slot.dispatchRunId
+          || !Number.isSafeInteger(slot.dispatchUsageBaselineUnits) || slot.dispatchUsageBaselineUnits! < 0) {
         throw new MissionError(409, "dispatch_not_confirmed", "A confirmed native contribution run is required for usage reconciliation");
       }
       const profile = await readNativeG4Profile(ctx, mission.companyId);
@@ -868,6 +965,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         companyId: mission.companyId,
         issueId: slot.childIssueId,
         runId: slot.dispatchRunId,
+        baselineUsageUnits: slot.dispatchUsageBaselineUnits!,
         periodKey: state.periodKey,
         reservationId: slot.dispatchReservationId,
         expectedVersion: envelope.version,
@@ -925,8 +1023,19 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
           throw new MissionError(409, "child_not_done", "Both mapped native child issues must be done before integration");
         }
       }
-      const nativeProfile = await readNativeG4Profile(ctx, mission.companyId);
+      const fixtureRuntime = await isOwnedFixtureRuntime(ctx, mission.companyId);
+      const nativeProfile = fixtureRuntime ? null : await readNativeG4Profile(ctx, mission.companyId);
+      if (!fixtureRuntime && !nativeProfile) {
+        throw new MissionError(409, "g4_measurement_unqualified", "No supported native N1 operating profile is configured");
+      }
       if (nativeProfile) {
+        if (state.rootDispatchMode !== "native" || !state.rootDispatchRunId
+            || !Number.isSafeInteger(state.rootUsageBaselineUnits) || state.rootUsageBaselineUnits! < 0
+            || state.contributions.some((slot) => !slot.dispatchRunId
+              || !Number.isSafeInteger(slot.dispatchUsageBaselineUnits) || slot.dispatchUsageBaselineUnits! < 0)) {
+          throw new MissionError(409, "g4_measurement_unqualified",
+            "Native candidate publication requires pre-wakeup usage baselines for the lead and both contribution runs");
+        }
         const envelope = await readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
         if (!envelope) throw new MissionError(422, "g4_not_configured", "No task/period admission envelope is configured");
         assertNativeEnvelope(envelope, nativeProfile);
@@ -970,9 +1079,23 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         throw new MissionError(422, "integration_failed", reason, { currentVersion: recorded.version });
       }
       const next: MissionAggregate = {
-        ...mission.aggregate, phase: "ready_for_review", control: { status: "inactive", reason: "candidate_ready_for_review" },
-        n1: { ...state, candidate: verified, lastIntegrationFailure: undefined },
-        journal: [...mission.aggregate.journal, { action: "integrated_candidate_published", actorAgentId: actor.agentId, runId: actor.runId, candidate: verified.candidate, checks: verified.checks, at: new Date().toISOString() }],
+        ...mission.aggregate,
+        phase: nativeProfile ? "integrating" : "ready_for_review",
+        control: nativeProfile ? mission.aggregate.control : { status: "inactive", reason: "candidate_ready_for_review" },
+        n1: {
+          ...state,
+          candidate: verified,
+          candidateRecordedVersion: integer(body.expectedVersion, "expectedVersion") + 1,
+          lastIntegrationFailure: undefined,
+        },
+        journal: [...mission.aggregate.journal, {
+          action: nativeProfile ? "integrated_candidate_verified" : "integrated_candidate_published",
+          actorAgentId: actor.agentId,
+          runId: actor.runId,
+          candidate: verified.candidate,
+          checks: verified.checks,
+          at: new Date().toISOString(),
+        }],
       };
       const result = await commandCas(ctx, mission, body, "agent", actor.agentId, next);
       return { status: 200, body: result };

@@ -434,11 +434,25 @@ export function CouncilMissionsPage({ context }: PluginPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [lookupId, setLookupId] = useState("");
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [lookupNotice, setLookupNotice] = useState<string | null>(null);
+  const lookupAlertRef = useRef<HTMLParagraphElement>(null);
+  const lookupControllerRef = useRef<AbortController | null>(null);
+  const lookupContextRef = useRef({ companyId, refreshKey });
+  lookupContextRef.current = { companyId, refreshKey };
 
   useEffect(() => {
+    lookupControllerRef.current?.abort();
+    lookupControllerRef.current = null;
     setMissions([]);
     setSelectedId(null);
     setLoadedCompanyId(null);
+    setLookupId("");
+    setLookupLoading(false);
+    setLookupError(null);
+    setLookupNotice(null);
     if (!companyId) {
       setLoading(false);
       setError("Select a company to inspect Council missions.");
@@ -467,8 +481,65 @@ export function CouncilMissionsPage({ context }: PluginPageProps) {
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      lookupControllerRef.current?.abort();
+    };
   }, [companyId, refreshKey]);
+
+  useEffect(() => {
+    if (lookupError) lookupAlertRef.current?.focus();
+  }, [lookupError]);
+
+  async function lookupMission(event: FormEvent) {
+    event.preventDefault();
+    if (!companyId) return;
+    const missionId = lookupId.trim();
+    lookupControllerRef.current?.abort();
+    const controller = new AbortController();
+    lookupControllerRef.current = controller;
+    const lookupContext = { companyId, refreshKey };
+    setLookupLoading(true);
+    setLookupError(null);
+    setLookupNotice(null);
+    const path = "/api/plugins/private.paperclip-council/api/companies/" +
+      encodeURIComponent(companyId) + "/missions/" + encodeURIComponent(missionId) +
+      "?companyId=" + encodeURIComponent(companyId);
+    try {
+      const response = await fetch(path, { credentials: "same-origin", signal: controller.signal });
+      const body = await response.json() as MissionInspection & { error?: string };
+      if (!response.ok) throw new Error(body.error ?? "Mission lookup failed");
+      if (controller.signal.aborted
+          || lookupContextRef.current.companyId !== lookupContext.companyId
+          || lookupContextRef.current.refreshKey !== lookupContext.refreshKey) return;
+      setMissions((current) => current.some((item) => item.mission.missionId === body.mission.missionId)
+        ? current.map((item) => item.mission.missionId === body.mission.missionId ? body : item)
+        : [...current, body]);
+      setSelectedId(body.mission.missionId);
+      setLookupId(body.mission.missionId);
+      setLookupNotice("Mission found and selected.");
+    } catch (cause: unknown) {
+      if (!controller.signal.aborted
+          && lookupContextRef.current.companyId === lookupContext.companyId
+          && lookupContextRef.current.refreshKey === lookupContext.refreshKey) {
+        setLookupError(message(cause));
+      }
+    } finally {
+      if (lookupControllerRef.current === controller) {
+        lookupControllerRef.current = null;
+        setLookupLoading(false);
+      }
+    }
+  }
+
+  function refreshMissions() {
+    lookupControllerRef.current?.abort();
+    lookupControllerRef.current = null;
+    setLookupLoading(false);
+    setLookupError(null);
+    setLookupNotice(null);
+    setRefreshKey((value) => value + 1);
+  }
 
   const selected = !loading && !error && loadedCompanyId === companyId
     ? missions.find((item) => item.mission.missionId === selectedId) ?? null
@@ -478,25 +549,48 @@ export function CouncilMissionsPage({ context }: PluginPageProps) {
     <main style={{ ...stack, padding: "1.5rem", maxWidth: "75rem", margin: "0 auto" }}>
       <div style={{ ...row, justifyContent: "space-between" }}>
         <div><h1 style={{ marginBottom: "0.25rem" }}>Council missions</h1><p style={{ marginTop: 0 }}>Owner inspection of pinned teams, contributions, admission and the integrated candidate.</p></div>
-        <button style={button} onClick={() => setRefreshKey((value) => value + 1)} disabled={loading}>Refresh</button>
+        <button style={button} onClick={refreshMissions} disabled={loading}>Refresh</button>
       </div>
       {loading && <p role="status">Loading missions…</p>}
       {error && <p role="alert" style={card}>{error}</p>}
-      {!loading && !error && loadedCompanyId === companyId && missions.length === 0 && <p>No Council missions are recorded for this company.</p>}
-      {!loading && !error && loadedCompanyId === companyId && missions.length > 0 && (
+      {!loading && !error && loadedCompanyId === companyId && (
         <div style={grid}>
           <section style={card} aria-labelledby="mission-picker-title">
             <h2 id="mission-picker-title" style={{ marginTop: 0 }}>Missions</h2>
-            <label style={field}>
-              <span>Select mission</span>
-              <select style={input} value={selectedId ?? ""} onChange={(event) => setSelectedId(event.currentTarget.value)}>
-                {missions.map((item) => (
-                  <option key={item.mission.missionId} value={item.mission.missionId}>
-                    {item.mission.aggregate.mandate.objective} — {item.mission.aggregate.phase}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <p id="mission-list-scope">The initial list shows up to the latest 50 missions. Find an older mission by its exact UUID; a successful result is added to this selector.</p>
+            <form style={stack} onSubmit={(event) => void lookupMission(event)}>
+              <label style={field}>
+                <span>Mission UUID</span>
+                <input
+                  style={input}
+                  value={lookupId}
+                  onChange={(event) => setLookupId(event.currentTarget.value)}
+                  aria-describedby="mission-list-scope"
+                  autoComplete="off"
+                  placeholder="00000000-0000-0000-0000-000000000000"
+                  pattern="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                  title="Enter an exact mission UUID"
+                  required
+                />
+              </label>
+              <button style={button} type="submit" disabled={lookupLoading || !lookupId.trim()}>
+                {lookupLoading ? "Finding mission…" : "Find mission"}
+              </button>
+            </form>
+            {lookupError && <p ref={lookupAlertRef} tabIndex={-1} role="alert" style={{ color: "var(--destructive, #dc2626)" }}>Mission lookup failed: {lookupError}</p>}
+            {lookupNotice && <p role="status" aria-live="polite">{lookupNotice}</p>}
+            {missions.length === 0 ? <p>No Council missions are recorded in the latest 50 for this company.</p> : (
+              <label style={{ ...field, marginTop: "1rem" }}>
+                <span>Select mission</span>
+                <select style={input} value={selectedId ?? ""} onChange={(event) => setSelectedId(event.currentTarget.value)}>
+                  {missions.map((item) => (
+                    <option key={item.mission.missionId} value={item.mission.missionId}>
+                      {item.mission.aggregate.mandate.objective} — {item.mission.aggregate.phase}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </section>
           {selected && <section style={card} aria-labelledby="mission-state-title">
             <h2 id="mission-state-title" style={{ marginTop: 0 }}>{selected.mission.aggregate.mandate.objective}</h2>

@@ -476,6 +476,9 @@ export async function configureAdmission(ctx: PluginContext, input: AdmissionCon
     if (existing.version !== positiveInteger(input.expectedVersion, "expectedVersion")) {
       throw new AdmissionError(409, "version_conflict", "Admission configuration version is stale", { current: existing });
     }
+    if (existing.commandReceipts.length >= MAX_RECEIPTS) {
+      throw new AdmissionError(409, "command_limit_reached", `Admission command receipt limit of ${MAX_RECEIPTS} is reached`);
+    }
     if (existing.reservations.length > 0) {
       throw new AdmissionError(409, "configuration_in_use", "A period with reservation history cannot be reconfigured");
     }
@@ -497,7 +500,7 @@ export async function configureAdmission(ctx: PluginContext, input: AdmissionCon
         payloadHash: hash,
         appliedVersion: existing.version + 1,
         recordedAt: at,
-      }].slice(-MAX_RECEIPTS),
+      }],
     };
     const updated = await casDocument(ctx, existing, document);
     if (!updated) throw new AdmissionError(409, "version_conflict", "Admission configuration changed concurrently", { current: await readAdmission(ctx, parsed) });
@@ -644,6 +647,9 @@ export async function settleAdmission(ctx: PluginContext, input: AdmissionSettle
     return { outcome: "replayed", envelope: current, reservation: existing };
   }
   if (current.version !== expectedVersion) throw new AdmissionError(409, "version_conflict", "Admission version is stale", { current });
+  if (existing.settlementReceipts.length >= MAX_RECEIPTS) {
+    throw new AdmissionError(409, "command_limit_reached", `Admission settlement receipt limit of ${MAX_RECEIPTS} is reached`);
+  }
 
   const previousKnownUsage = existing.lastKnownUsageUnits;
   if (parsed.usage.status === "known" && parsed.usage.units < previousKnownUsage) {
@@ -670,7 +676,7 @@ export async function settleAdmission(ctx: PluginContext, input: AdmissionSettle
       payloadHash: hash,
       appliedVersion: nextVersion,
       recordedAt: at,
-    }].slice(-MAX_RECEIPTS),
+    }],
   };
   let allowance = current.allowance;
   if (allowance.status === "known" && parsed.usage.status === "known") {

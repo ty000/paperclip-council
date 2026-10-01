@@ -76,7 +76,7 @@ describe("native G4 profile", () => {
   });
 
   it("honors host invocation and budget blocks before a native launch", async () => {
-    await expect(assertNativeLaunchAllowed(context({}, summary({ runs: [] })), { companyId, issueId })).resolves.toBeUndefined();
+    await expect(assertNativeLaunchAllowed(context({}, summary({ runs: [] })), { companyId, issueId })).resolves.toBe(150);
     await expect(assertNativeLaunchAllowed(context({}, summary({
       runs: [],
       invocationBlocks: [{ issueId, agentId: "agent", scopeType: "company", scopeId: companyId, scopeName: "Company", reason: "budget" }],
@@ -94,12 +94,13 @@ describe("native G4 profile", () => {
       companyId,
       issueId,
       runId,
+      baselineUsageUnits: 40,
       periodKey: "n1-qualified-2026-10-01",
       reservationId: "60000000-0000-4000-8000-000000000006",
       expectedVersion: 3,
     })).resolves.toEqual({ outcome: "settled" });
     expect(settleAdmission).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      usage: expect.objectContaining({ status: "known", units: 150, source: expect.stringContaining("monetary-cost=unpriced") }),
+      usage: expect.objectContaining({ status: "known", units: 110, source: expect.stringContaining("issue-baseline=40") }),
       remainingExposure: expect.objectContaining({ status: "known", units: 0, source: expect.stringContaining("terminal=succeeded") }),
     }));
   });
@@ -112,6 +113,21 @@ describe("native G4 profile", () => {
       companyId,
       issueId,
       runId,
+      baselineUsageUnits: 0,
+      periodKey: "n1-qualified-2026-10-01",
+      reservationId: "60000000-0000-4000-8000-000000000006",
+      expectedVersion: 3,
+    })).rejects.toMatchObject({ code: "g4_usage_unavailable" });
+    expect(settleAdmission).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when cumulative issue usage does not exceed the pre-wakeup baseline", async () => {
+    await expect(settleNativeRunUsage(context({}, summary()), {
+      commandId: "50000000-0000-4000-8000-000000000005",
+      companyId,
+      issueId,
+      runId,
+      baselineUsageUnits: 150,
       periodKey: "n1-qualified-2026-10-01",
       reservationId: "60000000-0000-4000-8000-000000000006",
       expectedVersion: 3,

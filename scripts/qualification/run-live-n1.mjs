@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { defaultHostRoot, inspectHost, repositoryRoot } from "./paperclip-host.mjs";
 import { runProcessGroup } from "./process-group.mjs";
 import { withOwnedQualificationRuntime } from "./run-bounded.mjs";
+import { assertQualificationEvidence, claimLiveEvidencePaths } from "./evidence-contract.mjs";
 
 function git(args) {
   return execFileSync("git", args, { cwd: repositoryRoot, encoding: "utf8" }).trim();
@@ -63,18 +64,13 @@ async function installChromium(host, playwrightBrowsersPath) {
 }
 
 // fallow-ignore-next-line complexity
-function assertPassingEvidence(evidencePath, candidateCommit) {
+function assertPassingEvidence(evidencePath, candidateCommit, notBefore) {
   const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
-  const failedResult = Object.entries(evidence.results ?? {}).find(([, result]) => result !== "PASS");
-  if (evidence.proofId !== "paperclip-council-n1-observable-native-qualification-v1"
-    || evidence.candidate?.commit !== candidateCommit
-    || evidence.outcome !== "N1 OBSERVABLE RESULT VALIDATED"
-    || failedResult) {
-    throw new Error(`Native N1 evidence did not pass for ${candidateCommit}`);
-  }
+  assertQualificationEvidence(evidence, { mode: "live", candidateCommit, notBefore });
 }
 
 async function runNativeQualification(runtime, options) {
+  const notBefore = Date.now();
   await runProcessGroup("corepack", ["pnpm", "test:functional"], {
     cwd: repositoryRoot,
     timeoutMs: 45 * 60_000,
@@ -86,22 +82,26 @@ async function runNativeQualification(runtime, options) {
       PAPERCLIP_PLAYWRIGHT_BROWSERS_PATH: options.playwrightBrowsersPath,
       PLAYWRIGHT_BROWSERS_PATH: options.playwrightBrowsersPath,
       COUNCIL_PACKAGE_EVIDENCE_PATH: options.evidencePath,
+      COUNCIL_N1_LIVE_SCREENSHOT_PATH: options.screenshotPath,
     },
   });
-  assertPassingEvidence(options.evidencePath, options.candidateCommit);
+  assertPassingEvidence(options.evidencePath, options.candidateCommit, notBefore);
 }
 
 async function main() {
   authorizedProfile();
   assertCodexAuthentication();
   const candidateCommit = committedCandidate();
+  const { evidencePath, screenshotPath } = claimLiveEvidencePaths(
+    repositoryRoot,
+    candidateCommit,
+    process.env.COUNCIL_PACKAGE_EVIDENCE_PATH,
+  );
   const host = preparedHost();
   const playwrightBrowsersPath = resolve(repositoryRoot, ".paperclip/qualification/playwright");
   await installChromium(host, playwrightBrowsersPath);
-  const evidencePath = process.env.COUNCIL_PACKAGE_EVIDENCE_PATH
-    ?? resolve(repositoryRoot, "artifacts", "n1-live.json");
   await withOwnedQualificationRuntime((runtime) => runNativeQualification(runtime, {
-    candidateCommit, host, playwrightBrowsersPath, evidencePath,
+    candidateCommit, host, playwrightBrowsersPath, evidencePath, screenshotPath,
   }));
 }
 

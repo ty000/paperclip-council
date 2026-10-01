@@ -1264,13 +1264,86 @@ try {
     await ownerPage.getByLabel("Name").fill("Stale browser revision");
     await ownerPage.getByRole("button", { name: "Publish revision" }).click();
     await ownerPage.getByRole("alert").filter({ hasText: "stale" }).waitFor();
+    const missionListPattern = "**/api/plugins/*/api/companies/*/missions?**";
+    await ownerPage.route(missionListPattern, async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      await route.fulfill({
+        response,
+        json: {
+          ...body,
+          missions: body.missions.filter((item: any) => item.mission.missionId !== missionId),
+        },
+      });
+    });
     await ownerPage.goto(`${baseUrl}/CPQ/council-missions`, { waitUntil: "networkidle" });
     await ownerPage.getByRole("heading", { name: "Council missions" }).waitFor();
-    await ownerPage.getByLabel("Select mission").selectOption(activeFixture.missionId);
+    await ownerPage.getByText("The initial list shows up to the latest 50 missions.", { exact: false }).waitFor();
+    assert.equal(await ownerPage.locator(`option[value="${missionId}"]`).count(), 0);
+    await ownerPage.getByLabel("Mission UUID").fill(missionId);
+    await ownerPage.getByRole("button", { name: "Find mission" }).click();
+    await ownerPage.getByRole("status").filter({ hasText: "Mission found and selected." }).waitFor();
+    assert.equal(await ownerPage.getByLabel("Select mission").inputValue(), missionId);
+    const selectedMissionHeading = await ownerPage.locator("#mission-state-title").textContent();
+    const unknownMissionId = randomUUID();
+    await ownerPage.getByLabel("Mission UUID").fill(unknownMissionId);
+    await ownerPage.getByRole("button", { name: "Find mission" }).click();
+    await ownerPage.getByRole("alert").filter({ hasText: "Mission lookup failed: Mission not found" }).waitFor();
+    assert.equal(await ownerPage.getByLabel("Select mission").inputValue(), missionId);
+    assert.equal(await ownerPage.locator("#mission-state-title").textContent(), selectedMissionHeading);
+
+    let releaseRefreshLookup!: () => void;
+    let markRefreshLookupStarted!: () => void;
+    const refreshLookupReleased = new Promise<void>((resolveRelease) => { releaseRefreshLookup = resolveRelease; });
+    const refreshLookupStarted = new Promise<void>((resolveStarted) => { markRefreshLookupStarted = resolveStarted; });
+    const delayedRefreshLookup = async (route: any) => {
+      markRefreshLookupStarted();
+      await refreshLookupReleased;
+      try { await route.continue(); } catch { /* refresh aborts the obsolete request */ }
+    };
+    const exactMissionPattern = `**/api/plugins/*/api/companies/*/missions/${missionId}?**`;
+    await ownerPage.route(exactMissionPattern, delayedRefreshLookup);
+    await ownerPage.getByLabel("Mission UUID").fill(missionId);
+    await ownerPage.getByRole("button", { name: "Find mission" }).click();
+    await refreshLookupStarted;
+    await ownerPage.getByRole("button", { name: "Refresh" }).click();
+    releaseRefreshLookup();
+    await ownerPage.getByText("The initial list shows up to the latest 50 missions.", { exact: false }).waitFor();
+    await ownerPage.waitForTimeout(50);
+    assert.equal(await ownerPage.locator(`option[value="${missionId}"]`).count(), 0, "a delayed pre-refresh lookup must be discarded");
+    await ownerPage.unroute(exactMissionPattern, delayedRefreshLookup);
+
+    let releaseCompanyLookup!: () => void;
+    let markCompanyLookupStarted!: () => void;
+    const companyLookupReleased = new Promise<void>((resolveRelease) => { releaseCompanyLookup = resolveRelease; });
+    const companyLookupStarted = new Promise<void>((resolveStarted) => { markCompanyLookupStarted = resolveStarted; });
+    const delayedCompanyLookup = async (route: any) => {
+      markCompanyLookupStarted();
+      await companyLookupReleased;
+      try { await route.continue(); } catch { /* company navigation aborts company A lookup */ }
+    };
+    await ownerPage.route(exactMissionPattern, delayedCompanyLookup);
+    await ownerPage.getByLabel("Mission UUID").fill(missionId);
+    await ownerPage.getByRole("button", { name: "Find mission" }).click();
+    await companyLookupStarted;
+    const companySwitch = ownerPage.goto(`${baseUrl}/FCQ/council-missions`, { waitUntil: "networkidle" });
+    releaseCompanyLookup();
+    await companySwitch;
+    await ownerPage.getByRole("heading", { name: "Council missions" }).waitFor();
+    await ownerPage.getByText("No Council missions are recorded in the latest 50 for this company.").waitFor();
+    assert.equal(await ownerPage.locator(`option[value="${missionId}"]`).count(), 0, "company A lookup must not mutate company B state");
+    await ownerPage.unroute(exactMissionPattern, delayedCompanyLookup);
+
+    await ownerPage.goto(`${baseUrl}/CPQ/council-missions`, { waitUntil: "networkidle" });
+    await ownerPage.getByRole("heading", { name: "Council missions" }).waitFor();
+    evidence.results.n1MissionExactLookupBeyondLatestList = "PASS";
+    await ownerPage.getByLabel("Mission UUID").fill(activeFixture.missionId);
+    await ownerPage.getByRole("button", { name: "Find mission" }).click();
+    await ownerPage.getByRole("status").filter({ hasText: "Mission found and selected." }).waitFor();
     await ownerPage.getByRole("heading", { name: /^N1 fixture mission [AB]$/ }).waitFor();
     await ownerPage.getByRole("heading", { name: "Contributions" }).waitFor();
     await ownerPage.getByText("Admission and usage").waitFor();
-    await ownerPage.route("**/api/plugins/*/api/companies/*/missions?**", (route) => route.abort());
+    await ownerPage.route(missionListPattern, (route) => route.abort());
     await ownerPage.getByRole("button", { name: "Refresh" }).click();
     await ownerPage.getByRole("alert").waitFor();
     assert.equal(await ownerPage.getByRole("heading", { name: "Contributions" }).count(), 0);
@@ -1580,8 +1653,8 @@ try {
       await page.getByRole("heading", { name: "Contributions" }).waitFor();
       await page.getByRole("heading", { name: "Admission and usage" }).waitFor();
       await page.getByText(/terminal-token-ledger/).waitFor();
-      const liveScreenshotPath = process.env.COUNCIL_N1_LIVE_SCREENSHOT_PATH
-        ?? resolve(packageRoot, "artifacts", "n1-live-ready-for-review.png");
+      const liveScreenshotPath = process.env.COUNCIL_N1_LIVE_SCREENSHOT_PATH;
+      assert(liveScreenshotPath, "live screenshot path must be claimed by the N1 launcher");
       await mkdir(dirname(liveScreenshotPath), { recursive: true });
       await page.screenshot({ path: liveScreenshotPath, fullPage: true });
       evidence.liveN1.ui = { screenshot: liveScreenshotPath, missionId: live.missionId, rootIssueId: live.rootIssueId };

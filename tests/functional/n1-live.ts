@@ -352,14 +352,20 @@ export async function runLiveN1(input: {
   const leadRun = await waitForTerminalRun(leadRunId, input.getRun);
   assert.equal(leadRun.status, "succeeded", `lead run failed: ${leadRun.error ?? "unknown error"}`);
 
-  const leadUsageCommandId = randomUUID();
+  const integratingMission = await input.request("human", "GET", `${missionBase}/${missionId}?companyId=${companyId}`);
+  assert.equal(integratingMission.status, 200, JSON.stringify(integratingMission.body));
+  assert.equal(integratingMission.body.mission.aggregate.phase, "integrating");
+  const leadUsageExpectedVersion = integratingMission.body.mission.version;
+  assert(Number.isSafeInteger(leadUsageExpectedVersion) && leadUsageExpectedVersion > 0);
+  const leadUsageCommand = {
+    companyId,
+    command: "reconcile-lead-usage",
+    commandId: randomUUID(),
+    expectedVersion: leadUsageExpectedVersion,
+  };
   let leadUsage: ApiResult | null = null;
   for (let observation = 0; observation < 30; observation += 1) {
-    leadUsage = await input.request("human", "POST", commandPath, {
-      companyId,
-      command: "reconcile-lead-usage",
-      commandId: leadUsageCommandId,
-    });
+    leadUsage = await input.request("human", "POST", commandPath, leadUsageCommand);
     if (leadUsage.status === 200) break;
     if (leadUsage.status !== 409 || !["g4_run_not_terminal", "g4_usage_unavailable"].includes(leadUsage.body?.code)) {
       break;
@@ -382,9 +388,17 @@ export async function runLiveN1(input: {
 
   const admissionFinal = await input.request("human", "GET", `${admissionPath}?companyId=${companyId}&periodKey=${encodeURIComponent(profile.periodKey)}`);
   assert.equal(admissionFinal.status, 200, JSON.stringify(admissionFinal.body));
-  assert.equal(admissionFinal.body.envelope.reservations.length, 3);
-  assert(admissionFinal.body.envelope.reservations.every((reservation: any) => reservation.status === "settled"));
-  assert(admissionFinal.body.envelope.measurement.usedUnits > 0);
+  const settledReservations = admissionFinal.body.envelope.reservations as any[];
+  assert.equal(settledReservations.length, 3);
+  assert(settledReservations.every((reservation: any) => reservation.status === "settled"
+    && reservation.usage?.status === "known"
+    && Number.isSafeInteger(reservation.usage.units)
+    && reservation.usage.units > 0
+    && reservation.remainingExposure?.status === "known"
+    && reservation.remainingExposure.units === 0));
+  const knownUsageUnits = admissionFinal.body.envelope.allowance?.knownUsageUnits;
+  assert(Number.isSafeInteger(knownUsageUnits) && knownUsageUnits > 0);
+  assert.equal(knownUsageUnits, settledReservations.reduce((total: number, reservation: any) => total + reservation.usage.units, 0));
   assert.match(admissionFinal.body.envelope.measurement.source, /terminal-token-ledger/);
 
   const issueRuns = await Promise.all([

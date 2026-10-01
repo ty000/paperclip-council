@@ -16,7 +16,15 @@ afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 
-async function fixture(options: { revertAlpha?: boolean; whitespaceError?: boolean } = {}) {
+async function fixture(options: {
+  candidateAddThenRevert?: boolean;
+  extraCandidateChange?: boolean;
+  hiddenAlphaHistory?: boolean;
+  transientUnownedAlphaHistory?: boolean;
+  oversizedObject?: boolean;
+  revertAlpha?: boolean;
+  whitespaceError?: boolean;
+} = {}) {
   const root = await mkdtemp(resolve(tmpdir(), "council-integration-test-"));
   cleanup.push(root);
   const repository = resolve(root, "source");
@@ -29,7 +37,24 @@ async function fixture(options: { revertAlpha?: boolean; whitespaceError?: boole
   const baseCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
 
   execFileSync("git", ["switch", "-c", "contribution-a"], { cwd: repository });
-  await writeFile(resolve(repository, "alpha.txt"), "alpha\n");
+  if (options.transientUnownedAlphaHistory) {
+    await writeFile(resolve(repository, "unowned.txt"), "transient unowned history\n");
+    execFileSync("git", ["add", "unowned.txt"], { cwd: repository });
+    execFileSync("git", ["commit", "-m", "add transient unowned history"], { cwd: repository });
+    execFileSync("git", ["rm", "unowned.txt"], { cwd: repository });
+    execFileSync("git", ["commit", "-m", "delete transient unowned history"], { cwd: repository });
+  }
+  if (options.hiddenAlphaHistory) {
+    await writeFile(resolve(repository, "unowned.txt"), "unowned history\n");
+    execFileSync("git", ["add", "unowned.txt"], { cwd: repository });
+    execFileSync("git", ["commit", "-m", "unowned historical change"], { cwd: repository });
+  }
+  await writeFile(
+    resolve(repository, "alpha.txt"),
+    options.oversizedObject
+      ? Buffer.alloc((16 * 1024 * 1024) + 1)
+      : options.whitespaceError ? "trailing whitespace \n" : "alpha\n",
+  );
   execFileSync("git", ["add", "alpha.txt"], { cwd: repository });
   execFileSync("git", ["commit", "-m", "alpha contribution"], { cwd: repository });
   const alphaCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
@@ -43,14 +68,21 @@ async function fixture(options: { revertAlpha?: boolean; whitespaceError?: boole
 
   execFileSync("git", ["switch", "-c", "candidate"], { cwd: repository });
   execFileSync("git", ["merge", "--no-ff", "contribution-a", "-m", "integrate contributions"], { cwd: repository });
+  if (options.candidateAddThenRevert) {
+    await writeFile(resolve(repository, "transient.txt"), "candidate-only transient content\n");
+    execFileSync("git", ["add", "transient.txt"], { cwd: repository });
+    execFileSync("git", ["commit", "-m", "add candidate-only transient content"], { cwd: repository });
+    execFileSync("git", ["rm", "transient.txt"], { cwd: repository });
+    execFileSync("git", ["commit", "-m", "revert candidate-only transient content"], { cwd: repository });
+  }
   if (options.revertAlpha) {
     execFileSync("git", ["rm", "alpha.txt"], { cwd: repository });
     execFileSync("git", ["commit", "-m", "drop alpha contribution"], { cwd: repository });
   }
-  if (options.whitespaceError) {
-    await writeFile(resolve(repository, "integration.txt"), "trailing whitespace \n");
+  if (options.extraCandidateChange) {
+    await writeFile(resolve(repository, "integration.txt"), "unattributed integration change\n");
     execFileSync("git", ["add", "integration.txt"], { cwd: repository });
-    execFileSync("git", ["commit", "-m", "bad integration formatting"], { cwd: repository });
+    execFileSync("git", ["commit", "-m", "extra integration change"], { cwd: repository });
   }
   const candidateCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
   execFileSync("git", ["branch", "base", baseCommit], { cwd: repository });
@@ -111,15 +143,23 @@ describe("integrated Git candidate verification", () => {
     });
     expect(result.checks.map((check) => check.name)).toEqual([
       "issue-bound-bundle",
+      "git-import-configuration",
       "git-bundle-verify",
       "declared-refs",
+      "git-object-bounds",
       "git-object-integrity",
       "base-ancestry",
       "contribution-ancestry",
+      "contribution-history-topology",
       "write-ownership",
       "contribution-tree-preservation",
+      "candidate-delta-attribution",
+      "candidate-history-topology",
       "git-diff-check",
     ]);
+    expect(result.checks.find((check) => check.name === "git-import-configuration")?.detail).toBe(
+      "bounded Git delta cache, packed-file mappings and single-thread pack window configured",
+    );
     expect(result.checks.every((check) => check.status === "passed")).toBe(true);
   });
 
@@ -129,6 +169,46 @@ describe("integrated Git candidate verification", () => {
 
     await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow(
       "Contribution alpha changed unowned path alpha.txt",
+    );
+  });
+
+  it("rejects an unowned historical change hidden behind a contribution tip", async () => {
+    const { ctx, input } = await fixture({ hiddenAlphaHistory: true });
+
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow(
+      "Contribution alpha changed unowned path unowned.txt",
+    );
+  });
+
+  it("rejects an unowned add-then-delete hidden inside contribution history", async () => {
+    const { ctx, input } = await fixture({ transientUnownedAlphaHistory: true });
+
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow(
+      "Contribution alpha changed unowned path unowned.txt",
+    );
+  });
+
+  it("rejects a candidate change that is not attributed to either contribution", async () => {
+    const { ctx, input } = await fixture({ extraCandidateChange: true });
+
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow(
+      "Candidate changed unattributed path integration.txt",
+    );
+  });
+
+  it("rejects candidate-only add-then-revert history despite an exact final delta", async () => {
+    const { ctx, input } = await fixture({ candidateAddThenRevert: true });
+
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow(
+      "Candidate-only history must contain exactly the declared integration commit",
+    );
+  });
+
+  it("rejects an imported object above the expanded-size limit before fsck", async () => {
+    const { ctx, input } = await fixture({ oversizedObject: true });
+
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow(
+      "git-object-bounds failed: an object exceeds the expanded-size limit",
     );
   });
 

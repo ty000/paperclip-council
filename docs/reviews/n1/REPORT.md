@@ -1,6 +1,6 @@
 # N1 — two contributors and an integrated candidate
 
-Updated: 2026-10-01 (Europe/Paris). Scope: Council package on the pinned, ephemeral Paperclip host. The source candidate now contains the installed native path needed for the observable N1 exit. N1 is complete for a particular commit only when `artifacts/n1-live.json`, generated from that clean commit, reports `N1 OBSERVABLE RESULT VALIDATED`; source checks or the historical fixture replay do not substitute for that result.
+Updated: 2026-10-01 (Europe/Paris). Scope: Council package on the pinned, ephemeral Paperclip host. The source candidate now contains the installed native path needed for the observable N1 exit. N1 is complete for a particular commit only when the create-only `artifacts/n1-live-<commit>.json`, generated from that clean commit, reports `N1 OBSERVABLE RESULT VALIDATED`; source checks or the historical fixture replay do not substitute for that result.
 
 ## Supported operating profile
 
@@ -14,25 +14,25 @@ Council supports one intentionally narrow native profile, configured per company
 - settlement only from the exact terminal run returned by `issues.summaries.getOrchestration`, using input, cached-input and output tokens;
 - zero monetary cost labelled `unpriced`, and zero reported tokens treated as unavailable rather than zero consumption.
 
-This is an admission control, not a provider billing engine or an absolute future-cost ceiling. The configured reservation is exposure, while terminal tokens are observed consumption. The pre-existing atomic reservation CAS, persistent unsettled state and no-blind-retry rules remain unchanged. No schema or migration change was needed.
+This is an admission control, not a provider billing engine or an absolute future-cost ceiling. The configured reservation is exposure, while terminal tokens are observed consumption. The pre-existing atomic reservation CAS, persistent unsettled state and no-blind-retry rules remain unchanged. The native operating profile required no additional migration beyond the additive `005_admission.sql` already included in this increment.
 
 ## N1 acceptance map
 
 | Criterion | Implemented gate | Exact-candidate runtime proof |
 | --- | --- | --- |
-| N1-A1 activation and identity | Mission pins exact active team/Council revisions and root ownership before activation. Native `start-lead` stores the Paperclip wakeup run ID; fixture binding remains test-only. | `liveN1.mission`, roster setup steps and lead run in `artifacts/n1-live.json`. |
+| N1-A1 activation and identity | Mission pins exact active team/Council revisions and root ownership before activation. Native `start-lead` stores the Paperclip wakeup run ID; fixture binding remains test-only. | `liveN1.mission`, roster setup steps and lead run in the commit-qualified live evidence JSON. |
 | N1-A2 G4 admission | Canonical profile validation, one reservation per launch, two active runs at most, no retry/correction, host budget/invocation checks, sequential child settlement and terminal token accounting. | `liveN1.admission` has exactly three settled reservations and positive run-derived usage; all three native run IDs are recorded. |
 | N1-A3 native effects | Lead and contributor commands require the mapped authenticated run and native checkout. Child creation remains claim-before-effect and correlated; uncertain results stop without retry. | Installed trace shows native root wake, two native child issues, two child wakeups and exact run-to-contribution binding. |
 | N1-A4 contributions and integration | Two distinct contributors, disjoint owned paths, attributed single-parent commits and a separate integration commit are required. | `liveN1.mission.mission.aggregate.n1.contributions` and the verified candidate bundle. |
 | N1-A5 publication | Publication requires both terminal usage settlements and the checked Git bundle. Failed verification records `integration_check_failed` without a candidate. | Journal contains the single forced invalid integration; the later candidate has `outcome=verified` and `publicationEligible=true`. |
-| N1-A6 inspection | The mission UI shows phase, next action, participants, child/run state, commits, candidate, measurement status/source, usage, remaining exposure and blocker. | `artifacts/n1-live-ready-for-review.png` plus the installed browser result in the JSON evidence. |
+| N1-A6 inspection | The mission UI shows phase, next action, participants, child/run state, commits, candidate, measurement status/source, usage, remaining exposure and blocker. | `artifacts/n1-live-<commit>-ready-for-review.png` plus the installed browser result in the commit-qualified JSON evidence; these paths identify the required proof shape, not a concluded live result. |
 | N1-A7 replayability | The live launcher requires a clean committed candidate, exact pinned Paperclip host, explicit provider authorization, exact model/effort and explicit positive run/period token bounds. | Candidate SHA, host SHA, native IDs, results, cleanup and generated evidence path are recorded by the launcher. |
 
 The reviewer is provisioned and pinned but is not woken. N1 stops at `ready_for_review`; N2 owns review/correction/acceptance, and N5 owns Council-driven PR publication.
 
 ## Authorized runtime observation — 2026-10-01
 
-The authorized campaign on clean commit `5d70ce1b7f43356dd47e5002284b1fa398bc863c` did not reach the N1 exit. Its immutable local artifact is `artifacts/n1-live.json`, SHA-256 `29dd843ee7de171c841cded74d9b8ea9184da94d5ef0dbcf3175e8a24a38715d`, with outcome `NON-CONCLUSIVE OR BLOCKED`.
+The authorized campaign on clean commit `5d70ce1b7f43356dd47e5002284b1fa398bc863c` did not reach the N1 exit. Its hash-recorded local artifact is `artifacts/n1-live.json`, SHA-256 `29dd843ee7de171c841cded74d9b8ea9184da94d5ef0dbcf3175e8a24a38715d`, with outcome `NON-CONCLUSIVE OR BLOCKED`; this ignored workspace file is not an immutable archive.
 
 - The root Integration Lead was dispatched through native Paperclip run `0e6e6b3a-6e98-49a7-b2af-b194bbcf4b19`.
 - Contributor Alpha was dispatched, created the requested file, then could not commit because Codex workspace-write protects `.git`. Contributor Beta was not dispatched and no candidate was published.
@@ -57,7 +57,7 @@ COUNCIL_N1_LIVE_PERIOD_UNITS=<at-least-three-times-reservation> \
 corepack pnpm qualification:live:n1
 ```
 
-The launcher refuses a dirty/uncommitted candidate, missing Codex auth, an unprepared host, a model/effort substitution or an insufficient allowance. It creates only an owned ephemeral Paperclip instance and repository, uses native board APIs for the live company/project/agents/issues, installs this exact package, runs one lead and two contributors, captures browser evidence, and removes its owned runtime after shutdown. It never wakes the reviewer or creates a PR through Council.
+The launcher refuses a dirty/uncommitted candidate, missing Codex auth, an unprepared host, a model/effort substitution or an insufficient allowance. Its default evidence target is commit-qualified as `artifacts/n1-live-<commit>.json`, and it refuses any pre-existing configured or default target before host preparation or provider launch rather than overwriting evidence. It creates only an owned ephemeral Paperclip instance and repository, uses native board APIs for the live company/project/agents/issues, installs this exact package, runs one lead and two contributors, captures browser evidence, and removes its owned runtime after shutdown. It never wakes the reviewer or creates a PR through Council.
 
 ## Council/Paperclip contract
 
@@ -65,7 +65,7 @@ Read-only inspection of pinned Paperclip `61b3fd57a695614dc4a37e2303f426a34a9795
 
 ## Receipts suite diagnosis
 
-The isolated receipts test had a genuine harness race unrelated to decision-receipt semantics: it opened an ephemeral TCP port, closed the probe, and only then asked PostgreSQL to bind the released port. A concurrent process could claim that port. The harness now uses the unique owned temporary directory as a PostgreSQL Unix-socket directory, removing the probe-and-release window. Missing `PAPERCLIP_TEST_HOST_ROOT` or Playwright browser configuration are deterministic launch-precondition failures, not this flake. Qualification requires the pinned read-only host and repo-owned browser cache. After the change, one direct validation and ten further complete repetitions passed all nine receipt checks.
+The isolated receipts test had a genuine harness race unrelated to decision-receipt semantics: it opened an ephemeral TCP port, closed the probe, and only then asked PostgreSQL to bind the released port. A concurrent process could claim that port. The harness now uses the unique owned temporary directory as a PostgreSQL Unix-socket directory, removing the probe-and-release window. Missing `PAPERCLIP_TEST_HOST_ROOT` or Playwright browser configuration are deterministic launch-precondition failures, not this flake. Qualification requires the pinned read-only host and repo-owned browser cache. After the change, one direct validation and ten further complete local repetitions were observed to pass all nine receipt checks; those repetition outputs were not archived as durable evidence.
 
 ## Remaining limits and decision rule
 
@@ -73,6 +73,7 @@ The isolated receipts test had a genuine harness race unrelated to decision-rece
 - If Paperclip returns a terminal run with no tokens, G4 stays unsettled and blocks publication.
 - A lost child-create or wake response remains an explicit unknown requiring manual reconciliation; there is no automatic general recovery engine.
 - Admission and mission rows are separate plugin-private CAS operations. A genuine crash after reservation can conservatively strand capacity until explicit reconciliation.
+- Git import is bounded in layers by bundle size, command time, object counts and sizes, and repository-local Git memory settings; it is not hard OS/cgroup isolation and does not impose independent RSS, CPU or I/O ceilings.
 - This increment does not qualify N2, N3, N4, N5, N6, Executive L03 or full V1 availability.
 
 Verdict is evidence-dependent: `complete` only for the exact commit whose live artifact has the required outcome and all named results `PASS`; otherwise `partial / keep-open`. Mergeability and merge status remain separate.

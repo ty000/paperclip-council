@@ -148,10 +148,18 @@ async function readNativeOrchestration(
   });
 }
 
+function orchestrationUsageUnits(summary: PluginIssueOrchestrationSummary): number {
+  const usageUnits = summary.costs.inputTokens + summary.costs.cachedInputTokens + summary.costs.outputTokens;
+  if (!Number.isSafeInteger(usageUnits) || usageUnits < 0) {
+    throw new AdmissionError(409, "g4_usage_unavailable", "Paperclip issue token usage is not a nonnegative safe integer");
+  }
+  return usageUnits;
+}
+
 export async function assertNativeLaunchAllowed(
   ctx: PluginContext,
   input: { companyId: string; issueId: string },
-): Promise<void> {
+): Promise<number> {
   const summary = await readNativeOrchestration(ctx, input);
   if (summary.invocationBlocks.length > 0) {
     throw new AdmissionError(422, "native_invocation_blocked", "Paperclip reports an invocation budget block", {
@@ -166,6 +174,7 @@ export async function assertNativeLaunchAllowed(
   if (summary.runs.length > 0) {
     throw new AdmissionError(409, "native_run_already_exists", "The target issue already has a native run; a new launch is not admissible");
   }
+  return orchestrationUsageUnits(summary);
 }
 
 export async function settleNativeRunUsage(
@@ -175,6 +184,7 @@ export async function settleNativeRunUsage(
     companyId: string;
     issueId: string;
     runId: string;
+    baselineUsageUnits: number;
     periodKey: string;
     reservationId: string;
     expectedVersion: number;
@@ -182,7 +192,7 @@ export async function settleNativeRunUsage(
 ): Promise<AdmissionResult> {
   const summary = await readNativeOrchestration(ctx, input);
   const issueRuns = summary.runs.filter((run) => run.issueId === input.issueId);
-  if (issueRuns.length !== 1 || issueRuns[0].id !== input.runId) {
+  if (summary.runs.length !== 1 || issueRuns.length !== 1 || issueRuns[0].id !== input.runId) {
     throw new AdmissionError(409, "g4_run_identity_unqualified", "Token usage cannot be attributed to exactly one expected native issue run", {
       expectedRunId: input.runId,
       observedRunIds: issueRuns.map((run) => run.id),
@@ -192,10 +202,16 @@ export async function settleNativeRunUsage(
   if (!TERMINAL_RUN_STATUSES.has(run.status) || !run.finishedAt) {
     throw new AdmissionError(409, "g4_run_not_terminal", "Native run usage remains unsettled until the run is terminal");
   }
-  const usageUnits = summary.costs.inputTokens + summary.costs.cachedInputTokens + summary.costs.outputTokens;
+  if (!Number.isSafeInteger(input.baselineUsageUnits) || input.baselineUsageUnits < 0) {
+    throw new AdmissionError(409, "g4_usage_baseline_unavailable", "Native run usage requires the issue token baseline recorded before wakeup");
+  }
+  const cumulativeUsageUnits = orchestrationUsageUnits(summary);
+  const usageUnits = cumulativeUsageUnits - input.baselineUsageUnits;
   if (!Number.isSafeInteger(usageUnits) || usageUnits <= 0) {
-    throw new AdmissionError(409, "g4_usage_unavailable", "A terminal run with zero reported tokens does not prove zero consumption", {
+    throw new AdmissionError(409, "g4_usage_unavailable", "A terminal run without a positive issue-token delta does not prove its consumption", {
       runId: run.id,
+      baselineUsageUnits: input.baselineUsageUnits,
+      cumulativeUsageUnits,
       costCents: summary.costs.costCents,
     });
   }
@@ -209,7 +225,7 @@ export async function settleNativeRunUsage(
     reservationId: input.reservationId,
     usage: {
       status: "known",
-      source: `${MEASUREMENT_SOURCE};run=${run.id};${pricing}`,
+      source: `${MEASUREMENT_SOURCE};run=${run.id};issue-baseline=${input.baselineUsageUnits};${pricing}`,
       units: usageUnits,
     },
     remainingExposure: {

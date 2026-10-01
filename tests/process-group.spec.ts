@@ -40,14 +40,14 @@ describe("bounded qualification process groups", () => {
     const pidPath = resolve(root, "descendant.pid");
     const runtimePath = resolve(root, "paperclip-council-package-timeout");
     await expect(runProcessGroup("bash", ["-lc", '(trap "" TERM; while :; do sleep 1; done) & echo "$!" > "$1"; mkdir "$2"; wait', "bash", pidPath, runtimePath], {
-      timeoutMs: 500,
+      timeoutMs: 5_000,
       terminationGraceMs: 100,
       onFailure: async () => rmSync(runtimePath, { recursive: true, force: true }),
     })).rejects.toThrow(/timed out/);
     const descendantPid = Number(readFileSync(pidPath, "utf8").trim());
     expect(() => execFileSync("kill", ["-0", String(descendantPid)])).toThrow();
     expect(existsSync(runtimePath)).toBe(false);
-  });
+  }, 10_000);
 
   it("keeps forced termination alive after the group leader exits", async () => {
     const root = await mkdtemp(resolve(tmpdir(), "council-process-group-leader-exit-"));

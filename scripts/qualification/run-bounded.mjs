@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { defaultHostRoot, inspectHost, repositoryRoot } from "./paperclip-host.mjs";
 import { isProcessGroupDrainError, runProcessGroup } from "./process-group.mjs";
 import { cleanupOwnedRuntime, createOwnedRuntime } from "./runtime-ownership.mjs";
+import { assertQualificationEvidence } from "./evidence-contract.mjs";
 
 function git(args) {
   return execFileSync("git", args, { cwd: repositoryRoot, encoding: "utf8" }).trim();
@@ -63,7 +64,9 @@ async function main() {
   const evidencePath = process.env.COUNCIL_PACKAGE_EVIDENCE_PATH
     ?? resolve(repositoryRoot, "artifacts/functional.json");
   const proofManifest = JSON.parse(readFileSync(resolve(repositoryRoot, "qualification/proof-manifest.json"), "utf8"));
-  if (proofManifest.schema_version !== "proof-manifest.v1" || proofManifest.status !== "partial"
+  if (proofManifest.schema_version !== "proof-manifest.v1"
+      || proofManifest.proof_id !== "paperclip-council-n1-safe-boundary-qualification-v1"
+      || proofManifest.status !== "partial"
       || proofManifest.closure?.decision !== "keep-open") {
     throw new Error("N1 qualification proof manifest must remain canonical and keep-open");
   }
@@ -76,6 +79,7 @@ async function main() {
   });
 
   await withOwnedQualificationRuntime(async (qualificationRuntime) => {
+    const notBefore = Date.now();
     await runProcessGroup("corepack", ["pnpm", "test:functional"], {
       cwd: repositoryRoot,
       timeoutMs: functionalTimeoutMs,
@@ -92,13 +96,7 @@ async function main() {
     });
 
     const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
-    const failedResult = Object.entries(evidence.results ?? {}).find(([, result]) => result !== "PASS");
-    if (evidence.proofId !== proofManifest.proof_id
-      || evidence.candidate?.commit !== candidateCommit
-      || evidence.outcome !== "N1 SAFE BOUNDARY VALIDATED"
-      || failedResult) {
-      throw new Error(`Bounded qualification evidence did not pass for ${candidateCommit}`);
-    }
+    assertQualificationEvidence(evidence, { mode: "safe", candidateCommit, notBefore });
   });
 }
 

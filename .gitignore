@@ -2,6 +2,8 @@ node_modules/
 dist/
 artifacts/functional.json
 artifacts/n1-live.json
+artifacts/n1-live-*.json
+artifacts/n1-live-*-ready-for-review.png
 artifacts/ui-page.png
 .npm-cache/
 .pnpm-store/

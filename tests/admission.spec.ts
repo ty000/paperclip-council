@@ -309,6 +309,81 @@ describe("G4 admission envelopes", () => {
     expect(current?.reservations).toEqual([]);
   });
 
+  it("stops configuration at 100 receipts without making the oldest commandId reusable", async () => {
+    const store = admissionStore();
+    const first = knownConfiguration();
+    await configureAdmission(store.context(), first);
+    let current = (await readAdmission(store.context(), first))!;
+
+    for (let index = 1; index < 100; index += 1) {
+      await configureAdmission(store.context(), knownConfiguration({
+        commandId: randomUUID(),
+        expectedVersion: current.version,
+      }));
+      current = (await readAdmission(store.context(), first))!;
+    }
+
+    expect(current.commandReceipts).toHaveLength(100);
+    await expect(configureAdmission(store.context(), knownConfiguration({
+      commandId: randomUUID(),
+      expectedVersion: current.version,
+    }))).rejects.toMatchObject({ status: 409, code: "command_limit_reached" });
+    await expect(configureAdmission(store.context(), first)).resolves.toMatchObject({
+      outcome: "replayed",
+      envelope: { version: current.version },
+    });
+    await expect(configureAdmission(store.context(), {
+      ...first,
+      limits: { ...first.limits, maxRetries: first.limits.maxRetries + 1 },
+    })).rejects.toMatchObject({ status: 409, code: "command_identity_conflict" });
+
+    const afterLimit = await readAdmission(store.context(), first);
+    expect(afterLimit).toMatchObject({ version: current.version, commandReceipts: current.commandReceipts });
+  });
+
+  it("stops settlement at 100 receipts without making the oldest commandId reusable", async () => {
+    const store = admissionStore();
+    await configureAdmission(store.context(), knownConfiguration());
+    const input = reservation({ requestedUnits: 20 });
+    await reserveAdmission(store.context(), input);
+    const firstCommandId = randomUUID();
+    const settlement = (commandId: string, expectedVersion: number, units = 5) => ({
+      commandId,
+      companyId,
+      periodKey: input.periodKey,
+      reservationId: input.reservationId,
+      usage: { status: "known" as const, source: "fixture", units },
+      remainingExposure: { status: "known" as const, source: "fixture", units: 1 },
+      expectedVersion,
+    });
+
+    let current = (await readAdmission(store.context(), input))!;
+    const first = settlement(firstCommandId, current.version);
+    await settleAdmission(store.context(), first);
+    current = (await readAdmission(store.context(), input))!;
+    for (let index = 1; index < 100; index += 1) {
+      await settleAdmission(store.context(), settlement(randomUUID(), current.version));
+      current = (await readAdmission(store.context(), input))!;
+    }
+
+    expect(current.reservations[0]?.settlementReceipts).toHaveLength(100);
+    await expect(settleAdmission(store.context(), settlement(randomUUID(), current.version))).rejects.toMatchObject({
+      status: 409,
+      code: "command_limit_reached",
+    });
+    await expect(settleAdmission(store.context(), first)).resolves.toMatchObject({
+      outcome: "replayed",
+      envelope: { version: current.version },
+    });
+    await expect(settleAdmission(store.context(), settlement(firstCommandId, current.version, 6))).rejects.toMatchObject({
+      status: 409,
+      code: "command_identity_conflict",
+    });
+
+    const afterLimit = await readAdmission(store.context(), input);
+    expect(afterLimit).toMatchObject({ version: current.version, reservations: current.reservations });
+  });
+
   it("exposes structured errors for callers wiring admission into mission activation", () => {
     const error = new AdmissionError(422, "fixture", "blocked", { nextActor: "owner" });
     expect(error).toMatchObject({ name: "AdmissionError", status: 422, code: "fixture", details: { nextActor: "owner" } });
