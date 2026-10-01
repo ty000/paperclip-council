@@ -30,6 +30,18 @@ This is an admission control, not a provider billing engine or an absolute futur
 
 The reviewer is provisioned and pinned but is not woken. N1 stops at `ready_for_review`; N2 owns review/correction/acceptance, and N5 owns Council-driven PR publication.
 
+## Authorized runtime observation — 2026-10-01
+
+The authorized campaign on clean commit `5d70ce1b7f43356dd47e5002284b1fa398bc863c` did not reach the N1 exit. Its immutable local artifact is `artifacts/n1-live.json`, SHA-256 `29dd843ee7de171c841cded74d9b8ea9184da94d5ef0dbcf3175e8a24a38715d`, with outcome `NON-CONCLUSIVE OR BLOCKED`.
+
+- The root Integration Lead was dispatched through native Paperclip run `0e6e6b3a-6e98-49a7-b2af-b194bbcf4b19`.
+- Contributor Alpha was dispatched, created the requested file, then could not commit because Codex workspace-write protects `.git`. Contributor Beta was not dispatched and no candidate was published.
+- Blocker handling attempted unsupported `status=blocked` PATCHes. The root summary then contained an additional run, `e7361623-b652-4f4b-b816-f7172d7d5a2c`; this is consistent with the pinned host's native behavior of waking an assigned agent when an issue comment is created, but the torn-down runtime no longer permits direct readback of the triggering comment.
+- G4 correctly refused lead settlement with `g4_run_identity_unqualified` because the root orchestration summary contained both run IDs. No usage was guessed or settled against the wrong run.
+- The lingering second run was interrupted after the ephemeral database had shut down and could no longer persist output. There was no provider retry or correction run.
+
+The subsequent source change only instructs agents not to mutate status or comment on blocker paths. This is prompt-level mitigation, not enforcement or runtime proof. Independent review rejected a proposed sandbox bypass because the pinned adapter grants unrestricted host access rather than repository-scoped Git metadata writes. A new campaign requires a path-confined commit mechanism or externally confined agent environment, API-level prevention of blocker self-wakeup, and new explicit authorization before N1 can be called complete.
+
 ## Replay
 
 The historical no-provider safe-boundary proof remains canonical at `qualification/proof-manifest.json` and is replayed with `pnpm qualification:bounded`. It proves fixture guards only.

@@ -47,6 +47,7 @@ function contributorInstructions(): string {
     "Commit that file with a concise commit message. Then use the authenticated Council endpoint named in the issue description: POST command=inspect, read body.version, then POST command=record-contribution with a fresh UUID commandId, that expectedVersion, the stated missionId and contributionId, and git rev-parse HEAD as commit. The current issue ID is available in the Paperclip task context and PAPERCLIP_TASK_ID.",
     "Use PAPERCLIP_API_URL, PAPERCLIP_API_KEY, and PAPERCLIP_RUN_ID. Normalize a trailing /api before constructing /api/plugins/... paths. Never print credentials.",
     "Only after record-contribution returns HTTP 200, PATCH this child issue status to done. Stop immediately on any non-2xx response; do not retry a model run or change unowned files.",
+    "On failure, do not PATCH an issue status and do not create an issue comment: either may violate the native route contract or wake another run. Report the blocker only in your final response.",
     "",
     promptPolicy("bounded implementation contributor"),
   ].join("\n");
@@ -60,7 +61,7 @@ function leadInstructions(): string {
     "After both contributions are done and reconciled, create a distinct empty integration commit with git commit --allow-empty. Create refs/heads/base at the stated base commit and refs/heads/candidate at the integration commit, then create and verify a self-contained Git bundle containing those exact refs.",
     "Prove failure blocking once: call publish with a fresh random attachmentId and syntactically valid identities/digest, require HTTP 422 integration_failed, and verify inspect still has no candidate. Do not repeat the failed publish.",
     "Upload the valid bundle with multipart field file to /api/companies/<company-id>/issues/<root-issue-id>/attachments using the same auth headers, compute its SHA-256, then call publish with the returned attachment ID, base commit, integration commit, and digest. Require HTTP 200 and outcome=applied. Finally PATCH the root issue status to done.",
-    "Use PAPERCLIP_API_URL, PAPERCLIP_API_KEY, and PAPERCLIP_RUN_ID; normalize a trailing /api. Never print credentials. Stop on any unexpected response and leave the issue open with a concise blocker comment.",
+    "Use PAPERCLIP_API_URL, PAPERCLIP_API_KEY, and PAPERCLIP_RUN_ID; normalize a trailing /api. Never print credentials. On any unexpected response, do not PATCH an issue status and do not create an issue comment because either may wake another run. Leave the issue open and report the blocker only in your final response.",
     "",
     promptPolicy("Council N1 integration lead"),
   ].join("\n");
