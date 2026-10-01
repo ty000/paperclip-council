@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { prepareCandidatePackage } from "./candidate-package.js";
+import { runLiveN1 } from "./n1-live.js";
 import { createFunctionalRuntimeCleanup } from "./runtime-cleanup.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -30,6 +31,7 @@ const candidateBranch = execFileSync("git", ["branch", "--show-current"], {
   cwd: packageRoot,
   encoding: "utf8",
 }).trim();
+const liveN1Authorized = process.env.COUNCIL_N1_LIVE_AUTHORIZED === "1";
 const hostRootInput = process.env.PAPERCLIP_TEST_HOST_ROOT;
 if (!hostRootInput) {
   throw new Error("PAPERCLIP_TEST_HOST_ROOT must point to the Paperclip checkout under test");
@@ -88,13 +90,17 @@ const requireServer = createRequire(resolve(root, "server/package.json"));
 const { eq } = requireServer("drizzle-orm");
 const evidence: Record<string, any> = {
   schemaVersion: 1,
-  proofId: "paperclip-council-n1-safe-boundary-qualification-v1",
+  proofId: liveN1Authorized
+    ? "paperclip-council-n1-observable-native-qualification-v1"
+    : "paperclip-council-n1-safe-boundary-qualification-v1",
   startedAt: new Date().toISOString(),
   head: hostCommit,
   hostTrackedFilesClean: hostStatus === "",
   branch: execFileSync("git", ["branch", "--show-current"], { cwd: root, encoding: "utf8" }).trim(),
   node: process.version,
-  command: "COUNCIL_PACKAGE_EXPECTED_COMMIT=<candidate-sha> PAPERCLIP_TEST_HOST_ROOT=<checkout> PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH=<chromium> pnpm test:functional",
+  command: liveN1Authorized
+    ? "COUNCIL_N1_LIVE_AUTHORIZED=1 COUNCIL_N1_LIVE_MODEL=gpt-5.6-sol COUNCIL_N1_LIVE_EFFORT=high COUNCIL_N1_LIVE_RUN_UNITS=<positive> COUNCIL_N1_LIVE_PERIOD_UNITS=<at-least-3x-run> pnpm qualification:live:n1"
+    : "COUNCIL_PACKAGE_EXPECTED_COMMIT=<candidate-sha> PAPERCLIP_TEST_HOST_ROOT=<checkout> PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH=<chromium> pnpm test:functional",
   candidate: {
     commit: candidateCommit,
     branch: candidateBranch,
@@ -269,6 +275,7 @@ try {
   const address = server.address();
   assert(address && typeof address !== "string");
   baseUrl = `http://127.0.0.1:${address.port}`;
+  process.env.PAPERCLIP_API_URL = baseUrl;
   const authConfig: any = {
     deploymentMode: "authenticated",
     deploymentExposure: "private",
@@ -1534,7 +1541,59 @@ try {
     replacementAndRevocation: "documented-only",
     reason: "the required package journey used native ephemeral keys; durable key mutation was not requested",
   };
-  evidence.outcome = "N1 SAFE BOUNDARY VALIDATED";
+  if (liveN1Authorized) {
+    const live = await runLiveN1({
+      request,
+      getRun: async (runId) => db.select({
+        id: tables.heartbeatRuns.id,
+        agentId: tables.heartbeatRuns.agentId,
+        status: tables.heartbeatRuns.status,
+        startedAt: tables.heartbeatRuns.startedAt,
+        finishedAt: tables.heartbeatRuns.finishedAt,
+        error: tables.heartbeatRuns.error,
+        usageJson: tables.heartbeatRuns.usageJson,
+      }).from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.id, runId)).then((rows: any[]) => rows[0] ?? null),
+      pluginId,
+      runtime,
+      baseUrl,
+      ownerUserId: userId,
+      evidence,
+    });
+    const { chromium: liveChromium } = requireServer("@playwright/test");
+    const liveBrowser = await liveChromium.launch({
+      headless: true,
+      ...(process.env.PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH
+        ? { executablePath: process.env.PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH }
+        : {}),
+    });
+    try {
+      const context = await liveBrowser.newContext({ viewport: { width: 1180, height: 900 } });
+      await context.addCookies(cookie.split("; ").map((part) => {
+        const separator = part.indexOf("=");
+        return { name: part.slice(0, separator), value: part.slice(separator + 1), url: baseUrl };
+      }));
+      const page = await context.newPage();
+      await page.goto(`${baseUrl}/${live.issuePrefix}/council-missions`, { waitUntil: "networkidle" });
+      await page.getByRole("heading", { name: "Council missions" }).waitFor();
+      await page.getByLabel("Select mission").selectOption(live.missionId);
+      await page.getByText("ready_for_review").first().waitFor();
+      await page.getByRole("heading", { name: "Contributions" }).waitFor();
+      await page.getByRole("heading", { name: "Admission and usage" }).waitFor();
+      await page.getByText(/terminal-token-ledger/).waitFor();
+      const liveScreenshotPath = process.env.COUNCIL_N1_LIVE_SCREENSHOT_PATH
+        ?? resolve(packageRoot, "artifacts", "n1-live-ready-for-review.png");
+      await mkdir(dirname(liveScreenshotPath), { recursive: true });
+      await page.screenshot({ path: liveScreenshotPath, fullPage: true });
+      evidence.liveN1.ui = { screenshot: liveScreenshotPath, missionId: live.missionId, rootIssueId: live.rootIssueId };
+      evidence.results.n1InstalledBrowserObservableState = "PASS";
+      await context.close();
+    } finally {
+      await liveBrowser.close();
+    }
+    evidence.outcome = "N1 OBSERVABLE RESULT VALIDATED";
+  } else {
+    evidence.outcome = "N1 SAFE BOUNDARY VALIDATED";
+  }
 } catch (error) {
   evidence.outcome = "NON-CONCLUSIVE OR BLOCKED";
   evidence.error = error instanceof Error

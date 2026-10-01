@@ -428,6 +428,43 @@ describe("N1 mission transitions", () => {
     expect(h.assertCheckoutOwner).not.toHaveBeenCalled();
   });
 
+  it("exposes the current mission version only to the admitted lead or mapped contribution run", async () => {
+    const value = activeAggregate();
+    value.n1 = {
+      ...(value.n1 as object),
+      contributions: [{
+        ...plan[0], issueState: "confirmed", childIssueId: id.childA,
+        dispatchState: "requested", dispatchReservationId: randomUUID(), dispatchRunId: id.contributorRun,
+      }],
+    };
+    const h = harness(value);
+    h.issues.set(id.childA, nativeIssue({
+      id: id.childA, parentId: id.root, assigneeAgentId: id.contributorA, status: "in_progress",
+    }));
+
+    const leadInspection = await handleN1AgentApi(agentRequest(
+      { command: "inspect" }, { agentId: id.lead, runId: id.leadRun }, id.root,
+    ), h.ctx);
+    expect(leadInspection).toMatchObject({ status: 200, body: { missionId: id.mission, version: 1, phase: "executing" } });
+
+    const contributorInspection = await handleN1AgentApi(agentRequest(
+      { command: "inspect" }, { agentId: id.contributorA, runId: id.contributorRun }, id.childA,
+    ), h.ctx);
+    expect(contributorInspection).toMatchObject({ status: 200, body: { version: 1 } });
+    expect(h.assertCheckoutOwner).toHaveBeenCalledWith({
+      issueId: id.childA,
+      companyId: id.company,
+      actorAgentId: id.contributorA,
+      actorRunId: id.contributorRun,
+    });
+
+    const wrongRun = await handleN1AgentApi(agentRequest(
+      { command: "inspect" }, { agentId: id.contributorA, runId: randomUUID() }, id.childA,
+    ), h.ctx);
+    expect(wrongRun).toMatchObject({ status: 409, body: { code: "dispatch_run_mismatch" } });
+    expect(h.execute).not.toHaveBeenCalled();
+  });
+
   it("does not reserve for stale child dispatch and retains a reservation after a pre-effect CAS race", async () => {
     const value = activeAggregate();
     value.n1 = {
@@ -662,5 +699,34 @@ describe("N1 mission transitions", () => {
     expect(h.row().aggregate.n1).toMatchObject({ lastIntegrationFailure: "candidate omits contribution B" });
     expect((h.row().aggregate.n1 as { candidate?: unknown }).candidate).toBeUndefined();
     expect(h.row().aggregate.commandReceipts).toHaveLength(1);
+
+    vi.mocked(verifyIntegratedCandidate).mockResolvedValueOnce({
+      outcome: "verified",
+      publicationEligible: true,
+      candidate: {
+        attachmentId: id.root,
+        byteSize: 100,
+        sha256: "d".repeat(64),
+        baseCommit: "0".repeat(40),
+        candidateCommit: "c".repeat(40),
+      },
+      contributions: [],
+      checks: [{ name: "fixture", status: "passed", detail: "checked" }],
+    });
+    const published = await handleN1AgentApi(agentRequest({
+      command: "publish",
+      commandId: randomUUID(),
+      expectedVersion: 3,
+      attachmentId: id.root,
+      baseCommit: "0".repeat(40),
+      candidateCommit: "c".repeat(40),
+      expectedSha256: "d".repeat(64),
+    }, { agentId: id.lead, runId: id.leadRun }, id.root), h.ctx);
+    expect(published).toMatchObject({ status: 200, body: { outcome: "applied" } });
+    expect(h.row().aggregate).toMatchObject({
+      phase: "ready_for_review",
+      control: { status: "inactive", reason: "candidate_ready_for_review" },
+      n1: { candidate: { outcome: "verified", publicationEligible: true } },
+    });
   });
 });

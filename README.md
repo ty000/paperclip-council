@@ -25,17 +25,17 @@ checks and the next actor. Child issues are first created in native Paperclip
 backlog; their dispatch requires a separate durable reservation. An uncertain
 create or wakeup is retained as unknown and is never retried automatically.
 
-The pinned SDK does not expose authenticated provider usage or remaining
-exposure. A caller-provided source label and amount cannot establish that
-measurement. Consequently, this package refuses **real** N1 activation and
-dispatch. Known admission inputs require worker test mode, the explicit
-`n1FixtureMode: ephemeral-local-sandbox` company configuration, and the
-source label "fixture:local-sandbox". The bounded replay sets these on its
-owned ephemeral host; they
-qualify state transitions, not live budget safety or agent judgment. No
-durable Paperclip instance is activated by the repository's qualification
-commands. N2 verdict and review handoff are not part of this slice. See
-[N1 report](docs/reviews/n1/REPORT.md) for exact evidence and remaining gates.
+The pinned SDK exposes an authenticated orchestration summary containing exact
+native runs, token totals, cost cents, budget incidents and invocation blocks.
+Council supports one deliberately narrow native profile that reserves an
+explicit token estimate before each launch, runs the two contributors
+sequentially, and settles only from the expected terminal run. A zero monetary
+cost is labelled unpriced, while a zero token total remains unknown and blocks
+publication. The historical `n1FixtureMode: ephemeral-local-sandbox` remains a
+test-only transition proof. The separate `qualification:live:n1` command needs
+explicit provider authorization and a clean committed candidate. N2 verdict
+and review handoff are not part of this slice. See the
+[N1 report](docs/reviews/n1/REPORT.md) for the exact profile and proof boundary.
 
 ## Compatibility
 
@@ -121,6 +121,14 @@ Create a company-scoped configuration with Paperclip's plugin configuration API:
     "councilApiKey": {
       "type": "secret_ref",
       "secretId": "<PAPERCLIP_SECRET_ID>"
+    },
+    "n1OperatingProfile": {
+      "kind": "paperclip-orchestration-tokens-v1",
+      "periodKey": "<IDENTIFIED_PERIOD>",
+      "periodStart": "<ISO_TIMESTAMP>",
+      "periodEnd": "<ISO_TIMESTAMP>",
+      "periodAllowanceUnits": 180000,
+      "runReservationUnits": 60000
     }
   }
 }
@@ -132,6 +140,10 @@ resolved so a configuration mistake cannot transmit the standard Council token
 off-host. `councilAgentId` must own the stored key. `councilApiKey` must remain
 a `secret_ref`; never store a raw token in plugin configuration, source, logs,
 or reports.
+
+`n1OperatingProfile` is optional unless native N1 execution is requested. Its
+units are tokens, not currency. The allowance and reservation values are an
+explicit admission policy; they do not claim a future provider bill ceiling.
 
 Using a board session authorized for the target company:
 

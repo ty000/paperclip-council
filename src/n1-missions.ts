@@ -18,6 +18,14 @@ import {
   type MissionReceipt,
 } from "./missions.js";
 import { createContributionIssueEffect, type ContributionIssueIntent } from "./contribution-effects.js";
+import {
+  assertNativeConfigurationRequest,
+  assertNativeEnvelope,
+  assertNativeLaunchAllowed,
+  nativeAdmissionConfiguration,
+  readNativeG4Profile,
+  settleNativeRunUsage,
+} from "./g4-native.js";
 import { verifyIntegratedCandidate, type IntegratedCandidateVerification } from "./integration.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -241,6 +249,28 @@ function readSlotPlan(value: unknown, mission: MissionRecord): Slot[] {
   return slots;
 }
 
+function contributionDescription(input: {
+  missionId: string;
+  contributionId: string;
+  ownedPaths: string[];
+}): string {
+  return [
+    "Council N1 contribution. Complete only this bounded child issue.",
+    `Mission ID: ${input.missionId}`,
+    `Contribution ID: ${input.contributionId}`,
+    `Owned paths: ${input.ownedPaths.join(", ")}`,
+    "Do not modify files outside the owned paths. Commit the completed change on the current shared branch.",
+    "Use the authenticated endpoint /api/plugins/private.paperclip-council/api/issues/<this-child-issue-id>/council/commands: first command=inspect to read the current mission version, then command=record-contribution with a fresh commandId, that expectedVersion, the contributionId, and the 40-character commit SHA.",
+    "Mark this Paperclip child issue done only after record-contribution succeeds.",
+    "",
+    "Plugins/skills à utiliser",
+    "Use the Paperclip skill injected by the host for issue context, authenticated API calls, and status updates. No additional plugin is required.",
+    "",
+    "Modele et effort recommandes",
+    "Target: bounded implementation contributor. Model: gpt-5.6-sol. Effort: high because the run participates in a governed native integration proof. Re-evaluate only if availability is rejected before launch; do not silently substitute. Source: independent mapping /home/davy-lp/.codex/shared/model-selection/model-effort-mapping.md, updated 2026-09-05. Effective runtime settings must be observed separately.",
+  ].join("\n");
+}
+
 export function inspectN1State(mission: MissionRecord) {
   const state = n1State(mission);
   if (!state) return null;
@@ -321,8 +351,10 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     return commandCas(ctx, mission, input.body, "user", input.actorUserId!, next);
   }
   if (input.body.command === "start-lead") {
-    if (!await isOwnedFixtureRuntime(ctx, mission.companyId)) {
-      throw new MissionError(409, "g4_measurement_unqualified", "Real lead launch remains blocked until native usage measurement is qualified");
+    const fixtureRuntime = await isOwnedFixtureRuntime(ctx, mission.companyId);
+    const nativeProfile = fixtureRuntime ? null : await readNativeG4Profile(ctx, mission.companyId);
+    if (!fixtureRuntime && !nativeProfile) {
+      throw new MissionError(409, "g4_measurement_unqualified", "No supported native N1 operating profile is configured");
     }
     const commandId = uuid(input.body.commandId, "commandId");
     const replay = receipt(mission, commandId, input.actorUserId!, canonicalPayloadHash(input.body));
@@ -340,6 +372,10 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     if (!reservation || reservation.missionId !== mission.missionId || reservation.status !== "reserved"
         || Date.now() < Date.parse(admission!.periodStart) || Date.now() >= Date.parse(admission!.periodEnd)) {
       throw new MissionError(409, "g4_reservation_unavailable", "Root launch requires its durable unsettled reservation");
+    }
+    if (nativeProfile) {
+      assertNativeEnvelope(admission!, nativeProfile);
+      await assertNativeLaunchAllowed(ctx, { companyId: mission.companyId, issueId: mission.rootIssueId });
     }
     const root = await ctx.issues.get(mission.rootIssueId, mission.companyId);
     const leadAgentId = mission.aggregate.responsibilities.integrationLeadAgentId;
@@ -392,6 +428,27 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     };
     const finalMission = await cas(ctx, afterClaim, settled, afterClaim.version);
     return { outcome: confirmed ? "requested" as const : "unknown" as const, mission: finalMission, receipt: claim.receipt };
+  }
+  if (input.body.command === "reconcile-lead-usage") {
+    const state = n1State(mission);
+    if (!state?.rootDispatchRunId || state.rootDispatchState !== "requested" || state.rootDispatchMode !== "native") {
+      throw new MissionError(409, "root_dispatch_unavailable", "A confirmed native lead run is required for usage reconciliation");
+    }
+    const profile = await readNativeG4Profile(ctx, mission.companyId);
+    if (!profile) throw new MissionError(409, "g4_measurement_unqualified", "No supported native N1 operating profile is configured");
+    const envelope = await readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
+    if (!envelope) throw new MissionError(422, "g4_not_configured", "No task/period admission envelope is configured");
+    assertNativeEnvelope(envelope, profile);
+    const settlement = await settleNativeRunUsage(ctx, {
+      commandId: uuid(input.body.commandId, "commandId"),
+      companyId: mission.companyId,
+      issueId: mission.rootIssueId,
+      runId: state.rootDispatchRunId,
+      periodKey: state.periodKey,
+      reservationId: state.activationReservationId,
+      expectedVersion: envelope.version,
+    });
+    return { ...settlement, mission };
   }
   if (input.body.command !== "activate") throw new MissionError(400, "unknown_command", "Unsupported N1 board command");
   const commandId = uuid(input.body.commandId, "commandId");
@@ -469,14 +526,25 @@ async function requireActivationReservation(
 ): Promise<void> {
   const envelope = await readAdmission(ctx, { companyId: input.companyId, periodKey: input.periodKey });
   if (!envelope) throw new MissionError(422, "g4_not_configured", "No task/period admission envelope is configured");
-  if (!await isOwnedFixtureRuntime(ctx, input.companyId) || envelope.measurement.status !== "known"
-      || envelope.measurement.source !== "fixture:local-sandbox"
-      || envelope.allowance.status !== "known"
-      || envelope.allowance.source !== "fixture:local-sandbox"
-      || envelope.exposure.status !== "known"
-      || envelope.exposure.source !== "fixture:local-sandbox") {
-    throw new MissionError(409, "g4_measurement_unqualified",
-      "Real activation remains blocked until native usage and exposure measurement is qualified");
+  const fixtureRuntime = await isOwnedFixtureRuntime(ctx, input.companyId);
+  if (fixtureRuntime) {
+    if (envelope.measurement.status !== "known"
+        || envelope.measurement.source !== "fixture:local-sandbox"
+        || envelope.allowance.status !== "known"
+        || envelope.allowance.source !== "fixture:local-sandbox"
+        || envelope.exposure.status !== "known"
+        || envelope.exposure.source !== "fixture:local-sandbox") {
+      throw new MissionError(409, "g4_measurement_unqualified", "Fixture admission inputs are not qualified");
+    }
+  } else {
+    const profile = await readNativeG4Profile(ctx, input.companyId);
+    if (!profile) {
+      throw new MissionError(409, "g4_measurement_unqualified", "No supported native N1 operating profile is configured");
+    }
+    assertNativeEnvelope(envelope, profile);
+    if (input.periodKey !== profile.periodKey || input.requestedUnits !== profile.runReservationUnits) {
+      throw new MissionError(422, "g4_profile_mismatch", "Activation must use the configured period and run reservation estimate");
+    }
   }
   const result = await reserveAdmission(ctx, {
     companyId: input.companyId, periodKey: input.periodKey,
@@ -514,19 +582,26 @@ export async function handleN1AdmissionApi(input: PluginApiRequestInput, ctx: Pl
       if (!configuration || configuration.companyId !== companyId) {
         throw new MissionError(403, "company_scope_mismatch", "Admission configuration company mismatch");
       }
-      if (configuration.measurement?.status === "known" && !await isOwnedFixtureRuntime(ctx, companyId)) {
-        throw new MissionError(409, "g4_measurement_unqualified",
-          "Known measurement may be configured only as a declared local-sandbox fixture");
-      }
-      if (configuration.measurement?.status === "known" && (
-        configuration.measurement.source !== "fixture:local-sandbox"
-        || configuration.allowance?.status !== "known"
-        || configuration.allowance.source !== "fixture:local-sandbox"
-        || configuration.exposure?.status !== "known"
-        || configuration.exposure.source !== "fixture:local-sandbox"
-      )) {
-        throw new MissionError(422, "fixture_source_required",
-          "Known admission inputs in this lot must be labeled fixture:local-sandbox");
+      const fixtureRuntime = await isOwnedFixtureRuntime(ctx, companyId);
+      const nativeProfile = fixtureRuntime ? null : await readNativeG4Profile(ctx, companyId);
+      if (nativeProfile) {
+        assertNativeConfigurationRequest(configuration, nativeAdmissionConfiguration(
+          nativeProfile,
+          companyId,
+          configuration.commandId,
+        ));
+      } else if (configuration.measurement?.status === "known") {
+        if (!fixtureRuntime) {
+          throw new MissionError(409, "g4_measurement_unqualified", "No supported native N1 operating profile is configured");
+        }
+        if (configuration.measurement.source !== "fixture:local-sandbox"
+          || configuration.allowance?.status !== "known"
+          || configuration.allowance.source !== "fixture:local-sandbox"
+          || configuration.exposure?.status !== "known"
+          || configuration.exposure.source !== "fixture:local-sandbox") {
+          throw new MissionError(422, "fixture_source_required",
+            "Known fixture admission inputs must be labeled fixture:local-sandbox");
+        }
       }
       const result = await configureAdmission(ctx, configuration);
       return { status: 200, body: result };
@@ -538,7 +613,7 @@ export async function handleN1AdmissionApi(input: PluginApiRequestInput, ctx: Pl
       }
       if (!await isOwnedFixtureRuntime(ctx, companyId)) {
         throw new MissionError(409, "g4_measurement_unqualified",
-          "Native usage and remaining exposure settlement is not qualified for real activation");
+          "Native usage settlement must be derived from the expected terminal Paperclip run");
       }
       const result = await settleAdmission(ctx, settlement);
       return { status: 200, body: result };
@@ -568,6 +643,27 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
     if (input.params.issueId !== mission.rootIssueId
         && !state.contributions.some((slot) => slot.childIssueId === input.params.issueId)) {
       throw new MissionError(404, "mission_issue_not_found", "This issue is not mapped to the mission");
+    }
+    if (body.command === "inspect") {
+      if (input.params.issueId === mission.rootIssueId) {
+        await lead(ctx, mission, input);
+      } else {
+        const slot = state.contributions.find((entry) => entry.childIssueId === input.params.issueId);
+        if (!slot || input.actor.agentId !== slot.assigneeAgentId) {
+          throw new MissionError(403, "contributor_required", "Assigned contributor on the mapped child issue required");
+        }
+        if (slot.dispatchState !== "requested" || !slot.dispatchRunId || input.actor.runId !== slot.dispatchRunId) {
+          throw new MissionError(409, "dispatch_run_mismatch", "Contribution run does not match its admitted native dispatch");
+        }
+        await ctx.issues.assertCheckoutOwner({
+          issueId: slot.childIssueId!, companyId: mission.companyId,
+          actorAgentId: input.actor.agentId, actorRunId: input.actor.runId,
+        });
+      }
+      return {
+        status: 200,
+        body: { missionId: mission.missionId, version: mission.version, phase: mission.aggregate.phase, n1: inspectN1State(mission) },
+      };
     }
     const commandId = uuid(body.commandId, "commandId");
     const hash = canonicalPayloadHash(body);
@@ -605,7 +701,12 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         state: "creation_claimed", intentId, companyId: mission.companyId,
         projectId: mission.projectId, rootIssueId: mission.rootIssueId,
         missionId: mission.missionId, contributionId, assigneeAgentId: slot.assigneeAgentId,
-        title: slot.title, description: "Council contribution with owned paths: " + slot.ownedPaths.join(", "),
+        title: slot.title,
+        description: contributionDescription({
+          missionId: mission.missionId,
+          contributionId,
+          ownedPaths: slot.ownedPaths,
+        }),
         actor: { actorAgentId: actor.agentId, actorRunId: actor.runId },
       };
       const claimed: Slot = { ...slot, issueState: "creation_claimed", intentId };
@@ -665,8 +766,27 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       const requestedUnits = integer(body.requestedUnits, "requestedUnits");
       requireFreshCommand(mission, body);
       const envelope = await readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
-      if (!envelope || !await isOwnedFixtureRuntime(ctx, mission.companyId)) {
-        throw new MissionError(409, "g4_measurement_unqualified", "Real child dispatch remains blocked until native usage measurement is qualified");
+      if (!envelope) throw new MissionError(422, "g4_not_configured", "No task/period admission envelope is configured");
+      const fixtureRuntime = await isOwnedFixtureRuntime(ctx, mission.companyId);
+      const nativeProfile = fixtureRuntime ? null : await readNativeG4Profile(ctx, mission.companyId);
+      if (!fixtureRuntime && !nativeProfile) {
+        throw new MissionError(409, "g4_measurement_unqualified", "No supported native N1 operating profile is configured");
+      }
+      if (nativeProfile) {
+        assertNativeEnvelope(envelope, nativeProfile);
+        if (requestedUnits !== nativeProfile.runReservationUnits) {
+          throw new MissionError(422, "g4_profile_mismatch", "Child dispatch must use the configured run reservation estimate");
+        }
+        const unsettledPriorChild = state.contributions.find((entry) => {
+          if (!entry.dispatchReservationId) return false;
+          const reservation = envelope.reservations.find((item) => item.reservationId === entry.dispatchReservationId);
+          return reservation?.status !== "settled";
+        });
+        if (unsettledPriorChild) {
+          throw new MissionError(409, "g4_sequential_settlement_required",
+            "The previous contribution run must be terminal and its token usage settled before another child launch");
+        }
+        await assertNativeLaunchAllowed(ctx, { companyId: mission.companyId, issueId: slot.childIssueId });
       }
       const reserved = await reserveAdmission(ctx, {
         companyId: mission.companyId, periodKey: state.periodKey,
@@ -731,6 +851,29 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       const finalMission = await cas(ctx, afterClaim, settled, afterClaim.version);
       return { status: wakeConfirmed ? 200 : 202, body: { outcome: wakeConfirmed ? "requested" : "unknown", wake, mission: finalMission } };
     }
+    if (body.command === "reconcile-usage") {
+      await lead(ctx, mission, input);
+      const contributionId = uuid(body.contributionId, "contributionId");
+      const slot = state.contributions.find((entry) => entry.contributionId === contributionId);
+      if (!slot?.childIssueId || slot.dispatchState !== "requested" || !slot.dispatchReservationId || !slot.dispatchRunId) {
+        throw new MissionError(409, "dispatch_not_confirmed", "A confirmed native contribution run is required for usage reconciliation");
+      }
+      const profile = await readNativeG4Profile(ctx, mission.companyId);
+      if (!profile) throw new MissionError(409, "g4_measurement_unqualified", "No supported native N1 operating profile is configured");
+      const envelope = await readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
+      if (!envelope) throw new MissionError(422, "g4_not_configured", "No task/period admission envelope is configured");
+      assertNativeEnvelope(envelope, profile);
+      const result = await settleNativeRunUsage(ctx, {
+        commandId,
+        companyId: mission.companyId,
+        issueId: slot.childIssueId,
+        runId: slot.dispatchRunId,
+        periodKey: state.periodKey,
+        reservationId: slot.dispatchReservationId,
+        expectedVersion: envelope.version,
+      });
+      return { status: 200, body: result };
+    }
     if (body.command === "record-contribution") {
       const contributionId = uuid(body.contributionId, "contributionId");
       const slot = state.contributions.find((entry) => entry.contributionId === contributionId);
@@ -782,6 +925,19 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
           throw new MissionError(409, "child_not_done", "Both mapped native child issues must be done before integration");
         }
       }
+      const nativeProfile = await readNativeG4Profile(ctx, mission.companyId);
+      if (nativeProfile) {
+        const envelope = await readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
+        if (!envelope) throw new MissionError(422, "g4_not_configured", "No task/period admission envelope is configured");
+        assertNativeEnvelope(envelope, nativeProfile);
+        const unsettled = state.contributions.find((slot) => {
+          const reservation = envelope.reservations.find((item) => item.reservationId === slot.dispatchReservationId);
+          return reservation?.status !== "settled";
+        });
+        if (unsettled) {
+          throw new MissionError(409, "g4_usage_unsettled", "Both contribution runs need terminal token usage before candidate publication");
+        }
+      }
       const attachmentId = uuid(body.attachmentId, "attachmentId");
       const baseCommit = boundedString(body.baseCommit, "baseCommit", 40);
       const candidateCommit = boundedString(body.candidateCommit, "candidateCommit", 40);
@@ -814,7 +970,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         throw new MissionError(422, "integration_failed", reason, { currentVersion: recorded.version });
       }
       const next: MissionAggregate = {
-        ...mission.aggregate, phase: "ready_for_review",
+        ...mission.aggregate, phase: "ready_for_review", control: { status: "inactive", reason: "candidate_ready_for_review" },
         n1: { ...state, candidate: verified, lastIntegrationFailure: undefined },
         journal: [...mission.aggregate.journal, { action: "integrated_candidate_published", actorAgentId: actor.agentId, runId: actor.runId, candidate: verified.candidate, checks: verified.checks, at: new Date().toISOString() }],
       };

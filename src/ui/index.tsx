@@ -68,6 +68,7 @@ type MissionInspection = {
     participants: Array<{
       contributionId: string; title: string; assigneeAgentId: string; ownedPaths: string[];
       issueState: string; childIssueId?: string; commit?: string; issueUnknown?: string;
+      dispatchState?: string; dispatchRunId?: string | null;
     }>;
     candidate: null | {
       candidate: { attachmentId: string; baseCommit: string; candidateCommit: string; sha256: string };
@@ -80,7 +81,12 @@ type MissionInspection = {
     status: string;
     blockers: Array<{ code: string; message: string }>;
     availablePeriodUnits: number | null;
-    reservations: Array<{ reservationId: string; status: string; requestedUnits: number; usage: { status: string; units?: number; reason?: string } | null }>;
+    measurement: { status: string; source?: string; unit?: string; reason?: string };
+    reservations: Array<{
+      reservationId: string; status: string; requestedUnits: number;
+      usage: { status: string; source?: string; units?: number; reason?: string } | null;
+      remainingExposure: { status: string; source?: string; units?: number; reason?: string };
+    }>;
   };
 };
 
@@ -511,6 +517,7 @@ export function CouncilMissionsPage({ context }: PluginPageProps) {
           <li key={slot.contributionId}>
             <strong>{slot.title}</strong> — {slot.issueState}; assignee {slot.assigneeAgentId}; owns {slot.ownedPaths.join(", ")}
             {slot.childIssueId && <>; <a href={issueLink(slot.childIssueId)}>child issue</a></>}
+            {slot.dispatchState && <>; dispatch {slot.dispatchState}{slot.dispatchRunId ? ` (${slot.dispatchRunId})` : ""}</>}
             {slot.commit && <>; commit {slot.commit}</>}
             {slot.issueUnknown && <>; unknown: {slot.issueUnknown}</>}
           </li>
@@ -528,9 +535,18 @@ export function CouncilMissionsPage({ context }: PluginPageProps) {
         <h2 id="admission-title" style={{ marginTop: 0 }}>Admission and usage</h2>
         {!selected.admission ? <p>No admission envelope is linked. Launch remains blocked.</p> : <>
           <p>Period {selected.admission.periodKey}; status {selected.admission.status}; available units {selected.admission.availablePeriodUnits ?? "unknown"}.</p>
+          <p>Measurement: {selected.admission.measurement.status === "known"
+            ? `${selected.admission.measurement.unit} from ${selected.admission.measurement.source}`
+            : selected.admission.measurement.reason ?? "unknown"}.</p>
           {selected.admission.blockers.length > 0 && <ul>{selected.admission.blockers.map((blocker) => <li key={blocker.code}>{blocker.code}: {blocker.message}</li>)}</ul>}
           <ul>{selected.admission.reservations.map((reservation) => (
-            <li key={reservation.reservationId}>{reservation.reservationId}: {reservation.status}; reserved {reservation.requestedUnits}; usage {reservation.usage?.status === "known" ? reservation.usage.units : reservation.usage?.reason ?? "unsettled/unknown"}</li>
+            <li key={reservation.reservationId}>
+              {reservation.reservationId}: {reservation.status}; reserved {reservation.requestedUnits}; usage {reservation.usage?.status === "known"
+                ? `${reservation.usage.units} (${reservation.usage.source})`
+                : reservation.usage?.reason ?? "unsettled/unknown"}; remaining exposure {reservation.remainingExposure.status === "known"
+                ? `${reservation.remainingExposure.units} (${reservation.remainingExposure.source})`
+                : reservation.remainingExposure.reason ?? "unknown"}
+            </li>
           ))}</ul>
         </>}
       </section>}

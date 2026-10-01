@@ -54,7 +54,7 @@ export type MissionAggregate = {
     requiredPerspectives: string[];
   };
   phase: "draft" | "executing" | "integrating" | "ready_for_review" | "blocked";
-  control: { status: "inactive"; reason: "mission_not_enabled" } | { status: "active" } | { status: "blocked"; reason: string };
+  control: { status: "inactive"; reason: "mission_not_enabled" | "candidate_ready_for_review" } | { status: "active" } | { status: "blocked"; reason: string };
   readiness: {
     mission: "recorded";
     compositions: "pinned";
@@ -168,6 +168,13 @@ function positiveInteger(value: unknown, label: string, max = Number.MAX_SAFE_IN
   return Number(value);
 }
 
+function nonnegativeInteger(value: unknown, label: string, max = Number.MAX_SAFE_INTEGER): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 0 || Number(value) > max) {
+    throw new MissionError(400, "malformed_request", `${label} must be a nonnegative bounded integer`);
+  }
+  return Number(value);
+}
+
 function stringList(value: unknown, label: string, maxItems = 50): string[] {
   if (!Array.isArray(value) || value.length > maxItems) {
     throw new MissionError(400, "malformed_request", `${label} must be an array of at most ${maxItems} items`);
@@ -189,7 +196,7 @@ export function parseMissionMandate(value: unknown): MissionMandate {
     limits: {
       taskPolicy: requiredString(limits.taskPolicy, "mandate.limits.taskPolicy", 1_000),
       periodPolicy: requiredString(limits.periodPolicy, "mandate.limits.periodPolicy", 1_000),
-      correctionLimit: positiveInteger(limits.correctionLimit, "mandate.limits.correctionLimit", 100),
+      correctionLimit: nonnegativeInteger(limits.correctionLimit, "mandate.limits.correctionLimit", 100),
       elapsedMinutes: positiveInteger(limits.elapsedMinutes, "mandate.limits.elapsedMinutes", 525_600),
     },
   };
@@ -611,7 +618,8 @@ export async function handleMissionApi(input: PluginApiRequestInput, ctx: Plugin
     if (input.routeKey === "missions-command" || input.routeKey === "mission-command") {
       const body = asRecord(input.body);
       const missionId = input.params.missionId ? uuid(input.params.missionId, "missionId") : undefined;
-      const result = (body.command === "activate" || body.command === "start-lead" || body.command === "fixture-bind-lead-run") && missionId
+      const result = (body.command === "activate" || body.command === "start-lead"
+        || body.command === "fixture-bind-lead-run" || body.command === "reconcile-lead-usage") && missionId
         ? await executeN1BoardCommand(ctx, { companyId, missionId, actorUserId, body })
         : await executeMissionCommand(ctx, {
         companyId,
