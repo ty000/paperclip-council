@@ -238,7 +238,7 @@ function n2PrerequisiteEvidence() {
         nativePeriodKey,
         candidateSha256: candidate.sha256,
         candidateCommit: candidate.candidateCommit,
-        wakeContext: { missionId, rootIssueId, councilCommandRoute },
+        wakeContext: { pluginId: "private.paperclip-council", missionId, rootIssueId, councilCommandRoute },
         reviewerFixture: {
           fixtureSource: "fixture:n2-handoff-guard:deterministic-reviewer",
           runId: reviewerFixtureRunId,
@@ -690,6 +690,7 @@ describe("bounded qualification launcher", () => {
     });
 
     expect(context).toMatchObject({
+      pluginId: "private.paperclip-council",
       missionId,
       rootIssueId,
       councilCommandRoute: `/api/plugins/private.paperclip-council/api/issues/${rootIssueId}/council/commands`,

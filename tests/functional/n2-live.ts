@@ -75,6 +75,7 @@ export function n2MissionWakeContext(input: {
   assert.notEqual(input.rootIssueId, input.missionId, "N2 issue and mission identities must remain distinct");
   const councilCommandRoute = `/api/plugins/${input.pluginId}/api/issues/${input.rootIssueId}/council/commands`;
   return {
+    pluginId: input.pluginId,
     rootIssueId: input.rootIssueId,
     missionId: input.missionId,
     councilCommandRoute,

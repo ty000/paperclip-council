@@ -1447,8 +1447,9 @@ function hasExactN2WakeContext(guard) {
     wakeContext.missionId === missionId,
     wakeContext.rootIssueId === rootIssueId,
     wakeContext.missionId !== wakeContext.rootIssueId,
+    nonemptyString(wakeContext.pluginId),
     wakeContext.councilCommandRoute
-      === `/api/plugins/private.paperclip-council/api/issues/${rootIssueId}/council/commands`,
+      === `/api/plugins/${wakeContext.pluginId}/api/issues/${rootIssueId}/council/commands`,
     description.includes(`Mission ID: ${missionId}`),
     description.includes(`Council command route: ${wakeContext.councilCommandRoute}`),
   ].every(Boolean);
