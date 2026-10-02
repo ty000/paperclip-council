@@ -2078,8 +2078,12 @@ try {
       );
       await selectedMission.getByText(liveN2Campaign ? "accepted" : "ready_for_review", { exact: true }).waitFor();
       await page.getByRole("heading", { name: "Contributions" }).waitFor();
-      await page.getByRole("heading", { name: "Admission and usage" }).waitFor();
-      await page.getByText(/terminal-token-ledger/).waitFor();
+      const admissionSection = page.locator('section[aria-labelledby="admission-title"]');
+      await admissionSection.getByRole("heading", { name: "Admission and usage" }).waitFor();
+      await admissionSection.getByText(
+        `Measurement: ${liveMission.admission.measurement.unit} from ${liveMission.admission.measurement.source}.`,
+        { exact: true },
+      ).waitFor();
       if (liveN2Campaign) {
         await page.getByRole("heading", { name: "Independent review and correction" }).waitFor();
         await page.getByText("V2 / evidence revision 2", { exact: true }).waitFor();
@@ -2109,7 +2113,7 @@ try {
           liveMission.n2.application.operationId,
           liveMission.n2.application.receiptState,
         ] : []),
-        ...live.admission.envelope.reservations.flatMap((reservation: any) => [
+        ...liveMission.admission.reservations.flatMap((reservation: any) => [
           reservation.reservationId,
           String(reservation.requestedUnits),
           String(reservation.usage.units),

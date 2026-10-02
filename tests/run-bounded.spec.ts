@@ -672,6 +672,10 @@ describe("bounded qualification launcher", () => {
     expect(functionalHarness).toContain('triggerDetail: "fixture:n2-prerequisite:deterministic-heartbeat"');
     expect(functionalHarness).toContain("contextSnapshot: {");
     expect(functionalHarness).toContain("issueId: contextIssueId");
+    expect(functionalHarness).toContain("Measurement: ${liveMission.admission.measurement.unit} from ${liveMission.admission.measurement.source}.");
+    expect(functionalHarness).toContain("section[aria-labelledby=\"admission-title\"]");
+    expect(functionalHarness).toContain("liveMission.admission.reservations.flatMap");
+    expect(functionalHarness).not.toContain("getByText(/terminal-token-ledger/)");
     expect(preflight).toContain("withOwnedQualificationRuntime");
     expect(preflight).toContain("ownedRuntimeRemoved: true");
     expect(packageJson.scripts["qualification:live:n2:isolated"])

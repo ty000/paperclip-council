@@ -293,6 +293,14 @@ immediately before the single correction. Native N2 settlement and readback use
 the explicit native period, while the three N1 fixture reservations remain
 separately readable and unchanged.
 
+The installed mission UI and its restart readback deliberately render the
+admission period attached to the N1 mission. In isolated mode this is the
+settled `fixture:local-sandbox` period, so the screenshot proves the accepted
+N2/V2 state and exact candidate identity but does not claim that the native N2
+token envelope is displayed. Native review/correction consumption remains
+validated separately through the explicit native-period admission API recorded
+in `liveN2.admission`.
+
 ## Provider-free synthetic integration
 
 The bounded qualification now contains one nominal N2 scenario on the pinned,
