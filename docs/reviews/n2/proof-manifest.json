@@ -17,7 +17,7 @@
       "kind": "automated-test",
       "location": "pnpm test",
       "replayable": true,
-      "notes": "Observed pass: 22 test files and 226 tests, including exact public reviewer preparation, deferred finished-event settlement/application, duplicate delivery, stale identity and unknown-usage guards."
+      "notes": "Observed pass: 22 test files and 227 tests, including exact public reviewer preparation, deferred finished-event settlement/application, duplicate delivery, stale identity and unknown-usage guards."
     },
     {
       "id": "n2-typecheck",
@@ -108,7 +108,7 @@
     ],
     "expected_artifacts": [
       "TypeScript typecheck exits 0.",
-      "Vitest reports 22 passing files and 226 passing tests.",
+      "Vitest reports 22 passing files and 227 passing tests.",
       "The build exits 0 and produces the repository build outputs.",
       "The canonical static audit wrapper reports status pass.",
       "Before LIVE qualification, the candidate is only ready to request the campaign and N2 closure remains open."
