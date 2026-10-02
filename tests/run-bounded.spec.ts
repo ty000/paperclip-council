@@ -83,6 +83,22 @@ function syntheticN2Evidence() {
 function n2PrerequisiteEvidence() {
   const candidate = { candidateCommit: "3".repeat(40), sha256: "4".repeat(64) };
   const companyId = "30000000-0000-4000-8000-000000000001";
+  const missionId = "30000000-0000-4000-8000-000000000002";
+  const rootIssueId = "40000000-0000-4000-8000-000000000001";
+  const fixturePeriodKey = "n2-prerequisite-fixture-period";
+  const nativePeriodKey = "n2-prerequisite-native-period";
+  const nativeProfile = {
+    kind: "paperclip-orchestration-tokens-v1",
+    periodKey: nativePeriodKey,
+    periodStart: "2026-10-02T09:59:00.000Z",
+    periodEnd: "2026-10-02T11:30:00.000Z",
+    periodAllowanceUnits: 6_000_000,
+    runReservationUnits: 2_000_000,
+    initialKnownUsageUnits: 0,
+    initialExposureUnits: 0,
+    initialTokenAccountingSource: `n2-prerequisite-native:${companyId}`,
+    maxCorrections: 1,
+  };
   const agents = {
     lead: { id: "lead" },
     contributorA: { id: "alpha" },
@@ -142,8 +158,29 @@ function n2PrerequisiteEvidence() {
     n2Prerequisite: {
       proofClass: "N2 native-stage prerequisite validated",
       companyId,
+      missionId,
+      rootIssueId,
+      periodKey: fixturePeriodKey,
+      fixturePeriodKey,
+      nativePeriodKey,
+      nativeProfile,
+      nativeConfiguration: { configJson: { n1OperatingProfile: nativeProfile } },
+      nativeAdmission: {
+        envelope: {
+          periodKey: nativePeriodKey,
+          periodStart: nativeProfile.periodStart,
+          periodEnd: nativeProfile.periodEnd,
+          measurement: {
+            status: "known",
+            source: "paperclip:issues.summaries.getOrchestration:terminal-token-ledger",
+            unit: "tokens",
+          },
+          reservations: [],
+          exposure: { status: "known", units: 0 },
+        },
+      },
       mission: {
-        mission: { aggregate: { phase: "ready_for_review", control: { status: "inactive" } } },
+        mission: { missionId, aggregate: { phase: "ready_for_review", control: { status: "inactive" } } },
         n1: {
           participants,
           candidate: { outcome: "verified", publicationEligible: true, candidate },
@@ -182,31 +219,53 @@ function n2PrerequisiteEvidence() {
         openExecutionCount: 0,
       },
       handoffGuard: {
-        proofClass: "synthetic-provider-free-n2-handoff-guard",
-        fixtureBoundary: "distinct ephemeral fixture; no provider, process, or native reviewer execution",
+        proofClass: "provider-free-native-n2-handoff-guard",
+        fixtureBoundary: "same prepared mission and candidate; native N2 reservation only; no reviewer run, wakeup, or process",
         reviewerHeartbeatConfiguration: { wakeOnDemand: false },
         wakeupCount: 0,
         processCount: 0,
-        publicCommands: ["start-review", "PATCH /api/issues/:id", "inspect", "confirm-review-handoff", "settle-n2-usage"],
+        publicCommands: ["start-review", "PATCH /api/issues/:id", "GET mission", "GET admission"],
         startReviewOutcome: "prepared",
         operatorTransitionStatus: 200,
-        mission: { n2: { status: "reviewing" } },
-        admission: { envelope: { reservations: [{
-          status: "settled",
-          remainingExposure: { status: "known", units: 0 },
-        }] } },
-        fixtureRuns: ["lead", "reviewer"].map((id) => ({
-          id,
-          status: "succeeded",
-          finishedAt: "2026-10-02T10:00:45.000Z",
-          wakeupRequestId: null,
-          processStartedAt: null,
-        })),
+        missionId,
+        rootIssueId,
+        submissionId: "60000000-0000-4000-8000-000000000001",
+        reservationId: "60000000-0000-4000-8000-000000000002",
+        nativePeriodKey,
+        candidateSha256: candidate.sha256,
+        candidateCommit: candidate.candidateCommit,
+        mission: {
+          mission: { missionId },
+          n2: {
+            status: "review_handoff",
+            submission: {
+              submissionId: "60000000-0000-4000-8000-000000000001",
+              sha256: candidate.sha256,
+              candidateCommit: candidate.candidateCommit,
+            },
+          },
+        },
+        admission: {
+          envelope: {
+            periodKey: nativePeriodKey,
+            exposure: { status: "known", units: 0 },
+            accountedUnits: 2_000_000,
+            availablePeriodUnits: 4_000_000,
+            reservations: [{
+              reservationId: "60000000-0000-4000-8000-000000000002",
+              status: "reserved",
+              requestedUnits: 2_000_000,
+              remainingExposure: { status: "known", units: 2_000_000 },
+            }],
+          },
+        },
+        reviewerRuns: [],
         issueReadback: { checkoutRunId: null, executionRunId: null },
+        openReservationDisposition: "retained as reserved because no reviewer run was dispatched; isolated sandbox cleanup removes the owned database",
       },
       runReadbacks,
-      databaseBoundary: "the primary prerequisite seam inserts and terminalizes exactly three heartbeat fixtures, clears only their exact issue locks, and uses public Paperclip and installed Council APIs for business transitions",
-      stopBoundary: "ready_for_review; N2 state absent; reviewer not started",
+      databaseBoundary: "the seam terminalizes exactly three N1 heartbeat fixtures and clears only their issue locks; public plugin configuration and admission APIs then create a distinct native N2 period whose single prepared reservation remains open without a run",
+      stopBoundary: "review_handoff prepared on the same candidate; native reservation open; reviewer not dispatched",
     },
   };
 }
@@ -506,7 +565,7 @@ function isolatedN2QualificationEvidence(): any {
     "n2RestartReadback",
     "n2InstalledBrowserObservableState",
   ].map((key) => [key, "PASS"]));
-  evidence.configuration.fixtureBoundary = "The safe-boundary suite uses fixtures; isolated N2 terminalizes three deterministic heartbeat fixture rows and clears their exact issue locks after building N1 through public APIs without agent execution, then permits only reviewer-correction-reviewer native runs.";
+  evidence.configuration.fixtureBoundary = "Isolated N2 terminalizes three deterministic N1 heartbeat fixture rows and clears their exact issue locks before public configuration creates a distinct native N2 period; only reviewer-correction-reviewer may then run against that native period.";
   const verifiedCandidate = liveN1.mission.mission.aggregate.n1.candidate;
   const prerequisiteFixture = n2PrerequisiteEvidence().n2Prerequisite;
   evidence.configuration.models.observedAgentConfiguration = [
@@ -518,7 +577,20 @@ function isolatedN2QualificationEvidence(): any {
   evidence.n2Prerequisite = {
     proofClass: "N2 native-stage prerequisite validated",
     companyId: prerequisiteFixture.companyId,
-    mission: { ...liveN1.mission, n1: { ...liveN1.mission.n1, candidate: verifiedCandidate }, n2: null },
+    missionId: prerequisiteFixture.missionId,
+    rootIssueId: prerequisiteFixture.rootIssueId,
+    periodKey: prerequisiteFixture.periodKey,
+    fixturePeriodKey: prerequisiteFixture.fixturePeriodKey,
+    nativePeriodKey: prerequisiteFixture.nativePeriodKey,
+    nativeProfile: prerequisiteFixture.nativeProfile,
+    nativeConfiguration: prerequisiteFixture.nativeConfiguration,
+    nativeAdmission: prerequisiteFixture.nativeAdmission,
+    mission: {
+      ...liveN1.mission,
+      mission: { ...liveN1.mission.mission, missionId: prerequisiteFixture.missionId },
+      n1: { ...liveN1.mission.n1, candidate: verifiedCandidate },
+      n2: null,
+    },
     candidate: verifiedCandidate.candidate,
     admission: {
       envelope: {
@@ -530,14 +602,21 @@ function isolatedN2QualificationEvidence(): any {
     providerBoundary: prerequisiteFixture.providerBoundary,
     fixtureHeartbeatRuns: prerequisiteFixture.fixtureHeartbeatRuns,
     fixtureLifecycle: prerequisiteFixture.fixtureLifecycle,
-    handoffGuard: prerequisiteFixture.handoffGuard,
+    handoffGuard: null,
     runReadbacks: prerequisiteFixture.runReadbacks,
-    databaseBoundary: prerequisiteFixture.databaseBoundary,
-    stopBoundary: "ready_for_review; N2 state absent; reviewer not started",
+    databaseBoundary: "the seam terminalizes exactly three N1 heartbeat fixtures and clears only their issue locks; public plugin configuration and admission APIs then create a distinct native N2 period that remains empty until authorized reviewer dispatch",
+    stopBoundary: "ready_for_review snapshot retained; native N2 period prepared; reviewer not started",
   };
-  for (const reservation of evidence.liveN2.admission.envelope.reservations.slice(0, 3)) {
-    reservation.usage = { status: "known", units: 0, source: "fixture:local-sandbox" };
-  }
+  const nativeReservations = evidence.liveN2.admission.envelope.reservations.slice(3);
+  evidence.liveN2.fixtureAdmission = {
+    envelope: {
+      periodKey: prerequisiteFixture.fixturePeriodKey,
+      reservations: prerequisiteReservations,
+      exposure: { status: "known", units: 0 },
+    },
+  };
+  evidence.liveN2.admission.envelope.reservations = nativeReservations;
+  evidence.liveN2.admission.envelope.periodKey = prerequisiteFixture.nativePeriodKey;
   evidence.liveN2.admission.envelope.allowance.knownUsageUnits = evidence.liveN2.admission.envelope.reservations
     .reduce((total: number, reservation: any) => total + reservation.usage.units, 0);
   evidence.liveN2.limits = { runCount: 3, maxConcurrent: 2, maxRetries: 0, maxCorrections: 1 };

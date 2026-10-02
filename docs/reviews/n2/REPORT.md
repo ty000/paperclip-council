@@ -107,14 +107,16 @@ The provider-free isolated prerequisite now finishes its three explicitly
 labelled heartbeat fixtures only after both contributions, candidate publication
 and all three N1 settlements. The ephemeral harness marks those exact rows
 terminal, clears only their matching issue checkout/execution locks, and reads
-back zero active slots, zero open locks and zero remaining exposure while the
-primary mission stays at `ready_for_review` with no N2 state. A distinct
-synthetic guard uses the pre-existing N1 seed seam and two terminal fixture rows
-to exercise the same public `start-review` → prepared transition, authenticated
-operator PATCH, reviewer handoff confirmation and usage settlement. Wakeups are
-disabled and no provider or agent process runs. This proves a consumable
-provider-free handoff boundary; it does not prove a native reviewer, correction,
-V2, approval or LIVE qualification.
+back zero active slots, zero open locks and zero fixture exposure at the retained
+`ready_for_review` snapshot. The harness then removes `n1FixtureMode` through the
+public configuration route, creates a distinct native period with exact profile
+dates, and uses that period to carry the same mission and candidate through
+`start-review` → prepared and the authenticated operator PATCH. All wakeups stay
+disabled, the reviewer readback remains empty, and the single native reservation
+stays reserved at the handoff because no run was dispatched; the owned ephemeral
+database is removed at cleanup. This proves a consumable provider-free handoff
+boundary; it does not prove a native reviewer, correction, V2, approval or LIVE
+qualification.
 
 ## Authorized campaign observation — `cbcb22c`
 
@@ -264,6 +266,33 @@ partial proof before cleanup, attempts applicable settlement before surfacing a
 business assertion, retains unknown usage/exposure, and preserves the original
 business error if settlement or readback also fails.
 
+## Authorized isolated campaign observation — `d285f85`
+
+The explicitly authorized isolated campaign ran exactly once on clean,
+published commit `d285f8557e90b7b0ea9c9790f4584296120f969d`. It stopped before
+any N2 reviewer, correction, or final-review run and before any provider call.
+The initial prerequisite admission configuration mixed the native token sources
+selected from the LIVE profile with `n1FixtureMode=ephemeral-local-sandbox`.
+Council correctly rejected that envelope with HTTP 422
+`fixture_source_required`; no retry or replacement campaign was attempted.
+
+The preserved JSON is
+`artifacts/n2-live-d285f8557e90b7b0ea9c9790f4584296120f969d.json`, 2,589,593
+bytes with SHA-256
+`d0c308239b2fccf7252f69a81fe2e79b1390da4cfb970499f0e0aaf70c2b8ddd`.
+The paired PNG is zero bytes with SHA-256
+`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+and is not UI evidence.
+
+The bounded correction keeps N1 in its immutable fixture period and settles its
+three reservations at zero before removing fixture mode. It then creates a
+distinct native N2 period with exact profile dates and sources. Lead and reviewer
+wakeups remain disabled during preparation; the isolated LIVE harness enables
+only the reviewer immediately before each review transition and only the lead
+immediately before the single correction. Native N2 settlement and readback use
+the explicit native period, while the three N1 fixture reservations remain
+separately readable and unchanged.
+
 ## Provider-free synthetic integration
 
 The bounded qualification now contains one nominal N2 scenario on the pinned,
@@ -323,8 +352,8 @@ the result:
 6. replay operator inspection after restart and capture the installed mission
    UI using the exact UUID locator.
 
-The authorizations for `cbcb22c`, `0e5c814`, `586608b` and `daa14fa` were
-consumed and do not transfer to the next corrected SHA. Commit/publication
+The authorizations for `cbcb22c`, `0e5c814`, `586608b`, `daa14fa` and
+`d285f85` were consumed and do not transfer to the next corrected SHA. Commit/publication
 authority for this lot remains separate from LIVE authority. Once a clean local
 correction commit passes the provider-free bounded qualification, it is
 technically ready to be proposed for publication and a later fresh campaign;
@@ -359,22 +388,23 @@ accepted runtime evidence is added later if and when N2 qualifies.
 
 - **Instance:** one fresh ephemeral Paperclip qualification instance at pinned
   host `61b3fd57a695614dc4a37e2303f426a34a9795cf`; no installed-state reuse.
-- **Scenario:** produce the N1 candidate with the existing Integration Lead and
-  two sequential contributors, then submit V1 to one distinct Generalist
-  Reviewer, require one concrete regression correction from the Integration
-  Lead, verify changed V2, run a fresh review and apply approval. Capture the
-  same mission by exact UUID in the installed UI after restart/readback.
-- **Agents:** one Integration Lead, Contributor Alpha, Contributor Beta and one
-  distinct Generalist Reviewer, all `codex_local/cli`; no specialist, N3 or
-  automatic provisioning is added. Recommended launch selection remains
+- **Scenario:** build and settle the deterministic N1 prerequisite without a
+  provider, switch the same mission and candidate to its distinct native period,
+  then submit V1 to one Generalist Reviewer, require one concrete correction
+  from the Integration Lead, verify changed V2, run a fresh review and apply
+  approval. Capture the same mission by exact UUID after restart/readback.
+- **Agents:** only the Integration Lead correction run and two Generalist
+  Reviewer runs use `codex_local/cli`; deterministic N1 contributors remain
+  terminal fixtures. No specialist, N3 or automatic provisioning is added.
+  Recommended launch selection remains
   `gpt-5.6-sol` / `high`; availability and effective settings must be observed
   at launch.
 - **Envelope:** fresh identified period, `runReservationUnits=2_000_000`,
-  `periodAllowanceUnits=12_000_000`, `maxConcurrent=2`, `maxRetries=0`,
+  `periodAllowanceUnits=6_000_000`, `maxConcurrent=2`, `maxRetries=0`,
   `maxCorrections=1`, initial known usage `0` and exposure `0` only with a
-  fresh-company/period owner attestation. Six runs are budgeted: lead, two
-  contributors, review V1, correction, review V2. Reservation is exposure, not
-  a hard model cutoff.
+  fresh-company/period owner attestation. Exactly three native runs are budgeted:
+  review V1, correction, review V2. The separate N1 fixture period remains
+  settled at zero. Reservation is exposure, not a hard model cutoff.
 - **Stop rules:** no provider retry; any extra run, stale candidate, wrong actor,
   unknown native effect, nonterminal/unattributable usage or exhausted envelope
   stops the campaign. A direct V1 approval remains supported generally but is
@@ -383,12 +413,13 @@ accepted runtime evidence is added later if and when N2 qualifies.
 Exact guarded command, intentionally not executed without LIVE authorization:
 
 ```sh
-COUNCIL_N2_LIVE_AUTHORIZED=1 \
-COUNCIL_N2_LIVE_MODEL=gpt-5.6-sol \
-COUNCIL_N2_LIVE_EFFORT=high \
-COUNCIL_N2_LIVE_RUN_UNITS=2000000 \
-COUNCIL_N2_LIVE_PERIOD_UNITS=12000000 \
-pnpm qualification:live:n2
+COUNCIL_N2_ISOLATED_LIVE_AUTHORIZED=1 \
+COUNCIL_N2_ISOLATED_LIVE_CANDIDATE_SHA=<exact-published-sha> \
+COUNCIL_N2_ISOLATED_LIVE_MODEL=gpt-5.6-sol \
+COUNCIL_N2_ISOLATED_LIVE_EFFORT=high \
+COUNCIL_N2_ISOLATED_LIVE_RUN_UNITS=2000000 \
+COUNCIL_N2_ISOLATED_LIVE_PERIOD_UNITS=6000000 \
+pnpm qualification:live:n2:isolated
 ```
 
 The model/effort recommendation comes from the independent mapping dated

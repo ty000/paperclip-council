@@ -30,7 +30,7 @@ const APP_CLEANUP = "stopped only the plugin worker, listener, and application c
 const DATABASE_CLEANUP = "fresh isolated PostgreSQL cluster removed; parent-owned temporary instance retained";
 const SAFE_FIXTURE_BOUNDARY = "agents, issues, policies, and heartbeat runs are synthetic test preparation";
 const LIVE_FIXTURE_BOUNDARY = "The safe-boundary suite uses fixtures; the N1 live campaign below uses native APIs, native wakeups, exact Paperclip run IDs, and run-derived terminal token settlement.";
-const N2_ISOLATED_FIXTURE_BOUNDARY = "The safe-boundary suite uses fixtures; isolated N2 terminalizes three deterministic heartbeat fixture rows and clears their exact issue locks after building N1 through public APIs without agent execution, then permits only reviewer-correction-reviewer native runs.";
+const N2_ISOLATED_FIXTURE_BOUNDARY = "Isolated N2 terminalizes three deterministic N1 heartbeat fixture rows and clears their exact issue locks before public configuration creates a distinct native N2 period; only reviewer-correction-reviewer may then run against that native period.";
 const SAFE_PROVIDER_BOUNDARY = "none; dispatch was deliberately not invoked because it requests native wakeup";
 const LIVE_STOP_BOUNDARY = "ready_for_review; N2 not started";
 const EXPECTED_HOST_COMMIT = "61b3fd57a695614dc4a37e2303f426a34a9795cf";
@@ -126,7 +126,7 @@ export const N2_PREREQUISITE_RESULT_KEYS = Object.freeze([
   "n2PrerequisiteDistinctContributions",
   "n2PrerequisiteVerifiedCandidate",
   "n2PrerequisiteN1ReservationsSettled",
-  "n2PrerequisiteZeroExposure",
+  "n2PrerequisiteFixtureZeroExposure",
   "n2PrerequisiteZeroProviderOrNativeRuns",
   "n2PrerequisiteStopsBeforeReviewer",
   "n2PrerequisiteFixtureLifecycleFinished",
@@ -890,31 +890,37 @@ function n2CampaignAgentIds(evidence) {
   };
 }
 
-// This gate intentionally keeps the complete six-reservation invariant visible in one place.
+// This gate keeps the fixture and native periods separate while checking all six reservations.
 // fallow-ignore-next-line complexity
 function assertN2IsolatedSettlement(evidence) {
   const admission = evidence.liveN2?.admission?.envelope;
   const reservations = admission?.reservations;
+  const fixtureAdmission = evidence.liveN2?.fixtureAdmission?.envelope;
+  const fixtureReservations = fixtureAdmission?.reservations;
   const prerequisiteState = evidence.n2Prerequisite?.mission?.mission?.aggregate?.n1;
   const prerequisiteReservationIds = new Set([
     prerequisiteState?.activationReservationId,
     ...(prerequisiteState?.contributions ?? []).map((slot) => slot?.dispatchReservationId),
   ]);
-  requireProof(Array.isArray(reservations) && reservations.length === 6,
-    "isolated N2 admission must contain three prerequisite and three native reservations");
+  requireProof(Array.isArray(reservations) && reservations.length === 3,
+    "isolated N2 native admission must contain exactly three reservations");
+  reservations.forEach(assertSettledReservation);
+  assertKnownUsageTotal(admission, reservations);
+  requireProof(Array.isArray(fixtureReservations) && fixtureReservations.length === 3,
+    "isolated N1 fixture admission must retain exactly three reservations");
   requireProof(prerequisiteReservationIds.size === 3 && !prerequisiteReservationIds.has(undefined),
     "isolated N2 prerequisite reservation identities are incomplete");
-  for (const reservation of reservations) {
-    if (prerequisiteReservationIds.has(reservation?.reservationId)) {
-      requireProof(reservation?.status === "settled"
-          && reservation?.usage?.status === "known" && reservation.usage.units === 0
-          && reservation?.remainingExposure?.status === "known" && reservation.remainingExposure.units === 0,
-      "isolated N1 prerequisite reservations must remain settled at zero usage and exposure");
-    } else {
-      assertSettledReservation(reservation);
-    }
-  }
-  assertKnownUsageTotal(admission, reservations);
+  requireProof(sameStringSet(
+    fixtureReservations.map((reservation) => reservation?.reservationId),
+    [...prerequisiteReservationIds],
+  ), "isolated N1 fixture admission does not retain the prerequisite reservation identities");
+  requireProof(fixtureReservations.every((reservation) => reservation?.status === "settled"
+      && reservation?.usage?.status === "known" && reservation.usage.units === 0
+      && reservation?.remainingExposure?.status === "known" && reservation.remainingExposure.units === 0)
+      && fixtureAdmission?.exposure?.status === "known" && fixtureAdmission.exposure.units === 0,
+  "isolated N1 prerequisite reservations must remain settled at zero usage and exposure");
+  requireProof(admission?.periodKey !== fixtureAdmission?.periodKey,
+    "isolated N1 fixture and N2 native admission periods must remain distinct");
 }
 
 function assertN2RunSet(evidence) {
@@ -1266,7 +1272,37 @@ function assertN2PrerequisiteState(prerequisite) {
   "every deterministic N1 reservation must be settled with zero usage and exposure");
   requireProof(prerequisite?.admission?.envelope?.exposure?.status === "known"
       && prerequisite.admission.envelope.exposure.units === 0,
-  "N2 prerequisite admission exposure must be known and zero");
+  "N2 prerequisite fixture admission exposure must be known and zero");
+  const nativeProfile = prerequisite?.nativeProfile;
+  const nativeAdmission = prerequisite?.nativeAdmission?.envelope;
+  const nativeConfig = prerequisite?.nativeConfiguration?.configJson;
+  requireProof(prerequisite?.fixturePeriodKey === prerequisite?.periodKey
+      && prerequisite?.nativePeriodKey === nativeProfile?.periodKey
+      && prerequisite?.nativePeriodKey !== prerequisite?.fixturePeriodKey
+      && nativeProfile?.kind === "paperclip-orchestration-tokens-v1"
+      && nativeProfile?.runReservationUnits === 2_000_000
+      && nativeProfile?.periodAllowanceUnits === 6_000_000
+      && nativeProfile?.maxCorrections === 1,
+  "distinct 2M/6M native N2 profile is not prepared");
+  requireProof(nativeConfig?.n1FixtureMode === undefined
+      && nativeConfig?.n1OperatingProfile?.periodKey === nativeProfile?.periodKey,
+  "public plugin configuration did not remove fixture mode and install the native N2 profile");
+  requireProof(nativeAdmission?.periodKey === nativeProfile?.periodKey
+      && nativeAdmission?.periodStart === nativeProfile?.periodStart
+      && nativeAdmission?.periodEnd === nativeProfile?.periodEnd
+      && nativeAdmission?.measurement?.source === "paperclip:issues.summaries.getOrchestration:terminal-token-ledger"
+      && nativeAdmission?.measurement?.unit === "tokens"
+      && Array.isArray(nativeAdmission?.reservations) && nativeAdmission.reservations.length === 0
+      && nativeAdmission?.exposure?.status === "known" && nativeAdmission.exposure.units === 0,
+  "empty native N2 admission envelope does not match the configured profile");
+  if (prerequisite?.handoffGuard) {
+    requireProof(prerequisite.handoffGuard.missionId === prerequisite?.missionId
+        && prerequisite.handoffGuard.rootIssueId === prerequisite?.rootIssueId
+        && prerequisite.handoffGuard.nativePeriodKey === prerequisite?.nativePeriodKey
+        && prerequisite.handoffGuard.candidateSha256 === prerequisite?.candidate?.sha256
+        && prerequisite.handoffGuard.candidateCommit === prerequisite?.candidate?.candidateCommit,
+    "native N2 handoff does not retain the prepared mission, issue, period, and candidate identities");
+  }
   const fixtureRuns = prerequisite?.fixtureHeartbeatRuns;
   const fixtureReadbacks = prerequisite?.runReadbacks?.filter((entry) => entry?.runCount === 1);
   const reviewerReadback = prerequisite?.runReadbacks?.find(
@@ -1304,11 +1340,16 @@ function assertN2PrerequisiteState(prerequisite) {
       && prerequisite?.providerBoundary?.wakeupCount === 0
       && prerequisite?.providerBoundary?.reviewerRunCount === 0,
   "zero provider, wakeup, reviewer, and native-agent execution is not proven");
-  requireProof(prerequisite?.databaseBoundary
-      === "the primary prerequisite seam inserts and terminalizes exactly three heartbeat fixtures, clears only their exact issue locks, and uses public Paperclip and installed Council APIs for business transitions",
+  requireProof([
+    "the seam terminalizes exactly three N1 heartbeat fixtures and clears only their issue locks; public plugin configuration and admission APIs then create a distinct native N2 period whose single prepared reservation remains open without a run",
+    "the seam terminalizes exactly three N1 heartbeat fixtures and clears only their issue locks; public plugin configuration and admission APIs then create a distinct native N2 period that remains empty until authorized reviewer dispatch",
+  ].includes(prerequisite?.databaseBoundary),
   "public-command database boundary is missing");
-  requireProof(prerequisite?.stopBoundary === "ready_for_review; N2 state absent; reviewer not started",
-    "N2 prerequisite did not stop before reviewer dispatch");
+  requireProof([
+    "ready_for_review snapshot retained; native N2 period prepared; reviewer not started",
+    "review_handoff prepared on the same candidate; native reservation open; reviewer not dispatched",
+  ].includes(prerequisite?.stopBoundary),
+  "N2 prerequisite did not retain an allowed provider-free native boundary");
 }
 
 function hasExpectedN2HandoffCommands(guard) {
@@ -1325,34 +1366,52 @@ function hasProviderFreeN2HandoffBoundary(guard) {
     wakeupCount,
     processCount,
   } = guard ?? {};
-  return proofClass === "synthetic-provider-free-n2-handoff-guard"
-    && fixtureBoundary === "distinct ephemeral fixture; no provider, process, or native reviewer execution"
+  return proofClass === "provider-free-native-n2-handoff-guard"
+    && fixtureBoundary === "same prepared mission and candidate; native N2 reservation only; no reviewer run, wakeup, or process"
     && reviewerHeartbeatConfiguration.wakeOnDemand === false
     && wakeupCount === 0
     && processCount === 0;
 }
 
+function hasPreparedN2SubmissionIdentity(guard) {
+  return [
+    guard?.mission?.mission?.missionId === guard?.missionId,
+    guard?.mission?.n2?.submission?.submissionId === guard?.submissionId,
+    guard?.mission?.n2?.submission?.sha256 === guard?.candidateSha256,
+    guard?.mission?.n2?.submission?.candidateCommit === guard?.candidateCommit,
+    guard?.admission?.envelope?.periodKey === guard?.nativePeriodKey,
+  ].every(Boolean);
+}
+
 function hasPreparedN2HandoffState(guard) {
-  return hasExpectedN2HandoffCommands(guard)
-    && guard?.startReviewOutcome === "prepared"
-    && guard?.operatorTransitionStatus === 200
-    && guard?.mission?.n2?.status === "reviewing";
+  return [
+    hasExpectedN2HandoffCommands(guard),
+    hasPreparedN2SubmissionIdentity(guard),
+    guard?.startReviewOutcome === "prepared",
+    guard?.operatorTransitionStatus === 200,
+    guard?.mission?.n2?.status === "review_handoff",
+  ].every(Boolean);
 }
 
-function hasSettledN2HandoffReservation(guard) {
+function hasPreparedN2HandoffReservation(guard) {
   const reservations = guard?.admission?.envelope?.reservations;
-  return reservations?.length === 1
-    && reservations[0]?.status === "settled"
-    && reservations[0]?.remainingExposure?.units === 0;
+  return [
+    reservations?.length === 1,
+    reservations?.[0]?.reservationId === guard?.reservationId,
+    reservations?.[0]?.status === "reserved",
+    reservations?.[0]?.requestedUnits === 2_000_000,
+    reservations?.[0]?.remainingExposure?.status === "known",
+    reservations?.[0]?.remainingExposure?.units === 2_000_000,
+    guard?.admission?.envelope?.exposure?.units === 0,
+    guard?.admission?.envelope?.accountedUnits === 2_000_000,
+    guard?.admission?.envelope?.availablePeriodUnits === 4_000_000,
+    guard?.openReservationDisposition
+      === "retained as reserved because no reviewer run was dispatched; isolated sandbox cleanup removes the owned database",
+  ].every(Boolean);
 }
 
-function hasTerminalN2HandoffFixtures(guard) {
-  return Array.isArray(guard?.fixtureRuns)
-    && guard.fixtureRuns.length === 2
-    && guard.fixtureRuns.every((run) => run?.status === "succeeded"
-      && nonemptyString(run?.finishedAt)
-      && run?.wakeupRequestId === null
-      && run?.processStartedAt === null);
+function hasNoN2HandoffRun(guard) {
+  return Array.isArray(guard?.reviewerRuns) && guard.reviewerRuns.length === 0;
 }
 
 function hasLockFreeN2HandoffReadback(guard) {
@@ -1363,10 +1422,10 @@ function hasLockFreeN2HandoffReadback(guard) {
 function assertN2HandoffGuard(guard) {
   requireProof(hasProviderFreeN2HandoffBoundary(guard)
       && hasPreparedN2HandoffState(guard)
-      && hasSettledN2HandoffReservation(guard)
-      && hasTerminalN2HandoffFixtures(guard)
+      && hasPreparedN2HandoffReservation(guard)
+      && hasNoN2HandoffRun(guard)
       && hasLockFreeN2HandoffReadback(guard),
-  "synthetic public N2 handoff guard is not consumable, settled, and lock-free");
+  "public N2 handoff guard is not consumable, reserved without dispatch, and lock-free");
 }
 
 export function assertN2PrerequisiteEvidence(evidence, { candidateCommit, notBefore }) {

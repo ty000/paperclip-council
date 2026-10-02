@@ -634,41 +634,20 @@ try {
       },
       createFixtureRun: createN2PrerequisiteFixtureRun,
       finishFixtureRuns: finishN2PrerequisiteFixtureRuns,
-    });
-    const handoff = await runSyntheticN2({
-      request,
-      pluginId,
-      baseUrl,
-      cookie,
-      runtime,
-      companyId,
-      projectId,
-      ownerUserId: userId,
-      secretId: secret.body.id,
-      agents: {
-        lead: executorId,
-        contributorA: contributorAId,
-        contributorB: contributorBId,
-        reviewer: councilId,
+      liveN2Profile: {
+        model: "gpt-5.6-sol",
+        effort: "high",
+        runReservationUnits: 2_000_000,
+        periodAllowanceUnits: 6_000_000,
       },
-      freshRun: async (actor, targetIssueId) => freshRun(actor, targetIssueId),
-      bindActorRun: (actor, runId) => {
-        const current = agentTokens.get(actor);
-        assert(current, `unknown synthetic actor ${actor}`);
-        agentTokens.set(actor, { ...current, runId });
-      },
-      completeRun: completeSyntheticRun,
-      seedMission: seedSyntheticMission,
-      evidence,
-      stopAfterHandoff: true,
+      exerciseProviderFreeHandoff: true,
     });
-    assert("handoffGuard" in handoff, "synthetic N2 handoff guard must stop after the public boundary");
-    evidence.configuration.fixtureBoundary = "The primary prerequisite seam inserts and terminalizes three heartbeat fixtures and clears their exact issue locks; a distinct synthetic handoff guard uses the existing N1 seed seam plus two terminal fixture rows; all business transitions use public Paperclip and installed Council APIs";
-    evidence.configuration.models = "none";
+    assert(prerequisite.handoffGuard, "provider-free N2 handoff guard must stop after the public boundary");
+    evidence.configuration.fixtureBoundary = "The prerequisite seam terminalizes three N1 heartbeat fixtures and clears their exact issue locks before the same mission and candidate enter a distinct native N2 period; the handoff leaves one native reservation open without dispatching a reviewer run";
+    evidence.configuration.models = "gpt-5.6-sol/high configured on disabled agents; no provider invocation";
     evidence.n2Prerequisite = {
       proofClass: "N2 native-stage prerequisite validated",
       ...prerequisite,
-      handoffGuard: handoff.handoffGuard,
       providerBoundary: {
         providerInvocationCount: 0,
         nativeAgentExecutionCount: 0,
@@ -677,16 +656,16 @@ try {
         reviewerRunCount: prerequisite.runReadbacks.find(
           (entry: { agentId: string }) => entry.agentId === prerequisite.agents.reviewer.id,
         )?.runCount ?? -1,
-        evidence: "public heartbeat-run readback attributes one terminal, unexecuted fixture row to lead, Alpha, and Beta; the primary reviewer readback is empty",
+        evidence: "public heartbeat-run readback attributes one terminal, unexecuted fixture row to lead, Alpha, and Beta; reviewer readbacks remain empty before and after the same-mission native handoff",
       },
-      databaseBoundary: "the primary prerequisite seam inserts and terminalizes exactly three heartbeat fixtures, clears only their exact issue locks, and uses public Paperclip and installed Council APIs for business transitions",
+      databaseBoundary: "the seam terminalizes exactly three N1 heartbeat fixtures and clears only their issue locks; public plugin configuration and admission APIs then create a distinct native N2 period whose single prepared reservation remains open without a run",
     };
     Object.assign(evidence.results, {
       n2PrerequisitePublicMission: "PASS",
       n2PrerequisiteDistinctContributions: "PASS",
       n2PrerequisiteVerifiedCandidate: "PASS",
       n2PrerequisiteN1ReservationsSettled: "PASS",
-      n2PrerequisiteZeroExposure: "PASS",
+      n2PrerequisiteFixtureZeroExposure: "PASS",
       n2PrerequisiteZeroProviderOrNativeRuns: "PASS",
       n2PrerequisiteStopsBeforeReviewer: "PASS",
       n2PrerequisiteFixtureLifecycleFinished: "PASS",
@@ -1995,7 +1974,7 @@ try {
           effort: agent.adapterConfig?.modelReasoningEffort ?? null,
         })),
       };
-      evidence.configuration.fixtureBoundary = "The safe-boundary suite uses fixtures; isolated N2 terminalizes three deterministic heartbeat fixture rows and clears their exact issue locks after building N1 through public APIs without agent execution, then permits only reviewer-correction-reviewer native runs.";
+      evidence.configuration.fixtureBoundary = "Isolated N2 terminalizes three deterministic N1 heartbeat fixture rows and clears their exact issue locks before public configuration creates a distinct native N2 period; only reviewer-correction-reviewer may then run against that native period.";
       evidence.n2Prerequisite = {
         proofClass: "N2 native-stage prerequisite validated",
         ...live,
@@ -2009,14 +1988,14 @@ try {
           )?.runCount ?? -1,
           evidence: "public heartbeat-run readback attributes one terminal, unexecuted fixture row to lead, Alpha, and Beta before N2; reviewer readback is empty",
         },
-        databaseBoundary: "the primary prerequisite seam inserts and terminalizes exactly three heartbeat fixtures, clears only their exact issue locks, and uses public Paperclip and installed Council APIs for business transitions",
+        databaseBoundary: "the seam terminalizes exactly three N1 heartbeat fixtures and clears only their issue locks; public plugin configuration and admission APIs then create a distinct native N2 period that remains empty until authorized reviewer dispatch",
       };
       Object.assign(evidence.results, {
         n2PrerequisitePublicMission: "PASS",
         n2PrerequisiteDistinctContributions: "PASS",
         n2PrerequisiteVerifiedCandidate: "PASS",
         n2PrerequisiteN1ReservationsSettled: "PASS",
-        n2PrerequisiteZeroExposure: "PASS",
+        n2PrerequisiteFixtureZeroExposure: "PASS",
         n2PrerequisiteZeroProviderOrNativeRuns: "PASS",
         n2PrerequisiteStopsBeforeReviewer: "PASS",
         n2PrerequisiteFixtureLifecycleFinished: "PASS",
@@ -2130,7 +2109,7 @@ try {
           liveMission.n2.application.operationId,
           liveMission.n2.application.receiptState,
         ] : []),
-        ...(liveN2Campaign ? evidence.liveN2.admission.envelope.reservations : live.admission.envelope.reservations).flatMap((reservation: any) => [
+        ...live.admission.envelope.reservations.flatMap((reservation: any) => [
           reservation.reservationId,
           String(reservation.requestedUnits),
           String(reservation.usage.units),

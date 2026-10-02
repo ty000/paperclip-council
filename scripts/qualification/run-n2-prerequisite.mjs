@@ -28,7 +28,7 @@ function proofManifest({ candidateCommit, evidencePath, evidenceSha256, proofPat
     proof_id: `paperclip-council-n2-native-stage-prerequisite-v1:${candidateCommit}`,
     subject: `Provider-free isolated N2 prerequisite on Council candidate ${candidateCommit}`,
     status: "pass",
-    summary: "Three deterministic heartbeat fixtures prepared checkout identities, then became terminal and released their exact issue locks after publication and settlement. Public commands produced a verified two-contribution N1 candidate at ready_for_review, while a distinct synthetic guard proved the N2 prepared/operator handoff with settled exposure and no provider or agent process.",
+    summary: "Three deterministic N1 heartbeat fixtures became terminal and released their exact issue locks after publication and settlement. Public configuration then removed fixture mode, created a distinct 2M/6M native period, and carried the same mission and candidate through the prepared/operator N2 handoff with wakeups disabled and no provider or agent process.",
     categories: ["functional", "compliance", "operations"],
     evidence: [
       {
@@ -37,7 +37,7 @@ function proofManifest({ candidateCommit, evidencePath, evidenceSha256, proofPat
         kind: "runtime-observation",
         location: artifactLocation(evidencePath),
         replayable: true,
-        notes: `Candidate-bound JSON sha256=${evidenceSha256}; inspect the primary mission, candidate, reservations, terminal fixture lifecycle, lock readbacks, distinct synthetic handoff guard, stop boundary, and cleanup fields.`,
+        notes: `Candidate-bound JSON sha256=${evidenceSha256}; inspect the N1 snapshot, candidate identity, distinct fixture/native periods, terminal fixture lifecycle, same-mission native handoff, open prepared reservation, lock readbacks, and cleanup fields.`,
       },
       {
         id: "owned-runtime-cleanup",
@@ -53,7 +53,7 @@ function proofManifest({ candidateCommit, evidencePath, evidenceSha256, proofPat
         kind: "runtime-observation",
         location: artifactLocation(evidencePath),
         replayable: true,
-        notes: "The primary prerequisite seam records and terminalizes three unexecuted heartbeat fixtures and clears only their exact issue locks. The distinct non-native guard uses the existing synthetic N1 seed seam plus two terminal fixture rows; its N2 business transitions use public commands with wakeups disabled and zero remaining exposure.",
+        notes: "The seam terminalizes three unexecuted N1 heartbeat fixtures and clears only their exact issue locks. It then uses public configuration, admission, start-review, and issue transition APIs on the same mission; the one native reservation remains reserved because no reviewer run is dispatched and the owned database is destroyed at cleanup.",
       },
     ],
     replay: {
@@ -145,7 +145,7 @@ async function main() {
 
   console.log(`N2 prerequisite evidence: ${evidencePath} sha256=${evidenceDigest}`);
   console.log(`N2 prerequisite proof manifest: ${proofPath} sha256=${proofDigest}`);
-  console.log("N2 native-stage prerequisite validated; fixture heartbeat rows only; no provider or agent execution");
+  console.log("N2 native-stage prerequisite validated; N1 fixtures terminal, native handoff reserved without dispatch, no provider or agent execution");
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

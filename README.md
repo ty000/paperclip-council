@@ -79,13 +79,14 @@ For the isolated N2 path, `pnpm qualification:preflight:n2` first builds the
 same `ready_for_review` prerequisite through public Paperclip APIs and
 fixture-confined public Council commands. It records two distinct contributions,
 a verified integrated candidate, three settled zero-usage N1 reservations,
-zero exposure, three terminal checkout heartbeat fixtures for lead/Alpha/Beta,
+zero fixture exposure, three terminal checkout heartbeat fixtures for lead/Alpha/Beta,
 no open checkout/execution locks, an empty primary reviewer readback, and
-owned-runtime cleanup. A distinct synthetic fixture then exercises the public
-`start-review` prepared result, operator PATCH, reviewer handoff confirmation,
-and settlement with wakeups disabled. The primary mission stays at
-`ready_for_review`; neither fixture invokes a provider or agent process. A later,
-separately
+owned-runtime cleanup. It then removes fixture mode through public configuration,
+creates a distinct native 2M-per-run/6M-period envelope with the profile's exact
+dates, and carries the same mission and candidate through `start-review` and the
+operator PATCH. The reviewer stays disabled, so the resulting native reservation
+remains open without any wakeup, run, process, or provider call; the owned sandbox
+is then destroyed. A later, separately
 authorized campaign can reuse that deterministic builder in the same ephemeral
 runtime and launch only reviewer V1, the bounded correction, and reviewer V2:
 

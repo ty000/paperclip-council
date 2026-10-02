@@ -56,6 +56,41 @@ function errorEvidence(error: unknown) {
     : { name: "UnknownError", message: String(error) };
 }
 
+async function setWakeOnDemand(request: ApiRequest, agentId: string, wakeOnDemand: boolean) {
+  const response = await request("human", "PATCH", `/api/agents/${agentId}`, {
+    runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand, maxConcurrentRuns: 1 } },
+  });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.equal(response.body.runtimeConfig?.heartbeat?.wakeOnDemand, wakeOnDemand);
+  return response.body;
+}
+
+export async function configureNativeN2ReviewEntry(input: {
+  request: ApiRequest;
+  rootIssueId: string;
+  leadId: string;
+  reviewerId: string;
+}) {
+  const response = await input.request("human", "PATCH", `/api/issues/${input.rootIssueId}`, {
+    status: "in_progress",
+    assigneeAgentId: input.leadId,
+    executionPolicy: {
+      mode: "normal",
+      commentRequired: true,
+      stages: [{
+        id: randomUUID(),
+        type: "review",
+        approvalsNeeded: 1,
+        participants: [{ id: randomUUID(), type: "agent", agentId: input.reviewerId }],
+      }],
+    },
+  });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.equal(response.body.status, "in_progress");
+  assert.equal(response.body.assigneeAgentId, input.leadId);
+  return response.body;
+}
+
 export function assertProviderFreeN2HandoffReady(n1: any) {
   if (!n1?.providerFreePrerequisite) return;
   const lifecycle = n1?.fixtureLifecycle;
@@ -141,6 +176,7 @@ async function settleN2Usage(input: {
   missionPath: string;
   admissionPath: string;
   companyId: string;
+  periodKey: string;
   target: "review" | "correction";
   round?: 1 | 2;
 }) {
@@ -148,7 +184,7 @@ async function settleN2Usage(input: {
   const admission = await input.request(
     "human",
     "GET",
-    `${input.admissionPath}?companyId=${input.companyId}&periodKey=${encodeURIComponent(mission.admission.periodKey)}`,
+    `${input.admissionPath}?companyId=${input.companyId}&periodKey=${encodeURIComponent(input.periodKey)}`,
   );
   assert.equal(admission.status, 200, JSON.stringify(admission.body));
   const settled = await input.request("human", "POST", `${input.missionPath}/commands`, {
@@ -170,12 +206,13 @@ async function readN2MissionAndAdmission(input: {
   missionPath: string;
   admissionPath: string;
   companyId: string;
+  periodKey: string;
 }) {
   const mission = await inspectMission(input.request, input.missionPath, input.companyId);
   const admission = await input.request(
     "human",
     "GET",
-    `${input.admissionPath}?companyId=${input.companyId}&periodKey=${encodeURIComponent(mission.admission.periodKey)}`,
+    `${input.admissionPath}?companyId=${input.companyId}&periodKey=${encodeURIComponent(input.periodKey)}`,
   );
   assert.equal(admission.status, 200, JSON.stringify(admission.body));
   return { mission, admission: admission.body };
@@ -195,6 +232,9 @@ export async function runLiveN2(input: {
     admission: any;
     agents: { lead: any; contributorA: any; contributorB: any; reviewer: any };
     periodKey: string;
+    fixturePeriodKey?: string;
+    nativePeriodKey?: string;
+    nativeAdmission?: any;
     providerFreePrerequisite?: boolean;
     fixtureLifecycle?: any;
   };
@@ -203,6 +243,7 @@ export async function runLiveN2(input: {
 }) {
   const { companyId, missionId, rootIssueId, agents } = input.n1;
   assertProviderFreeN2HandoffReady(input.n1);
+  const n2PeriodKey = input.n1.nativePeriodKey ?? input.n1.periodKey;
   const missionPath = `/api/plugins/${input.pluginId}/api/companies/${companyId}/missions/${missionId}`;
   const admissionPath = `/api/plugins/${input.pluginId}/api/companies/${companyId}/admission`;
   const reviewerRunIds = new Set((await input.listRuns(agents.reviewer.id)).map((run) => run.id));
@@ -214,7 +255,8 @@ export async function runLiveN2(input: {
     runs: [],
     settlements: [],
     mission: null,
-    admission: input.n1.admission,
+    admission: input.n1.nativeAdmission ?? input.n1.admission,
+    fixtureAdmission: input.n1.admission,
     decisionReceipts: [],
     limits: {
       runCount: input.n1.providerFreePrerequisite ? 3 : 6,
@@ -226,24 +268,12 @@ export async function runLiveN2(input: {
   const progressiveEvidence = input.evidence.liveN2;
   await input.persistEvidence();
 
-  const nativeReviewPolicy = {
-    mode: "normal",
-    commentRequired: true,
-    stages: [{
-      id: randomUUID(),
-      type: "review",
-      approvalsNeeded: 1,
-      participants: [{ id: randomUUID(), type: "agent", agentId: agents.reviewer.id }],
-    }],
-  };
-  const reopened = await input.request("human", "PATCH", `/api/issues/${rootIssueId}`, {
-    status: "in_progress",
-    assigneeAgentId: agents.lead.id,
-    executionPolicy: nativeReviewPolicy,
+  await configureNativeN2ReviewEntry({
+    request: input.request,
+    rootIssueId,
+    leadId: agents.lead.id,
+    reviewerId: agents.reviewer.id,
   });
-  assert.equal(reopened.status, 200, JSON.stringify(reopened.body));
-  assert.equal(reopened.body.status, "in_progress");
-  assert.equal(reopened.body.assigneeAgentId, agents.lead.id);
 
   const beforeStart = await inspectMission(input.request, missionPath, companyId);
   const started = await input.request("human", "POST", `${missionPath}/commands`, {
@@ -261,6 +291,7 @@ export async function runLiveN2(input: {
     path: `/api/issues/${rootIssueId}`,
     body: { status: "in_review" },
   });
+  await setWakeOnDemand(input.request, agents.reviewer.id, true);
   const initialReviewTransition = await input.request("human", "PATCH", `/api/issues/${rootIssueId}`, {
     status: "in_review",
   });
@@ -279,9 +310,12 @@ export async function runLiveN2(input: {
     label: "review-1",
     observe: () => inspectMission(input.request, missionPath, companyId),
     reconcile: () => settleN2Usage({
-      request: input.request, missionPath, admissionPath, companyId, target: "review", round: 1,
+      request: input.request, missionPath, admissionPath, companyId,
+      periodKey: n2PeriodKey, target: "review", round: 1,
     }),
-    readback: () => readN2MissionAndAdmission({ request: input.request, missionPath, admissionPath, companyId }),
+    readback: () => readN2MissionAndAdmission({
+      request: input.request, missionPath, admissionPath, companyId, periodKey: n2PeriodKey,
+    }),
     persist: input.persistEvidence,
     validateBusiness: (mission) => {
       assertSucceeded(terminalReview1, "initial independent review");
@@ -290,10 +324,8 @@ export async function runLiveN2(input: {
       assert.equal(mission.n2.review.verdict.verdict, "changes_requested");
     },
   });
-  const leadEnabled = await input.request("human", "PATCH", `/api/agents/${agents.lead.id}`, {
-    runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: true, maxConcurrentRuns: 1 } },
-  });
-  assert.equal(leadEnabled.status, 200, JSON.stringify(leadEnabled.body));
+  await setWakeOnDemand(input.request, agents.reviewer.id, false);
+  await setWakeOnDemand(input.request, agents.lead.id, true);
   const beforeCorrection = await inspectMission(input.request, missionPath, companyId);
   const correctionStart = await input.request("human", "POST", `${missionPath}/commands`, {
     companyId,
@@ -312,9 +344,12 @@ export async function runLiveN2(input: {
     label: "correction",
     observe: () => inspectMission(input.request, missionPath, companyId),
     reconcile: () => settleN2Usage({
-      request: input.request, missionPath, admissionPath, companyId, target: "correction",
+      request: input.request, missionPath, admissionPath, companyId,
+      periodKey: n2PeriodKey, target: "correction",
     }),
-    readback: () => readN2MissionAndAdmission({ request: input.request, missionPath, admissionPath, companyId }),
+    readback: () => readN2MissionAndAdmission({
+      request: input.request, missionPath, admissionPath, companyId, periodKey: n2PeriodKey,
+    }),
     persist: input.persistEvidence,
     validateBusiness: (mission) => {
       assertSucceeded(correctionRun, "integration lead correction");
@@ -323,10 +358,7 @@ export async function runLiveN2(input: {
       assert.deepEqual(mission.n2.correction.correctedPaths, ["alpha.txt"]);
     },
   });
-  const leadDisabled = await input.request("human", "PATCH", `/api/agents/${agents.lead.id}`, {
-    runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: false, maxConcurrentRuns: 1 } },
-  });
-  assert.equal(leadDisabled.status, 200, JSON.stringify(leadDisabled.body));
+  await setWakeOnDemand(input.request, agents.lead.id, false);
 
   const beforeSecondReview = await inspectMission(input.request, missionPath, companyId);
   const secondReview = await input.request("human", "POST", `${missionPath}/commands`, {
@@ -343,6 +375,7 @@ export async function runLiveN2(input: {
     path: `/api/issues/${rootIssueId}`,
     body: { status: "in_review" },
   });
+  await setWakeOnDemand(input.request, agents.reviewer.id, true);
   const finalReviewTransition = await input.request("human", "PATCH", `/api/issues/${rootIssueId}`, {
     status: "in_review",
   });
@@ -361,9 +394,12 @@ export async function runLiveN2(input: {
     label: "review-2",
     observe: () => inspectMission(input.request, missionPath, companyId),
     reconcile: () => settleN2Usage({
-      request: input.request, missionPath, admissionPath, companyId, target: "review", round: 2,
+      request: input.request, missionPath, admissionPath, companyId,
+      periodKey: n2PeriodKey, target: "review", round: 2,
     }),
-    readback: () => readN2MissionAndAdmission({ request: input.request, missionPath, admissionPath, companyId }),
+    readback: () => readN2MissionAndAdmission({
+      request: input.request, missionPath, admissionPath, companyId, periodKey: n2PeriodKey,
+    }),
     persist: input.persistEvidence,
     validateBusiness: (mission) => {
       assertSucceeded(terminalReview2, "final independent review");
@@ -373,6 +409,7 @@ export async function runLiveN2(input: {
       assert.equal(mission.n2.review.verdict.verdict, "approved");
     },
   });
+  await setWakeOnDemand(input.request, agents.reviewer.id, false);
   const finalMission = await inspectMission(input.request, missionPath, companyId);
   assert.equal(finalMission.mission.aggregate.phase, "accepted");
   assert.equal(finalMission.n2.status, "accepted");
@@ -385,15 +422,32 @@ export async function runLiveN2(input: {
   const finalAdmission = await input.request(
     "human",
     "GET",
-    `${admissionPath}?companyId=${companyId}&periodKey=${encodeURIComponent(input.n1.periodKey)}`,
+    `${admissionPath}?companyId=${companyId}&periodKey=${encodeURIComponent(n2PeriodKey)}`,
   );
   assert.equal(finalAdmission.status, 200, JSON.stringify(finalAdmission.body));
   const reservations = finalAdmission.body.envelope.reservations as any[];
-  assert.equal(reservations.length, 6);
-  assert(reservations.every((entry, index) => entry.status === "settled"
+  assert.equal(reservations.length, input.n1.providerFreePrerequisite ? 3 : 6);
+  assert(reservations.every((entry) => entry.status === "settled"
     && entry.usage?.status === "known"
-    && (input.n1.providerFreePrerequisite && index < 3 ? entry.usage.units === 0 : entry.usage.units > 0)
+    && entry.usage.units > 0
     && entry.remainingExposure?.status === "known" && entry.remainingExposure.units === 0));
+  let fixtureAdmission: any = null;
+  if (input.n1.providerFreePrerequisite) {
+    assert(input.n1.fixturePeriodKey, "isolated N2 prerequisite fixture period is missing");
+    const response = await input.request(
+      "human",
+      "GET",
+      `${admissionPath}?companyId=${companyId}&periodKey=${encodeURIComponent(input.n1.fixturePeriodKey)}`,
+    );
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    const fixtureReservations = response.body.envelope.reservations as any[];
+    assert.equal(fixtureReservations.length, 3);
+    assert(fixtureReservations.every((entry) => entry.status === "settled"
+      && entry.usage?.status === "known" && entry.usage.units === 0
+      && entry.remainingExposure?.status === "known" && entry.remainingExposure.units === 0));
+    assert.equal(response.body.envelope.exposure.units, 0);
+    fixtureAdmission = response.body;
+  }
 
   const decisions = await input.request(
     "human",
@@ -414,6 +468,7 @@ export async function runLiveN2(input: {
   Object.assign(input.evidence.liveN2, {
     mission: finalMission,
     admission: finalAdmission.body,
+    ...(fixtureAdmission ? { fixtureAdmission } : {}),
     decisionReceipts: n2Receipts,
     correction: {
       path: "alpha.txt",

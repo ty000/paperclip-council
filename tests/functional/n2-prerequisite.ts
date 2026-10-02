@@ -3,7 +3,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { nativeAdmissionConfiguration, type NativeG4Profile } from "../../src/g4-native.js";
 import { n1DeliveryAdapterConfig, n2LeadInstructions, n2ReviewerInstructions } from "./n1-live.js";
+import { configureNativeN2ReviewEntry } from "./n2-live.js";
 
 type ApiResult = { status: number; body: any; headers: Headers };
 type ApiRequest = (actor: string, method: string, path: string, body?: unknown) => Promise<ApiResult>;
@@ -96,7 +98,7 @@ async function createAgent(input: {
     ...(input.live
       ? { instructionsBundle: { entryFile: "AGENTS.md", files: { "AGENTS.md": input.live.instructions } } }
       : {}),
-    runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: Boolean(input.live), maxConcurrentRuns: 1 } },
+    runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: false, maxConcurrentRuns: 1 } },
     budgetMonthlyCents: 0,
   });
   assert.equal(agent.status, 201, JSON.stringify(agent.body));
@@ -130,6 +132,157 @@ async function uploadBundle(input: {
   return body;
 }
 
+async function prepareNativeN2Admission(input: {
+  request: ApiRequest;
+  pluginId: string;
+  baseUrl: string;
+  companyId: string;
+  reviewerId: string;
+  secretId: string;
+  runReservationUnits: number;
+  periodAllowanceUnits: number;
+}) {
+  const now = Date.now();
+  const profile: NativeG4Profile = {
+    kind: "paperclip-orchestration-tokens-v1",
+    periodKey: `n2-native-${randomUUID()}`,
+    periodStart: new Date(now - 60_000).toISOString(),
+    periodEnd: new Date(now + 90 * 60_000).toISOString(),
+    periodAllowanceUnits: input.periodAllowanceUnits,
+    runReservationUnits: input.runReservationUnits,
+    initialKnownUsageUnits: 0,
+    initialExposureUnits: 0,
+    initialTokenAccountingSource: `n2-prerequisite-native:${input.companyId}`,
+    maxCorrections: 1,
+  };
+  const configured = await input.request("human", "POST", `/api/plugins/${input.pluginId}/config`, {
+    companyId: input.companyId,
+    configJson: {
+      apiBaseUrl: input.baseUrl,
+      councilAgentId: input.reviewerId,
+      councilApiKey: { type: "secret_ref", secretId: input.secretId },
+      n1OperatingProfile: profile,
+    },
+  });
+  assert.equal(configured.status, 200, JSON.stringify(configured.body));
+  const configuration = await input.request(
+    "human", "GET", `/api/plugins/${input.pluginId}/config?companyId=${encodeURIComponent(input.companyId)}`,
+  );
+  assert.equal(configuration.status, 200, JSON.stringify(configuration.body));
+  assert.equal(configuration.body.configJson.n1FixtureMode, undefined);
+  assert.deepEqual(configuration.body.configJson.n1OperatingProfile, profile);
+  const admissionPath = `/api/plugins/${input.pluginId}/api/companies/${input.companyId}/admission`;
+  const admission = await input.request("human", "POST", admissionPath, {
+    companyId: input.companyId,
+    command: "configure",
+    configuration: nativeAdmissionConfiguration(profile, input.companyId, randomUUID()),
+  });
+  assert.equal(admission.status, 200, JSON.stringify(admission.body));
+  assert.equal(admission.body.envelope.periodKey, profile.periodKey);
+  assert.equal(admission.body.envelope.periodStart, profile.periodStart);
+  assert.equal(admission.body.envelope.periodEnd, profile.periodEnd);
+  assert.deepEqual(admission.body.envelope.reservations, []);
+  assert.equal(admission.body.envelope.exposure.units, 0);
+  return { profile, configuration: configuration.body, admission: admission.body };
+}
+
+async function exercisePreparedN2Handoff(input: {
+  request: ApiRequest;
+  companyId: string;
+  missionPath: string;
+  admissionPath: string;
+  rootIssueId: string;
+  leadId: string;
+  reviewerId: string;
+  missionVersion: number;
+  nativeProfile: NativeG4Profile;
+  candidate: { sha256: string; candidateCommit: string };
+}) {
+  const reviewerBefore = await input.request("human", "GET", `/api/agents/${input.reviewerId}`);
+  assert.equal(reviewerBefore.status, 200, JSON.stringify(reviewerBefore.body));
+  assert.equal(reviewerBefore.body.runtimeConfig?.heartbeat?.wakeOnDemand, false);
+  await configureNativeN2ReviewEntry({
+    request: input.request,
+    rootIssueId: input.rootIssueId,
+    leadId: input.leadId,
+    reviewerId: input.reviewerId,
+  });
+  const submissionId = randomUUID();
+  const reservationId = randomUUID();
+  const started = await input.request("human", "POST", `${input.missionPath}/commands`, {
+    companyId: input.companyId,
+    command: "start-review",
+    commandId: randomUUID(),
+    expectedVersion: input.missionVersion,
+    submissionId,
+    reservationId,
+  });
+  assert.equal(started.status, 200, JSON.stringify(started.body));
+  assert.equal(started.body.outcome, "prepared");
+  assert.deepEqual(started.body.nativeTransition, {
+    method: "PATCH", path: `/api/issues/${input.rootIssueId}`, body: { status: "in_review" },
+  });
+  const transitioned = await input.request("human", "PATCH", `/api/issues/${input.rootIssueId}`, { status: "in_review" });
+  assert.equal(transitioned.status, 200, JSON.stringify(transitioned.body));
+  assert.equal(transitioned.body.assigneeAgentId, input.reviewerId);
+  const mission = await input.request("human", "GET", `${input.missionPath}?companyId=${input.companyId}`);
+  const admission = await input.request(
+    "human",
+    "GET",
+    `${input.admissionPath}?companyId=${input.companyId}&periodKey=${encodeURIComponent(input.nativeProfile.periodKey)}`,
+  );
+  const reviewerRuns = await input.request(
+    "human", "GET", `/api/companies/${input.companyId}/heartbeat-runs?agentId=${encodeURIComponent(input.reviewerId)}&limit=1000&summary=1`,
+  );
+  const issue = await input.request("human", "GET", `/api/issues/${input.rootIssueId}`);
+  assert.equal(mission.status, 200, JSON.stringify(mission.body));
+  assert.equal(admission.status, 200, JSON.stringify(admission.body));
+  assert.equal(reviewerRuns.status, 200, JSON.stringify(reviewerRuns.body));
+  assert.equal(issue.status, 200, JSON.stringify(issue.body));
+  assert.equal(mission.body.n2.status, "review_handoff");
+  assert.equal(mission.body.n2.submission.submissionId, submissionId);
+  assert.equal(mission.body.n2.submission.sha256, input.candidate.sha256);
+  assert.equal(mission.body.n2.submission.candidateCommit, input.candidate.candidateCommit);
+  assert.equal(admission.body.envelope.periodKey, input.nativeProfile.periodKey);
+  assert.equal(admission.body.envelope.reservations.length, 1);
+  assert.equal(admission.body.envelope.reservations[0].reservationId, reservationId);
+  assert.equal(admission.body.envelope.reservations[0].status, "reserved");
+  assert.equal(admission.body.envelope.reservations[0].requestedUnits, input.nativeProfile.runReservationUnits);
+  assert.equal(admission.body.envelope.reservations[0].remainingExposure.units, input.nativeProfile.runReservationUnits);
+  assert.equal(admission.body.envelope.exposure.units, 0);
+  assert.equal(admission.body.envelope.accountedUnits, input.nativeProfile.runReservationUnits);
+  assert.equal(
+    admission.body.envelope.availablePeriodUnits,
+    input.nativeProfile.periodAllowanceUnits - input.nativeProfile.runReservationUnits,
+  );
+  assert.deepEqual(reviewerRuns.body, []);
+  assert.equal(issue.body.checkoutRunId, null);
+  assert.equal(issue.body.executionRunId, null);
+  return {
+    proofClass: "provider-free-native-n2-handoff-guard",
+    fixtureBoundary: "same prepared mission and candidate; native N2 reservation only; no reviewer run, wakeup, or process",
+    reviewerHeartbeatConfiguration: reviewerBefore.body.runtimeConfig?.heartbeat,
+    wakeupCount: 0,
+    processCount: 0,
+    publicCommands: ["start-review", "PATCH /api/issues/:id", "GET mission", "GET admission"],
+    startReviewOutcome: started.body.outcome,
+    nativeTransition: started.body.nativeTransition,
+    operatorTransitionStatus: transitioned.status,
+    missionId: mission.body.mission.missionId,
+    rootIssueId: input.rootIssueId,
+    submissionId,
+    reservationId,
+    nativePeriodKey: input.nativeProfile.periodKey,
+    candidateSha256: input.candidate.sha256,
+    candidateCommit: input.candidate.candidateCommit,
+    mission: mission.body,
+    admission: admission.body,
+    issueReadback: issue.body,
+    reviewerRuns: reviewerRuns.body,
+    openReservationDisposition: "retained as reserved because no reviewer run was dispatched; isolated sandbox cleanup removes the owned database",
+  };
+}
+
 // The nominal public-API workflow is intentionally linear so its order is directly auditable.
 // fallow-ignore-next-line complexity
 export async function prepareN2Prerequisite(input: {
@@ -140,6 +293,7 @@ export async function prepareN2Prerequisite(input: {
   runtime: string;
   ownerUserId: string;
   liveN2Profile?: LiveN2Profile;
+  exerciseProviderFreeHandoff?: boolean;
   registerActor: (actor: string, identity: AgentIdentity) => void;
   createFixtureRun: (actor: string, issueId: string) => Promise<string>;
   finishFixtureRuns: (runs: readonly FixtureHeartbeatRun[]) => Promise<{
@@ -211,20 +365,6 @@ export async function prepareN2Prerequisite(input: {
       councilAgentId: reviewer.id,
       councilApiKey: { type: "secret_ref", secretId: secret.body.id },
       n1FixtureMode: "ephemeral-local-sandbox",
-      ...(live ? {
-        n1OperatingProfile: {
-          kind: "paperclip-orchestration-tokens-v1",
-          periodKey,
-          periodStart: new Date(now - 60_000).toISOString(),
-          periodEnd: new Date(now + 90 * 60_000).toISOString(),
-          periodAllowanceUnits,
-          runReservationUnits,
-          initialKnownUsageUnits: 0,
-          initialExposureUnits: 0,
-          initialTokenAccountingSource: `isolated-live-harness:fresh-company:${companyId}`,
-          maxCorrections: 1,
-        },
-      } : {}),
     },
   });
   assert.equal(configured.status, 200, JSON.stringify(configured.body));
@@ -296,25 +436,19 @@ export async function prepareN2Prerequisite(input: {
     periodEnd: new Date(now + 60 * 60_000).toISOString(),
     measurement: {
       status: "known",
-      source: live
-        ? "paperclip:issues.summaries.getOrchestration:terminal-token-ledger"
-        : "fixture:local-sandbox",
-      unit: live ? "tokens" : "fixture-unit",
+      source: "fixture:local-sandbox",
+      unit: "fixture-unit",
     },
     allowance: {
       status: "known",
-      source: live
-        ? `plugin-config:n1OperatingProfile:initial-token-accounting:isolated-live-harness:fresh-company:${companyId}`
-        : "fixture:local-sandbox",
+      source: "fixture:local-sandbox",
       periodUnits: periodAllowanceUnits,
       taskUnits: runReservationUnits,
       knownUsageUnits: 0,
     },
     exposure: {
       status: "known",
-      source: live
-        ? `plugin-config:n1OperatingProfile:initial-token-accounting:isolated-live-harness:fresh-company:${companyId}`
-        : "fixture:local-sandbox",
+      source: "fixture:local-sandbox",
       units: 0,
     },
     limits: { maxConcurrent: 2, maxRetries: 0, maxCorrections: 1 },
@@ -593,6 +727,31 @@ export async function prepareN2Prerequisite(input: {
     };
   }));
 
+  const nativeN2 = await prepareNativeN2Admission({
+    request: input.request,
+    pluginId: input.pluginId,
+    baseUrl: input.baseUrl,
+    companyId,
+    reviewerId: reviewer.id,
+    secretId: secret.body.id,
+    runReservationUnits,
+    periodAllowanceUnits,
+  });
+  const handoffGuard = input.exerciseProviderFreeHandoff
+    ? await exercisePreparedN2Handoff({
+        request: input.request,
+        companyId,
+        missionPath,
+        admissionPath,
+        rootIssueId,
+        leadId: lead.id,
+        reviewerId: reviewer.id,
+        missionVersion: finalMission.body.mission.version,
+        nativeProfile: nativeN2.profile,
+        candidate: { sha256: candidate.sha256, candidateCommit: candidate.candidateCommit },
+      })
+    : null;
+
   return {
     companyId,
     issuePrefix: company.body.issuePrefix as string,
@@ -602,6 +761,11 @@ export async function prepareN2Prerequisite(input: {
     missionPath,
     admissionPath,
     periodKey,
+    fixturePeriodKey: periodKey,
+    nativePeriodKey: nativeN2.profile.periodKey,
+    nativeProfile: nativeN2.profile,
+    nativeConfiguration: nativeN2.configuration,
+    nativeAdmission: nativeN2.admission,
     providerFreePrerequisite: true,
     runReservationUnits,
     periodAllowanceUnits,
@@ -623,6 +787,9 @@ export async function prepareN2Prerequisite(input: {
       ...fixtureLifecycle,
     },
     runReadbacks,
-    stopBoundary: "ready_for_review; N2 state absent; reviewer not started",
+    handoffGuard,
+    stopBoundary: handoffGuard
+      ? "review_handoff prepared on the same candidate; native reservation open; reviewer not dispatched"
+      : "ready_for_review snapshot retained; native N2 period prepared; reviewer not started",
   };
 }
