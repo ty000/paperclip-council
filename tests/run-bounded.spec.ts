@@ -17,8 +17,11 @@ import {
   contributorInstructions,
   leadInstructions,
   n1DeliveryAdapterConfig,
+  n2LeadInstructions,
+  n2ReviewerInstructions,
   nativeRunEvidence,
   reconcileTerminalN1Usage,
+  UUID_GENERATION_COMMAND,
 } from "./functional/n1-live.js";
 import { contributionDescription } from "../src/n1-missions.js";
 
@@ -673,6 +676,33 @@ describe("bounded qualification launcher", () => {
     });
     expect(result.runs.map((run) => run.id)).toEqual(["lead-run", "alpha-run", "beta-run"]);
     expect(result.leadSettlement.body.mission.aggregate.phase).toBe("ready_for_review");
+  });
+
+  it("requires separately generated UUIDs and preserves sanitized non-2xx evidence in every agent instruction", () => {
+    const instructions = [
+      contributorInstructions(),
+      leadInstructions(),
+      n2LeadInstructions(),
+      n2ReviewerInstructions(),
+    ];
+    for (const instruction of instructions) {
+      expect(instruction).toContain(UUID_GENERATION_COMMAND);
+      expect(instruction).toContain("once and separately for that identifier");
+      expect(instruction).toContain("Never invent, partially copy, or manually edit a UUID.");
+      expect(instruction).toContain("preserve the HTTP status and sanitized JSON response body");
+      expect(instruction).toContain("without exposing credentials");
+    }
+
+    const nativeDescription = contributionDescription({
+      missionId: "11111111-1111-4111-8111-111111111111",
+      contributionId: "22222222-2222-4222-8222-222222222222",
+      ownedPaths: ["alpha.txt"],
+    });
+    expect(nativeDescription).toContain(UUID_GENERATION_COMMAND);
+    expect(nativeDescription).toContain("run this exact command once and separately");
+    expect(nativeDescription).toContain("Never invent, partially copy, or manually edit a UUID.");
+    expect(nativeDescription).toContain("preserve the HTTP status and sanitized JSON response body");
+    expect(nativeDescription).toContain("without exposing credentials");
   });
 
   it("settles a terminal child without a contribution and does not authorize another dispatch", async () => {

@@ -122,7 +122,14 @@ function promptPolicy(target: string): string {
     "",
     "Modele et effort recommandes",
     `Target: ${target}. Model: gpt-5.6-sol. Effort: high because this run participates in a governed native integration proof. Re-evaluate only if availability is rejected before launch; do not silently substitute. Source: independent mapping /home/davy-lp/.codex/shared/model-selection/model-effort-mapping.md, updated 2026-09-05. Effective runtime settings must be observed separately.`,
+    "For any non-2xx response, preserve the HTTP status and sanitized JSON response body in your final report without exposing credentials.",
   ].join("\n");
+}
+
+export const UUID_GENERATION_COMMAND = `node -e "console.log(require('node:crypto').randomUUID())"`;
+
+function uuidGenerationPolicy(identifiers: string): string {
+  return `For every fresh identifier that you create (${identifiers}), run this exact command once and separately for that identifier: ${UUID_GENERATION_COMMAND}. Never invent, partially copy, or manually edit a UUID.`;
 }
 
 export function contributorInstructions(): string {
@@ -130,6 +137,7 @@ export function contributorInstructions(): string {
     "You are one bounded Council N1 contributor. Work only on the currently assigned Paperclip child issue and current shared Git workspace.",
     "Read the issue title and description. Create the one requested owned file with exactly the requested one-line content and a trailing newline. Do not modify any other path.",
     'Commit that file with a concise commit message. Then use the authenticated Council endpoint named in the issue description. The first request body is exactly {"command":"inspect","missionId":"<mission-id>"}; replace <mission-id> with the stated Mission ID. Read body.version, then POST command=record-contribution with missionId, a fresh UUID commandId, that expectedVersion, the stated contributionId, and git rev-parse HEAD as commit. The current issue ID is available in the Paperclip task context and PAPERCLIP_TASK_ID.',
+    uuidGenerationPolicy("commandId"),
     "Use PAPERCLIP_API_URL, PAPERCLIP_API_KEY, and PAPERCLIP_RUN_ID. Normalize a trailing /api before constructing /api/plugins/... paths. Never print credentials.",
     "Only after record-contribution returns HTTP 200, PATCH this child issue status to done. Stop immediately on any non-2xx response; do not retry a model run or change unowned files.",
     "On failure, do not PATCH an issue status and do not create an issue comment: either may violate the native route contract or wake another run. Report the blocker only in your final response.",
@@ -142,6 +150,7 @@ export function leadInstructions(): string {
   return [
     "You are the Council N1 Integration Lead. Execute the root issue exactly. You coordinate two sequential native contribution runs and publish one verified Git candidate; you do not author either contribution file.",
     'All mission transitions must POST to /api/plugins/<plugin-id>/api/issues/<root-issue-id>/council/commands with the injected bearer token and run header. Before every state-changing command, send exactly {"command":"inspect","missionId":"<mission-id>"} with the actual Mission ID, then use the returned version as expectedVersion. Use fresh UUIDs for commandId and reservationId. Never use direct database access or synthetic run binding.',
+    uuidGenerationPolicy("commandId, reservationId, and any fresh attachmentId"),
     "After dispatching a child, retain its childIssueId and dispatchRunId from the response. Poll GET /api/heartbeat-runs/<dispatchRunId> until a terminal status with finishedAt, then call reconcile-usage immediately for that contribution using one stable commandId, regardless of run success or whether the child issue is done. If reconciliation returns only g4_run_not_terminal or g4_usage_unavailable while Paperclip finalizes its token ledger, repeat that same command after two seconds for at most 30 observations; any other refusal is a blocker. After settlement, require the child issue to be done and inspect the mission to require its commit before dispatching the next child. A terminal run without a recorded contribution is a blocker: do not dispatch the next child. This polling is observation, never a provider/model retry.",
     "After both contributions are done and reconciled, create a distinct empty integration commit with git commit --allow-empty. Create refs/heads/base at the stated base commit and refs/heads/candidate at the integration commit, then create and verify a self-contained Git bundle containing those exact refs.",
     "Prove failure blocking once: call publish with a fresh random attachmentId and syntactically valid identities/digest, require HTTP 422 integration_failed, and verify inspect still has no candidate. Do not repeat the failed publish.",
@@ -152,7 +161,7 @@ export function leadInstructions(): string {
   ].join("\n");
 }
 
-function n2LeadInstructions(): string {
+export function n2LeadInstructions(): string {
   return [
     "You are the Council N2 Integration Lead. This root issue has two mutually exclusive phases.",
     "If the current issue execution state says lastDecisionOutcome=changes_requested, execute only the correction phase below. Otherwise execute the N1 integration procedure that follows.",
@@ -160,6 +169,7 @@ function n2LeadInstructions(): string {
     "Create a replacement V2 integration commit directly on the parent of V1, not on top of V1: git switch -C n2-correction <V1-candidate>^. Change only alpha.txt to exactly 'alpha contribution corrected after independent review' plus a trailing newline, then commit it. The V2 commit must be distinct and its complete base delta must still consist only of alpha.txt and beta.txt.",
     "Create refs/heads/base at the immutable base and refs/heads/candidate at V2, create and verify a self-contained Git bundle, upload it to the root issue, and compute the exact SHA-256.",
     "POST the same inspect command again for the latest version, then POST command=prepare-resubmission with missionId, fresh commandId and submissionId, expectedVersion, attachmentId, baseCommit, candidateCommit, expectedSha256, and correctedPaths=['alpha.txt']. Require HTTP 200, then inspect once more and require n2.status=resubmission_prepared with the same correction run.",
+    uuidGenerationPolicy("commandId, submissionId, and any fresh attachmentId"),
     "Do not PATCH the issue status, start another review, settle usage, or wake another agent. Those effects occur only after this correction run is terminal and its usage is settled by the owner command path.",
     "On any mismatch or non-2xx response, stop without retrying a model run or changing native status.",
     "",
@@ -167,13 +177,14 @@ function n2LeadInstructions(): string {
   ].join("\n");
 }
 
-function n2ReviewerInstructions(): string {
+export function n2ReviewerInstructions(): string {
   return [
     "You are the independent Council N2 final reviewer. You never edit the candidate.",
     "Use PAPERCLIP_API_URL, PAPERCLIP_API_KEY and PAPERCLIP_RUN_ID. Normalize a trailing /api and never print credentials.",
     "POST /api/plugins/private.paperclip-council/api/issues/$PAPERCLIP_TASK_ID/council/commands with Authorization: Bearer $PAPERCLIP_API_KEY, x-paperclip-run-id: $PAPERCLIP_RUN_ID, and JSON body {\"command\":\"inspect\",\"missionId\":\"<mission-id>\"}. Require HTTP 200, the exact missionId, n2.status=review_handoff, and the active submission. Use the returned version to POST confirm-review-handoff with a fresh commandId. Require HTTP 200, then inspect again and require n2.status=reviewing, the exact reviewer run, active submission, and round.",
     "For round 1, require submission ordinal 1 and verify alpha.txt still contains exactly 'alpha contribution'. POST once to /api/plugins/<plugin-id>/api/issues/<root-issue-id>/decision with companyId, issueId, actorAgentId, runId, verdict=changes_requested, a fresh stable operationId and correctionReservationId, resultReference=council:n2:submission:<active-submission-id>, and justification='alpha.txt must contain the independently reviewed correction marker'. Use your exact agent and run identities. Require the native response to return the issue to the Integration Lead. Stop; do not wake the lead yourself.",
     "For round 2, require submission ordinal 2, predecessor identity equal to V1, and alpha.txt exactly 'alpha contribution corrected after independent review'. Require git rev-parse HEAD to equal the active candidateCommit. POST once to the same decision endpoint with companyId, issueId, actorAgentId, runId, verdict=approved, a fresh stable operationId, approvedCommit equal to that candidate, the exact resultReference, and justification='V2 contains the requested bounded correction'. Require native observed acceptance.",
+    uuidGenerationPolicy("commandId, operationId, and correctionReservationId"),
     "Never approve round 1, never request a second correction, never retry an uncertain decision, and never create or modify a candidate.",
     "",
     promptPolicy("independent N2 reviewer for one correction and final verdict"),
@@ -586,6 +597,7 @@ export async function runLiveN1(input: {
     `Contribution Beta: id=${contributionBId}; assignee=${contributorB.id}; title=Create beta.txt with exact content beta contribution; ownedPaths=[beta.txt]`,
     "Plan exactly those two slots, materialize both, then dispatch and reconcile Alpha before dispatching Beta. Follow your AGENTS.md integration and failure-blocking procedure.",
     `Agent command bodies always include missionId. The exact inspect body is {"command":"inspect","missionId":"${missionId}"}. plan additionally needs commandId, expectedVersion and contributions=[{contributionId,assigneeAgentId,title,ownedPaths},...]. materialize needs commandId, expectedVersion and contributionId. dispatch needs commandId, expectedVersion, contributionId, a fresh reservationId and requestedUnits. reconcile-usage needs commandId and contributionId. publish needs commandId, expectedVersion, attachmentId, baseCommit, candidateCommit and expectedSha256.`,
+    uuidGenerationPolicy("commandId, reservationId, and any fresh attachmentId"),
     "For every POST use Content-Type application/json, Authorization Bearer $PAPERCLIP_API_KEY and X-Paperclip-Run-Id $PAPERCLIP_RUN_ID. The agent command URL uses the root issue ID from this task context.",
     campaign === "n2"
       ? "Stop N1 at ready_for_review. The owner harness will start N2 only after all three N1 runs are terminal and settled."

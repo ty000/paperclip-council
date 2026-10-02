@@ -493,6 +493,22 @@ describe("N1 mission transitions", () => {
     expect(h.assertCheckoutOwner).not.toHaveBeenCalled();
   });
 
+  it("rejects a command UUID whose variant group is invalid", async () => {
+    const h = harness(activeAggregate());
+    const result = await handleN1AgentApi(agentRequest({
+      command: "plan",
+      commandId: "20f1c266-ef9e-453b-ea8d-b9e5f93d9fa7",
+      expectedVersion: 1,
+      contributions: plan,
+    }, { agentId: id.lead, runId: id.leadRun }, id.root), h.ctx);
+
+    expect(result).toMatchObject({
+      status: 400,
+      body: { code: "malformed_request", error: "commandId must be a UUID" },
+    });
+    expect(h.execute).not.toHaveBeenCalled();
+  });
+
   it("exposes the current mission version only to the admitted lead or mapped contribution run", async () => {
     const value = activeAggregate();
     value.n1 = {
