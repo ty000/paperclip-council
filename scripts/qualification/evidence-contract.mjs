@@ -1417,33 +1417,41 @@ function hasPreparedN2HandoffReservation(guard) {
 }
 
 function hasProviderFreeN2ReviewerFixture(guard) {
-  const fixture = guard?.reviewerFixture;
-  const run = guard?.reviewerRuns?.[0];
-  const lifecycle = fixture?.lifecycle;
-  return Array.isArray(guard?.reviewerRuns) && guard.reviewerRuns.length === 1
-    && UUID.test(fixture?.runId)
-    && fixture?.fixtureSource === "fixture:n2-handoff-guard:deterministic-reviewer"
-    && fixture?.inspectHttpStatus === 200
-    && fixture?.confirmHttpStatus === 200
-    && fixture?.postConfirmInspectHttpStatus === 200
-    && run?.id === fixture.runId
-    && run?.status === "succeeded"
-    && run?.triggerDetail === fixture.fixtureSource
-    && run?.wakeupRequestId === null
-    && run?.processStartedAt === null
-    && lifecycle?.activeRunCount === 0
-    && lifecycle?.openCheckoutCount === 0
-    && lifecycle?.openExecutionCount === 0;
+  const { reviewerFixture: fixture = {}, reviewerRuns: candidateRuns } = guard ?? {};
+  const reviewerRuns = Array.isArray(candidateRuns) ? candidateRuns : [];
+  const [run = {}] = reviewerRuns;
+  const { lifecycle = {} } = fixture;
+  return [
+    Array.isArray(candidateRuns),
+    reviewerRuns.length === 1,
+    UUID.test(fixture.runId),
+    fixture.fixtureSource === "fixture:n2-handoff-guard:deterministic-reviewer",
+    fixture.inspectHttpStatus === 200,
+    fixture.confirmHttpStatus === 200,
+    fixture.postConfirmInspectHttpStatus === 200,
+    run.id === fixture.runId,
+    run.status === "succeeded",
+    run.triggerDetail === fixture.fixtureSource,
+    run.wakeupRequestId === null,
+    run.processStartedAt === null,
+    lifecycle.activeRunCount === 0,
+    lifecycle.openCheckoutCount === 0,
+    lifecycle.openExecutionCount === 0,
+  ].every(Boolean);
 }
 
 function hasExactN2WakeContext(guard) {
-  return guard?.wakeContext?.missionId === guard?.missionId
-    && guard?.wakeContext?.rootIssueId === guard?.rootIssueId
-    && guard?.wakeContext?.missionId !== guard?.wakeContext?.rootIssueId
-    && guard?.wakeContext?.councilCommandRoute
-      === `/api/plugins/private.paperclip-council/api/issues/${guard?.rootIssueId}/council/commands`
-    && guard?.issueReadback?.description?.includes(`Mission ID: ${guard?.missionId}`)
-    && guard?.issueReadback?.description?.includes(`Council command route: ${guard?.wakeContext?.councilCommandRoute}`);
+  const { wakeContext = {}, issueReadback = {}, missionId, rootIssueId } = guard ?? {};
+  const description = String(issueReadback.description);
+  return [
+    wakeContext.missionId === missionId,
+    wakeContext.rootIssueId === rootIssueId,
+    wakeContext.missionId !== wakeContext.rootIssueId,
+    wakeContext.councilCommandRoute
+      === `/api/plugins/private.paperclip-council/api/issues/${rootIssueId}/council/commands`,
+    description.includes(`Mission ID: ${missionId}`),
+    description.includes(`Council command route: ${wakeContext.councilCommandRoute}`),
+  ].every(Boolean);
 }
 
 function hasLockFreeN2HandoffReadback(guard) {
