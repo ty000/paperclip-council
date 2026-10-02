@@ -1,6 +1,6 @@
 # N2 — ordinary correction and confirmed acceptance
 
-Updated: 2026-10-02 (Europe/Paris). Status: **candidate and guarded campaign command prepared; LIVE authorization still required / not N2-qualified**.
+Updated: 2026-10-02 (Europe/Paris). Status: **first authorized campaign stopped before N2 review; admission UUID correction prepared; fresh LIVE authorization required / not N2-qualified**.
 
 ## Exact base and scope
 
@@ -13,7 +13,7 @@ candidate is the published head of draft PR #18 after its base is retargeted to
 self-embed the hash of the commit that contains it.
 
 This increment implements the N2 mission/native adapter and inspection delta.
-It does not rerun a provider campaign, merge or activate Council, modify
+It does not merge or activate Council, modify
 Paperclip core, resume Executive, or add N3-N6 behavior.
 
 `migration_prewrite: not-applicable`. The existing mission aggregate JSONB,
@@ -93,7 +93,35 @@ three settled N1 runs; initial independent review and native
 `changes_requested`; a separately settled lead correction; changed V2; fresh
 approval run; six settled reservations; accepted restart readback; and the
 commit-qualified installed UI PNG. The launcher is implementation, not proof
-that such a provider campaign has run.
+that such a provider campaign has succeeded.
+
+## Authorized campaign observation — `cbcb22c`
+
+One campaign was explicitly authorized and executed on exact clean published
+commit `cbcb22cf1c5b040f4f5abdadc13c05be4b58f735`. It stopped once, without
+retry, with `NON-CONCLUSIVE OR BLOCKED` before any N2 reviewer run began.
+
+The N1 portion succeeded: lead run
+`850a321c-ea26-4920-9b65-efaa9e6cdcac`, Alpha run
+`3b13b45d-c70e-4ae8-8aa8-9895eec93f85`, and Beta run
+`2d54ddac-dc88-4453-9789-5adc32360afc` all reached `succeeded`; their three
+reservations settled at respectively `1,000,166`, `203,927`, and `335,948`
+token units with zero remaining exposure. N1 stopped at `ready_for_review`.
+
+The owner `start-review` command was then refused before native reviewer wakeup:
+Council supplied `n2-review:<submission-uuid>` as the admission `effectId`, but
+the existing admission contract requires a UUID. The preserved evidence is
+`artifacts/n2-live-cbcb22cf1c5b040f4f5abdadc13c05be4b58f735.json`, SHA-256
+`af7bcba7b0856fe74894c14e7a74abd910482e88690eeae414326d7a898b90e4`.
+The paired PNG is intentionally empty (SHA-256
+`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`)
+and is not UI evidence. Cleanup completed for the owned application and fresh
+database.
+
+The correction uses the already-stable UUIDs directly: submission ID for each
+review reservation and decision operation ID for the correction reservation.
+Focused runtime tests now assert those exact values. This is a source fix, not
+a retroactive qualification of the failed campaign.
 
 ## Open native dependency and exit criteria
 
@@ -116,14 +144,14 @@ starts from a qualified N1 candidate and persists/reloads the result:
 6. replay operator inspection after restart and capture the installed mission
    UI using the exact UUID locator.
 
-No N2 provider authorization is present. The N1 campaign authority and its PR
-review-loop bound do not transfer. Commit/publication authority for this lot is
-separate from LIVE authority. Once draft PR #18 readback identifies a clean
-head on `main` and the local bounded qualification passes on that same head,
-the only remaining launch gate is explicit authorization for one N2 provider
-campaign with the named agents and fresh token envelope. Until that campaign
-succeeds, the strongest verdict is **ready to request the N2 campaign**, never
-**N2 qualified**.
+The authorization for the `cbcb22c` attempt was consumed and does not transfer
+to the corrected SHA. Commit/publication authority for this lot remains
+separate from LIVE authority. Once draft PR #18 readback identifies the new
+clean head on `main` and the local bounded qualification passes on that same
+head, the remaining launch gate is a fresh explicit authorization for one N2
+provider campaign with the named agents and fresh token envelope. Until that
+campaign succeeds, the strongest verdict is **ready to request a corrected N2
+campaign**, never **N2 qualified**.
 
 ## N3 interface checkpoint
 

@@ -1118,7 +1118,7 @@ export async function executeN2BoardCommand(ctx: PluginContext, input: {
     }
     const reservationId = runtimeUuid(input.body.reservationId, "reservationId");
     const baseline = await readNativeSequentialUsageBaseline(ctx, { companyId: mission.companyId, issueId: mission.rootIssueId });
-    await reserveN2Run(ctx, mission, { reservationId, effectId: `n2-review:${prepared.submissionId}`, kind: "initial" });
+    await reserveN2Run(ctx, mission, { reservationId, effectId: prepared.submissionId, kind: "initial" });
     const nextState = startN2ResubmittedReview(state, mission, {
       baselineRunIds: baseline.runIds,
       baselineTokenTotal: baseline.tokenTotal,
@@ -1166,7 +1166,7 @@ export async function executeN2BoardCommand(ctx: PluginContext, input: {
     throw new MissionError(409, "native_review_entry_mismatch", "Root issue must still be in progress under the pinned integration lead");
   }
   const baseline = await readNativeSequentialUsageBaseline(ctx, { companyId: mission.companyId, issueId: mission.rootIssueId });
-  await reserveN2Run(ctx, mission, { reservationId, effectId: `n2-review:${submissionId}`, kind: "initial" });
+  await reserveN2Run(ctx, mission, { reservationId, effectId: submissionId, kind: "initial" });
   const state = startN2Review(mission, {
     baselineRunIds: baseline.runIds,
     baselineTokenTotal: baseline.tokenTotal,
@@ -1345,7 +1345,7 @@ export async function prepareN2Decision(
   let correctionAdmission: Record<string, unknown> = {};
   if (decision.verdict === "changes_requested") {
     const reservationId = runtimeUuid(correctionReservationId, "correctionReservationId");
-    await reserveN2Run(ctx, mission, { reservationId, effectId: `n2-correction:${decision.operationId}`, kind: "correction" });
+    await reserveN2Run(ctx, mission, { reservationId, effectId: decision.operationId, kind: "correction" });
     correctionAdmission = { reservationId };
   }
   return n2Cas(ctx, mission, {

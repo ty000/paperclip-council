@@ -917,7 +917,7 @@ function assertN2Reservations(evidence) {
       reservationId: round.handoff?.reservationId,
       baseline: round.handoff?.baselineTokenTotal,
       run: runById.get(round.handoff?.reviewerRunId),
-      effectId: `n2-review:${round.submissionId}`,
+      effectId: round.submissionId,
     });
   }
   assertRunReservation({ missionId: live.missionId }, reservationById, {
@@ -925,7 +925,7 @@ function assertN2Reservations(evidence) {
     reservationId: state?.correction?.reservationId,
     baseline: state?.correction?.baselineTokenTotal,
     run: runById.get(state?.correction?.runId),
-    effectId: `n2-correction:${state?.correction?.requestedByOperationId}`,
+    effectId: state?.correction?.requestedByOperationId,
   });
 }
 

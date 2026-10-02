@@ -234,7 +234,7 @@ function n2QualificationEvidence(): any {
   const n2Reservations = n2Runs.map((run, index) => ({
     reservationId: n2ReservationIds[index],
     missionId: "mission",
-    effectId: index === 1 ? `n2-correction:${operationIds[0]}` : `n2-review:${submissionIds[index === 0 ? 0 : 1]}`,
+    effectId: index === 1 ? operationIds[0] : submissionIds[index === 0 ? 0 : 1],
     status: "settled",
     usage: {
       status: "known",

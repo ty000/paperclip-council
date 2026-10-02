@@ -3,7 +3,7 @@
   "proof_id": "paperclip-council-n2-campaign-candidate-2026-10-02",
   "subject": "Published draft PR #18 candidate based on origin/main d4d4a6032a96b6bd1e9c5cb6b9b754b05f08f28b; the exact head is recorded by PR readback and Paperclip-native N2 qualification remains excluded",
   "status": "ready-to-request-live-campaign",
-  "summary": "The committed N2 implementation, executable guarded launcher, local checks and clean-candidate bounded qualification are replayable. No provider run, native N2 acceptance, live restart readback, or accepted-state UI capture is claimed.",
+  "summary": "The first authorized provider campaign on cbcb22c stopped once before N2 reviewer wakeup because a prefixed effectId violated the admission UUID contract. Its successful N1 boundary and failed N2 entry are preserved; no native N2 acceptance, live restart readback, or accepted-state UI capture is claimed.",
   "categories": [
     "functional",
     "quality",
@@ -57,7 +57,15 @@
       "kind": "source-and-test",
       "location": "pnpm qualification:live:n2 and tests/run-bounded.spec.ts",
       "replayable": false,
-      "notes": "Executable but not invoked: it requires explicit LIVE authorization, exact gpt-5.6-sol/high settings, six 2,000,000-unit reservations inside a fresh 12,000,000-unit period, and create-only commit-qualified artifacts."
+      "notes": "Requires fresh explicit LIVE authorization per exact SHA, exact gpt-5.6-sol/high settings, six 2,000,000-unit reservations inside a fresh 12,000,000-unit period, and create-only commit-qualified artifacts."
+    },
+    {
+      "id": "n2-live-cbcb22c-nonconclusive",
+      "category": "operations",
+      "kind": "preserved-runtime-evidence",
+      "location": "artifacts/n2-live-cbcb22cf1c5b040f4f5abdadc13c05be4b58f735.json",
+      "replayable": false,
+      "notes": "SHA-256 af7bcba7b0856fe74894c14e7a74abd910482e88690eeae414326d7a898b90e4. Three N1 runs succeeded and settled; start-review returned malformed_admission before any N2 reviewer run. The paired zero-byte PNG is not UI evidence. No retry occurred."
     }
   ],
   "replay": {
@@ -86,7 +94,7 @@
     "decision": "keep-open",
     "rationale": "The committed and published candidate can request one bounded campaign, but N2 requires observed native correction, resubmission, acceptance, usage settlement, restart readback, and UI capture.",
     "next_required_actions": [
-      "Obtain explicit LIVE/provider authorization for the proposed bounded campaign.",
+      "Obtain fresh explicit LIVE/provider authorization for the corrected published SHA; the cbcb22c authority was consumed.",
       "Run the campaign once without blind retry and preserve any unknown native effect.",
       "Validate native acceptance, usage settlement, restart inspection, exact UUID UI capture, and only then issue an N2 qualification verdict and SHA-bound N3 handoff."
     ]

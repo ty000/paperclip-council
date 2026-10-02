@@ -280,6 +280,7 @@ describe("N2 persisted native journey", () => {
     const h = harness();
     currentN2 = () => h.current().n2!;
     vi.mocked(readNativeSequentialUsageBaseline).mockImplementation(async () => h.baseline());
+    const submission1 = randomUUID();
 
     const start = await executeN2BoardCommand(h.ctx, {
       companyId: id.company,
@@ -287,11 +288,15 @@ describe("N2 persisted native journey", () => {
       actorUserId: id.owner,
       body: {
         command: "start-review", commandId: randomUUID(), expectedVersion: h.version(),
-        submissionId: randomUUID(), reservationId: randomUUID(),
+        submissionId: submission1, reservationId: randomUUID(),
       },
     });
     expect(start).toMatchObject({ outcome: "requested", mission: { aggregate: { phase: "review_handoff" } } });
     expect(h.update).toHaveBeenCalledWith(id.root, { status: "in_review" }, id.company, { actorUserId: id.owner });
+    expect(vi.mocked(reserveAdmission)).toHaveBeenLastCalledWith(h.ctx, expect.objectContaining({
+      missionId: id.mission,
+      effectId: submission1,
+    }));
 
     h.setBaseline({ runIds: [id.leadRun, id.reviewerRun1].sort(), tokenTotal: 180 });
     const confirmed = await handleN2AgentApi(agentRequest({
@@ -314,6 +319,10 @@ describe("N2 persisted native journey", () => {
       councilRosterId: id.council, councilRevision: id.councilRevision, version: h.version(),
       aggregate: h.current(), createdAt: new Date(0).toISOString(), updatedAt: new Date().toISOString(),
     }, decision, randomUUID());
+    expect(vi.mocked(reserveAdmission)).toHaveBeenLastCalledWith(h.ctx, expect.objectContaining({
+      missionId: id.mission,
+      effectId: operationId,
+    }));
     await recordN2Decision(h.ctx, id.mission, decision, receipt(operationId));
     expect(h.current()).toMatchObject({ phase: "correction_requested", n2: { correction: { reservationId: expect.any(String) } } });
 
@@ -373,6 +382,10 @@ describe("N2 persisted native journey", () => {
       },
     });
     expect(resubmitted).toMatchObject({ outcome: "requested", mission: { aggregate: { phase: "review_handoff", n2: { activeSubmissionId: submission2 } } } });
+    expect(vi.mocked(reserveAdmission)).toHaveBeenLastCalledWith(h.ctx, expect.objectContaining({
+      missionId: id.mission,
+      effectId: submission2,
+    }));
     expect(currentN2()).toMatchObject({ submissions: [{ ordinal: 1 }, { ordinal: 2 }], correctionsUsed: 1 });
   });
 });
