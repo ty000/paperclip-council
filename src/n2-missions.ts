@@ -598,7 +598,7 @@ function n2NextAction(state: N2State, round: N2ReviewRound | null) {
   }
   const reviewActions = {
     review_handoff: "Confirm the native review handoff and exact reviewer run.",
-    reviewing: "Review the active immutable submission and record one receipt-backed verdict.",
+    reviewing: "Prepare one immutable verdict for the active submission, then let the reviewer run finish.",
   } as const;
   if (state.status === "review_handoff" || state.status === "reviewing") {
     return { actorKind: "agent" as const, actorId: round?.reviewerAgentId ?? null, label: reviewActions[state.status] };
@@ -1346,6 +1346,67 @@ export type N2DecisionContext = {
   justification: string;
 };
 
+export type N2PreparedDecision = N2DecisionContext & {
+  submissionId: string;
+  decisionHash: string;
+  settlementCommandId: string;
+  correctionReservationId?: string;
+};
+
+function preparedDecisionFromIntent(intent: Record<string, unknown>): N2PreparedDecision {
+  const decision = record(intent.decision, "prepared N2 decision");
+  const verdict = decision.verdict;
+  if (verdict !== "changes_requested" && verdict !== "approved") {
+    throw new MissionError(409, "n2_decision_intent_invalid", "Prepared N2 decision verdict is malformed");
+  }
+  const prepared: N2PreparedDecision = {
+    operationId: runtimeString(decision.operationId, "operationId", 128),
+    verdict,
+    actorAgentId: runtimeUuid(decision.actorAgentId, "actorAgentId"),
+    runId: runtimeUuid(decision.runId, "runId"),
+    resultReference: runtimeString(decision.resultReference, "resultReference", 2_048),
+    justification: runtimeString(decision.justification, "justification", 8_000),
+    submissionId: runtimeUuid(intent.submissionId, "submissionId"),
+    decisionHash: runtimeString(intent.decisionHash, "decisionHash", 64),
+    settlementCommandId: runtimeUuid(intent.settlementCommandId, "settlementCommandId"),
+  };
+  if (verdict === "approved") {
+    prepared.approvedCommit = runtimeString(decision.approvedCommit, "approvedCommit", 40);
+  }
+  if (typeof intent.reservationId === "string") prepared.correctionReservationId = runtimeUuid(intent.reservationId, "correctionReservationId");
+  if (prepared.decisionHash !== canonicalPayloadHash({
+    operationId: prepared.operationId,
+    verdict: prepared.verdict,
+    actorAgentId: prepared.actorAgentId,
+    runId: prepared.runId,
+    resultReference: prepared.resultReference,
+    ...(prepared.approvedCommit ? { approvedCommit: prepared.approvedCommit } : {}),
+    justification: prepared.justification,
+  })) {
+    throw new MissionError(409, "n2_decision_intent_invalid", "Prepared N2 decision content hash does not match its payload");
+  }
+  return prepared;
+}
+
+export function findPreparedN2Decision(
+  mission: MissionRecord,
+  identity: { runId: string; actorAgentId: string },
+): N2PreparedDecision | null {
+  const state = storedN2(mission);
+  const round = state.rounds.at(-1);
+  if (!round || state.status !== "reviewing" || round.handoff.reviewerRunId !== identity.runId
+      || round.reviewerAgentId !== identity.actorAgentId || round.verdict) return null;
+  const intent = n2Effect(mission.aggregate, (entry) => entry.kind === "n2_decision"
+    && entry.state === "prepared" && entry.submissionId === round.submissionId
+    && entry.actorRunId === identity.runId && entry.actorAgentId === identity.actorAgentId);
+  if (!intent) return null;
+  const prepared = preparedDecisionFromIntent(intent);
+  if (prepared.submissionId !== state.activeSubmissionId) {
+    throw new MissionError(409, "n2_decision_target_mismatch", "Prepared N2 decision no longer targets the active submission");
+  }
+  return prepared;
+}
+
 export async function prepareN2Decision(
   ctx: PluginContext,
   mission: MissionRecord,
@@ -1369,6 +1430,11 @@ export async function prepareN2Decision(
     }
     return mission;
   }
+  const competing = n2Effect(mission.aggregate, (entry) => entry.kind === "n2_decision"
+    && entry.submissionId === submission.submissionId);
+  if (competing) {
+    throw new MissionError(409, "n2_decision_already_prepared", "The active N2 submission already has an immutable prepared decision");
+  }
   let correctionAdmission: Record<string, unknown> = {};
   if (decision.verdict === "changes_requested") {
     const reservationId = runtimeUuid(correctionReservationId, "correctionReservationId");
@@ -1378,11 +1444,80 @@ export async function prepareN2Decision(
   return n2Cas(ctx, mission, {
     ...mission.aggregate,
     effectIntents: [...mission.aggregate.effectIntents, {
-      kind: "n2_decision", state: "claimed", operationId: decision.operationId,
+      kind: "n2_decision", state: "prepared", operationId: decision.operationId,
       decisionHash,
       submissionId: submission.submissionId, verdict: decision.verdict,
       actorAgentId: decision.actorAgentId, actorRunId: decision.runId,
+      decision: structuredClone(decision), settlementCommandId: randomUUID(),
       ...correctionAdmission, at: new Date().toISOString(),
+    }],
+  });
+}
+
+export async function settlePreparedN2ReviewUsage(
+  ctx: PluginContext,
+  mission: MissionRecord,
+  prepared: N2PreparedDecision,
+): Promise<MissionRecord> {
+  const state = storedN2(mission);
+  const round = state.rounds.at(-1);
+  const current = findPreparedN2Decision(mission, {
+    runId: prepared.runId,
+    actorAgentId: prepared.actorAgentId,
+  });
+  if (!round || !current || current.operationId !== prepared.operationId
+      || current.decisionHash !== prepared.decisionHash) {
+    throw new MissionError(409, "n2_decision_target_mismatch", "Prepared N2 decision identity changed before usage settlement");
+  }
+  if (round.handoff.usageSettledAt) return mission;
+  if (!round.handoff.reviewerRunId || !round.handoff.reservationId) {
+    throw new MissionError(409, "review_usage_binding_missing", "Review run and reservation must be confirmed before settlement");
+  }
+  const { profile, envelope } = await nativeN2Profile(ctx, mission);
+  const reservation = envelope.reservations.find((entry) => entry.reservationId === round.handoff.reservationId);
+  const settledByPreparedCommand = reservation?.settlementReceipts.some(
+    (receipt) => receipt.commandId === prepared.settlementCommandId,
+  );
+  if (reservation?.status === "settled" && !settledByPreparedCommand) {
+    throw new MissionError(409, "n2_usage_settlement_conflict", "Review reservation was settled by another command identity");
+  }
+  if (!settledByPreparedCommand) {
+    await settleNativeSequentialRunUsage(ctx, {
+      commandId: prepared.settlementCommandId,
+      companyId: mission.companyId,
+      issueId: mission.rootIssueId,
+      expectedRunId: round.handoff.reviewerRunId,
+      baseline: { runIds: round.handoff.baselineRunIds, tokenTotal: round.handoff.baselineTokenTotal },
+      periodKey: profile.periodKey,
+      reservationId: round.handoff.reservationId,
+      expectedVersion: envelope.version,
+    });
+  }
+  const afterSettlement = await getMission(ctx, mission.companyId, mission.missionId);
+  if (!afterSettlement) throw new Error("Mission disappeared after prepared N2 usage settlement");
+  const afterState = storedN2(afterSettlement);
+  const afterRound = afterState.rounds.at(-1);
+  if (afterRound?.handoff.usageSettledAt) return afterSettlement;
+  const stillPrepared = findPreparedN2Decision(afterSettlement, {
+    runId: prepared.runId,
+    actorAgentId: prepared.actorAgentId,
+  });
+  if (!afterRound || !stillPrepared || stillPrepared.operationId !== prepared.operationId) {
+    throw new MissionError(409, "n2_decision_target_mismatch", "Prepared N2 decision changed during usage settlement");
+  }
+  const settledAt = new Date().toISOString();
+  return n2Cas(ctx, afterSettlement, {
+    ...afterSettlement.aggregate,
+    n2: {
+      ...afterState,
+      rounds: afterState.rounds.map((entry) => entry.round === afterRound.round
+        ? { ...entry, handoff: { ...entry.handoff, usageSettledAt: settledAt } }
+        : entry),
+    },
+    journal: [...afterSettlement.aggregate.journal, {
+      action: "n2_usage_settled", target: "review", round: afterRound.round,
+      settlementCommandId: prepared.settlementCommandId,
+      actorAgentId: prepared.actorAgentId, runId: prepared.runId, at: settledAt,
     }],
   });
 }

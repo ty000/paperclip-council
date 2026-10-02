@@ -19,6 +19,7 @@ import { handleFoundationProbe } from "./foundation-probe.js";
 import { getMissionByRootIssue, handleMissionApi, MissionError } from "./missions.js";
 import { handleN1AdmissionApi, handleN1AgentApi } from "./n1-missions.js";
 import { handleN2AgentApi, prepareN2Decision, recordN2Decision } from "./n2-missions.js";
+import { registerN2FinishedEventHandler } from "./n2-finished-event.js";
 import { AdmissionError } from "./admission.js";
 import { handleRosterApi, registerRosterBridge } from "./rosters.js";
 
@@ -98,14 +99,47 @@ export async function handleDecision(
   const mission = await getMissionByRootIssue(context, input.companyId, issueId);
   if (mission?.aggregate.n2) {
     try {
-      await prepareN2Decision(
+      const issue = await context.issues.get(issueId, input.companyId);
+      if (!issue) return { status: 404, body: { error: "Issue not found" } };
+      if (issue.companyId !== input.companyId || issue.status !== "in_review" || issue.assigneeAgentId !== config.councilAgentId) {
+        return { status: 409, body: { error: "Issue is not pending this council" } };
+      }
+      if (decision.verdict === "approved") {
+        try {
+          await verifyApprovalCandidate(context, issue, input.companyId, decision.approvedCommit);
+        } catch (error) {
+          if (!(error instanceof ApprovalPreflightError)) throw error;
+          return { status: error.status, body: { error: error.message } };
+        }
+      }
+      const n2DecisionInput = {
+        operationId: decision.operationId,
+        verdict: decision.verdict,
+        actorAgentId: config.councilAgentId,
+        runId,
+        resultReference: decision.resultReference,
+        ...(decision.verdict === "approved" ? { approvedCommit: decision.approvedCommit } : {}),
+        justification: decision.justification,
+      };
+      const prepared = await prepareN2Decision(
         context,
         mission,
-        decisionInput,
+        n2DecisionInput,
         typeof (input.body as Record<string, unknown>).correctionReservationId === "string"
           ? (input.body as Record<string, unknown>).correctionReservationId as string
           : undefined,
       );
+      return {
+        status: 202,
+        body: {
+          integration: "prepared N2 decision -> terminal run event -> settled usage -> public issue PATCH",
+          verdict: decision.verdict,
+          operationId: decision.operationId,
+          runId,
+          prepared: true,
+          missionVersion: prepared.version,
+        },
+      };
     } catch (error) {
       if (error instanceof MissionError || error instanceof AdmissionError) {
         return { status: error.status, body: { error: error.message, code: error.code, details: error.details } };
@@ -192,6 +226,7 @@ const plugin = definePlugin({
     ctx = context;
     registerRosterBridge(context);
     registerDecisionReceiptBridge(context);
+    registerN2FinishedEventHandler(context);
   },
   async onHealth() { return { status: "ok", message: "Council decision adapter ready" }; },
   async onApiRequest(input) { return handlePluginRequest(input); },

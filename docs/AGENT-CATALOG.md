@@ -111,6 +111,14 @@ The native stage does not calculate these product facts. The reviewer checks the
 
 The prototype's exact application path is `POST /api/plugins/<pluginId>/api/issues/<issueId>/decision`, with `approved` or `changes_requested`, a justification and `resultReference`. The plugin checks its configured Council identity and pending assignment, resolves its native secret reference, and calls public `PATCH /api/issues/<issueId>` under that identity/run. An approval requests `done`; a correction requests `in_progress`. Paperclip can instead advance to another stage or escalate to a human, so verify the returned issue and `executionState`, including the relevant decision, rather than trusting `requestedIssueStatus`. See [Local E6: worker, lines 35–68](#9-source-baseline-and-evidence-availability) and [native transition, lines 786–899](https://github.com/paperclipai/paperclip/blob/61b3fd57a695614dc4a37e2303f426a34a9795cf/server/src/services/issue-execution-policy.ts#L786).
 
+For a mission already in N2, that endpoint returns HTTP 202 after persisting the
+exact verdict as a prepared intent. The reviewer then finishes normally. The
+`agent.run.finished` handler verifies the same reviewer/run/submission, waits a
+bounded interval for authoritative usage, settles the review reservation, and
+only then uses the same receipt-backed public PATCH. Missing events or unknown
+usage leave the intent prepared; they do not authorize an alternate actor or a
+manual resend.
+
 The historical prototype does not enforce immutable result identity, the full mandate or interruption reconciliation. The separate manifest gate adds request/manifest/attachment-metadata checks; the TAD distinguishes those checks from complete content binding and recovery. These remain H1 work, not extra responsibilities solved by installing a skill. On uncertain application, preserve the verdict, read sufficient native state/history and reconcile before retry. On an owner-reserved question, save an appropriate human waiting path and recommendation; do not encode it as `approved`. Suspension must preserve pending work and the next action.
 
 ## 4. V1 specializations and supporting responsibilities

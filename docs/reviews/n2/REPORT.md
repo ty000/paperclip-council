@@ -1,6 +1,6 @@
 # N2 — ordinary correction and confirmed acceptance
 
-Updated: 2026-10-02 (Europe/Paris). Status: **provider-free synthetic N2 integration validated through accepted restart readback; the latest isolated LIVE campaign failed before handoff confirmation and is not N2-qualified**.
+Updated: 2026-10-03 (Europe/Paris). Status: **provider-free synthetic N2 integration validated through accepted restart readback; the latest isolated LIVE campaign reached a prepared `changes_requested` verdict but exposed a terminal-run ordering defect and is not N2-qualified**.
 
 ## Exact base and scope
 
@@ -347,6 +347,42 @@ cancels every owned nonterminal run through the public operator route, and
 requires terminal readback before ephemeral database teardown. This is a local
 correction only; it does not retroactively qualify the campaign.
 
+## Authorized isolated campaign observation — `7847e64`
+
+The next isolated campaign was explicitly authorized and executed exactly once
+on clean commit `7847e648dd1ba8b06220e9790bbe22240b7888d8`. Its provider-free N1
+prerequisite and exact N2 handoff succeeded. Reviewer run
+`93257fed-37f8-48d8-b9c0-bb8e0176207c` received the exact mission and route,
+confirmed the handoff, and submitted a durable `changes_requested` verdict for
+the active V1 subject. Applying that verdict immediately reassigned the issue;
+Paperclip then terminated the still-running reviewer as `cancelled` with
+`Cancelled before issue reassignment`. The business verdict remained observed,
+but authoritative run usage was unavailable, so the review reservation could
+not settle. A second 2,000,000-unit correction reservation was also open; no
+correction run, V2, final review, acceptance, or UI proof followed. Provider
+usage for the cancelled reviewer remains unknown rather than zero.
+
+The preserved JSON is
+`artifacts/n2-live-7847e648dd1ba8b06220e9790bbe22240b7888d8.json`, SHA-256
+`a741c684258f2cb44208e8028d592d364cff8bac190fd6e134c679567b0779bc`.
+The paired `-accepted.png` is zero bytes, SHA-256
+`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`,
+and is not UI evidence. Cleanup observed only the expected reviewer run and no
+owned nonterminal or extra provider process.
+
+The bounded source correction now persists the reviewer's complete normalized
+decision as a `prepared` effect intent with exact submission, agent, run,
+operation and stable settlement identities. It does not apply a native issue
+mutation while that run is active. The plugin subscribes to
+`agent.run.finished`; only the exact successful reviewer event may trigger a
+short bounded observation of authoritative usage, settlement of that exact
+reservation, and application through the existing receipt-backed public issue
+PATCH. Unknown usage leaves the decision prepared. Duplicate events relink to
+the same admission command and decision receipt, while stale subjects or wrong
+run/agent identities are ignored. This source correction is provider-free and
+does not retroactively qualify `7847e64`; spontaneous host lifecycle delivery
+remains a LIVE observation for a later separately authorized campaign.
+
 ## Provider-free synthetic integration
 
 The bounded qualification now contains one nominal N2 scenario on the pinned,
@@ -360,8 +396,12 @@ after plugin/application restart.
 
 Model work is replaced by explicit ephemeral deterministic run identities,
 the process adapter (`/usr/bin/true`) for the correction wake, and zero-cost
-fixture token events. These fixtures do not write N2 states, decision receipts
-or native transitions directly. Admission and settlement recompute against the
+fixture token events. The harness injects an explicitly labelled synthetic
+`agent.run.finished` envelope through the real in-process Paperclip event bus
+after persisting the terminal run and cost fixture. This verifies SDK transport
+and the installed plugin handler, not spontaneous lifecycle emission or a
+provider run. These fixtures do not write N2 states, decision receipts or
+native transitions directly. Admission and settlement recompute against the
 real Paperclip orchestration summary. The scenario additionally proves the
 three campaign regressions: UUID effect IDs are admitted; the public issue
 route produces `in_review` with the pinned reviewer/current participant and
@@ -406,8 +446,8 @@ the result:
 6. replay operator inspection after restart and capture the installed mission
    UI using the exact UUID locator.
 
-The authorizations for `cbcb22c`, `0e5c814`, `586608b`, `daa14fa`, `d285f85`
-and `46640fd` were consumed and do not transfer to the next corrected SHA. Commit/publication
+The authorizations for `cbcb22c`, `0e5c814`, `586608b`, `daa14fa`, `d285f85`,
+`46640fd` and `7847e64` were consumed and do not transfer to the next corrected SHA. Commit/publication
 authority for this lot remains separate from LIVE authority. Once a clean local
 correction commit passes the provider-free bounded qualification, it is
 technically ready to be proposed for publication and a later fresh campaign;

@@ -111,6 +111,20 @@ async function inspectMission(request: ApiRequest, missionPath: string, companyI
   return response.body;
 }
 
+async function waitForN2Status(
+  request: ApiRequest,
+  missionPath: string,
+  companyId: string,
+  expected: "correction_requested" | "accepted",
+) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const mission = await inspectMission(request, missionPath, companyId);
+    if (mission.n2?.status === expected) return mission;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`synthetic N2 finished-event handler did not reach ${expected}`);
+}
+
 async function settleUsage(input: {
   request: ApiRequest;
   missionPath: string;
@@ -447,14 +461,11 @@ export async function runSyntheticN2(input: {
     justification: "alpha.txt must contain the corrected V2 marker.",
     resultReference: `council:n2:submission:${initialSubmissionId}`,
   });
-  assert.equal(correctionDecision.status, 200, JSON.stringify(correctionDecision.body));
-  assert.equal(correctionDecision.body.nativeResponse.status, "in_progress");
-  assert.equal(correctionDecision.body.nativeResponse.assigneeAgentId, input.agents.lead);
+  assert.equal(correctionDecision.status, 202, JSON.stringify(correctionDecision.body));
+  assert.equal(correctionDecision.body.prepared, true);
   await input.completeRun(reviewerRun1, rootIssueId, input.agents.reviewer, 12);
-  await settleUsage({
-    request: input.request, missionPath, admissionPath, companyId: input.companyId,
-    periodKey: profile.periodKey, target: "review", round: 1,
-  });
+  const appliedCorrection = await waitForN2Status(input.request, missionPath, input.companyId, "correction_requested");
+  assert.equal(appliedCorrection.n2.review.verdict.verdict, "changes_requested");
 
   const leadRuntime = await input.request("human", "PATCH", `/api/agents/${input.agents.lead}`, {
     adapterConfig: { command: "/usr/bin/true" },
@@ -579,13 +590,10 @@ export async function runSyntheticN2(input: {
     justification: "The corrected V2 marker is present and the candidate remains bounded.",
     resultReference: `council:n2:submission:${finalSubmissionId}`,
   });
-  assert.equal(approval.status, 200, JSON.stringify(approval.body));
-  assert.equal(approval.body.nativeResponse.status, "done");
+  assert.equal(approval.status, 202, JSON.stringify(approval.body));
+  assert.equal(approval.body.prepared, true);
   await input.completeRun(reviewerRun2, rootIssueId, input.agents.reviewer, 12);
-  await settleUsage({
-    request: input.request, missionPath, admissionPath, companyId: input.companyId,
-    periodKey: profile.periodKey, target: "review", round: 2,
-  });
+  await waitForN2Status(input.request, missionPath, input.companyId, "accepted");
 
   const finalMission = await inspectMission(input.request, missionPath, input.companyId);
   assert.equal(finalMission.mission.aggregate.phase, "accepted");
@@ -630,7 +638,7 @@ export async function runSyntheticN2(input: {
     deterministicExecutors: {
       reviewer: "the harness drives authenticated Council commands under explicit ephemeral reviewer run identities",
       correction: "Paperclip requestWakeup creates a process-adapter run using /usr/bin/true; the harness drives the authenticated correction command under that exact run identity",
-      usage: "terminal run rows and zero-cost token events are deterministic ephemeral fixture telemetry; admission and settlement remain real plugin/host reads",
+      usage: "terminal run rows, zero-cost token events, and the SDK finished-event delivery are explicitly synthetic provider-free fixtures; the shared plugin handler, admission, settlement, receipt, and public issue mutation paths are real",
     },
     regressions: {
       uuidEffectAccepted: true,
@@ -638,6 +646,7 @@ export async function runSyntheticN2(input: {
       unauthorizedReviewerPatchStatus: refusedTransition.status,
       unauthorizedN2InspectStatus: refusedInspect.status,
       reviewerInspectBeforeAndAfterConfirmation: true,
+      finishedEventDelivery: "synthetic SDK fixture; not native heartbeat delivery proof",
       correctionLeadInspectBeforeAndAfterPreparation: true,
       intendedHumanPatchStatus: transitioned1.status,
     },

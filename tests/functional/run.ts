@@ -179,6 +179,7 @@ let db: any;
 let app: any;
 let server: Server | undefined;
 let workerManager: any;
+let publishPluginDomainEvent: ((event: Record<string, unknown>) => void) | undefined;
 let baseUrl = "";
 let cookie = "";
 let intruderCookie = "";
@@ -419,6 +420,29 @@ async function completeSyntheticRun(runId: string, targetIssueId: string, agentI
       occurredAt: completedAt,
     });
   }
+  assert(publishPluginDomainEvent, "synthetic SDK event seam is unavailable");
+  publishPluginDomainEvent({
+    eventId: randomUUID(),
+    eventType: "agent.run.finished",
+    occurredAt: completedAt.toISOString(),
+    actorId: agentId,
+    actorType: "agent",
+    entityId: runId,
+    entityType: "heartbeat_run",
+    companyId,
+    payload: {
+      runId,
+      agentId,
+      issueId: targetIssueId,
+      status: "succeeded",
+      invocationSource: "synthetic_provider_free_fixture",
+      triggerDetail: "fixture:n2-finished-event",
+      error: null,
+      errorCode: null,
+      startedAt: completedAt.toISOString(),
+      finishedAt: completedAt.toISOString(),
+    },
+  });
 }
 
 async function seedSyntheticMission(syntheticMissionId: string, aggregate: Record<string, unknown>) {
@@ -469,6 +493,7 @@ try {
     resolveBetterAuthSession,
   } = await hostImport("server/src/auth/better-auth.ts");
   const { createPluginWorkerManager } = await hostImport("server/src/services/plugin-worker-manager.ts");
+  ({ publishPluginDomainEvent } = await hostImport("server/src/services/activity-log.ts"));
   const { createStorageService } = await hostImport("server/src/storage/service.ts");
   const { createLocalDiskStorageProvider } = await hostImport("server/src/storage/local-disk-provider.ts");
 

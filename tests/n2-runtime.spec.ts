@@ -31,11 +31,13 @@ import { verifyIntegratedCandidate } from "../src/integration.js";
 import type { MissionAggregate } from "../src/missions.js";
 import {
   executeN2BoardCommand,
+  findPreparedN2Decision,
   handleN2AgentApi,
   n2SubmissionResultReference,
-  prepareN2Decision,
   recordN2Decision,
+  settlePreparedN2ReviewUsage,
 } from "../src/n2-missions.js";
+import { handleDecision } from "../src/worker.js";
 
 const id = {
   company: randomUUID(), mission: randomUUID(), root: randomUUID(), project: randomUUID(), owner: randomUUID(),
@@ -143,6 +145,11 @@ function harness() {
   const requestWakeup = vi.fn(async () => ({ queued: true, runId: id.correctionRun }));
   const ctx = {
     db: { namespace: "plugin_private_n2_runtime", query, execute },
+    config: { get: vi.fn(async () => ({
+      apiBaseUrl: "http://127.0.0.1:3100",
+      councilAgentId: id.reviewer,
+      councilApiKey: { type: "secret_ref", secretId: "reviewer-key" },
+    })) },
     companies: { get: vi.fn(async () => ({ id: id.company, defaultResponsibleUserId: id.owner })) },
     issues: { get: vi.fn(async () => structuredClone(issue)), update, requestWakeup },
   } as unknown as PluginContext;
@@ -363,31 +370,39 @@ describe("N2 persisted native journey", () => {
       resultReference: n2SubmissionResultReference(currentN2().activeSubmissionId),
       justification: "Add the missing regression.",
     };
-    await prepareN2Decision(h.ctx, {
-      companyId: id.company, missionId: id.mission, rootIssueId: id.root, projectId: id.project,
-      ownerUserId: id.owner, teamRosterId: id.team, teamRevision: id.teamRevision,
-      councilRosterId: id.council, councilRevision: id.councilRevision, version: h.version(),
-      aggregate: h.current(), createdAt: new Date(0).toISOString(), updatedAt: new Date().toISOString(),
-    }, decision, randomUUID());
+    const preparedResponse = await handleDecision({
+      routeKey: "decision", method: "POST", path: "", headers: {},
+      params: { issueId: id.root }, query: {}, companyId: id.company,
+      actor: { actorType: "agent", actorId: id.reviewer, agentId: id.reviewer, runId: id.reviewerRun1 },
+      body: { ...decision, correctionReservationId: randomUUID() },
+    } as unknown as PluginApiRequestInput, h.ctx);
+    expect(preparedResponse).toMatchObject({
+      status: 202,
+      body: { prepared: true, operationId, runId: id.reviewerRun1 },
+    });
     expect(vi.mocked(reserveAdmission)).toHaveBeenLastCalledWith(h.ctx, expect.objectContaining({
       missionId: id.mission,
       effectId: operationId,
     }));
+    const preparedDecision = findPreparedN2Decision({
+      companyId: id.company, missionId: id.mission, rootIssueId: id.root, projectId: id.project,
+      ownerUserId: id.owner, teamRosterId: id.team, teamRevision: id.teamRevision,
+      councilRosterId: id.council, councilRevision: id.councilRevision, version: h.version(),
+      aggregate: h.current(), createdAt: new Date(0).toISOString(), updatedAt: new Date().toISOString(),
+    }, { runId: id.reviewerRun1, actorAgentId: id.reviewer });
+    expect(preparedDecision).toMatchObject({ operationId, submissionId: submission1, settlementCommandId: expect.any(String) });
+    await settlePreparedN2ReviewUsage(h.ctx, {
+      companyId: id.company, missionId: id.mission, rootIssueId: id.root, projectId: id.project,
+      ownerUserId: id.owner, teamRosterId: id.team, teamRevision: id.teamRevision,
+      councilRosterId: id.council, councilRevision: id.councilRevision, version: h.version(),
+      aggregate: h.current(), createdAt: new Date(0).toISOString(), updatedAt: new Date().toISOString(),
+    }, preparedDecision!);
     await recordN2Decision(h.ctx, id.mission, decision, receipt(operationId));
     expect(h.current()).toMatchObject({ phase: "correction_requested", n2: { correction: { reservationId: expect.any(String) } } });
 
     h.setIssue({
       id: id.root, companyId: id.company, projectId: id.project, status: "in_progress", assigneeAgentId: id.lead,
       executionState: { lastDecisionOutcome: "changes_requested" },
-    });
-    await executeN2BoardCommand(h.ctx, {
-      companyId: id.company,
-      missionId: id.mission,
-      actorUserId: id.owner,
-      body: {
-        command: "settle-n2-usage", commandId: randomUUID(), expectedVersion: h.version(),
-        target: "review", round: 1, settlementCommandId: randomUUID(), expectedAdmissionVersion: 3,
-      },
     });
     h.setBaseline({ runIds: [id.leadRun, id.reviewerRun1].sort(), tokenTotal: 180 });
     const startedCorrection = await executeN2BoardCommand(h.ctx, {

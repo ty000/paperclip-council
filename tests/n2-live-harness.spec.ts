@@ -30,7 +30,7 @@ describe("N2 live evidence preservation", () => {
     })).toThrow(/occupy an execution slot/);
   });
 
-  it("keeps a terminal reviewer proof and attempts settlement before surfacing a missing verdict", async () => {
+  it("keeps terminal reviewer proof and reconciles the deferred effect before validating it", async () => {
     const events: string[] = [];
     const evidence: Record<string, any> = { runs: [], settlements: [] };
     const run = { id: "review-run", status: "succeeded", usageJson: null };
@@ -71,7 +71,7 @@ describe("N2 live evidence preservation", () => {
     })).rejects.toBe(businessError);
     events.push("cleanup");
 
-    expect(events).toEqual(["observe", "validate", "settle", "readback", "cleanup"]);
+    expect(events).toEqual(["observe", "settle", "readback", "validate", "cleanup"]);
     expect(evidence.runs).toEqual([run]);
     expect(evidence.settlements).toEqual([{
       label: "review-1",

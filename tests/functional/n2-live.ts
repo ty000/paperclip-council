@@ -157,14 +157,6 @@ export async function preserveN2RunBeforeBusinessAssertion(input: {
   const observed = await input.observe();
   input.evidence.mission = observed;
 
-  let businessError: unknown;
-  try {
-    input.validateBusiness(observed);
-  } catch (error) {
-    businessError = error;
-    input.evidence.businessError = errorEvidence(error);
-  }
-
   let reconciliationError: unknown;
   try {
     await input.reconcile();
@@ -175,13 +167,23 @@ export async function preserveN2RunBeforeBusinessAssertion(input: {
   }
 
   let readbackError: unknown;
+  let validatedMission = observed;
   try {
     const readback = await input.readback();
     input.evidence.mission = readback.mission;
     input.evidence.admission = readback.admission;
+    validatedMission = readback.mission;
   } catch (error) {
     readbackError = error;
     input.evidence.readbackError = errorEvidence(error);
+  }
+
+  let businessError: unknown;
+  try {
+    input.validateBusiness(validatedMission);
+  } catch (error) {
+    businessError = error;
+    input.evidence.businessError = errorEvidence(error);
   }
 
   try {
@@ -263,6 +265,20 @@ async function inspectMission(request: ApiRequest, path: string, companyId: stri
   const result = await request("human", "GET", `${path}?companyId=${companyId}`);
   assert.equal(result.status, 200, JSON.stringify(result.body));
   return result.body;
+}
+
+async function waitForN2Status(
+  request: ApiRequest,
+  path: string,
+  companyId: string,
+  expected: "correction_requested" | "accepted",
+) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const mission = await inspectMission(request, path, companyId);
+    if (mission.n2?.status === expected) return mission;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`N2 finished-event handler did not reach ${expected}`);
 }
 
 async function settleN2Usage(input: {
@@ -420,10 +436,7 @@ export async function runLiveN2(input: {
     run: input.runEvidence(terminalReview1),
     label: "review-1",
     observe: () => inspectMission(input.request, missionPath, companyId),
-    reconcile: () => settleN2Usage({
-      request: input.request, missionPath, admissionPath, companyId,
-      periodKey: n2PeriodKey, target: "review", round: 1,
-    }),
+    reconcile: () => waitForN2Status(input.request, missionPath, companyId, "correction_requested"),
     readback: () => readN2MissionAndAdmission({
       request: input.request, missionPath, admissionPath, companyId, periodKey: n2PeriodKey,
     }),
@@ -503,10 +516,7 @@ export async function runLiveN2(input: {
     run: input.runEvidence(terminalReview2),
     label: "review-2",
     observe: () => inspectMission(input.request, missionPath, companyId),
-    reconcile: () => settleN2Usage({
-      request: input.request, missionPath, admissionPath, companyId,
-      periodKey: n2PeriodKey, target: "review", round: 2,
-    }),
+    reconcile: () => waitForN2Status(input.request, missionPath, companyId, "accepted"),
     readback: () => readN2MissionAndAdmission({
       request: input.request, missionPath, admissionPath, companyId, periodKey: n2PeriodKey,
     }),

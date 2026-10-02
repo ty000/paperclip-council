@@ -24,6 +24,7 @@ const manifest: PaperclipPluginManifestV1 = {
     "issues.checkout",
     "issues.wakeup",
     "issues.orchestration.read",
+    "events.subscribe",
     "issue.documents.read",
     "issue.attachments.read",
     "issue.interactions.create",

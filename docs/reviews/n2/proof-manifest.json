@@ -1,9 +1,9 @@
 {
   "schema_version": "proof-manifest.v1",
-  "proof_id": "paperclip-council-n2-campaign-candidate-2026-10-02",
+  "proof_id": "paperclip-council-n2-campaign-candidate-2026-10-03",
   "subject": "Published draft PR #18 candidate based on origin/main d4d4a6032a96b6bd1e9c5cb6b9b754b05f08f28b; the exact head is recorded by PR readback and Paperclip-native N2 qualification remains excluded",
   "status": "implementation-corrected-needs-fresh-live-authorization",
-  "summary": "Three authorized provider campaigns stopped once each before an N2 reviewer run: cbcb22c exposed a non-UUID admission effect, 0e5c814 exposed the plugin SDK status update path, and 586608b exposed the reviewer credential crossing the lead's native assignee/run lock. All successful N1 boundaries and failed N2 entries are preserved; no native N2 acceptance, live restart readback, or accepted-state UI capture is claimed.",
+  "summary": "Authorized isolated campaign 7847e64 reached an exact prepared changes_requested verdict, but immediate native application cancelled the active reviewer before authoritative usage could settle. The provider-free correction defers exact receipt-backed application until the matching succeeded-run event and settled usage; spontaneous native lifecycle delivery remains unqualified.",
   "categories": [
     "functional",
     "quality",
@@ -15,9 +15,9 @@
       "id": "n2-test-suite",
       "category": "functional",
       "kind": "automated-test",
-      "location": "pnpm test -- --maxWorkers=2",
+      "location": "pnpm test",
       "replayable": true,
-      "notes": "Observed pass: 20 test files and 213 tests, including direct V1 acceptance, material correction/resubmission, durable receipts, prepare-before-effect operator transition, exact reviewer confirmation, six-run evidence validation, usage settlement, and the persisted N2 command path."
+      "notes": "Observed pass: 22 test files and 226 tests, including exact public reviewer preparation, deferred finished-event settlement/application, duplicate delivery, stale identity and unknown-usage guards."
     },
     {
       "id": "n2-typecheck",
@@ -41,7 +41,7 @@
       "kind": "command-output",
       "location": "python3 /home/davy-lp/.codex/plugins/cache/home-local/static-code-audit/0.4.1/scripts/static_audit_gate.py diff-gate --repo /home/davy-lp/.codex/worktrees/council-n2/paperclip-council --base-ref origin/main",
       "replayable": true,
-      "notes": "Observed canonical gate status pass with Fallow 3.23.0 and no blocking finding; raw legacy findings remain non-blocking under the wrapper contract."
+      "notes": "Required on the exact committed candidate against origin/main and the previous published 7847e64 head; recorded separately by final gate output."
     },
     {
       "id": "n2-clean-bounded-qualification",
@@ -82,6 +82,14 @@
       "location": "artifacts/n2-live-586608b475ecc8fe71acd1ff1ee8014e2d93d9ae.json",
       "replayable": false,
       "notes": "2,291,108 bytes; SHA-256 0635d78130c7e1bbc5f3aa6e32f14df5256e7a312aa26a1df2afe6e4e373e0be. Three N1 runs succeeded and settled at 2,279,035 known units. Submission and review reservation were persisted, but the reviewer credential's public status PATCH returned HTTP 409 under the lead's native assignee/run lock; no reviewer run or retry occurred. The paired zero-byte PNG is not UI evidence."
+    },
+    {
+      "id": "n2-live-7847e64-nonconclusive",
+      "category": "operations",
+      "kind": "preserved-runtime-evidence",
+      "location": "artifacts/n2-live-7847e648dd1ba8b06220e9790bbe22240b7888d8.json",
+      "replayable": false,
+      "notes": "SHA-256 a741c684258f2cb44208e8028d592d364cff8bac190fd6e134c679567b0779bc. Exact handoff and changes_requested were observed, but immediate issue reassignment cancelled reviewer run 93257fed-37f8-48d8-b9c0-bb8e0176207c before usage settlement. Usage remains unknown; two 2,000,000-unit reservations were open; no correction, V2, acceptance or UI proof exists."
     }
   ],
   "replay": {
@@ -92,7 +100,7 @@
     ],
     "steps": [
       "Run pnpm typecheck.",
-      "Run pnpm test -- --maxWorkers=2.",
+      "Run pnpm test.",
       "Run pnpm build.",
       "Run the static audit command recorded by evidence n2-static-audit.",
       "Run pnpm qualification:bounded only from the clean exact candidate.",
@@ -100,7 +108,7 @@
     ],
     "expected_artifacts": [
       "TypeScript typecheck exits 0.",
-      "Vitest reports 20 passing files and 213 passing tests.",
+      "Vitest reports 22 passing files and 226 passing tests.",
       "The build exits 0 and produces the repository build outputs.",
       "The canonical static audit wrapper reports status pass.",
       "Before LIVE qualification, the candidate is only ready to request the campaign and N2 closure remains open."
@@ -108,12 +116,12 @@
   },
   "closure": {
     "decision": "keep-open",
-    "rationale": "The operator-owned public-transition correction can be committed and published for another bounded campaign request, but N2 still requires observed native correction, resubmission, acceptance, usage settlement, restart readback, and UI capture.",
+    "rationale": "The deferred terminal-run application correction can be proposed for publication after provider-free gates, but N2 still requires a fresh observed native correction, resubmission, acceptance, usage settlement, restart readback and UI capture.",
     "next_required_actions": [
-      "Commit and publish the operator-owned public-transition correction, then obtain fresh explicit LIVE/provider authorization for that exact SHA; the cbcb22c, 0e5c814 and 586608b authorities were consumed.",
+      "Commit and publish the deferred terminal-run application correction, then obtain fresh explicit LIVE/provider authorization for that exact SHA; every earlier campaign authority, including 7847e64, was consumed.",
       "Run the campaign once without blind retry and preserve any unknown native effect.",
       "Validate native acceptance, usage settlement, restart inspection, exact UUID UI capture, and only then issue an N2 qualification verdict and SHA-bound N3 handoff."
     ]
   },
-  "generated_at": "2026-10-02T00:00:00+02:00"
+  "generated_at": "2026-10-03T00:00:00+02:00"
 }
