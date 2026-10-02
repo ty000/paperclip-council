@@ -42,6 +42,17 @@ function campaignContract(campaign) {
       label: "N2",
     };
   }
+  if (campaign === "n2-isolated") {
+    return {
+      envPrefix: "COUNCIL_N2_ISOLATED_LIVE",
+      mode: "live-n2-isolated",
+      runCount: 3,
+      timeoutMs: 60 * 60_000,
+      claim: claimN2LiveEvidencePaths,
+      label: "isolated N2",
+      exactCandidateRequired: true,
+    };
+  }
   throw new Error(`Unsupported live campaign ${String(campaign)}`);
 }
 
@@ -71,6 +82,10 @@ function committedCandidate(contract) {
   const candidateCommit = git(["rev-parse", "HEAD"]);
   if (git(["status", "--porcelain"]) !== "") {
     throw new Error(`Native ${contract.label} qualification requires a clean committed candidate`);
+  }
+  if (contract.exactCandidateRequired
+      && required(`${contract.envPrefix}_CANDIDATE_SHA`) !== candidateCommit) {
+    throw new Error(`${contract.envPrefix}_CANDIDATE_SHA must equal exact HEAD ${candidateCommit}`);
   }
   return candidateCommit;
 }

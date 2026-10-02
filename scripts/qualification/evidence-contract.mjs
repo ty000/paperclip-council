@@ -17,15 +17,20 @@ import { basename, dirname, extname, resolve } from "node:path";
 const SAFE_PROOF_ID = "paperclip-council-n2-synthetic-integration-v1";
 const LIVE_PROOF_ID = "paperclip-council-n1-observable-native-qualification-v1";
 const N2_LIVE_PROOF_ID = "paperclip-council-n2-observable-native-qualification-v1";
+const N2_PREREQUISITE_PROOF_ID = "paperclip-council-n2-native-stage-prerequisite-v1";
+const N2_ISOLATED_LIVE_PROOF_ID = "paperclip-council-n2-isolated-observable-native-qualification-v1";
 
 const SAFE_OUTCOME = "N2 SYNTHETIC INTEGRATION VALIDATED";
 const LIVE_OUTCOME = "N1 OBSERVABLE RESULT VALIDATED";
 const N2_LIVE_OUTCOME = "N2 OBSERVABLE RESULT VALIDATED";
+const N2_PREREQUISITE_OUTCOME = "N2 native-stage prerequisite validated";
+const N2_ISOLATED_LIVE_OUTCOME = "N2 ISOLATED OBSERVABLE RESULT VALIDATED";
 
 const APP_CLEANUP = "stopped only the plugin worker, listener, and application created by this run";
 const DATABASE_CLEANUP = "fresh isolated PostgreSQL cluster removed; parent-owned temporary instance retained";
 const SAFE_FIXTURE_BOUNDARY = "agents, issues, policies, and heartbeat runs are synthetic test preparation";
 const LIVE_FIXTURE_BOUNDARY = "The safe-boundary suite uses fixtures; the N1 live campaign below uses native APIs, native wakeups, exact Paperclip run IDs, and run-derived terminal token settlement.";
+const N2_ISOLATED_FIXTURE_BOUNDARY = "The safe-boundary suite uses fixtures; isolated N2 builds N1 deterministically through public APIs without native runs, then permits only reviewer-correction-reviewer native runs.";
 const SAFE_PROVIDER_BOUNDARY = "none; dispatch was deliberately not invoked because it requests native wakeup";
 const LIVE_STOP_BOUNDARY = "ready_for_review; N2 not started";
 const EXPECTED_HOST_COMMIT = "61b3fd57a695614dc4a37e2303f426a34a9795cf";
@@ -111,6 +116,30 @@ export const N2_LIVE_RESULT_KEYS = Object.freeze([
   "n2ChangedV2Verified",
   "n2FreshFinalReviewAccepted",
   "n2AllSixRunsSettled",
+  "n2RestartReadback",
+  "n2InstalledBrowserObservableState",
+]);
+
+export const N2_PREREQUISITE_RESULT_KEYS = Object.freeze([
+  "installation",
+  "n2PrerequisitePublicMission",
+  "n2PrerequisiteDistinctContributions",
+  "n2PrerequisiteVerifiedCandidate",
+  "n2PrerequisiteN1ReservationsSettled",
+  "n2PrerequisiteZeroExposure",
+  "n2PrerequisiteZeroProviderOrNativeRuns",
+  "n2PrerequisiteStopsBeforeReviewer",
+]);
+
+const N2_ISOLATED_LIVE_RESULT_KEYS = Object.freeze([
+  ...SAFE_RESULT_KEYS,
+  ...N2_PREREQUISITE_RESULT_KEYS.filter((key) => !SAFE_RESULT_KEYS.includes(key)),
+  "n2InitialIndependentReview",
+  "n2ChangesRequestedApplied",
+  "n2CorrectionRunSettled",
+  "n2ChangedV2Verified",
+  "n2FreshFinalReviewAccepted",
+  "n2AllThreeRunsSettled",
   "n2RestartReadback",
   "n2InstalledBrowserObservableState",
 ]);
@@ -849,25 +878,64 @@ function assertN2Settlement(evidence) {
   assertKnownUsageTotal(admission, reservations);
 }
 
+function n2CampaignAgentIds(evidence) {
+  if (evidence.liveN1) {
+    return { lead: evidence.liveN1.agents?.lead, reviewer: evidence.liveN1.agents?.reviewer };
+  }
+  return {
+    lead: evidence.n2Prerequisite?.agents?.lead?.id,
+    reviewer: evidence.n2Prerequisite?.agents?.reviewer?.id,
+  };
+}
+
+// This gate intentionally keeps the complete six-reservation invariant visible in one place.
+// fallow-ignore-next-line complexity
+function assertN2IsolatedSettlement(evidence) {
+  const admission = evidence.liveN2?.admission?.envelope;
+  const reservations = admission?.reservations;
+  const prerequisiteState = evidence.n2Prerequisite?.mission?.mission?.aggregate?.n1;
+  const prerequisiteReservationIds = new Set([
+    prerequisiteState?.activationReservationId,
+    ...(prerequisiteState?.contributions ?? []).map((slot) => slot?.dispatchReservationId),
+  ]);
+  requireProof(Array.isArray(reservations) && reservations.length === 6,
+    "isolated N2 admission must contain three prerequisite and three native reservations");
+  requireProof(prerequisiteReservationIds.size === 3 && !prerequisiteReservationIds.has(undefined),
+    "isolated N2 prerequisite reservation identities are incomplete");
+  for (const reservation of reservations) {
+    if (prerequisiteReservationIds.has(reservation?.reservationId)) {
+      requireProof(reservation?.status === "settled"
+          && reservation?.usage?.status === "known" && reservation.usage.units === 0
+          && reservation?.remainingExposure?.status === "known" && reservation.remainingExposure.units === 0,
+      "isolated N1 prerequisite reservations must remain settled at zero usage and exposure");
+    } else {
+      assertSettledReservation(reservation);
+    }
+  }
+  assertKnownUsageTotal(admission, reservations);
+}
+
 function assertN2RunSet(evidence) {
-  const liveN1 = evidence.liveN1;
   const liveN2 = evidence.liveN2;
   const runs = liveN2?.runs;
-  const expectedAgentIds = [liveN1?.agents?.reviewer, liveN1?.agents?.lead, liveN1?.agents?.reviewer];
+  const agents = n2CampaignAgentIds(evidence);
+  const expectedAgentIds = [agents.reviewer, agents.lead, agents.reviewer];
   requireProof(Array.isArray(runs) && runs.length === 3, "N2 must record reviewer, correction, and reviewer runs");
   runs.forEach((run, index) => {
     assertLiveRun(run, [expectedAgentIds[index]]);
     assertLiveRunUsage(run);
   });
   requireProof(distinctStrings(runs.map((run) => run.id)), "N2 native run identities must be distinct");
-  requireProof(distinctStrings([...(liveN1?.runs ?? []), ...runs].map((run) => run.id)),
-    "all six N1 and N2 native run identities must be distinct");
+  const allNativeRuns = [...(evidence.liveN1?.runs ?? []), ...runs];
+  requireProof(distinctStrings(allNativeRuns.map((run) => run.id)),
+    "all native run identities must be distinct");
 }
 
 function assertN2State(evidence) {
   const liveN2 = evidence.liveN2;
   const inspection = liveN2?.mission;
   const state = inspection?.mission?.aggregate?.n2;
+  const agents = n2CampaignAgentIds(evidence);
   requireProof(inspection?.mission?.aggregate?.phase === "accepted", "N2 mission phase is not accepted");
   requireProof(inspection?.mission?.aggregate?.control?.status === "inactive", "accepted N2 mission control did not stop");
   requireProof(state?.status === "accepted" && state?.correctionLimit === 1 && state?.correctionsUsed === 1,
@@ -894,13 +962,13 @@ function assertN2State(evidence) {
       && round2?.verdict?.verdict === "approved",
   "N2 final review verdict is not approved on V2");
   for (const round of state.rounds) {
-    requireProof(round.reviewerAgentId === evidence.liveN1?.agents?.reviewer
+    requireProof(round.reviewerAgentId === agents.reviewer
         && round.handoff?.state === "confirmed"
         && round.handoff?.reviewerRunId === round.verdict?.runId
         && round.handoff?.usageSettledAt,
     "N2 review round is not bound to the independent reviewer run and terminal settlement");
   }
-  requireProof(state?.correction?.executorAgentId === evidence.liveN1?.agents?.lead
+  requireProof(state?.correction?.executorAgentId === agents.lead
       && state?.correction?.runId === liveN2?.runs?.[1]?.id
       && state?.correction?.usageSettledAt
       && JSON.stringify(state?.correction?.correctedPaths) === JSON.stringify(["alpha.txt"]),
@@ -939,13 +1007,14 @@ function assertN2Reservations(evidence) {
 function assertN2Receipts(evidence) {
   const receipts = evidence.liveN2?.decisionReceipts;
   const state = evidence.liveN2?.mission?.mission?.aggregate?.n2;
+  const agents = n2CampaignAgentIds(evidence);
   requireProof(Array.isArray(receipts) && receipts.length === 2,
     "N2 must retain exactly two decision receipts");
   requireProof(receipts[0]?.verdict === "changes_requested" && receipts[1]?.verdict === "approved",
     "N2 decision receipt sequence is unexpected");
   receipts.forEach((receipt, index) => requireProof(
     receipt?.state === "native_observed"
-      && receipt?.actorAgentId === evidence.liveN1?.agents?.reviewer
+      && receipt?.actorAgentId === agents.reviewer
       && receipt?.runId === state?.rounds?.[index]?.handoff?.reviewerRunId
       && receipt?.operationId === state?.rounds?.[index]?.verdict?.operationId,
     "N2 decision receipt is not bound to its reviewer run and verdict",
@@ -968,6 +1037,36 @@ function assertN2NativeProof(evidence, candidateCommit, screenshotPath, screensh
   assertLiveRunsAndContributions(evidence);
   assertLiveCandidate(evidence);
   assertN2Settlement(evidence);
+  assertN2RunSet(evidence);
+  assertN2State(evidence);
+  assertN2Reservations(evidence);
+  assertN2Receipts(evidence);
+  assertN2RestartAndUi(evidence, candidateCommit, screenshotPath, screenshotBytes);
+}
+
+function assertN2IsolatedHostAndModels(evidence) {
+  const models = evidence.configuration?.models;
+  const observed = models?.observedAgentConfiguration;
+  const agents = n2CampaignAgentIds(evidence);
+  const expectedAgentIds = [agents.lead, agents.reviewer];
+  requireProof(evidence.head === EXPECTED_HOST_COMMIT, "isolated N2 host commit is not pinned");
+  requireProof(evidence.hostTrackedFilesClean === true, "isolated N2 host tracked files were not clean");
+  requireProof(models?.authorized?.model === "gpt-5.6-sol", "isolated N2 authorized model is unexpected");
+  requireProof(models?.authorized?.effort === "high", "isolated N2 authorized effort is unexpected");
+  requireProof(Array.isArray(observed) && observed.length === 2
+      && sameStringSet(observed.map((item) => item?.agentId), expectedAgentIds),
+  "isolated N2 must observe model settings for the lead and reviewer only");
+  observed.forEach((item) => assertObservedModel(item, models.authorized));
+}
+
+function assertN2IsolatedNativeProof(evidence, candidateCommit, screenshotPath, screenshotBytes) {
+  assertN2PrerequisiteState(evidence.n2Prerequisite);
+  assertN2IsolatedHostAndModels(evidence);
+  requireProof(evidence.liveN2?.limits?.runCount === 3
+      && evidence.liveN2?.limits?.maxRetries === 0
+      && evidence.liveN2?.limits?.maxCorrections === 1,
+  "isolated N2 native run bounds are missing");
+  assertN2IsolatedSettlement(evidence);
   assertN2RunSet(evidence);
   assertN2State(evidence);
   assertN2Reservations(evidence);
@@ -1069,10 +1168,17 @@ export function assertQualificationEvidence(evidence, {
   }
   const live = mode === "live";
   const liveN2 = mode === "live-n2";
-  if (!live && !liveN2 && mode !== "safe") fail(`unsupported mode ${String(mode)}`);
-  const expectedProofId = liveN2 ? N2_LIVE_PROOF_ID : live ? LIVE_PROOF_ID : SAFE_PROOF_ID;
-  const expectedOutcome = liveN2 ? N2_LIVE_OUTCOME : live ? LIVE_OUTCOME : SAFE_OUTCOME;
-  const expectedResults = liveN2 ? N2_LIVE_RESULT_KEYS : live ? LIVE_RESULT_KEYS : SAFE_RESULT_KEYS;
+  const isolatedLiveN2 = mode === "live-n2-isolated";
+  if (!live && !liveN2 && !isolatedLiveN2 && mode !== "safe") fail(`unsupported mode ${String(mode)}`);
+  const expectedProofId = isolatedLiveN2
+    ? N2_ISOLATED_LIVE_PROOF_ID
+    : liveN2 ? N2_LIVE_PROOF_ID : live ? LIVE_PROOF_ID : SAFE_PROOF_ID;
+  const expectedOutcome = isolatedLiveN2
+    ? N2_ISOLATED_LIVE_OUTCOME
+    : liveN2 ? N2_LIVE_OUTCOME : live ? LIVE_OUTCOME : SAFE_OUTCOME;
+  const expectedResults = isolatedLiveN2
+    ? N2_ISOLATED_LIVE_RESULT_KEYS
+    : liveN2 ? N2_LIVE_RESULT_KEYS : live ? LIVE_RESULT_KEYS : SAFE_RESULT_KEYS;
   if (evidence.schemaVersion !== 1
       || evidence.proofId !== expectedProofId
       || evidence.outcome !== expectedOutcome
@@ -1085,7 +1191,9 @@ export function assertQualificationEvidence(evidence, {
   assertCleanup(evidence);
   assertSafeBoundary(evidence);
   assertSyntheticN2Proof(evidence);
-  const expectedFixtureBoundary = live || liveN2 ? LIVE_FIXTURE_BOUNDARY : SAFE_FIXTURE_BOUNDARY;
+  const expectedFixtureBoundary = isolatedLiveN2
+    ? N2_ISOLATED_FIXTURE_BOUNDARY
+    : live || liveN2 ? LIVE_FIXTURE_BOUNDARY : SAFE_FIXTURE_BOUNDARY;
   if (evidence.configuration.fixtureBoundary !== expectedFixtureBoundary) {
     fail(`${mode} fixture boundary is missing or unexpected`);
   }
@@ -1097,5 +1205,73 @@ export function assertQualificationEvidence(evidence, {
     assertLiveNativeProof(evidence, candidateCommit, screenshotPath, screenshotBytes);
   }
   if (liveN2) assertN2NativeProof(evidence, candidateCommit, screenshotPath, screenshotBytes);
+  if (isolatedLiveN2) {
+    assertN2IsolatedNativeProof(evidence, candidateCommit, screenshotPath, screenshotBytes);
+  }
+  return evidence;
+}
+
+// This assertion block mirrors the evidence contract as one auditable prerequisite checklist.
+// fallow-ignore-next-line complexity
+function assertN2PrerequisiteState(prerequisite) {
+  const aggregate = prerequisite?.mission?.mission?.aggregate;
+  const participants = prerequisite?.mission?.n1?.participants;
+  const candidate = prerequisite?.mission?.n1?.candidate;
+  const reservations = prerequisite?.admission?.envelope?.reservations;
+  requireProof(prerequisite?.proofClass === N2_PREREQUISITE_OUTCOME,
+    "N2 prerequisite proof class is missing");
+  requireProof(aggregate?.phase === "ready_for_review" && aggregate?.control?.status === "inactive",
+    "N1 prerequisite is not stopped at ready_for_review");
+  requireProof(prerequisite?.mission?.n2 === null && aggregate?.n2 === undefined,
+    "N2 state must be absent before the first reviewer");
+  requireProof(Array.isArray(participants) && participants.length === 2,
+    "N2 prerequisite needs exactly two contributions");
+  requireProof(distinctStrings(participants.map((entry) => entry?.contributionId))
+      && distinctStrings(participants.map((entry) => entry?.assigneeAgentId))
+      && distinctStrings(participants.map((entry) => entry?.commit)),
+  "N2 prerequisite contribution, assignee, and commit identities must be distinct");
+  requireProof(candidate?.outcome === "verified" && candidate?.publicationEligible === true,
+    "N2 prerequisite candidate is not verified and publication eligible");
+  requireProof(COMMIT.test(candidate?.candidate?.candidateCommit)
+      && DIGEST.test(candidate?.candidate?.sha256)
+      && candidate?.candidate?.candidateCommit === prerequisite?.candidate?.candidateCommit
+      && candidate?.candidate?.sha256 === prerequisite?.candidate?.sha256,
+  "N2 prerequisite candidate identity is missing or inconsistent");
+  requireProof(Array.isArray(reservations) && reservations.length === 3,
+    "N2 prerequisite must retain exactly three deterministic N1 reservations");
+  requireProof(reservations.every((entry) => entry?.status === "settled"
+      && entry?.usage?.status === "known" && entry.usage.units === 0
+      && entry?.remainingExposure?.status === "known" && entry.remainingExposure.units === 0),
+  "every deterministic N1 reservation must be settled with zero usage and exposure");
+  requireProof(prerequisite?.admission?.envelope?.exposure?.status === "known"
+      && prerequisite.admission.envelope.exposure.units === 0,
+  "N2 prerequisite admission exposure must be known and zero");
+  requireProof(prerequisite?.providerBoundary?.providerInvocationCount === 0
+      && prerequisite?.providerBoundary?.nativeAgentRunCount === 0
+      && Array.isArray(prerequisite?.runReadbacks)
+      && prerequisite.runReadbacks.length === 4
+      && prerequisite.runReadbacks.every((entry) => entry?.runCount === 0),
+  "zero provider and native-agent runs are not proven");
+  requireProof(prerequisite?.databaseBoundary
+      === "no direct mission-table mutation; mission transitions use installed plugin commands",
+  "public-command database boundary is missing");
+  requireProof(prerequisite?.stopBoundary === "ready_for_review; N2 state absent; reviewer not started",
+    "N2 prerequisite did not stop before reviewer dispatch");
+}
+
+export function assertN2PrerequisiteEvidence(evidence, { candidateCommit, notBefore }) {
+  if (evidence?.schemaVersion !== 1
+      || evidence?.proofId !== N2_PREREQUISITE_PROOF_ID
+      || evidence?.outcome !== N2_PREREQUISITE_OUTCOME
+      || evidence?.candidate?.commit !== candidateCommit
+      || evidence?.candidate?.clean !== true) {
+    fail(`N2 prerequisite identity or outcome does not match ${candidateCommit}`);
+  }
+  assertFreshness(evidence, notBefore);
+  assertCleanup(evidence);
+  assertExactResults(evidence.results, N2_PREREQUISITE_RESULT_KEYS, "n2-prerequisite");
+  assertN2PrerequisiteState(evidence.n2Prerequisite);
+  requireProof(evidence?.launcherCleanup?.ownedRuntimeRemoved === true,
+    "owned qualification runtime cleanup is not proven");
   return evidence;
 }

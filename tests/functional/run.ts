@@ -10,6 +10,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { prepareCandidatePackage } from "./candidate-package.js";
 import { nativeRunEvidence, runLiveN1 } from "./n1-live.js";
 import { runLiveN2 } from "./n2-live.js";
+import { prepareN2Prerequisite } from "./n2-prerequisite.js";
 import { runSyntheticN2 } from "./n2-synthetic.js";
 import { createFunctionalRuntimeCleanup } from "./runtime-cleanup.js";
 // @ts-expect-error The qualification evidence contract is intentionally plain ESM.
@@ -37,9 +38,17 @@ const candidateBranch = execFileSync("git", ["branch", "--show-current"], {
 }).trim();
 const liveN1Authorized = process.env.COUNCIL_N1_LIVE_AUTHORIZED === "1";
 const liveN2Authorized = process.env.COUNCIL_N2_LIVE_AUTHORIZED === "1";
-assert(!(liveN1Authorized && liveN2Authorized), "N1 and N2 live campaigns cannot be authorized together");
-const liveNativeAuthorized = liveN1Authorized || liveN2Authorized;
-const liveEnvironmentPrefix = liveN2Authorized ? "COUNCIL_N2_LIVE" : "COUNCIL_N1_LIVE";
+const isolatedLiveN2Authorized = process.env.COUNCIL_N2_ISOLATED_LIVE_AUTHORIZED === "1";
+const n2PrerequisiteMode = process.env.COUNCIL_N2_PREREQUISITE === "1";
+assert([liveN1Authorized, liveN2Authorized, isolatedLiveN2Authorized].filter(Boolean).length <= 1,
+  "Only one native campaign can be authorized at a time");
+assert(!(n2PrerequisiteMode && (liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized)),
+  "The provider-free N2 prerequisite cannot run inside a LIVE campaign");
+const liveNativeAuthorized = liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized;
+const liveN2Campaign = liveN2Authorized || isolatedLiveN2Authorized;
+const liveEnvironmentPrefix = isolatedLiveN2Authorized
+  ? "COUNCIL_N2_ISOLATED_LIVE"
+  : liveN2Authorized ? "COUNCIL_N2_LIVE" : "COUNCIL_N1_LIVE";
 type ArtifactIdentity = { dev: string; ino: string };
 function claimedArtifactIdentity(name: string): ArtifactIdentity {
   const serialized = process.env[name];
@@ -112,7 +121,11 @@ const requireServer = createRequire(resolve(root, "server/package.json"));
 const { eq, sql } = requireServer("drizzle-orm");
 const evidence: Record<string, any> = {
   schemaVersion: 1,
-  proofId: liveN2Authorized
+  proofId: n2PrerequisiteMode
+    ? "paperclip-council-n2-native-stage-prerequisite-v1"
+    : isolatedLiveN2Authorized
+    ? "paperclip-council-n2-isolated-observable-native-qualification-v1"
+    : liveN2Authorized
     ? "paperclip-council-n2-observable-native-qualification-v1"
     : liveN1Authorized
     ? "paperclip-council-n1-observable-native-qualification-v1"
@@ -124,8 +137,12 @@ const evidence: Record<string, any> = {
   node: process.version,
   command: liveN2Authorized
     ? "COUNCIL_N2_LIVE_AUTHORIZED=1 COUNCIL_N2_LIVE_MODEL=gpt-5.6-sol COUNCIL_N2_LIVE_EFFORT=high COUNCIL_N2_LIVE_RUN_UNITS=<positive> COUNCIL_N2_LIVE_PERIOD_UNITS=<exactly-6x-run> pnpm qualification:live:n2"
+    : isolatedLiveN2Authorized
+    ? "COUNCIL_N2_ISOLATED_LIVE_AUTHORIZED=1 COUNCIL_N2_ISOLATED_LIVE_CANDIDATE_SHA=<exact-head> COUNCIL_N2_ISOLATED_LIVE_MODEL=gpt-5.6-sol COUNCIL_N2_ISOLATED_LIVE_EFFORT=high COUNCIL_N2_ISOLATED_LIVE_RUN_UNITS=<positive> COUNCIL_N2_ISOLATED_LIVE_PERIOD_UNITS=<exactly-3x-run> pnpm qualification:live:n2:isolated"
     : liveN1Authorized
     ? "COUNCIL_N1_LIVE_AUTHORIZED=1 COUNCIL_N1_LIVE_MODEL=gpt-5.6-sol COUNCIL_N1_LIVE_EFFORT=high COUNCIL_N1_LIVE_RUN_UNITS=<positive> COUNCIL_N1_LIVE_PERIOD_UNITS=<at-least-3x-run> pnpm qualification:live:n1"
+    : n2PrerequisiteMode
+    ? "pnpm qualification:preflight:n2"
     : "COUNCIL_PACKAGE_EXPECTED_COMMIT=<candidate-sha> PAPERCLIP_TEST_HOST_ROOT=<checkout> PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH=<chromium> pnpm test:functional",
   candidate: {
     commit: candidateCommit,
@@ -451,6 +468,50 @@ try {
   await app.locals.bundledPluginsStartup;
   assert(workerManager.isRunning(pluginId), "installed package worker must load after restart");
   evidence.results.installation = "PASS";
+
+  if (n2PrerequisiteMode) {
+    const prerequisite = await prepareN2Prerequisite({
+      request,
+      pluginId,
+      baseUrl,
+      cookie,
+      runtime,
+      ownerUserId: userId,
+      registerActor: (actor, identity) => {
+        agentTokens.set(actor, { ...identity, runId: "", agentId: identity.id });
+      },
+      setActorRun: (actor, runId) => {
+        const current = agentTokens.get(actor);
+        assert(current, `unknown N2 prerequisite actor ${actor}`);
+        agentTokens.set(actor, { ...current, runId });
+      },
+    });
+    evidence.configuration.fixtureBoundary = "N1 state built through public Paperclip APIs and fixture-only public Council commands; no mission table write";
+    evidence.configuration.models = "none";
+    evidence.n2Prerequisite = {
+      proofClass: "N2 native-stage prerequisite validated",
+      ...prerequisite,
+      providerBoundary: {
+        providerInvocationCount: 0,
+        nativeAgentRunCount: prerequisite.runReadbacks.reduce(
+          (total: number, entry: { runCount: number }) => total + entry.runCount,
+          0,
+        ),
+        evidence: "public heartbeat-run readback is empty for lead, both contributors, and reviewer",
+      },
+      databaseBoundary: "no direct mission-table mutation; mission transitions use installed plugin commands",
+    };
+    Object.assign(evidence.results, {
+      n2PrerequisitePublicMission: "PASS",
+      n2PrerequisiteDistinctContributions: "PASS",
+      n2PrerequisiteVerifiedCandidate: "PASS",
+      n2PrerequisiteN1ReservationsSettled: "PASS",
+      n2PrerequisiteZeroExposure: "PASS",
+      n2PrerequisiteZeroProviderOrNativeRuns: "PASS",
+      n2PrerequisiteStopsBeforeReviewer: "PASS",
+    });
+    evidence.outcome = "N2 native-stage prerequisite validated";
+  } else {
 
   const migrationNames = [
     "001_foundation_probe.sql", "002_revisioned_rosters.sql", "003_missions.sql",
@@ -1744,7 +1805,30 @@ try {
   evidence.results.n2SyntheticPersistedReadback = "PASS";
 
   if (liveNativeAuthorized) {
-    const live = await runLiveN1({
+    const live = isolatedLiveN2Authorized
+      ? await prepareN2Prerequisite({
+          request,
+          pluginId,
+          baseUrl,
+          cookie,
+          runtime,
+          ownerUserId: userId,
+          liveN2Profile: {
+            model: process.env.COUNCIL_N2_ISOLATED_LIVE_MODEL!,
+            effort: process.env.COUNCIL_N2_ISOLATED_LIVE_EFFORT!,
+            runReservationUnits: Number(process.env.COUNCIL_N2_ISOLATED_LIVE_RUN_UNITS),
+            periodAllowanceUnits: Number(process.env.COUNCIL_N2_ISOLATED_LIVE_PERIOD_UNITS),
+          },
+          registerActor: (actor, identity) => {
+            agentTokens.set(actor, { ...identity, runId: "", agentId: identity.id });
+          },
+          setActorRun: (actor, runId) => {
+            const current = agentTokens.get(actor);
+            assert(current, `unknown isolated N2 actor ${actor}`);
+            agentTokens.set(actor, { ...current, runId });
+          },
+        })
+      : await runLiveN1({
       request,
       getRun: async (runId) => db.select({
         id: tables.heartbeatRuns.id,
@@ -1762,8 +1846,45 @@ try {
       evidence,
       campaign: liveN2Authorized ? "n2" : "n1",
     });
+    if (isolatedLiveN2Authorized) {
+      evidence.configuration.models = {
+        authorized: {
+          model: process.env.COUNCIL_N2_ISOLATED_LIVE_MODEL,
+          effort: process.env.COUNCIL_N2_ISOLATED_LIVE_EFFORT,
+        },
+        observedAgentConfiguration: [live.agents.lead, live.agents.reviewer].map((agent: any) => ({
+          agentId: agent.id,
+          adapterType: agent.adapterType,
+          model: agent.adapterConfig?.model ?? null,
+          effort: agent.adapterConfig?.modelReasoningEffort ?? null,
+        })),
+      };
+      evidence.configuration.fixtureBoundary = "The safe-boundary suite uses fixtures; isolated N2 builds N1 deterministically through public APIs without native runs, then permits only reviewer-correction-reviewer native runs.";
+      evidence.n2Prerequisite = {
+        proofClass: "N2 native-stage prerequisite validated",
+        ...live,
+        providerBoundary: {
+          providerInvocationCount: 0,
+          nativeAgentRunCount: live.runReadbacks.reduce(
+            (total: number, entry: { runCount: number }) => total + entry.runCount,
+            0,
+          ),
+          evidence: "public heartbeat-run readback is empty before N2 for lead, both contributors, and reviewer",
+        },
+        databaseBoundary: "no direct mission-table mutation; mission transitions use installed plugin commands",
+      };
+      Object.assign(evidence.results, {
+        n2PrerequisitePublicMission: "PASS",
+        n2PrerequisiteDistinctContributions: "PASS",
+        n2PrerequisiteVerifiedCandidate: "PASS",
+        n2PrerequisiteN1ReservationsSettled: "PASS",
+        n2PrerequisiteZeroExposure: "PASS",
+        n2PrerequisiteZeroProviderOrNativeRuns: "PASS",
+        n2PrerequisiteStopsBeforeReviewer: "PASS",
+      });
+    }
     let liveMission = live.mission;
-    if (liveN2Authorized) {
+    if (liveN2Campaign) {
       const n2 = await runLiveN2({
         request,
         getRun: async (runId) => db.select({
@@ -1837,11 +1958,11 @@ try {
         await selectedMission.locator("#mission-state-title").textContent(),
         liveMission.mission.aggregate.mandate.objective,
       );
-      await selectedMission.getByText(liveN2Authorized ? "accepted" : "ready_for_review", { exact: true }).waitFor();
+      await selectedMission.getByText(liveN2Campaign ? "accepted" : "ready_for_review", { exact: true }).waitFor();
       await page.getByRole("heading", { name: "Contributions" }).waitFor();
       await page.getByRole("heading", { name: "Admission and usage" }).waitFor();
       await page.getByText(/terminal-token-ledger/).waitFor();
-      if (liveN2Authorized) {
+      if (liveN2Campaign) {
         await page.getByRole("heading", { name: "Independent review and correction" }).waitFor();
         await page.getByText("V2 / evidence revision 2", { exact: true }).waitFor();
         await page.getByText("eligible and independent", { exact: true }).waitFor();
@@ -1860,7 +1981,7 @@ try {
           slot.title, slot.assigneeAgentId, slot.dispatchRunId, slot.commit, ...slot.ownedPaths,
         ]),
         ...liveMission.n1.candidate.checks.flatMap((check: any) => [check.name, check.status, check.detail]),
-        ...(liveN2Authorized ? [
+        ...(liveN2Campaign ? [
           liveMission.n2.submission.submissionId,
           liveMission.n2.submission.candidateCommit,
           liveMission.n2.submission.sha256,
@@ -1870,7 +1991,7 @@ try {
           liveMission.n2.application.operationId,
           liveMission.n2.application.receiptState,
         ] : []),
-        ...(liveN2Authorized ? evidence.liveN2.admission.envelope.reservations : live.admission.envelope.reservations).flatMap((reservation: any) => [
+        ...(liveN2Campaign ? evidence.liveN2.admission.envelope.reservations : live.admission.envelope.reservations).flatMap((reservation: any) => [
           reservation.reservationId,
           String(reservation.requestedUnits),
           String(reservation.usage.units),
@@ -1881,7 +2002,7 @@ try {
       ];
       for (const value of renderedValues) {
         assert(value !== undefined && value !== null && rendered.includes(String(value)),
-          `${liveN2Authorized ? "N2" : "N1"} UI is missing observed value: ${String(value)}`);
+          `${liveN2Campaign ? "N2" : "N1"} UI is missing observed value: ${String(value)}`);
       }
       const liveScreenshotPath = process.env[`${liveEnvironmentPrefix}_SCREENSHOT_PATH`];
       assert(liveScreenshotPath, "live screenshot path must be claimed by the launcher");
@@ -1890,7 +2011,7 @@ try {
       const screenshot = await page.screenshot({ type: "png", fullPage: true });
       writeClaimedArtifact(liveScreenshotPath, liveScreenshotIdentity, screenshot, "screenshot");
       const uiEvidence = { screenshot: liveScreenshotPath, missionId: live.missionId, rootIssueId: live.rootIssueId };
-      if (liveN2Authorized) {
+      if (liveN2Campaign) {
         evidence.liveN2.ui = uiEvidence;
         evidence.results.n2InstalledBrowserObservableState = "PASS";
       } else {
@@ -1901,11 +2022,14 @@ try {
     } finally {
       await liveBrowser.close();
     }
-    evidence.outcome = liveN2Authorized
+    evidence.outcome = isolatedLiveN2Authorized
+      ? "N2 ISOLATED OBSERVABLE RESULT VALIDATED"
+      : liveN2Authorized
       ? "N2 OBSERVABLE RESULT VALIDATED"
       : "N1 OBSERVABLE RESULT VALIDATED";
   } else {
     evidence.outcome = "N2 SYNTHETIC INTEGRATION VALIDATED";
+  }
   }
 } catch (error) {
   evidence.outcome = "NON-CONCLUSIVE OR BLOCKED";

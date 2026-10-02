@@ -75,6 +75,29 @@ pnpm qualification:live:n2
 Do not set the authorization variable until the operator has explicitly
 authorized that provider campaign for the exact published commit.
 
+For the isolated N2 path, `pnpm qualification:preflight:n2` first builds the
+same `ready_for_review` prerequisite through public Paperclip APIs and
+fixture-confined public Council commands. It records two distinct contributions,
+a verified integrated candidate, three settled zero-usage N1 reservations,
+zero exposure, empty run readbacks for all four identities, and owned-runtime
+cleanup. It stops before N2 and invokes no provider. A later, separately
+authorized campaign can reuse that deterministic builder in the same ephemeral
+runtime and launch only reviewer V1, the bounded correction, and reviewer V2:
+
+```sh
+COUNCIL_N2_ISOLATED_LIVE_AUTHORIZED=1 \
+COUNCIL_N2_ISOLATED_LIVE_CANDIDATE_SHA=<exact-published-sha> \
+COUNCIL_N2_ISOLATED_LIVE_MODEL=gpt-5.6-sol \
+COUNCIL_N2_ISOLATED_LIVE_EFFORT=high \
+COUNCIL_N2_ISOLATED_LIVE_RUN_UNITS=2000000 \
+COUNCIL_N2_ISOLATED_LIVE_PERIOD_UNITS=6000000 \
+pnpm qualification:live:n2:isolated
+```
+
+The isolated LIVE launcher refuses a dirty candidate, a mismatched candidate
+SHA, a missing explicit authorization, a substituted model/effort, or any
+period allowance other than exactly three run reservations.
+
 ## Compatibility
 
 This extraction is tested against Paperclip commit

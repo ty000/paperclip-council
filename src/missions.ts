@@ -12,6 +12,14 @@ import {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_RECEIPTS = 100;
 const MAX_LIST_ITEMS = 50;
+const N1_BOARD_COMMANDS = new Set([
+  "activate",
+  "start-lead",
+  "fixture-bind-lead-run",
+  "fixture-bind-contribution-run",
+  "reconcile-lead-usage",
+  "reconcile-contribution-usage",
+]);
 
 export type MissionMandate = {
   objective: string;
@@ -27,7 +35,7 @@ export type MissionMandate = {
 
 export type MissionReceipt = {
   commandId: string;
-  command: "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish"
+  command: "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "fixture-bind-contribution-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish"
     | "start-review" | "confirm-review-handoff" | "start-correction" | "prepare-resubmission"
     | "start-resubmitted-review" | "settle-n2-usage";
   actorType: "user" | "agent";
@@ -636,9 +644,7 @@ export async function handleMissionApi(input: PluginApiRequestInput, ctx: Plugin
     if (input.routeKey === "missions-command" || input.routeKey === "mission-command") {
       const body = asRecord(input.body);
       const missionId = input.params.missionId ? uuid(input.params.missionId, "missionId") : undefined;
-      const result = (body.command === "activate" || body.command === "start-lead"
-        || body.command === "fixture-bind-lead-run" || body.command === "reconcile-lead-usage"
-        || body.command === "reconcile-contribution-usage") && missionId
+      const result = N1_BOARD_COMMANDS.has(String(body.command)) && missionId
         ? await executeN1BoardCommand(ctx, { companyId, missionId, actorUserId, body })
         : (body.command === "start-review" || body.command === "start-correction"
           || body.command === "start-resubmitted-review" || body.command === "settle-n2-usage") && missionId

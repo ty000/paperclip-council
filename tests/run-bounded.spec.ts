@@ -10,7 +10,7 @@ import { ProcessGroupDrainError, runProcessGroup } from "../scripts/qualificatio
 // @ts-expect-error The qualification launcher is intentionally plain ESM.
 import { prepareQualificationHost, withOwnedQualificationRuntime } from "../scripts/qualification/run-bounded.mjs";
 // @ts-expect-error The qualification evidence contract is intentionally plain ESM.
-import { __claimLiveEvidencePathsForTest, assertQualificationEvidence, claimLiveEvidencePaths, claimN2LiveEvidencePaths, LIVE_RESULT_KEYS, N2_LIVE_RESULT_KEYS, SAFE_RESULT_KEYS, writeClaimedArtifact } from "../scripts/qualification/evidence-contract.mjs";
+import { __claimLiveEvidencePathsForTest, assertN2PrerequisiteEvidence, assertQualificationEvidence, claimLiveEvidencePaths, claimN2LiveEvidencePaths, LIVE_RESULT_KEYS, N2_LIVE_RESULT_KEYS, N2_PREREQUISITE_RESULT_KEYS, SAFE_RESULT_KEYS, writeClaimedArtifact } from "../scripts/qualification/evidence-contract.mjs";
 import {
   assertNoReviewerRuns,
   assertOnlyExpectedAgentRun,
@@ -77,6 +77,49 @@ function syntheticN2Evidence() {
       { verdict: "approved", state: "native_observed" },
     ],
     restartReadback: inspection,
+  };
+}
+
+function n2PrerequisiteEvidence() {
+  const candidate = { candidateCommit: "3".repeat(40), sha256: "4".repeat(64) };
+  const participants = [
+    { contributionId: "10000000-0000-4000-8000-000000000001", assigneeAgentId: "alpha", commit: "1".repeat(40) },
+    { contributionId: "10000000-0000-4000-8000-000000000002", assigneeAgentId: "beta", commit: "2".repeat(40) },
+  ];
+  const reservations = [0, 1, 2].map((index) => ({
+    reservationId: `20000000-0000-4000-8000-00000000000${index + 1}`,
+    status: "settled",
+    usage: { status: "known", units: 0 },
+    remainingExposure: { status: "known", units: 0 },
+  }));
+  return {
+    schemaVersion: 1,
+    proofId: "paperclip-council-n2-native-stage-prerequisite-v1",
+    startedAt: "2026-10-02T10:00:00.000Z",
+    finishedAt: "2026-10-02T10:01:00.000Z",
+    candidate: { commit: liveCommit, clean: true },
+    outcome: "N2 native-stage prerequisite validated",
+    results: Object.fromEntries(N2_PREREQUISITE_RESULT_KEYS.map((key: string) => [key, "PASS"])),
+    appCleanup: "stopped only the plugin worker, listener, and application created by this run",
+    databaseCleanup: "fresh isolated PostgreSQL cluster removed; parent-owned temporary instance retained",
+    launcherCleanup: { ownedRuntimeRemoved: true },
+    n2Prerequisite: {
+      proofClass: "N2 native-stage prerequisite validated",
+      mission: {
+        mission: { aggregate: { phase: "ready_for_review", control: { status: "inactive" } } },
+        n1: {
+          participants,
+          candidate: { outcome: "verified", publicationEligible: true, candidate },
+        },
+        n2: null,
+      },
+      candidate,
+      admission: { envelope: { reservations, exposure: { status: "known", units: 0 } } },
+      providerBoundary: { providerInvocationCount: 0, nativeAgentRunCount: 0 },
+      runReadbacks: ["lead", "alpha", "beta", "reviewer"].map((agentId) => ({ agentId, runCount: 0 })),
+      databaseBoundary: "no direct mission-table mutation; mission transitions use installed plugin commands",
+      stopBoundary: "ready_for_review; N2 state absent; reviewer not started",
+    },
   };
 }
 
@@ -354,7 +397,92 @@ function n2QualificationEvidence(): any {
   return evidence;
 }
 
+function isolatedN2QualificationEvidence(): any {
+  const evidence = n2QualificationEvidence();
+  const liveN1 = evidence.liveN1;
+  const prerequisiteReservations = structuredClone(liveN1.admission.envelope.reservations);
+  for (const reservation of prerequisiteReservations) {
+    reservation.usage = { status: "known", units: 0, source: "fixture:local-sandbox" };
+  }
+  evidence.proofId = "paperclip-council-n2-isolated-observable-native-qualification-v1";
+  evidence.outcome = "N2 ISOLATED OBSERVABLE RESULT VALIDATED";
+  evidence.results = Object.fromEntries([
+    ...SAFE_RESULT_KEYS,
+    ...N2_PREREQUISITE_RESULT_KEYS.filter((key: string) => !SAFE_RESULT_KEYS.includes(key)),
+    "n2InitialIndependentReview",
+    "n2ChangesRequestedApplied",
+    "n2CorrectionRunSettled",
+    "n2ChangedV2Verified",
+    "n2FreshFinalReviewAccepted",
+    "n2AllThreeRunsSettled",
+    "n2RestartReadback",
+    "n2InstalledBrowserObservableState",
+  ].map((key) => [key, "PASS"]));
+  evidence.configuration.fixtureBoundary = "The safe-boundary suite uses fixtures; isolated N2 builds N1 deterministically through public APIs without native runs, then permits only reviewer-correction-reviewer native runs.";
+  evidence.configuration.models.observedAgentConfiguration = ["lead", "reviewer"].map((agentId) => ({
+    agentId, adapterType: "codex_local", model: "gpt-5.6-sol", effort: "high",
+  }));
+  const verifiedCandidate = liveN1.mission.mission.aggregate.n1.candidate;
+  evidence.n2Prerequisite = {
+    proofClass: "N2 native-stage prerequisite validated",
+    mission: { ...liveN1.mission, n1: { ...liveN1.mission.n1, candidate: verifiedCandidate }, n2: null },
+    candidate: verifiedCandidate.candidate,
+    admission: {
+      envelope: {
+        reservations: prerequisiteReservations,
+        exposure: { status: "known", units: 0 },
+      },
+    },
+    agents: {
+      lead: { id: "lead" }, contributorA: { id: "alpha" }, contributorB: { id: "beta" }, reviewer: { id: "reviewer" },
+    },
+    providerBoundary: { providerInvocationCount: 0, nativeAgentRunCount: 0 },
+    runReadbacks: ["lead", "alpha", "beta", "reviewer"].map((agentId) => ({ agentId, runCount: 0 })),
+    databaseBoundary: "no direct mission-table mutation; mission transitions use installed plugin commands",
+    stopBoundary: "ready_for_review; N2 state absent; reviewer not started",
+  };
+  for (const reservation of evidence.liveN2.admission.envelope.reservations.slice(0, 3)) {
+    reservation.usage = { status: "known", units: 0, source: "fixture:local-sandbox" };
+  }
+  evidence.liveN2.admission.envelope.allowance.knownUsageUnits = evidence.liveN2.admission.envelope.reservations
+    .reduce((total: number, reservation: any) => total + reservation.usage.units, 0);
+  evidence.liveN2.limits = { runCount: 3, maxConcurrent: 2, maxRetries: 0, maxCorrections: 1 };
+  delete evidence.liveN1;
+  return evidence;
+}
+
 describe("bounded qualification launcher", () => {
+  it("accepts only a cleaned provider-free N2 prerequisite stopped before review", () => {
+    const evidence = n2PrerequisiteEvidence();
+    const options = { candidateCommit: liveCommit, notBefore: Date.parse("2026-10-02T09:59:59.000Z") };
+    expect(() => assertN2PrerequisiteEvidence(evidence, options)).not.toThrow();
+
+    const withRun = structuredClone(evidence);
+    withRun.n2Prerequisite.providerBoundary.nativeAgentRunCount = 1;
+    expect(() => assertN2PrerequisiteEvidence(withRun, options)).toThrow(/zero provider and native-agent runs/);
+
+    const withExposure = structuredClone(evidence);
+    withExposure.n2Prerequisite.admission.envelope.exposure.units = 1;
+    expect(() => assertN2PrerequisiteEvidence(withExposure, options)).toThrow(/known and zero/);
+  });
+
+  it("guards the future isolated N2 command with explicit authorization and exact HEAD", () => {
+    const launcher = readFileSync(resolve(packageRoot, "scripts/qualification/run-live.mjs"), "utf8");
+    const wrapper = readFileSync(resolve(packageRoot, "scripts/qualification/run-live-n2-isolated.mjs"), "utf8");
+    const prerequisite = readFileSync(resolve(packageRoot, "tests/functional/n2-prerequisite.ts"), "utf8");
+    const preflight = readFileSync(resolve(packageRoot, "scripts/qualification/run-n2-prerequisite.mjs"), "utf8");
+    const packageJson = JSON.parse(readFileSync(resolve(packageRoot, "package.json"), "utf8"));
+    expect(launcher).toContain('envPrefix: "COUNCIL_N2_ISOLATED_LIVE"');
+    expect(launcher).toContain('required(`${contract.envPrefix}_CANDIDATE_SHA`) !== candidateCommit');
+    expect(launcher).toContain('runCount: 3');
+    expect(wrapper).toContain('runLiveQualification("n2-isolated")');
+    expect(prerequisite).not.toMatch(/\bdb\.(?:execute|insert|update|delete)\b|\bUPDATE\s+[a-z_]/i);
+    expect(preflight).toContain("withOwnedQualificationRuntime");
+    expect(preflight).toContain("ownedRuntimeRemoved: true");
+    expect(packageJson.scripts["qualification:live:n2:isolated"])
+      .toBe("node scripts/qualification/run-live-n2-isolated.mjs");
+  });
+
   it("atomically gives only one contender the commit-qualified evidence and screenshot paths", async () => {
     const root = await mkdtemp(resolve(tmpdir(), "council-live-evidence-"));
     const commit = "a".repeat(40);
@@ -850,6 +978,9 @@ describe("bounded qualification launcher", () => {
     })).not.toThrow();
     expect(() => assertQualificationEvidence(n2QualificationEvidence(), {
       ...n2LiveOptions(notBefore),
+    })).not.toThrow();
+    expect(() => assertQualificationEvidence(isolatedN2QualificationEvidence(), {
+      ...n2LiveOptions(notBefore), mode: "live-n2-isolated",
     })).not.toThrow();
 
     for (const results of [undefined, {}, { ...qualificationEvidence("safe").results }]) {

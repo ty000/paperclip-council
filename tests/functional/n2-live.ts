@@ -183,6 +183,7 @@ export async function runLiveN2(input: {
     admission: any;
     agents: { lead: any; contributorA: any; contributorB: any; reviewer: any };
     periodKey: string;
+    providerFreePrerequisite?: boolean;
   };
   runEvidence: typeof nativeRunEvidence;
   persistEvidence: () => Promise<void>;
@@ -201,7 +202,12 @@ export async function runLiveN2(input: {
     mission: null,
     admission: input.n1.admission,
     decisionReceipts: [],
-    limits: { runCount: 6, maxConcurrent: 2, maxRetries: 0, maxCorrections: 1 },
+    limits: {
+      runCount: input.n1.providerFreePrerequisite ? 3 : 6,
+      maxConcurrent: 2,
+      maxRetries: 0,
+      maxCorrections: 1,
+    },
   };
   const progressiveEvidence = input.evidence.liveN2;
   await input.persistEvidence();
@@ -370,8 +376,9 @@ export async function runLiveN2(input: {
   assert.equal(finalAdmission.status, 200, JSON.stringify(finalAdmission.body));
   const reservations = finalAdmission.body.envelope.reservations as any[];
   assert.equal(reservations.length, 6);
-  assert(reservations.every((entry) => entry.status === "settled"
-    && entry.usage?.status === "known" && entry.usage.units > 0
+  assert(reservations.every((entry, index) => entry.status === "settled"
+    && entry.usage?.status === "known"
+    && (input.n1.providerFreePrerequisite && index < 3 ? entry.usage.units === 0 : entry.usage.units > 0)
     && entry.remainingExposure?.status === "known" && entry.remainingExposure.units === 0));
 
   const decisions = await input.request(
@@ -408,7 +415,7 @@ export async function runLiveN2(input: {
     n2CorrectionRunSettled: "PASS",
     n2ChangedV2Verified: "PASS",
     n2FreshFinalReviewAccepted: "PASS",
-    n2AllSixRunsSettled: "PASS",
+    [input.n1.providerFreePrerequisite ? "n2AllThreeRunsSettled" : "n2AllSixRunsSettled"]: "PASS",
   });
   return { missionPath, finalMission, finalAdmission: finalAdmission.body, n2Runs };
 }

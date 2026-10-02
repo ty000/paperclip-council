@@ -493,6 +493,92 @@ describe("N1 mission transitions", () => {
     expect(h.assertCheckoutOwner).not.toHaveBeenCalled();
   });
 
+  it("binds a fixture contribution through the public owner command without a native wake", async () => {
+    const reservationId = randomUUID();
+    const value = activeAggregate();
+    value.n1 = {
+      ...(value.n1 as object),
+      contributions: [{
+        ...plan[0],
+        issueState: "confirmed",
+        childIssueId: id.childA,
+      }],
+    };
+    const h = harness(value);
+    h.issues.set(id.childA, nativeIssue({
+      id: id.childA,
+      parentId: id.root,
+      assigneeAgentId: id.contributorA,
+      status: "in_progress",
+    }));
+
+    const result = await executeN1BoardCommand(h.ctx, {
+      companyId: id.company,
+      missionId: id.mission,
+      actorUserId: id.owner,
+      body: {
+        command: "fixture-bind-contribution-run",
+        fixtureSource: "fixture:local-sandbox",
+        commandId: randomUUID(),
+        expectedVersion: 1,
+        contributionId: id.contributionA,
+        reservationId,
+        requestedUnits: 1,
+        runId: id.contributorRun,
+      },
+    });
+
+    expect(result.outcome).toBe("applied");
+    expect(h.row().aggregate.n1).toMatchObject({
+      contributions: [{
+        contributionId: id.contributionA,
+        dispatchState: "requested",
+        dispatchReservationId: reservationId,
+        dispatchRunId: id.contributorRun,
+      }],
+    });
+    expect(reserveAdmission).toHaveBeenCalledWith(h.ctx, expect.objectContaining({
+      reservationId,
+      effectId: id.contributionA,
+      requestedUnits: 1,
+      expectedVersion: 4,
+    }));
+    expect(h.assertCheckoutOwner).toHaveBeenCalledWith(expect.objectContaining({
+      issueId: id.childA,
+      actorAgentId: id.contributorA,
+      actorRunId: id.contributorRun,
+    }));
+    expect(h.requestWakeup).not.toHaveBeenCalled();
+  });
+
+  it("keeps fixture contribution binding unavailable outside the owned test runtime", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const value = activeAggregate();
+    value.n1 = {
+      ...(value.n1 as object),
+      contributions: [{ ...plan[0], issueState: "confirmed", childIssueId: id.childA }],
+    };
+    const h = harness(value);
+
+    await expect(executeN1BoardCommand(h.ctx, {
+      companyId: id.company,
+      missionId: id.mission,
+      actorUserId: id.owner,
+      body: {
+        command: "fixture-bind-contribution-run",
+        fixtureSource: "fixture:local-sandbox",
+        commandId: randomUUID(),
+        expectedVersion: 1,
+        contributionId: id.contributionA,
+        reservationId: randomUUID(),
+        requestedUnits: 1,
+        runId: id.contributorRun,
+      },
+    })).rejects.toMatchObject({ status: 403, code: "fixture_only" });
+    expect(reserveAdmission).not.toHaveBeenCalled();
+    expect(h.requestWakeup).not.toHaveBeenCalled();
+  });
+
   it("rejects a command UUID whose variant group is invalid", async () => {
     const h = harness(activeAggregate());
     const result = await handleN1AgentApi(agentRequest({
