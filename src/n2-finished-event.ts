@@ -22,6 +22,7 @@ type FinishedRunPayload = {
 export type N2FinishedEventResult =
   | { outcome: "ignored"; reason: string }
   | { outcome: "prepared"; reason: "usage_not_ready"; attempts: number }
+  | { outcome: "prepared"; reason: "receipt_pending"; operationId: string }
   | { outcome: "applied" | "application_unknown"; operationId: string; replayed: boolean };
 
 function uuid(value: unknown): string | null {
@@ -86,6 +87,9 @@ export async function handleN2RunFinished(
         ? { ...common, verdict: "approved" as const, approvedCommit: prepared.approvedCommit! }
         : { ...common, verdict: "changes_requested" as const };
       const result = await executeCouncilDecision(ctx, config, decision);
+      if (result.replayed && result.receipt.state === "indeterminate") {
+        return { outcome: "prepared", reason: "receipt_pending", operationId: prepared.operationId };
+      }
       await recordN2Decision(ctx, mission.missionId, prepared, result.receipt);
       return {
         outcome: result.receipt.state === "native_observed" ? "applied" : "application_unknown",

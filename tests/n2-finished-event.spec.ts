@@ -142,6 +142,34 @@ describe("N2 finished-run decision application", () => {
     expect(mocks.recordN2Decision).not.toHaveBeenCalled();
   });
 
+  it("does not turn a concurrent indeterminate receipt replay into application unknown", async () => {
+    let releaseClaim!: () => void;
+    let claimStarted!: () => void;
+    const started = new Promise<void>((resolve) => { claimStarted = resolve; });
+    const released = new Promise<void>((resolve) => { releaseClaim = resolve; });
+    mocks.executeCouncilDecision
+      .mockImplementationOnce(async () => {
+        claimStarted();
+        await released;
+        return { replayed: false, receipt: { state: "native_observed", operationId: ids.operation } };
+      })
+      .mockResolvedValueOnce({
+        replayed: true,
+        receipt: { state: "indeterminate", operationId: ids.operation },
+      });
+
+    const claimant = handleN2RunFinished(ctx, event());
+    await started;
+    const duplicate = await handleN2RunFinished(ctx, { ...event(), eventId: randomUUID() });
+    expect(duplicate).toEqual({ outcome: "prepared", reason: "receipt_pending", operationId: ids.operation });
+    expect(mocks.recordN2Decision).not.toHaveBeenCalled();
+
+    releaseClaim();
+    await expect(claimant).resolves.toEqual({ outcome: "applied", operationId: ids.operation, replayed: false });
+    expect(mocks.executeCouncilDecision).toHaveBeenCalledTimes(2);
+    expect(mocks.recordN2Decision).toHaveBeenCalledTimes(1);
+  });
+
   it("ignores wrong or stale run identities before settlement", async () => {
     const wrong = event({ runId: randomUUID() });
     expect(await handleN2RunFinished(ctx, wrong)).toEqual({ outcome: "ignored", reason: "event_identity_unqualified" });
