@@ -79,8 +79,9 @@ For the isolated N2 path, `pnpm qualification:preflight:n2` first builds the
 same `ready_for_review` prerequisite through public Paperclip APIs and
 fixture-confined public Council commands. It records two distinct contributions,
 a verified integrated candidate, three settled zero-usage N1 reservations,
-zero exposure, empty run readbacks for all four identities, and owned-runtime
-cleanup. It stops before N2 and invokes no provider. A later, separately
+zero exposure, three unexecuted checkout heartbeat fixtures for lead/Alpha/Beta,
+an empty reviewer readback, and owned-runtime cleanup. It stops before N2 and
+invokes neither a provider nor an agent process. A later, separately
 authorized campaign can reuse that deterministic builder in the same ephemeral
 runtime and launch only reviewer V1, the bounded correction, and reviewer V2:
 

@@ -82,6 +82,41 @@ function syntheticN2Evidence() {
 
 function n2PrerequisiteEvidence() {
   const candidate = { candidateCommit: "3".repeat(40), sha256: "4".repeat(64) };
+  const companyId = "30000000-0000-4000-8000-000000000001";
+  const agents = {
+    lead: { id: "lead" },
+    contributorA: { id: "alpha" },
+    contributorB: { id: "beta" },
+    reviewer: { id: "reviewer" },
+  };
+  const fixtureHeartbeatRuns = [
+    { actor: "n2-prerequisite-lead", agentId: agents.lead.id, issueId: "40000000-0000-4000-8000-000000000001" },
+    { actor: "n2-prerequisite-alpha", agentId: agents.contributorA.id, issueId: "40000000-0000-4000-8000-000000000002" },
+    { actor: "n2-prerequisite-beta", agentId: agents.contributorB.id, issueId: "40000000-0000-4000-8000-000000000003" },
+  ].map((entry, index) => ({
+    ...entry,
+    runId: `50000000-0000-4000-8000-00000000000${index + 1}`,
+    companyId,
+    status: "running",
+    fixtureSource: "fixture:n2-prerequisite:deterministic-heartbeat",
+  }));
+  const runReadbacks = fixtureHeartbeatRuns.map((fixture) => ({
+    agentId: fixture.agentId,
+    fixtureRunId: fixture.runId,
+    runCount: 1,
+    runs: [{
+      id: fixture.runId,
+      companyId,
+      agentId: fixture.agentId,
+      status: "running",
+      invocationSource: "on_demand",
+      triggerDetail: fixture.fixtureSource,
+      issueId: fixture.issueId,
+      wakeupRequestId: null,
+      processStartedAt: null,
+    }],
+  }));
+  runReadbacks.push({ agentId: agents.reviewer.id, fixtureRunId: null, runCount: 0, runs: [] } as any);
   const participants = [
     { contributionId: "10000000-0000-4000-8000-000000000001", assigneeAgentId: "alpha", commit: "1".repeat(40) },
     { contributionId: "10000000-0000-4000-8000-000000000002", assigneeAgentId: "beta", commit: "2".repeat(40) },
@@ -105,6 +140,7 @@ function n2PrerequisiteEvidence() {
     launcherCleanup: { ownedRuntimeRemoved: true },
     n2Prerequisite: {
       proofClass: "N2 native-stage prerequisite validated",
+      companyId,
       mission: {
         mission: { aggregate: { phase: "ready_for_review", control: { status: "inactive" } } },
         n1: {
@@ -115,9 +151,17 @@ function n2PrerequisiteEvidence() {
       },
       candidate,
       admission: { envelope: { reservations, exposure: { status: "known", units: 0 } } },
-      providerBoundary: { providerInvocationCount: 0, nativeAgentRunCount: 0 },
-      runReadbacks: ["lead", "alpha", "beta", "reviewer"].map((agentId) => ({ agentId, runCount: 0 })),
-      databaseBoundary: "no direct mission-table mutation; mission transitions use installed plugin commands",
+      agents,
+      providerBoundary: {
+        providerInvocationCount: 0,
+        nativeAgentExecutionCount: 0,
+        fixtureHeartbeatRowCount: 3,
+        wakeupCount: 0,
+        reviewerRunCount: 0,
+      },
+      fixtureHeartbeatRuns,
+      runReadbacks,
+      databaseBoundary: "the functional harness inserts only three fixture heartbeat rows; mission transitions use public Paperclip and installed Council APIs",
       stopBoundary: "ready_for_review; N2 state absent; reviewer not started",
     },
   };
@@ -418,13 +462,18 @@ function isolatedN2QualificationEvidence(): any {
     "n2RestartReadback",
     "n2InstalledBrowserObservableState",
   ].map((key) => [key, "PASS"]));
-  evidence.configuration.fixtureBoundary = "The safe-boundary suite uses fixtures; isolated N2 builds N1 deterministically through public APIs without native runs, then permits only reviewer-correction-reviewer native runs.";
-  evidence.configuration.models.observedAgentConfiguration = ["lead", "reviewer"].map((agentId) => ({
+  evidence.configuration.fixtureBoundary = "The safe-boundary suite uses fixtures; isolated N2 inserts three deterministic heartbeat fixture rows and builds N1 through public APIs without agent execution, then permits only reviewer-correction-reviewer native runs.";
+  const verifiedCandidate = liveN1.mission.mission.aggregate.n1.candidate;
+  const prerequisiteFixture = n2PrerequisiteEvidence().n2Prerequisite;
+  evidence.configuration.models.observedAgentConfiguration = [
+    prerequisiteFixture.agents.lead.id,
+    prerequisiteFixture.agents.reviewer.id,
+  ].map((agentId) => ({
     agentId, adapterType: "codex_local", model: "gpt-5.6-sol", effort: "high",
   }));
-  const verifiedCandidate = liveN1.mission.mission.aggregate.n1.candidate;
   evidence.n2Prerequisite = {
     proofClass: "N2 native-stage prerequisite validated",
+    companyId: prerequisiteFixture.companyId,
     mission: { ...liveN1.mission, n1: { ...liveN1.mission.n1, candidate: verifiedCandidate }, n2: null },
     candidate: verifiedCandidate.candidate,
     admission: {
@@ -433,12 +482,11 @@ function isolatedN2QualificationEvidence(): any {
         exposure: { status: "known", units: 0 },
       },
     },
-    agents: {
-      lead: { id: "lead" }, contributorA: { id: "alpha" }, contributorB: { id: "beta" }, reviewer: { id: "reviewer" },
-    },
-    providerBoundary: { providerInvocationCount: 0, nativeAgentRunCount: 0 },
-    runReadbacks: ["lead", "alpha", "beta", "reviewer"].map((agentId) => ({ agentId, runCount: 0 })),
-    databaseBoundary: "no direct mission-table mutation; mission transitions use installed plugin commands",
+    agents: prerequisiteFixture.agents,
+    providerBoundary: prerequisiteFixture.providerBoundary,
+    fixtureHeartbeatRuns: prerequisiteFixture.fixtureHeartbeatRuns,
+    runReadbacks: prerequisiteFixture.runReadbacks,
+    databaseBoundary: prerequisiteFixture.databaseBoundary,
     stopBoundary: "ready_for_review; N2 state absent; reviewer not started",
   };
   for (const reservation of evidence.liveN2.admission.envelope.reservations.slice(0, 3)) {
@@ -457,9 +505,14 @@ describe("bounded qualification launcher", () => {
     const options = { candidateCommit: liveCommit, notBefore: Date.parse("2026-10-02T09:59:59.000Z") };
     expect(() => assertN2PrerequisiteEvidence(evidence, options)).not.toThrow();
 
-    const withRun = structuredClone(evidence);
-    withRun.n2Prerequisite.providerBoundary.nativeAgentRunCount = 1;
-    expect(() => assertN2PrerequisiteEvidence(withRun, options)).toThrow(/zero provider and native-agent runs/);
+    const withExecution = structuredClone(evidence);
+    withExecution.n2Prerequisite.providerBoundary.nativeAgentExecutionCount = 1;
+    expect(() => assertN2PrerequisiteEvidence(withExecution, options)).toThrow(/zero provider, wakeup, reviewer, and native-agent execution/);
+
+    const withoutFixtureBinding = structuredClone(evidence);
+    withoutFixtureBinding.n2Prerequisite.runReadbacks[0].runs[0].issueId = "wrong-issue";
+    expect(() => assertN2PrerequisiteEvidence(withoutFixtureBinding, options))
+      .toThrow(/three correctly attributed, unexecuted fixture heartbeat rows/);
 
     const withExposure = structuredClone(evidence);
     withExposure.n2Prerequisite.admission.envelope.exposure.units = 1;
@@ -470,6 +523,7 @@ describe("bounded qualification launcher", () => {
     const launcher = readFileSync(resolve(packageRoot, "scripts/qualification/run-live.mjs"), "utf8");
     const wrapper = readFileSync(resolve(packageRoot, "scripts/qualification/run-live-n2-isolated.mjs"), "utf8");
     const prerequisite = readFileSync(resolve(packageRoot, "tests/functional/n2-prerequisite.ts"), "utf8");
+    const functionalHarness = readFileSync(resolve(packageRoot, "tests/functional/run.ts"), "utf8");
     const preflight = readFileSync(resolve(packageRoot, "scripts/qualification/run-n2-prerequisite.mjs"), "utf8");
     const packageJson = JSON.parse(readFileSync(resolve(packageRoot, "package.json"), "utf8"));
     expect(launcher).toContain('envPrefix: "COUNCIL_N2_ISOLATED_LIVE"');
@@ -477,6 +531,14 @@ describe("bounded qualification launcher", () => {
     expect(launcher).toContain('runCount: 3');
     expect(wrapper).toContain('runLiveQualification("n2-isolated")');
     expect(prerequisite).not.toMatch(/\bdb\.(?:execute|insert|update|delete)\b|\bUPDATE\s+[a-z_]/i);
+    expect(prerequisite).toContain('await input.createFixtureRun("n2-prerequisite-lead", rootIssueId)');
+    expect(prerequisite).toContain("await input.createFixtureRun(contribution.actor, contribution.childIssueId)");
+    expect(prerequisite).not.toContain("setActorRun");
+    expect(functionalHarness).toContain("async function createN2PrerequisiteFixtureRun");
+    expect(functionalHarness).toContain("db.insert(tables.heartbeatRuns)");
+    expect(functionalHarness).toContain('triggerDetail: "fixture:n2-prerequisite:deterministic-heartbeat"');
+    expect(functionalHarness).toContain("contextSnapshot: {");
+    expect(functionalHarness).toContain("issueId: contextIssueId");
     expect(preflight).toContain("withOwnedQualificationRuntime");
     expect(preflight).toContain("ownedRuntimeRemoved: true");
     expect(packageJson.scripts["qualification:live:n2:isolated"])

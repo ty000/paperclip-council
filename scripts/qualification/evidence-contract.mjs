@@ -30,7 +30,7 @@ const APP_CLEANUP = "stopped only the plugin worker, listener, and application c
 const DATABASE_CLEANUP = "fresh isolated PostgreSQL cluster removed; parent-owned temporary instance retained";
 const SAFE_FIXTURE_BOUNDARY = "agents, issues, policies, and heartbeat runs are synthetic test preparation";
 const LIVE_FIXTURE_BOUNDARY = "The safe-boundary suite uses fixtures; the N1 live campaign below uses native APIs, native wakeups, exact Paperclip run IDs, and run-derived terminal token settlement.";
-const N2_ISOLATED_FIXTURE_BOUNDARY = "The safe-boundary suite uses fixtures; isolated N2 builds N1 deterministically through public APIs without native runs, then permits only reviewer-correction-reviewer native runs.";
+const N2_ISOLATED_FIXTURE_BOUNDARY = "The safe-boundary suite uses fixtures; isolated N2 inserts three deterministic heartbeat fixture rows and builds N1 through public APIs without agent execution, then permits only reviewer-correction-reviewer native runs.";
 const SAFE_PROVIDER_BOUNDARY = "none; dispatch was deliberately not invoked because it requests native wakeup";
 const LIVE_STOP_BOUNDARY = "ready_for_review; N2 not started";
 const EXPECTED_HOST_COMMIT = "61b3fd57a695614dc4a37e2303f426a34a9795cf";
@@ -1211,6 +1211,24 @@ export function assertQualificationEvidence(evidence, {
   return evidence;
 }
 
+function matchesN2FixtureReadback(entry, fixtureRuns) {
+  if (entry?.runs?.length !== 1) return false;
+  const run = entry.runs[0];
+  const fixture = fixtureRuns.find((candidate) => candidate?.runId === entry?.fixtureRunId);
+  if (!fixture) return false;
+  return [
+    run?.id === fixture.runId,
+    run?.companyId === fixture.companyId,
+    run?.agentId === fixture.agentId,
+    run?.status === "running",
+    run?.invocationSource === "on_demand",
+    run?.triggerDetail === fixture.fixtureSource,
+    run?.issueId === fixture.issueId,
+    run?.wakeupRequestId === null,
+    run?.processStartedAt === null,
+  ].every(Boolean);
+}
+
 // This assertion block mirrors the evidence contract as one auditable prerequisite checklist.
 // fallow-ignore-next-line complexity
 function assertN2PrerequisiteState(prerequisite) {
@@ -1246,14 +1264,32 @@ function assertN2PrerequisiteState(prerequisite) {
   requireProof(prerequisite?.admission?.envelope?.exposure?.status === "known"
       && prerequisite.admission.envelope.exposure.units === 0,
   "N2 prerequisite admission exposure must be known and zero");
-  requireProof(prerequisite?.providerBoundary?.providerInvocationCount === 0
-      && prerequisite?.providerBoundary?.nativeAgentRunCount === 0
+  const fixtureRuns = prerequisite?.fixtureHeartbeatRuns;
+  const fixtureReadbacks = prerequisite?.runReadbacks?.filter((entry) => entry?.runCount === 1);
+  const reviewerReadback = prerequisite?.runReadbacks?.find(
+    (entry) => entry?.agentId === prerequisite?.agents?.reviewer?.id,
+  );
+  requireProof(Array.isArray(fixtureRuns) && fixtureRuns.length === 3
+      && distinctStrings(fixtureRuns.map((entry) => entry?.runId))
+      && fixtureRuns.every((entry) => UUID.test(entry?.runId)
+        && entry?.companyId === prerequisite?.companyId
+        && entry?.status === "running"
+        && entry?.fixtureSource === "fixture:n2-prerequisite:deterministic-heartbeat")
       && Array.isArray(prerequisite?.runReadbacks)
       && prerequisite.runReadbacks.length === 4
-      && prerequisite.runReadbacks.every((entry) => entry?.runCount === 0),
-  "zero provider and native-agent runs are not proven");
+      && fixtureReadbacks?.length === 3
+      && fixtureReadbacks.every((entry) => matchesN2FixtureReadback(entry, fixtureRuns))
+      && reviewerReadback?.runCount === 0
+      && reviewerReadback?.fixtureRunId === null,
+  "three correctly attributed, unexecuted fixture heartbeat rows are not proven");
+  requireProof(prerequisite?.providerBoundary?.providerInvocationCount === 0
+      && prerequisite?.providerBoundary?.nativeAgentExecutionCount === 0
+      && prerequisite?.providerBoundary?.fixtureHeartbeatRowCount === 3
+      && prerequisite?.providerBoundary?.wakeupCount === 0
+      && prerequisite?.providerBoundary?.reviewerRunCount === 0,
+  "zero provider, wakeup, reviewer, and native-agent execution is not proven");
   requireProof(prerequisite?.databaseBoundary
-      === "no direct mission-table mutation; mission transitions use installed plugin commands",
+      === "the functional harness inserts only three fixture heartbeat rows; mission transitions use public Paperclip and installed Council APIs",
   "public-command database boundary is missing");
   requireProof(prerequisite?.stopBoundary === "ready_for_review; N2 state absent; reviewer not started",
     "N2 prerequisite did not stop before reviewer dispatch");

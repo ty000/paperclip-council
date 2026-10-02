@@ -8,7 +8,7 @@ import { n1DeliveryAdapterConfig, n2LeadInstructions, n2ReviewerInstructions } f
 type ApiResult = { status: number; body: any; headers: Headers };
 type ApiRequest = (actor: string, method: string, path: string, body?: unknown) => Promise<ApiResult>;
 
-type AgentIdentity = { id: string; token: string; keyId: string };
+type AgentIdentity = { id: string; companyId: string; token: string; keyId: string };
 type LiveN2Profile = {
   model: string;
   effort: string;
@@ -96,7 +96,7 @@ async function createAgent(input: {
     scope: { kind: "standard" },
   });
   assert.equal(key.status, 201, JSON.stringify(key.body));
-  return { id: agent.body.id, token: key.body.token, keyId: key.body.id, body: agent.body };
+  return { id: agent.body.id, companyId: input.companyId, token: key.body.token, keyId: key.body.id, body: agent.body };
 }
 
 async function uploadBundle(input: {
@@ -132,7 +132,7 @@ export async function prepareN2Prerequisite(input: {
   ownerUserId: string;
   liveN2Profile?: LiveN2Profile;
   registerActor: (actor: string, identity: AgentIdentity) => void;
-  setActorRun: (actor: string, runId: string) => void;
+  createFixtureRun: (actor: string, issueId: string) => Promise<string>;
 }) {
   const candidate = await createCandidate(input.runtime);
   const company = await input.request("human", "POST", "/api/companies", {
@@ -358,8 +358,25 @@ export async function prepareN2Prerequisite(input: {
   const rootStarted = await input.request("human", "PATCH", `/api/issues/${rootIssueId}`, { status: "in_progress" });
   assert.equal(rootStarted.status, 200, JSON.stringify(rootStarted.body));
 
-  const leadRunId = randomUUID();
-  input.setActorRun("n2-prerequisite-lead", leadRunId);
+  const fixtureHeartbeatRuns: Array<{
+    actor: string;
+    runId: string;
+    companyId: string;
+    agentId: string;
+    issueId: string;
+    status: "running";
+    fixtureSource: "fixture:n2-prerequisite:deterministic-heartbeat";
+  }> = [];
+  const leadRunId = await input.createFixtureRun("n2-prerequisite-lead", rootIssueId);
+  fixtureHeartbeatRuns.push({
+    actor: "n2-prerequisite-lead",
+    runId: leadRunId,
+    companyId,
+    agentId: lead.id,
+    issueId: rootIssueId,
+    status: "running",
+    fixtureSource: "fixture:n2-prerequisite:deterministic-heartbeat",
+  });
   const leadCheckout = await input.request("n2-prerequisite-lead", "POST", `/api/issues/${rootIssueId}/checkout`, {
     agentId: lead.id,
     expectedStatuses: ["in_progress"],
@@ -432,8 +449,16 @@ export async function prepareN2Prerequisite(input: {
   for (const contribution of materialized) {
     const started = await input.request("human", "PATCH", `/api/issues/${contribution.childIssueId}`, { status: "in_progress" });
     assert.equal(started.status, 200, JSON.stringify(started.body));
-    const runId = randomUUID();
-    input.setActorRun(contribution.actor, runId);
+    const runId = await input.createFixtureRun(contribution.actor, contribution.childIssueId);
+    fixtureHeartbeatRuns.push({
+      actor: contribution.actor,
+      runId,
+      companyId,
+      agentId: contribution.agent.id,
+      issueId: contribution.childIssueId,
+      status: "running",
+      fixtureSource: "fixture:n2-prerequisite:deterministic-heartbeat",
+    });
     const checkout = await input.request(contribution.actor, "POST", `/api/issues/${contribution.childIssueId}/checkout`, {
       agentId: contribution.agent.id,
       expectedStatuses: ["in_progress"],
@@ -512,6 +537,7 @@ export async function prepareN2Prerequisite(input: {
   assert.equal(finalAdmission.body.envelope.exposure.status, "known");
   assert.equal(finalAdmission.body.envelope.exposure.units, 0);
 
+  const fixtureRunByAgent = new Map(fixtureHeartbeatRuns.map((entry) => [entry.agentId, entry]));
   const runReadbacks = await Promise.all([lead, alpha, beta, reviewer].map(async (agent) => {
     const response = await input.request(
       "human",
@@ -519,8 +545,38 @@ export async function prepareN2Prerequisite(input: {
       `/api/companies/${companyId}/heartbeat-runs?agentId=${encodeURIComponent(agent.id)}&limit=1000&summary=1`,
     );
     assert.equal(response.status, 200, JSON.stringify(response.body));
-    assert.deepEqual(response.body, []);
-    return { agentId: agent.id, runCount: response.body.length };
+    const expected = fixtureRunByAgent.get(agent.id);
+    if (!expected) {
+      assert.deepEqual(response.body, []);
+      return { agentId: agent.id, fixtureRunId: null, runCount: 0, runs: [] };
+    }
+    assert.equal(response.body.length, 1, JSON.stringify(response.body));
+    const [run] = response.body;
+    assert.equal(run.id, expected.runId);
+    assert.equal(run.companyId, expected.companyId);
+    assert.equal(run.agentId, expected.agentId);
+    assert.equal(run.status, expected.status);
+    assert.equal(run.invocationSource, "on_demand");
+    assert.equal(run.triggerDetail, expected.fixtureSource);
+    assert.equal(run.contextSnapshot?.issueId, expected.issueId);
+    assert.equal(run.wakeupRequestId, null);
+    assert.equal(run.processStartedAt, null);
+    return {
+      agentId: agent.id,
+      fixtureRunId: expected.runId,
+      runCount: 1,
+      runs: [{
+        id: run.id,
+        companyId: run.companyId,
+        agentId: run.agentId,
+        status: run.status,
+        invocationSource: run.invocationSource,
+        triggerDetail: run.triggerDetail,
+        issueId: run.contextSnapshot?.issueId,
+        wakeupRequestId: run.wakeupRequestId,
+        processStartedAt: run.processStartedAt,
+      }],
+    };
   }));
 
   return {
@@ -546,6 +602,7 @@ export async function prepareN2Prerequisite(input: {
     agents: { lead: lead.body, contributorA: alpha.body, contributorB: beta.body, reviewer: reviewer.body },
     mission: finalMission.body,
     admission: finalAdmission.body,
+    fixtureHeartbeatRuns,
     runReadbacks,
     stopBoundary: "ready_for_review; N2 state absent; reviewer not started",
   };

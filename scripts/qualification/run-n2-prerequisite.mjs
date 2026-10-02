@@ -28,7 +28,7 @@ function proofManifest({ candidateCommit, evidencePath, evidenceSha256, proofPat
     proof_id: `paperclip-council-n2-native-stage-prerequisite-v1:${candidateCommit}`,
     subject: `Provider-free isolated N2 prerequisite on Council candidate ${candidateCommit}`,
     status: "pass",
-    summary: "Public Paperclip APIs and fixture-confined public Council commands produced a verified two-contribution N1 candidate at ready_for_review with every reservation settled, zero exposure, and no provider or native agent run.",
+    summary: "Three deterministic heartbeat rows prepared checkout identities; public Paperclip APIs and fixture-confined public Council commands produced a verified two-contribution N1 candidate at ready_for_review with every reservation settled, zero exposure, and no provider or agent execution.",
     categories: ["functional", "compliance", "operations"],
     evidence: [
       {
@@ -53,7 +53,7 @@ function proofManifest({ candidateCommit, evidencePath, evidenceSha256, proofPat
         kind: "runtime-observation",
         location: artifactLocation(evidencePath),
         replayable: true,
-        notes: "The evidence records zero heartbeat runs for all four identities, zero provider invocations, and no direct mission-table mutation.",
+        notes: "The evidence records three unexecuted heartbeat fixture rows for lead, Alpha, and Beta, an empty reviewer readback, zero wakeups and provider invocations, and no direct business-state mutation.",
       },
     ],
     replay: {
@@ -145,7 +145,7 @@ async function main() {
 
   console.log(`N2 prerequisite evidence: ${evidencePath} sha256=${evidenceDigest}`);
   console.log(`N2 prerequisite proof manifest: ${proofPath} sha256=${proofDigest}`);
-  console.log("N2 native-stage prerequisite validated; no provider or native agent run executed");
+  console.log("N2 native-stage prerequisite validated; fixture heartbeat rows only; no provider or agent execution");
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

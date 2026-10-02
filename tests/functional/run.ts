@@ -192,7 +192,13 @@ const contributorAId = randomUUID();
 const contributorBId = randomUUID();
 const councilId = randomUUID();
 const foreignCompanyId = randomUUID();
-const agentTokens = new Map<string, { token: string; keyId: string; runId: string; agentId: string }>();
+const agentTokens = new Map<string, {
+  token: string;
+  keyId: string;
+  runId: string;
+  agentId: string;
+  companyId?: string;
+}>();
 
 async function safeSnapshot() {
   if (!issueId) return null;
@@ -267,6 +273,30 @@ async function freshRun(actor: string, contextIssueId: string | undefined = issu
     status: "running",
     responsibleUserId: evidence.configuration.humanUserId,
     contextSnapshot: { issueId: contextIssueId, fixture: "deterministic council package qualification" },
+  });
+  agentTokens.set(actor, { ...current, runId });
+  return runId;
+}
+
+async function createN2PrerequisiteFixtureRun(actor: string, contextIssueId: string) {
+  const current = agentTokens.get(actor);
+  assert(current, `unknown N2 prerequisite actor ${actor}`);
+  assert(current.companyId, `N2 prerequisite actor ${actor} has no company identity`);
+  const runId = randomUUID();
+  await db.insert(tables.heartbeatRuns).values({
+    id: runId,
+    companyId: current.companyId,
+    agentId: current.agentId,
+    invocationSource: "on_demand",
+    triggerDetail: "fixture:n2-prerequisite:deterministic-heartbeat",
+    status: "running",
+    responsibleUserId: evidence.configuration.humanUserId,
+    contextSnapshot: {
+      issueId: contextIssueId,
+      fixture: "n2-prerequisite-deterministic-heartbeat",
+      providerInvocation: "none",
+    },
+    startedAt: new Date(),
   });
   agentTokens.set(actor, { ...current, runId });
   return runId;
@@ -480,26 +510,24 @@ try {
       registerActor: (actor, identity) => {
         agentTokens.set(actor, { ...identity, runId: "", agentId: identity.id });
       },
-      setActorRun: (actor, runId) => {
-        const current = agentTokens.get(actor);
-        assert(current, `unknown N2 prerequisite actor ${actor}`);
-        agentTokens.set(actor, { ...current, runId });
-      },
+      createFixtureRun: createN2PrerequisiteFixtureRun,
     });
-    evidence.configuration.fixtureBoundary = "N1 state built through public Paperclip APIs and fixture-only public Council commands; no mission table write";
+    evidence.configuration.fixtureBoundary = "Three deterministic heartbeat rows are inserted by the functional harness; N1 business state uses public Paperclip APIs and fixture-only public Council commands";
     evidence.configuration.models = "none";
     evidence.n2Prerequisite = {
       proofClass: "N2 native-stage prerequisite validated",
       ...prerequisite,
       providerBoundary: {
         providerInvocationCount: 0,
-        nativeAgentRunCount: prerequisite.runReadbacks.reduce(
-          (total: number, entry: { runCount: number }) => total + entry.runCount,
-          0,
-        ),
-        evidence: "public heartbeat-run readback is empty for lead, both contributors, and reviewer",
+        nativeAgentExecutionCount: 0,
+        fixtureHeartbeatRowCount: prerequisite.fixtureHeartbeatRuns.length,
+        wakeupCount: 0,
+        reviewerRunCount: prerequisite.runReadbacks.find(
+          (entry: { agentId: string }) => entry.agentId === prerequisite.agents.reviewer.id,
+        )?.runCount ?? -1,
+        evidence: "public heartbeat-run readback attributes one unexecuted fixture row to lead, Alpha, and Beta; reviewer readback is empty",
       },
-      databaseBoundary: "no direct mission-table mutation; mission transitions use installed plugin commands",
+      databaseBoundary: "the functional harness inserts only three fixture heartbeat rows; mission transitions use public Paperclip and installed Council APIs",
     };
     Object.assign(evidence.results, {
       n2PrerequisitePublicMission: "PASS",
@@ -1822,11 +1850,7 @@ try {
           registerActor: (actor, identity) => {
             agentTokens.set(actor, { ...identity, runId: "", agentId: identity.id });
           },
-          setActorRun: (actor, runId) => {
-            const current = agentTokens.get(actor);
-            assert(current, `unknown isolated N2 actor ${actor}`);
-            agentTokens.set(actor, { ...current, runId });
-          },
+          createFixtureRun: createN2PrerequisiteFixtureRun,
         })
       : await runLiveN1({
       request,
@@ -1859,19 +1883,21 @@ try {
           effort: agent.adapterConfig?.modelReasoningEffort ?? null,
         })),
       };
-      evidence.configuration.fixtureBoundary = "The safe-boundary suite uses fixtures; isolated N2 builds N1 deterministically through public APIs without native runs, then permits only reviewer-correction-reviewer native runs.";
+      evidence.configuration.fixtureBoundary = "The safe-boundary suite uses fixtures; isolated N2 inserts three deterministic heartbeat fixture rows and builds N1 through public APIs without agent execution, then permits only reviewer-correction-reviewer native runs.";
       evidence.n2Prerequisite = {
         proofClass: "N2 native-stage prerequisite validated",
         ...live,
         providerBoundary: {
           providerInvocationCount: 0,
-          nativeAgentRunCount: live.runReadbacks.reduce(
-            (total: number, entry: { runCount: number }) => total + entry.runCount,
-            0,
-          ),
-          evidence: "public heartbeat-run readback is empty before N2 for lead, both contributors, and reviewer",
+          nativeAgentExecutionCount: 0,
+          fixtureHeartbeatRowCount: live.fixtureHeartbeatRuns.length,
+          wakeupCount: 0,
+          reviewerRunCount: live.runReadbacks.find(
+            (entry: { agentId: string }) => entry.agentId === live.agents.reviewer.id,
+          )?.runCount ?? -1,
+          evidence: "public heartbeat-run readback attributes one unexecuted fixture row to lead, Alpha, and Beta before N2; reviewer readback is empty",
         },
-        databaseBoundary: "no direct mission-table mutation; mission transitions use installed plugin commands",
+        databaseBoundary: "the functional harness inserts only three fixture heartbeat rows; mission transitions use public Paperclip and installed Council APIs",
       };
       Object.assign(evidence.results, {
         n2PrerequisitePublicMission: "PASS",
