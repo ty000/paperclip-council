@@ -10,6 +10,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { prepareCandidatePackage } from "./candidate-package.js";
 import { nativeRunEvidence, runLiveN1 } from "./n1-live.js";
 import { runLiveN2 } from "./n2-live.js";
+import { runSyntheticN2 } from "./n2-synthetic.js";
 import { createFunctionalRuntimeCleanup } from "./runtime-cleanup.js";
 // @ts-expect-error The qualification evidence contract is intentionally plain ESM.
 import { writeClaimedArtifact } from "../../scripts/qualification/evidence-contract.mjs";
@@ -108,14 +109,14 @@ for (const key of [
 ]) delete process.env[key];
 
 const requireServer = createRequire(resolve(root, "server/package.json"));
-const { eq } = requireServer("drizzle-orm");
+const { eq, sql } = requireServer("drizzle-orm");
 const evidence: Record<string, any> = {
   schemaVersion: 1,
   proofId: liveN2Authorized
     ? "paperclip-council-n2-observable-native-qualification-v1"
     : liveN1Authorized
     ? "paperclip-council-n1-observable-native-qualification-v1"
-    : "paperclip-council-n1-safe-boundary-qualification-v1",
+    : "paperclip-council-n2-synthetic-integration-v1",
   startedAt: new Date().toISOString(),
   head: hostCommit,
   hostTrackedFilesClean: hostStatus === "",
@@ -1646,6 +1647,102 @@ try {
     replacementAndRevocation: "documented-only",
     reason: "the required package journey used native ephemeral keys; durable key mutation was not requested",
   };
+
+  const syntheticN2 = await runSyntheticN2({
+    request,
+    pluginId,
+    baseUrl,
+    cookie,
+    runtime,
+    companyId,
+    projectId,
+    ownerUserId: userId,
+    secretId: secret.body.id,
+    agents: {
+      lead: executorId,
+      contributorA: contributorAId,
+      contributorB: contributorBId,
+      reviewer: councilId,
+    },
+    freshRun: async (actor, targetIssueId) => freshRun(actor, targetIssueId),
+    bindActorRun: (actor, runId) => {
+      const current = agentTokens.get(actor);
+      assert(current, `unknown synthetic actor ${actor}`);
+      agentTokens.set(actor, { ...current, runId });
+    },
+    completeRun: async (runId, targetIssueId, agentId, usageUnits) => {
+      const completedAt = new Date();
+      await db.update(tables.heartbeatRuns).set({
+        status: "succeeded",
+        startedAt: completedAt,
+        finishedAt: completedAt,
+        error: null,
+        exitCode: 0,
+        usageJson: { inputTokens: usageUnits, cachedInputTokens: 0, outputTokens: 0 },
+      }).where(eq(tables.heartbeatRuns.id, runId));
+      const [completed] = await db.select({
+        id: tables.heartbeatRuns.id,
+        status: tables.heartbeatRuns.status,
+        finishedAt: tables.heartbeatRuns.finishedAt,
+      }).from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.id, runId));
+      assert.equal(completed?.status, "succeeded", `deterministic run ${runId} must be terminal`);
+      assert(completed?.finishedAt, `deterministic run ${runId} needs a terminal timestamp`);
+      if (usageUnits > 0) {
+        await db.insert(tables.costEvents).values({
+          id: randomUUID(),
+          companyId,
+          agentId,
+          issueId: targetIssueId,
+          projectId,
+          heartbeatRunId: runId,
+          provider: "synthetic-provider-free",
+          biller: "test-fixture",
+          billingType: "test",
+          costStatus: "reported",
+          model: "deterministic-executor",
+          inputTokens: usageUnits,
+          cachedInputTokens: 0,
+          outputTokens: 0,
+          costCents: 0,
+          occurredAt: completedAt,
+        });
+      }
+    },
+    seedMission: async (syntheticMissionId, aggregate) => {
+      await db.execute(sql`
+        UPDATE ${sql.raw("plugin_private_paperclip_council_270061461e.missions")}
+        SET aggregate = ${JSON.stringify(aggregate)}::jsonb, updated_at = now()
+        WHERE company_id = ${companyId}::uuid AND mission_id = ${syntheticMissionId}::uuid
+      `);
+    },
+    evidence,
+  });
+
+  await closeApp();
+  workerManager = createPluginWorkerManager();
+  app = await createApp(db, opts("vite-dev"));
+  server = createServer(app);
+  await new Promise<void>((resolveListen, reject) => {
+    server!.once("error", reject);
+    server!.listen(address.port, "127.0.0.1", resolveListen);
+  });
+  await app.locals.bundledPluginsStartup;
+  assert(workerManager.isRunning(pluginId), "installed package worker must reload after synthetic N2 acceptance");
+  const syntheticRestartReadback = await request(
+    "human",
+    "GET",
+    `${syntheticN2.missionPath}?companyId=${companyId}`,
+  );
+  assert.equal(syntheticRestartReadback.status, 200, JSON.stringify(syntheticRestartReadback.body));
+  assert.equal(syntheticRestartReadback.body.mission.aggregate.phase, "accepted");
+  assert.equal(syntheticRestartReadback.body.n2.status, "accepted");
+  assert.deepEqual(
+    syntheticRestartReadback.body.mission.aggregate.n2,
+    syntheticN2.finalMission.mission.aggregate.n2,
+  );
+  evidence.syntheticN2.restartReadback = syntheticRestartReadback.body;
+  evidence.results.n2SyntheticPersistedReadback = "PASS";
+
   if (liveNativeAuthorized) {
     const live = await runLiveN1({
       request,
@@ -1807,7 +1904,7 @@ try {
       ? "N2 OBSERVABLE RESULT VALIDATED"
       : "N1 OBSERVABLE RESULT VALIDATED";
   } else {
-    evidence.outcome = "N1 SAFE BOUNDARY VALIDATED";
+    evidence.outcome = "N2 SYNTHETIC INTEGRATION VALIDATED";
   }
 } catch (error) {
   evidence.outcome = "NON-CONCLUSIVE OR BLOCKED";

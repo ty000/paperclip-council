@@ -14,11 +14,11 @@ import {
 } from "node:fs";
 import { basename, dirname, extname, resolve } from "node:path";
 
-const SAFE_PROOF_ID = "paperclip-council-n1-safe-boundary-qualification-v1";
+const SAFE_PROOF_ID = "paperclip-council-n2-synthetic-integration-v1";
 const LIVE_PROOF_ID = "paperclip-council-n1-observable-native-qualification-v1";
 const N2_LIVE_PROOF_ID = "paperclip-council-n2-observable-native-qualification-v1";
 
-const SAFE_OUTCOME = "N1 SAFE BOUNDARY VALIDATED";
+const SAFE_OUTCOME = "N2 SYNTHETIC INTEGRATION VALIDATED";
 const LIVE_OUTCOME = "N1 OBSERVABLE RESULT VALIDATED";
 const N2_LIVE_OUTCOME = "N2 OBSERVABLE RESULT VALIDATED";
 
@@ -79,6 +79,13 @@ export const SAFE_RESULT_KEYS = Object.freeze([
   "candidatePreparation",
   "v2Acceptance",
   "nativeReadback",
+  "n2SyntheticUuidAdmission",
+  "n2SyntheticPreparedOperatorTransition",
+  "n2SyntheticUnauthorizedIdentityRefused",
+  "n2SyntheticChangedV2Verified",
+  "n2SyntheticFreshReviewAccepted",
+  "n2SyntheticUsageSettled",
+  "n2SyntheticPersistedReadback",
 ]);
 
 export const LIVE_RESULT_KEYS = Object.freeze([
@@ -973,6 +980,45 @@ function assertSafeBoundary(evidence) {
   assertSafeCapabilityLists(evidence);
 }
 
+function assertSyntheticN2Proof(evidence) {
+  const synthetic = evidence.syntheticN2;
+  requireProof(synthetic?.proofClass === "synthetic-provider-free-integration",
+    "synthetic N2 proof class is missing");
+  requireProof(synthetic?.operatorBoundary?.preparedExecutor
+      === "authenticated human operator through PATCH /api/issues/:id"
+      && synthetic?.operatorBoundary?.automationStatus
+      === "human-assisted; no autonomous executor consumes prepared in this mini-lot",
+  "synthetic N2 prepared transition operator boundary is missing");
+  requireProof(synthetic?.regressions?.uuidEffectAccepted === true
+      && synthetic?.regressions?.publicTransitionActorsObserved === true
+      && synthetic?.regressions?.unauthorizedReviewerPatchStatus === 409
+      && synthetic?.regressions?.intendedHumanPatchStatus === 200,
+  "synthetic N2 regression evidence is incomplete");
+  requireProof(COMMIT.test(synthetic?.candidates?.v1?.commit)
+      && COMMIT.test(synthetic?.candidates?.v2?.commit)
+      && synthetic.candidates.v1.commit !== synthetic.candidates.v2.commit
+      && DIGEST.test(synthetic?.candidates?.v1?.sha256)
+      && DIGEST.test(synthetic?.candidates?.v2?.sha256)
+      && synthetic.candidates.v1.sha256 !== synthetic.candidates.v2.sha256,
+  "synthetic N2 V1/V2 identities are missing or unchanged");
+  const inspection = synthetic?.mission;
+  requireProof(inspection?.mission?.aggregate?.phase === "accepted"
+      && inspection?.n2?.status === "accepted"
+      && inspection?.mission?.aggregate?.n2?.correctionsUsed === 1
+      && inspection?.n2?.submissions?.length === 2
+      && inspection?.n2?.usage?.complete === true,
+  "synthetic N2 accepted state or usage settlement is incomplete");
+  requireProof(synthetic?.decisionReceipts?.length === 2
+      && synthetic.decisionReceipts[0]?.verdict === "changes_requested"
+      && synthetic.decisionReceipts[1]?.verdict === "approved"
+      && synthetic.decisionReceipts.every((receipt) => receipt.state === "native_observed"),
+  "synthetic N2 native decision receipts are incomplete");
+  requireProof(synthetic?.restartReadback?.mission?.aggregate?.phase === "accepted"
+      && JSON.stringify(synthetic.restartReadback.mission.aggregate.n2)
+      === JSON.stringify(inspection.mission.aggregate.n2),
+  "synthetic N2 restart readback does not match the persisted accepted state");
+}
+
 export function assertQualificationEvidence(evidence, {
   mode, candidateCommit, notBefore, screenshotPath, screenshotBytes,
 }) {
@@ -996,6 +1042,7 @@ export function assertQualificationEvidence(evidence, {
   assertExactResults(evidence.results, expectedResults, mode);
   assertCleanup(evidence);
   assertSafeBoundary(evidence);
+  assertSyntheticN2Proof(evidence);
   const expectedFixtureBoundary = live || liveN2 ? LIVE_FIXTURE_BOUNDARY : SAFE_FIXTURE_BOUNDARY;
   if (evidence.configuration.fixtureBoundary !== expectedFixtureBoundary) {
     fail(`${mode} fixture boundary is missing or unexpected`);

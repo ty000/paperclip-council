@@ -1,6 +1,6 @@
 # N2 — ordinary correction and confirmed acceptance
 
-Updated: 2026-10-02 (Europe/Paris). Status: **third authorized campaign stopped at the native N2 handoff; operator-owned public-transition correction prepared; fresh LIVE authorization required / not N2-qualified**.
+Updated: 2026-10-02 (Europe/Paris). Status: **provider-free synthetic N2 integration validated through accepted restart readback; fresh LIVE authorization still required / not N2-qualified**.
 
 ## Exact base and scope
 
@@ -213,7 +213,39 @@ reviewer, current participant and return assignee before awaiting the reviewer
 run. Confirmation also closes the claimed handoff intent with that exact run.
 This source correction is locally tested only and is not retroactive LIVE proof.
 
-## Open native dependency and exit criteria
+## Provider-free synthetic integration
+
+The bounded qualification now contains one nominal N2 scenario on the pinned,
+authenticated, ephemeral Paperclip host. A fixture prepares only the initial
+N1 contribution state; the installed plugin then verifies and publishes V1.
+The remaining journey uses the real mission, issue, decision, admission,
+attachment, document and persistence routes: initial review, native
+`changes_requested`, one correction wake/run, materially changed and verified
+V2, a fresh review, approval, all three N2 settlements, and accepted readback
+after plugin/application restart.
+
+Model work is replaced by explicit ephemeral deterministic run identities,
+the process adapter (`/usr/bin/true`) for the correction wake, and zero-cost
+fixture token events. These fixtures do not write N2 states, decision receipts
+or native transitions directly. Admission and settlement recompute against the
+real Paperclip orchestration summary. The scenario additionally proves the
+three campaign regressions: UUID effect IDs are admitted; the public issue
+route produces `in_review` with the pinned reviewer/current participant and
+Integration Lead return assignee; and reviewer-owned entry is refused with
+HTTP 409 while the authenticated human/operator PATCH succeeds.
+
+`start-review` and `start-resubmitted-review` remain a human-assisted workflow:
+the owner mission command returns the exact `PATCH /api/issues/:id` descriptor,
+and a signed-in operator applies it through the ordinary public route. No
+autonomous executor consumes `prepared` outside the harness in this lot.
+
+Replay is `COREPACK_HOME=<isolated> corepack pnpm qualification:bounded` on a
+clean committed head. The launcher writes a commit-qualified ignored JSON and
+prints its SHA-256. The evidence contract accepts only
+`N2 SYNTHETIC INTEGRATION VALIDATED`; this is separate from every `live-n2`
+proof ID and cannot establish provider/model execution.
+
+## Remaining LIVE-only dependency and exit criteria
 
 Merged N1 produced two contributions, a verified integrated candidate and
 settled N1 reservations. Its final browser capture timed out and the original
@@ -222,8 +254,10 @@ small locator correction and capture into the next authorized N2 campaign.
 This branch changes the locator to select the exact mission through the UUID
 lookup before asserting its state. That source correction is not runtime proof.
 
-The following N2 criteria remain open until an explicitly authorized campaign
-starts from a qualified N1 candidate and persists/reloads the result:
+The synthetic integration exercises the corresponding interfaces, but the
+following criteria remain open as model-backed observations until an explicitly
+authorized campaign starts from a qualified N1 candidate and persists/reloads
+the result:
 
 1. observe the persisted public/native handoff to the eligible reviewer;
 2. observe the V1 `changes_requested` effect and the single admitted correction
@@ -237,11 +271,12 @@ starts from a qualified N1 candidate and persists/reloads the result:
 The authorizations for `cbcb22c`, `0e5c814` and `586608b` were consumed and do not
 transfer to the next corrected SHA. Commit/publication authority for this lot remains
 separate from LIVE authority. Once draft PR #18 readback identifies the new
-clean head on `main` and the local bounded qualification passes on that same
-head, the remaining launch gate is a fresh explicit authorization for one N2
+clean head on `main` and the provider-free bounded qualification passes on that
+same head, the remaining launch gate is a fresh explicit authorization for one N2
 provider campaign with the named agents and fresh token envelope. Until that
-campaign succeeds, the strongest verdict is **ready to request another corrected N2
-campaign**, never **N2 qualified**.
+campaign succeeds, the strongest verdict is **N2 synthetic integration
+validated and ready to request another corrected N2 campaign**, never **N2
+qualified**.
 
 ## N3 interface checkpoint
 

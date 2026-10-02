@@ -39,6 +39,44 @@ function n2LiveOptions(notBefore: number) {
   return { mode: "live-n2", candidateCommit: liveCommit, notBefore, screenshotPath: n2LiveScreenshotPath, screenshotBytes: liveScreenshotBytes };
 }
 
+function syntheticN2Evidence() {
+  const state = {
+    status: "accepted",
+    correctionsUsed: 1,
+    submissions: [
+      { candidateCommit: "1".repeat(40), sha256: "2".repeat(64) },
+      { candidateCommit: "3".repeat(40), sha256: "4".repeat(64) },
+    ],
+  };
+  const inspection = {
+    mission: { aggregate: { phase: "accepted", n2: state } },
+    n2: { status: "accepted", correctionsUsed: 1, submissions: state.submissions, usage: { complete: true } },
+  };
+  return {
+    proofClass: "synthetic-provider-free-integration",
+    operatorBoundary: {
+      preparedExecutor: "authenticated human operator through PATCH /api/issues/:id",
+      automationStatus: "human-assisted; no autonomous executor consumes prepared in this mini-lot",
+    },
+    regressions: {
+      uuidEffectAccepted: true,
+      publicTransitionActorsObserved: true,
+      unauthorizedReviewerPatchStatus: 409,
+      intendedHumanPatchStatus: 200,
+    },
+    candidates: {
+      v1: { commit: "1".repeat(40), sha256: "2".repeat(64) },
+      v2: { commit: "3".repeat(40), sha256: "4".repeat(64) },
+    },
+    mission: inspection,
+    decisionReceipts: [
+      { verdict: "changes_requested", state: "native_observed" },
+      { verdict: "approved", state: "native_observed" },
+    ],
+    restartReadback: inspection,
+  };
+}
+
 function qualificationEvidence(mode: "safe" | "live"): any {
   const live = mode === "live";
   const results = Object.fromEntries((live ? LIVE_RESULT_KEYS : SAFE_RESULT_KEYS).map((key: string) => [key, "PASS"]));
@@ -73,7 +111,7 @@ function qualificationEvidence(mode: "safe" | "live"): any {
     schemaVersion: 1,
     proofId: live
       ? "paperclip-council-n1-observable-native-qualification-v1"
-      : "paperclip-council-n1-safe-boundary-qualification-v1",
+      : "paperclip-council-n2-synthetic-integration-v1",
     startedAt: "2026-10-01T10:00:00.000Z",
     finishedAt: "2026-10-01T10:01:00.000Z",
     head: "61b3fd57a695614dc4a37e2303f426a34a9795cf",
@@ -86,7 +124,7 @@ function qualificationEvidence(mode: "safe" | "live"): any {
       sourceArchiveSha256: "b".repeat(64),
       distSha256: "c".repeat(64),
     },
-    outcome: live ? "N1 OBSERVABLE RESULT VALIDATED" : "N1 SAFE BOUNDARY VALIDATED",
+    outcome: live ? "N1 OBSERVABLE RESULT VALIDATED" : "N2 SYNTHETIC INTEGRATION VALIDATED",
     results,
     appCleanup: "stopped only the plugin worker, listener, and application created by this run",
     databaseCleanup: "fresh isolated PostgreSQL cluster removed; parent-owned temporary instance retained",
@@ -106,6 +144,7 @@ function qualificationEvidence(mode: "safe" | "live"): any {
       demonstrated: ["safe capability"],
       incomplete: ["live capability"],
     },
+    syntheticN2: syntheticN2Evidence(),
     ...(live ? {
       liveN1: {
         companyId: "company",
@@ -725,7 +764,7 @@ describe("bounded qualification launcher", () => {
   });
 
   it("keeps the exact evidence contract synchronized with functional producer assignments", () => {
-    const producerSources = ["tests/functional/run.ts", "tests/functional/n1-live.ts"]
+    const producerSources = ["tests/functional/run.ts", "tests/functional/n1-live.ts", "tests/functional/n2-synthetic.ts"]
       .map((path) => readFileSync(resolve(packageRoot, path), "utf8"))
       .join("\n");
     const assignedKeys = [...producerSources.matchAll(/\bevidence\.results\.([A-Za-z][A-Za-z0-9_]*)\s*=/g)]
