@@ -1311,28 +1311,61 @@ function assertN2PrerequisiteState(prerequisite) {
     "N2 prerequisite did not stop before reviewer dispatch");
 }
 
+function hasExpectedN2HandoffCommands(guard) {
+  return Array.isArray(guard?.publicCommands)
+    && guard.publicCommands.includes("start-review")
+    && guard.publicCommands.includes("PATCH /api/issues/:id");
+}
+
+function hasProviderFreeN2HandoffBoundary(guard) {
+  const {
+    proofClass,
+    fixtureBoundary,
+    reviewerHeartbeatConfiguration = {},
+    wakeupCount,
+    processCount,
+  } = guard ?? {};
+  return proofClass === "synthetic-provider-free-n2-handoff-guard"
+    && fixtureBoundary === "distinct ephemeral fixture; no provider, process, or native reviewer execution"
+    && reviewerHeartbeatConfiguration.wakeOnDemand === false
+    && wakeupCount === 0
+    && processCount === 0;
+}
+
+function hasPreparedN2HandoffState(guard) {
+  return hasExpectedN2HandoffCommands(guard)
+    && guard?.startReviewOutcome === "prepared"
+    && guard?.operatorTransitionStatus === 200
+    && guard?.mission?.n2?.status === "reviewing";
+}
+
+function hasSettledN2HandoffReservation(guard) {
+  const reservations = guard?.admission?.envelope?.reservations;
+  return reservations?.length === 1
+    && reservations[0]?.status === "settled"
+    && reservations[0]?.remainingExposure?.units === 0;
+}
+
+function hasTerminalN2HandoffFixtures(guard) {
+  return Array.isArray(guard?.fixtureRuns)
+    && guard.fixtureRuns.length === 2
+    && guard.fixtureRuns.every((run) => run?.status === "succeeded"
+      && nonemptyString(run?.finishedAt)
+      && run?.wakeupRequestId === null
+      && run?.processStartedAt === null);
+}
+
+function hasLockFreeN2HandoffReadback(guard) {
+  return guard?.issueReadback?.checkoutRunId === null
+    && guard?.issueReadback?.executionRunId === null;
+}
+
 function assertN2HandoffGuard(guard) {
-  requireProof(guard?.proofClass === "synthetic-provider-free-n2-handoff-guard"
-      && guard?.fixtureBoundary === "distinct ephemeral fixture; no provider, process, or native reviewer execution"
-      && guard?.reviewerHeartbeatConfiguration?.wakeOnDemand === false
-      && guard?.wakeupCount === 0
-      && guard?.processCount === 0
-      && Array.isArray(guard?.publicCommands)
-      && guard.publicCommands.includes("start-review")
-      && guard.publicCommands.includes("PATCH /api/issues/:id")
-      && guard?.startReviewOutcome === "prepared"
-      && guard?.operatorTransitionStatus === 200
-      && guard?.mission?.n2?.status === "reviewing"
-      && guard?.admission?.envelope?.reservations?.length === 1
-      && guard.admission.envelope.reservations[0]?.status === "settled"
-      && guard.admission.envelope.reservations[0]?.remainingExposure?.units === 0
-      && Array.isArray(guard?.fixtureRuns) && guard.fixtureRuns.length === 2
-      && guard.fixtureRuns.every((run) => run?.status === "succeeded"
-        && nonemptyString(run?.finishedAt)
-        && run?.wakeupRequestId === null
-        && run?.processStartedAt === null)
-      && guard?.issueReadback?.checkoutRunId === null
-      && guard?.issueReadback?.executionRunId === null,
+  requireProof(hasProviderFreeN2HandoffBoundary(guard)
+      && hasPreparedN2HandoffState(guard)
+      && hasSettledN2HandoffReservation(guard)
+      && hasTerminalN2HandoffFixtures(guard)
+      && hasLockFreeN2HandoffReadback(guard),
   "synthetic public N2 handoff guard is not consumable, settled, and lock-free");
 }
 
