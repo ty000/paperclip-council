@@ -213,6 +213,44 @@ reviewer, current participant and return assignee before awaiting the reviewer
 run. Confirmation also closes the claimed handoff intent with that exact run.
 This source correction is locally tested only and is not retroactive LIVE proof.
 
+## Authorized campaign observation — `daa14fa`
+
+The next explicitly authorized campaign ran exactly once on clean, published
+commit `daa14fa1a4563bd16dff428045037edda81f00aa`. Its N1 lead, Alpha and Beta
+runs succeeded and settled at `2,415,527` known token units in total with zero
+remaining N1 exposure. The first N2 reviewer run then reached terminal
+`succeeded`, but the mission remained in `review_handoff`: the reviewer never
+confirmed the handoff and no decision receipt or verdict was recorded.
+
+The concrete cause was the agent command router. Reviewer instructions required
+`POST inspect`, but the worker sent every `inspect` command to the N1 handler.
+That handler requires the original N1 lead/run on the root issue, so the pinned
+N2 reviewer received HTTP 403. The harness then asserted
+`correction_requested` before attempting reviewer settlement. Its late, final
+assignment of `liveN2` evidence also meant the terminal reviewer proof and
+settlement attempt were not represented as a coherent N2 failure snapshot.
+
+The preserved JSON is
+`artifacts/n2-live-daa14fa1a4563bd16dff428045037edda81f00aa.json`, 3,902,967
+bytes with SHA-256
+`249b37da8408c77e66a7292df413531913fb9e9298c367f8897abe95c2f2efa5`.
+The reviewer reservation
+`ceb7bac8-258e-4d6d-8d58-33a8d072f783` remains recorded as reserved for
+2,000,000 units: usage is unknown and the corresponding exposure is retained.
+No correction, V2, second review, acceptance or UI proof exists.
+
+The bounded local correction routes `inspect` to N2 only when the root mission
+already has N2 state. It authorizes only the pinned reviewer/current native run
+during review handoff/reviewing, or the pinned Integration Lead/bound correction
+run during correcting/resubmission preparation. N1 inspection is unchanged and
+agents receive only the N2 submission/state needed for their command, never the
+owner inspection surface. The provider-free scenario now performs reviewer and
+lead inspection before and after their transitions and refuses an unrelated
+actor. The LIVE harness records each terminal N2 run immediately, persists the
+partial proof before cleanup, attempts applicable settlement before surfacing a
+business assertion, retains unknown usage/exposure, and preserves the original
+business error if settlement or readback also fails.
+
 ## Provider-free synthetic integration
 
 The bounded qualification now contains one nominal N2 scenario on the pinned,
@@ -232,7 +270,11 @@ real Paperclip orchestration summary. The scenario additionally proves the
 three campaign regressions: UUID effect IDs are admitted; the public issue
 route produces `in_review` with the pinned reviewer/current participant and
 Integration Lead return assignee; and reviewer-owned entry is refused with
-HTTP 409 while the authenticated human/operator PATCH succeeds.
+HTTP 409 while the authenticated human/operator PATCH succeeds. It also proves
+that the reviewer and correction lead obtain mission versions and submission
+state through their own exact N2 identities before and after their commands,
+that an unrelated actor is refused, and that a terminal reviewer run without a
+verdict is preserved while settlement is attempted before cleanup.
 
 `start-review` and `start-resubmitted-review` remain a human-assisted workflow:
 the owner mission command returns the exact `PATCH /api/issues/:id` descriptor,
@@ -268,15 +310,14 @@ the result:
 6. replay operator inspection after restart and capture the installed mission
    UI using the exact UUID locator.
 
-The authorizations for `cbcb22c`, `0e5c814` and `586608b` were consumed and do not
-transfer to the next corrected SHA. Commit/publication authority for this lot remains
-separate from LIVE authority. Once draft PR #18 readback identifies the new
-clean head on `main` and the provider-free bounded qualification passes on that
-same head, the remaining launch gate is a fresh explicit authorization for one N2
-provider campaign with the named agents and fresh token envelope. Until that
-campaign succeeds, the strongest verdict is **N2 synthetic integration
-validated and ready to request another corrected N2 campaign**, never **N2
-qualified**.
+The authorizations for `cbcb22c`, `0e5c814`, `586608b` and `daa14fa` were
+consumed and do not transfer to the next corrected SHA. Commit/publication
+authority for this lot remains separate from LIVE authority. Once a clean local
+correction commit passes the provider-free bounded qualification, it is
+technically ready to be proposed for publication and a later fresh campaign;
+neither action is authorized here. Until an authorized campaign succeeds, the
+strongest verdict is **correctif local et intégration synthétique validés**,
+never **N2 qualified**.
 
 ## N3 interface checkpoint
 

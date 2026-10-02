@@ -50,6 +50,74 @@ function assertSucceeded(run: RunSnapshot, label: string) {
   assert(run.finishedAt, `${label} has no terminal timestamp`);
 }
 
+function errorEvidence(error: unknown) {
+  return error instanceof Error
+    ? { name: error.name, message: error.message, stack: error.stack }
+    : { name: "UnknownError", message: String(error) };
+}
+
+export async function preserveN2RunBeforeBusinessAssertion(input: {
+  evidence: Record<string, any>;
+  run: unknown;
+  label: string;
+  observe: () => Promise<any>;
+  reconcile: () => Promise<unknown>;
+  readback: () => Promise<{ mission: any; admission: any }>;
+  validateBusiness: (mission: any) => void;
+  persist?: () => Promise<void>;
+}) {
+  input.evidence.runs.push(input.run);
+  let persistenceError: unknown;
+  try {
+    await input.persist?.();
+  } catch (error) {
+    persistenceError = error;
+    input.evidence.persistenceError = errorEvidence(error);
+  }
+  const observed = await input.observe();
+  input.evidence.mission = observed;
+
+  let businessError: unknown;
+  try {
+    input.validateBusiness(observed);
+  } catch (error) {
+    businessError = error;
+    input.evidence.businessError = errorEvidence(error);
+  }
+
+  let reconciliationError: unknown;
+  try {
+    await input.reconcile();
+    input.evidence.settlements.push({ label: input.label, status: "settled" });
+  } catch (error) {
+    reconciliationError = error;
+    input.evidence.settlements.push({ label: input.label, status: "failed", error: errorEvidence(error) });
+  }
+
+  let readbackError: unknown;
+  try {
+    const readback = await input.readback();
+    input.evidence.mission = readback.mission;
+    input.evidence.admission = readback.admission;
+  } catch (error) {
+    readbackError = error;
+    input.evidence.readbackError = errorEvidence(error);
+  }
+
+  try {
+    await input.persist?.();
+  } catch (error) {
+    persistenceError ??= error;
+    input.evidence.persistenceError = errorEvidence(error);
+  }
+
+  if (businessError) throw businessError;
+  if (reconciliationError) throw reconciliationError;
+  if (readbackError) throw readbackError;
+  if (persistenceError) throw persistenceError;
+  return observed;
+}
+
 async function inspectMission(request: ApiRequest, path: string, companyId: string) {
   const result = await request("human", "GET", `${path}?companyId=${companyId}`);
   assert.equal(result.status, 200, JSON.stringify(result.body));
@@ -85,6 +153,22 @@ async function settleN2Usage(input: {
   return settled.body;
 }
 
+async function readN2MissionAndAdmission(input: {
+  request: ApiRequest;
+  missionPath: string;
+  admissionPath: string;
+  companyId: string;
+}) {
+  const mission = await inspectMission(input.request, input.missionPath, input.companyId);
+  const admission = await input.request(
+    "human",
+    "GET",
+    `${input.admissionPath}?companyId=${input.companyId}&periodKey=${encodeURIComponent(mission.admission.periodKey)}`,
+  );
+  assert.equal(admission.status, 200, JSON.stringify(admission.body));
+  return { mission, admission: admission.body };
+}
+
 export async function runLiveN2(input: {
   request: ApiRequest;
   getRun: (runId: string) => Promise<RunSnapshot | null>;
@@ -101,11 +185,26 @@ export async function runLiveN2(input: {
     periodKey: string;
   };
   runEvidence: typeof nativeRunEvidence;
+  persistEvidence: () => Promise<void>;
 }) {
   const { companyId, missionId, rootIssueId, agents } = input.n1;
   const missionPath = `/api/plugins/${input.pluginId}/api/companies/${companyId}/missions/${missionId}`;
   const admissionPath = `/api/plugins/${input.pluginId}/api/companies/${companyId}/admission`;
   const reviewerRunIds = new Set((await input.listRuns(agents.reviewer.id)).map((run) => run.id));
+  input.evidence.liveN2 = {
+    companyId,
+    missionId,
+    rootIssueId,
+    agents: { lead: agents.lead.id, reviewer: agents.reviewer.id },
+    runs: [],
+    settlements: [],
+    mission: null,
+    admission: input.n1.admission,
+    decisionReceipts: [],
+    limits: { runCount: 6, maxConcurrent: 2, maxRetries: 0, maxCorrections: 1 },
+  };
+  const progressiveEvidence = input.evidence.liveN2;
+  await input.persistEvidence();
 
   const nativeReviewPolicy = {
     mode: "normal",
@@ -154,19 +253,22 @@ export async function runLiveN2(input: {
   const reviewRun1 = await waitForNewRun(agents.reviewer.id, reviewerRunIds, input.listRuns);
   reviewerRunIds.add(reviewRun1.id);
   const terminalReview1 = await waitForTerminalRun(reviewRun1.id, input.getRun);
-  assertSucceeded(terminalReview1, "initial independent review");
-  const afterReview1 = await inspectMission(input.request, missionPath, companyId);
-  assert.equal(afterReview1.n2.status, "correction_requested");
-  assert.equal(afterReview1.n2.review.round, 1);
-  assert.equal(afterReview1.n2.review.verdict.verdict, "changes_requested");
-
-  await settleN2Usage({
-    request: input.request,
-    missionPath,
-    admissionPath,
-    companyId,
-    target: "review",
-    round: 1,
+  await preserveN2RunBeforeBusinessAssertion({
+    evidence: progressiveEvidence,
+    run: input.runEvidence(terminalReview1),
+    label: "review-1",
+    observe: () => inspectMission(input.request, missionPath, companyId),
+    reconcile: () => settleN2Usage({
+      request: input.request, missionPath, admissionPath, companyId, target: "review", round: 1,
+    }),
+    readback: () => readN2MissionAndAdmission({ request: input.request, missionPath, admissionPath, companyId }),
+    persist: input.persistEvidence,
+    validateBusiness: (mission) => {
+      assertSucceeded(terminalReview1, "initial independent review");
+      assert.equal(mission.n2.status, "correction_requested");
+      assert.equal(mission.n2.review.round, 1);
+      assert.equal(mission.n2.review.verdict.verdict, "changes_requested");
+    },
   });
   const leadEnabled = await input.request("human", "PATCH", `/api/agents/${agents.lead.id}`, {
     runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: true, maxConcurrentRuns: 1 } },
@@ -184,18 +286,22 @@ export async function runLiveN2(input: {
   const correctionRunId = correctionStart.body.mission.aggregate.n2.correction.runId as string;
   assert.match(correctionRunId, /^[0-9a-f-]{36}$/i);
   const correctionRun = await waitForTerminalRun(correctionRunId, input.getRun);
-  assertSucceeded(correctionRun, "integration lead correction");
-  const prepared = await inspectMission(input.request, missionPath, companyId);
-  assert.equal(prepared.n2.status, "resubmission_prepared");
-  assert.equal(prepared.n2.correction.runId, correctionRunId);
-  assert.deepEqual(prepared.n2.correction.correctedPaths, ["alpha.txt"]);
-
-  await settleN2Usage({
-    request: input.request,
-    missionPath,
-    admissionPath,
-    companyId,
-    target: "correction",
+  await preserveN2RunBeforeBusinessAssertion({
+    evidence: progressiveEvidence,
+    run: input.runEvidence(correctionRun),
+    label: "correction",
+    observe: () => inspectMission(input.request, missionPath, companyId),
+    reconcile: () => settleN2Usage({
+      request: input.request, missionPath, admissionPath, companyId, target: "correction",
+    }),
+    readback: () => readN2MissionAndAdmission({ request: input.request, missionPath, admissionPath, companyId }),
+    persist: input.persistEvidence,
+    validateBusiness: (mission) => {
+      assertSucceeded(correctionRun, "integration lead correction");
+      assert.equal(mission.n2.status, "resubmission_prepared");
+      assert.equal(mission.n2.correction.runId, correctionRunId);
+      assert.deepEqual(mission.n2.correction.correctedPaths, ["alpha.txt"]);
+    },
   });
   const leadDisabled = await input.request("human", "PATCH", `/api/agents/${agents.lead.id}`, {
     runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: false, maxConcurrentRuns: 1 } },
@@ -229,20 +335,23 @@ export async function runLiveN2(input: {
   const reviewRun2 = await waitForNewRun(agents.reviewer.id, reviewerRunIds, input.listRuns);
   reviewerRunIds.add(reviewRun2.id);
   const terminalReview2 = await waitForTerminalRun(reviewRun2.id, input.getRun);
-  assertSucceeded(terminalReview2, "final independent review");
-  const acceptedBeforeSettlement = await inspectMission(input.request, missionPath, companyId);
-  assert.equal(acceptedBeforeSettlement.n2.status, "accepted");
-  assert.equal(acceptedBeforeSettlement.n2.application.state, "observed");
-  assert.equal(acceptedBeforeSettlement.n2.review.round, 2);
-  assert.equal(acceptedBeforeSettlement.n2.review.verdict.verdict, "approved");
-
-  await settleN2Usage({
-    request: input.request,
-    missionPath,
-    admissionPath,
-    companyId,
-    target: "review",
-    round: 2,
+  await preserveN2RunBeforeBusinessAssertion({
+    evidence: progressiveEvidence,
+    run: input.runEvidence(terminalReview2),
+    label: "review-2",
+    observe: () => inspectMission(input.request, missionPath, companyId),
+    reconcile: () => settleN2Usage({
+      request: input.request, missionPath, admissionPath, companyId, target: "review", round: 2,
+    }),
+    readback: () => readN2MissionAndAdmission({ request: input.request, missionPath, admissionPath, companyId }),
+    persist: input.persistEvidence,
+    validateBusiness: (mission) => {
+      assertSucceeded(terminalReview2, "final independent review");
+      assert.equal(mission.n2.status, "accepted");
+      assert.equal(mission.n2.application.state, "observed");
+      assert.equal(mission.n2.review.round, 2);
+      assert.equal(mission.n2.review.verdict.verdict, "approved");
+    },
   });
   const finalMission = await inspectMission(input.request, missionPath, companyId);
   assert.equal(finalMission.mission.aggregate.phase, "accepted");
@@ -281,12 +390,7 @@ export async function runLiveN2(input: {
   assert(n2Receipts.every((entry: any) => entry.state === "native_observed" && entry.actorAgentId === agents.reviewer.id));
 
   const n2Runs = [terminalReview1, correctionRun, terminalReview2];
-  input.evidence.liveN2 = {
-    companyId,
-    missionId,
-    rootIssueId,
-    agents: { lead: agents.lead.id, reviewer: agents.reviewer.id },
-    runs: n2Runs.map(input.runEvidence),
+  Object.assign(input.evidence.liveN2, {
     mission: finalMission,
     admission: finalAdmission.body,
     decisionReceipts: n2Receipts,
@@ -296,8 +400,8 @@ export async function runLiveN2(input: {
       v1: finalMission.n2.submissions[0],
       v2: finalMission.n2.submissions[1],
     },
-    limits: { runCount: 6, maxConcurrent: 2, maxRetries: 0, maxCorrections: 1 },
-  };
+  });
+  await input.persistEvidence();
   Object.assign(input.evidence.results, {
     n2InitialIndependentReview: "PASS",
     n2ChangesRequestedApplied: "PASS",

@@ -319,10 +319,37 @@ describe("N2 persisted native journey", () => {
       },
     });
     h.setBaseline({ runIds: [id.leadRun, id.reviewerRun1].sort(), tokenTotal: 180 });
+    const inspectedHandoff = await handleN2AgentApi(agentRequest({
+      command: "inspect",
+    }, id.reviewer, id.reviewerRun1), h.ctx);
+    expect(inspectedHandoff).toMatchObject({
+      status: 200,
+      body: {
+        missionId: id.mission,
+        version: h.version(),
+        phase: "review_handoff",
+        n2: { status: "review_handoff", submission: { submissionId: submission1 } },
+      },
+    });
+    const wrongReviewerRun = await handleN2AgentApi(agentRequest({
+      command: "inspect",
+    }, id.reviewer, id.reviewerRun2), h.ctx);
+    expect(wrongReviewerRun).toMatchObject({ status: 409, body: { code: "native_review_inspection_mismatch" } });
+    const wrongActor = await handleN2AgentApi(agentRequest({
+      command: "inspect",
+    }, id.lead, id.reviewerRun1), h.ctx);
+    expect(wrongActor).toMatchObject({ status: 403, body: { code: "reviewer_run_required" } });
     const confirmed = await handleN2AgentApi(agentRequest({
       command: "confirm-review-handoff", commandId: randomUUID(), expectedVersion: h.version(),
     }, id.reviewer, id.reviewerRun1), h.ctx);
     expect(confirmed).toMatchObject({ status: 200, body: { mission: { aggregate: { phase: "reviewing" } } } });
+    const inspectedReview = await handleN2AgentApi(agentRequest({
+      command: "inspect",
+    }, id.reviewer, id.reviewerRun1), h.ctx);
+    expect(inspectedReview).toMatchObject({
+      status: 200,
+      body: { phase: "reviewing", n2: { status: "reviewing", review: { handoff: { reviewerRunId: id.reviewerRun1 } } } },
+    });
     expect(h.current().effectIntents).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "n2_review_handoff", state: "confirmed", reviewerRunId: id.reviewerRun1 }),
     ]));
@@ -371,6 +398,14 @@ describe("N2 persisted native journey", () => {
     });
     expect(startedCorrection).toMatchObject({ outcome: "requested", mission: { aggregate: { phase: "correcting" } } });
     expect(h.requestWakeup).toHaveBeenCalledTimes(1);
+    h.setBaseline({ runIds: [id.leadRun, id.reviewerRun1, id.correctionRun].sort(), tokenTotal: 240 });
+    const inspectedCorrection = await handleN2AgentApi(agentRequest({
+      command: "inspect",
+    }, id.lead, id.correctionRun), h.ctx);
+    expect(inspectedCorrection).toMatchObject({
+      status: 200,
+      body: { phase: "correcting", n2: { status: "correcting", correction: { runId: id.correctionRun } } },
+    });
 
     vi.mocked(verifyIntegratedCandidate).mockResolvedValue(candidate("e".repeat(40), "f".repeat(64), id.attachment2));
     const submission2 = randomUUID();
@@ -381,6 +416,13 @@ describe("N2 persisted native journey", () => {
     }, id.lead, id.correctionRun), h.ctx);
     expect(prepared).toMatchObject({
       status: 200, body: { mission: { aggregate: { n2: { status: "resubmission_prepared" } } } },
+    });
+    const inspectedPrepared = await handleN2AgentApi(agentRequest({
+      command: "inspect",
+    }, id.lead, id.correctionRun), h.ctx);
+    expect(inspectedPrepared).toMatchObject({
+      status: 200,
+      body: { n2: { status: "resubmission_prepared", correction: { runId: id.correctionRun } } },
     });
 
     h.setBaseline({ runIds: [id.leadRun, id.reviewerRun1, id.correctionRun].sort(), tokenTotal: 260 });

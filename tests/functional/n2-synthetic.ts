@@ -413,14 +413,32 @@ export async function runSyntheticN2(input: {
   assert.equal(transitioned1.body.assigneeAgentId, input.agents.reviewer);
   assert.equal(transitioned1.body.executionState?.currentParticipant?.agentId, input.agents.reviewer);
   assert.equal(transitioned1.body.executionState?.returnAssignee?.agentId, input.agents.lead);
-  let mission = await inspectMission(input.request, missionPath, input.companyId);
+  const refusedInspect = await input.request("executor", "POST", agentCommandPath, {
+    missionId,
+    command: "inspect",
+  });
+  assert.equal(refusedInspect.status, 403, JSON.stringify(refusedInspect.body));
+  const reviewerInspection1 = await input.request("council", "POST", agentCommandPath, {
+    missionId,
+    command: "inspect",
+  });
+  assert.equal(reviewerInspection1.status, 200, JSON.stringify(reviewerInspection1.body));
+  assert.equal(reviewerInspection1.body.n2.status, "review_handoff");
+  assert.equal(reviewerInspection1.body.n2.submission.submissionId, initialSubmissionId);
   const confirmed1 = await input.request("council", "POST", agentCommandPath, {
     missionId,
     command: "confirm-review-handoff",
     commandId: randomUUID(),
-    expectedVersion: mission.mission.version,
+    expectedVersion: reviewerInspection1.body.version,
   });
   assert.equal(confirmed1.status, 200, JSON.stringify(confirmed1.body));
+  const reviewingInspection1 = await input.request("council", "POST", agentCommandPath, {
+    missionId,
+    command: "inspect",
+  });
+  assert.equal(reviewingInspection1.status, 200, JSON.stringify(reviewingInspection1.body));
+  assert.equal(reviewingInspection1.body.n2.status, "reviewing");
+  assert.equal(reviewingInspection1.body.n2.review.handoff.reviewerRunId, reviewerRun1);
   const correctionOperationId = randomUUID();
   const correctionDecision = await input.request("council", "POST", `/api/plugins/${input.pluginId}/api/issues/${rootIssueId}/decision`, {
     operationId: correctionOperationId,
@@ -443,7 +461,7 @@ export async function runSyntheticN2(input: {
     runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: true, maxConcurrentRuns: 1 } },
   });
   assert.equal(leadRuntime.status, 200, JSON.stringify(leadRuntime.body));
-  mission = await inspectMission(input.request, missionPath, input.companyId);
+  let mission = await inspectMission(input.request, missionPath, input.companyId);
   const correctionStart = await input.request("human", "POST", `${missionPath}/commands`, {
     companyId: input.companyId,
     command: "start-correction",
@@ -455,11 +473,18 @@ export async function runSyntheticN2(input: {
   const correctionRunId = correctionStart.body.mission.aggregate.n2.correction.runId as string;
   assert.match(correctionRunId, /^[0-9a-f]{8}-[0-9a-f-]{27}$/i);
   input.bindActorRun("executor", correctionRunId);
+  const correctionInspection = await input.request("executor", "POST", agentCommandPath, {
+    missionId,
+    command: "inspect",
+  });
+  assert.equal(correctionInspection.status, 200, JSON.stringify(correctionInspection.body));
+  assert.equal(correctionInspection.body.n2.status, "correcting");
+  assert.equal(correctionInspection.body.n2.correction.runId, correctionRunId);
   const preparedV2 = await input.request("executor", "POST", agentCommandPath, {
     missionId,
     command: "prepare-resubmission",
     commandId: randomUUID(),
-    expectedVersion: correctionStart.body.mission.version,
+    expectedVersion: correctionInspection.body.version,
     submissionId: randomUUID(),
     attachmentId: v2Attachment.id,
     expectedSha256: candidate.v2.sha256,
@@ -469,6 +494,13 @@ export async function runSyntheticN2(input: {
   });
   assert.equal(preparedV2.status, 200, JSON.stringify(preparedV2.body));
   assert.equal(preparedV2.body.mission.aggregate.n2.status, "resubmission_prepared");
+  const preparedInspection = await input.request("executor", "POST", agentCommandPath, {
+    missionId,
+    command: "inspect",
+  });
+  assert.equal(preparedInspection.status, 200, JSON.stringify(preparedInspection.body));
+  assert.equal(preparedInspection.body.n2.status, "resubmission_prepared");
+  assert.equal(preparedInspection.body.n2.correction.runId, correctionRunId);
   await input.completeRun(correctionRunId, rootIssueId, input.agents.lead, 12);
   await settleUsage({
     request: input.request, missionPath, admissionPath, companyId: input.companyId,
@@ -517,16 +549,28 @@ export async function runSyntheticN2(input: {
   assert.equal(transitioned2.body.assigneeAgentId, input.agents.reviewer);
   assert.equal(transitioned2.body.executionState?.currentParticipant?.agentId, input.agents.reviewer);
   assert.equal(transitioned2.body.executionState?.returnAssignee?.agentId, input.agents.lead);
-  mission = await inspectMission(input.request, missionPath, input.companyId);
+  const reviewerInspection2 = await input.request("council", "POST", agentCommandPath, {
+    missionId,
+    command: "inspect",
+  });
+  assert.equal(reviewerInspection2.status, 200, JSON.stringify(reviewerInspection2.body));
+  assert.equal(reviewerInspection2.body.n2.status, "review_handoff");
+  assert.equal(reviewerInspection2.body.n2.submission.ordinal, 2);
   const confirmed2 = await input.request("council", "POST", agentCommandPath, {
     missionId,
     command: "confirm-review-handoff",
     commandId: randomUUID(),
-    expectedVersion: mission.mission.version,
+    expectedVersion: reviewerInspection2.body.version,
   });
   assert.equal(confirmed2.status, 200, JSON.stringify(confirmed2.body));
-  mission = await inspectMission(input.request, missionPath, input.companyId);
-  const finalSubmissionId = mission.n2.submission.submissionId as string;
+  const reviewingInspection2 = await input.request("council", "POST", agentCommandPath, {
+    missionId,
+    command: "inspect",
+  });
+  assert.equal(reviewingInspection2.status, 200, JSON.stringify(reviewingInspection2.body));
+  assert.equal(reviewingInspection2.body.n2.status, "reviewing");
+  assert.equal(reviewingInspection2.body.n2.review.handoff.reviewerRunId, reviewerRun2);
+  const finalSubmissionId = reviewingInspection2.body.n2.submission.submissionId as string;
   const approvalOperationId = randomUUID();
   const approval = await input.request("council", "POST", `/api/plugins/${input.pluginId}/api/issues/${rootIssueId}/decision`, {
     operationId: approvalOperationId,
@@ -592,6 +636,9 @@ export async function runSyntheticN2(input: {
       uuidEffectAccepted: true,
       publicTransitionActorsObserved: true,
       unauthorizedReviewerPatchStatus: refusedTransition.status,
+      unauthorizedN2InspectStatus: refusedInspect.status,
+      reviewerInspectBeforeAndAfterConfirmation: true,
+      correctionLeadInspectBeforeAndAfterPreparation: true,
       intendedHumanPatchStatus: transitioned1.status,
     },
     candidates: {

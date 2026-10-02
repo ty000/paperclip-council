@@ -1169,6 +1169,81 @@ async function confirmReviewCommand(
   return n2CommandCas(ctx, mission, body, "agent", reviewer, aggregate);
 }
 
+async function inspectN2Agent(
+  ctx: PluginContext,
+  mission: MissionRecord,
+  input: PluginApiRequestInput,
+) {
+  if (input.params.issueId !== mission.rootIssueId) {
+    throw new MissionError(403, "root_issue_required", "N2 inspection must address the mission root issue");
+  }
+  if (input.actor.actorType !== "agent" || !input.actor.agentId || !input.actor.runId) {
+    throw new MissionError(403, "n2_agent_run_required", "A pinned N2 agent and native run are required");
+  }
+
+  const state = storedN2(mission);
+  const issue = await ctx.issues.get(mission.rootIssueId, mission.companyId);
+  const native = executionPrincipals(issue);
+  const observed = await readNativeSequentialUsageBaseline(ctx, {
+    companyId: mission.companyId,
+    issueId: mission.rootIssueId,
+  });
+  const actorId = input.actor.agentId;
+  const runId = input.actor.runId;
+
+  if (state.status === "review_handoff" || state.status === "reviewing") {
+    const round = currentRound(state);
+    if (actorId !== round.reviewerAgentId) {
+      throw new MissionError(403, "reviewer_run_required", "Pinned reviewer run required");
+    }
+    const expectedRuns = [...round.handoff.baselineRunIds, runId].sort();
+    const observedRuns = [...observed.runIds].sort();
+    const exactRuns = expectedRuns.length === observedRuns.length
+      && expectedRuns.every((value, index) => value === observedRuns[index]);
+    const recordedRunMatches = state.status === "reviewing"
+      ? round.handoff.reviewerRunId === runId
+      : round.handoff.reviewerRunId === null;
+    if (native.status !== "in_review" || native.assigneeAgentId !== actorId
+        || native.participantAgentId !== actorId
+        || native.returnAgentId !== mission.aggregate.responsibilities.integrationLeadAgentId
+        || round.handoff.baselineRunIds.includes(runId) || !exactRuns || !recordedRunMatches) {
+      throw new MissionError(409, "native_review_inspection_mismatch", "Native review stage or run does not match the active N2 round", {
+        expectedReviewerAgentId: round.reviewerAgentId,
+        expectedRunIds: expectedRuns,
+        observedRunIds: observedRuns,
+      });
+    }
+  } else if (state.status === "correcting" || state.status === "resubmission_prepared") {
+    const correction = state.correction;
+    if (actorId !== mission.aggregate.responsibilities.integrationLeadAgentId) {
+      throw new MissionError(403, "integration_lead_required", "Pinned integration lead correction run required");
+    }
+    if (!correction?.runId || correction.runId !== runId) {
+      throw new MissionError(409, "correction_run_required", "The bound correction run is required for N2 inspection");
+    }
+    const expectedRuns = [...(correction.baselineRunIds ?? []), runId].sort();
+    const observedRuns = [...observed.runIds].sort();
+    const exactRuns = expectedRuns.length === observedRuns.length
+      && expectedRuns.every((value, index) => value === observedRuns[index]);
+    if (native.status !== "in_progress" || native.assigneeAgentId !== actorId || !exactRuns) {
+      throw new MissionError(409, "native_correction_inspection_mismatch", "Native correction stage or run does not match the active N2 correction", {
+        expectedLeadAgentId: actorId,
+        expectedRunIds: expectedRuns,
+        observedRunIds: observedRuns,
+      });
+    }
+  } else {
+    throw new MissionError(409, "n2_agent_inspection_unavailable", "N2 agent inspection is unavailable in the current mission state");
+  }
+
+  return {
+    missionId: mission.missionId,
+    version: mission.version,
+    phase: mission.aggregate.phase,
+    n2: inspectN2State(mission),
+  };
+}
+
 async function prepareResubmissionCommand(
   ctx: PluginContext,
   mission: MissionRecord,
@@ -1241,6 +1316,9 @@ export async function handleN2AgentApi(input: PluginApiRequestInput, ctx: Plugin
     const mission = await getMission(ctx, input.companyId, missionId);
     if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
     if (input.params.issueId !== mission.rootIssueId) throw new MissionError(404, "mission_issue_not_found", "N2 commands address the mission root issue");
+    if (body.command === "inspect") {
+      return { status: 200, body: await inspectN2Agent(ctx, mission, input) };
+    }
     if (body.command === "confirm-review-handoff") {
       const result = await confirmReviewCommand(ctx, mission, input, body);
       return { status: 200, body: result };

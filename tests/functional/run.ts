@@ -1788,6 +1788,7 @@ try {
         evidence,
         n1: live,
         runEvidence: nativeRunEvidence,
+        persistEvidence: save,
       });
       liveMission = n2.finalMission;
 

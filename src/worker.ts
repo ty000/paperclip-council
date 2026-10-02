@@ -165,6 +165,10 @@ export async function handlePluginRequest(input: PluginApiRequestInput, context:
   if (input.routeKey === "mission-agent-command") {
     const command = input.body && typeof input.body === "object" && !Array.isArray(input.body)
       ? (input.body as Record<string, unknown>).command : null;
+    if (command === "inspect") {
+      const mission = await getMissionByRootIssue(context, input.companyId, input.params.issueId);
+      if (mission?.aggregate.n2) return handleN2AgentApi(input, context);
+    }
     if (command === "confirm-review-handoff" || command === "prepare-resubmission") {
       return handleN2AgentApi(input, context);
     }
