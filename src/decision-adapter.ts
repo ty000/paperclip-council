@@ -107,39 +107,6 @@ async function readBoundedResponse(response: Response): Promise<{
   }
 }
 
-export async function emitCouncilReviewTransition(
-  ctx: PluginContext,
-  input: { companyId: string; issueId: string },
-): Promise<{
-  nativeStatus: number;
-  nativeResponse: unknown;
-  nativeBodyValid: boolean;
-  nativeBodyTruncated: boolean;
-}> {
-  const config = parseCouncilConfig(await ctx.config.get(input.companyId));
-  const apiKey = await ctx.secrets.resolve(config.councilApiKey, {
-    companyId: input.companyId,
-    configPath: "councilApiKey",
-  });
-  const response = await fetch(`${config.apiBaseUrl}/api/issues/${input.issueId}`, {
-    method: "PATCH",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({ status: "in_review" }),
-    signal: AbortSignal.timeout(15_000),
-    redirect: "error",
-  });
-  const native = await readBoundedResponse(response);
-  return {
-    nativeStatus: response.status,
-    nativeResponse: native.body,
-    nativeBodyValid: native.validJson,
-    nativeBodyTruncated: native.truncated,
-  };
-}
-
 /**
  * The only adapter that emits council decisions. It deliberately uses the
  * qualified public issue API instead of ctx.issues.update or direct storage.

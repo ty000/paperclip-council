@@ -3,7 +3,7 @@
   "proof_id": "paperclip-council-n2-campaign-candidate-2026-10-02",
   "subject": "Published draft PR #18 candidate based on origin/main d4d4a6032a96b6bd1e9c5cb6b9b754b05f08f28b; the exact head is recorded by PR readback and Paperclip-native N2 qualification remains excluded",
   "status": "implementation-corrected-needs-fresh-live-authorization",
-  "summary": "Two authorized provider campaigns stopped once each before an N2 reviewer run: cbcb22c exposed a non-UUID admission effect, then 0e5c814 exposed use of the plugin SDK status update path instead of Paperclip's public execution-policy transition. Both successful N1 boundaries and failed N2 entries are preserved; no native N2 acceptance, live restart readback, or accepted-state UI capture is claimed.",
+  "summary": "Three authorized provider campaigns stopped once each before an N2 reviewer run: cbcb22c exposed a non-UUID admission effect, 0e5c814 exposed the plugin SDK status update path, and 586608b exposed the reviewer credential crossing the lead's native assignee/run lock. All successful N1 boundaries and failed N2 entries are preserved; no native N2 acceptance, live restart readback, or accepted-state UI capture is claimed.",
   "categories": [
     "functional",
     "quality",
@@ -17,7 +17,7 @@
       "kind": "automated-test",
       "location": "pnpm test -- --maxWorkers=2",
       "replayable": true,
-      "notes": "Observed pass: 20 test files and 214 tests, including direct V1 acceptance, material correction/resubmission, durable receipts, the authenticated public review transition, fail-closed native handoff and race guards, six-run evidence validation, usage settlement, and the persisted N2 command path."
+      "notes": "Observed pass: 20 test files and 213 tests, including direct V1 acceptance, material correction/resubmission, durable receipts, prepare-before-effect operator transition, exact reviewer confirmation, six-run evidence validation, usage settlement, and the persisted N2 command path."
     },
     {
       "id": "n2-typecheck",
@@ -74,6 +74,14 @@
       "location": "artifacts/n2-live-0e5c81468239d2fa697eafc3bb5acee323c68840.json",
       "replayable": false,
       "notes": "SHA-256 ee946d282a38743ac794086b0b81458e9dad626aaf50e1f271b545fb36caa0b6. Three N1 runs succeeded and settled at 1,687,463 known units; the N2 reservation used the correct UUID, but the native review handoff became durable unknown before a reviewer run because the SDK status update did not apply Paperclip execution-policy semantics. The paired zero-byte PNG is not UI evidence. No retry occurred."
+    },
+    {
+      "id": "n2-live-586608b-nonconclusive",
+      "category": "operations",
+      "kind": "preserved-runtime-evidence",
+      "location": "artifacts/n2-live-586608b475ecc8fe71acd1ff1ee8014e2d93d9ae.json",
+      "replayable": false,
+      "notes": "2,291,108 bytes; SHA-256 0635d78130c7e1bbc5f3aa6e32f14df5256e7a312aa26a1df2afe6e4e373e0be. Three N1 runs succeeded and settled at 2,279,035 known units. Submission and review reservation were persisted, but the reviewer credential's public status PATCH returned HTTP 409 under the lead's native assignee/run lock; no reviewer run or retry occurred. The paired zero-byte PNG is not UI evidence."
     }
   ],
   "replay": {
@@ -92,7 +100,7 @@
     ],
     "expected_artifacts": [
       "TypeScript typecheck exits 0.",
-      "Vitest reports 20 passing files and 214 passing tests.",
+      "Vitest reports 20 passing files and 213 passing tests.",
       "The build exits 0 and produces the repository build outputs.",
       "The canonical static audit wrapper reports status pass.",
       "Before LIVE qualification, the candidate is only ready to request the campaign and N2 closure remains open."
@@ -100,9 +108,9 @@
   },
   "closure": {
     "decision": "keep-open",
-    "rationale": "The public-transition correction can be committed and published for another bounded campaign request, but N2 still requires observed native correction, resubmission, acceptance, usage settlement, restart readback, and UI capture.",
+    "rationale": "The operator-owned public-transition correction can be committed and published for another bounded campaign request, but N2 still requires observed native correction, resubmission, acceptance, usage settlement, restart readback, and UI capture.",
     "next_required_actions": [
-      "Commit and publish the public-transition correction, then obtain fresh explicit LIVE/provider authorization for that exact SHA; the cbcb22c and 0e5c814 authorities were consumed.",
+      "Commit and publish the operator-owned public-transition correction, then obtain fresh explicit LIVE/provider authorization for that exact SHA; the cbcb22c, 0e5c814 and 586608b authorities were consumed.",
       "Run the campaign once without blind retry and preserve any unknown native effect.",
       "Validate native acceptance, usage settlement, restart inspection, exact UUID UI capture, and only then issue an N2 qualification verdict and SHA-bound N3 handoff."
     ]

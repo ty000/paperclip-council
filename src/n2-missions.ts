@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { AdmissionError, readAdmission, reserveAdmission } from "./admission.js";
-import { emitCouncilReviewTransition } from "./decision-adapter.js";
 import type { DecisionReceipt } from "./decision-receipts.js";
 import {
   assertNativeEnvelope,
@@ -836,79 +835,21 @@ function n2Effect(
   return aggregate.effectIntents.find(predicate);
 }
 
-async function finishReviewHandoff(
-  ctx: PluginContext,
-  mission: MissionRecord,
-  input: { state: "requested" | "unknown"; reason?: string },
-) {
-  const state = storedN2(mission);
-  const nextState = input.state === "unknown"
-    ? markN2ReviewHandoffUnknown(state, { reason: input.reason ?? "Native review handoff could not be confirmed" })
-    : state;
-  const aggregate: MissionAggregate = {
-    ...mission.aggregate,
-    phase: input.state === "unknown" ? "blocked" : "review_handoff",
-    control: input.state === "unknown" ? { status: "blocked", reason: "native_review_handoff_unknown" } : mission.aggregate.control,
-    n2: nextState,
-    effectIntents: mission.aggregate.effectIntents.map((entry) => entry.kind === "n2_review_handoff" && entry.state === "claimed"
-      ? { ...entry, state: input.state, reason: input.reason ?? null } : entry),
-  };
-  return n2Cas(ctx, mission, aggregate);
-}
-
-async function requestNativeReviewTransition(
-  ctx: PluginContext,
+function preparedNativeReviewTransition(
   mission: MissionRecord,
   claim: Awaited<ReturnType<typeof n2CommandCas>>,
-  label: string,
 ) {
   if (claim.outcome !== "applied") return claim;
-  const confirmedMission = async () => {
-    const latest = await getMission(ctx, mission.companyId, mission.missionId);
-    if (!latest) throw new Error("Mission disappeared during native review handoff");
-    const latestState = storedN2(latest);
-    const latestRound = latestState.rounds.at(-1);
-    return {
-      latest,
-      confirmed: latestState.status === "reviewing" && latestRound?.handoff.state === "confirmed",
-    };
+  return {
+    outcome: "prepared" as const,
+    mission: claim.mission,
+    receipt: claim.receipt,
+    nativeTransition: {
+      method: "PATCH" as const,
+      path: `/api/issues/${mission.rootIssueId}`,
+      body: { status: "in_review" as const },
+    },
   };
-  try {
-    const transition = await emitCouncilReviewTransition(ctx, {
-      companyId: mission.companyId,
-      issueId: mission.rootIssueId,
-    });
-    if (transition.nativeStatus !== 200 || !transition.nativeBodyValid || transition.nativeBodyTruncated) {
-      throw new Error(`Native ${label} review transition returned HTTP ${transition.nativeStatus}`);
-    }
-    const observed = executionPrincipals(transition.nativeResponse);
-    const expectedReviewer = mission.aggregate.responsibilities.finalReviewerAgentId;
-    const expectedLead = mission.aggregate.responsibilities.integrationLeadAgentId;
-    if (observed.status !== "in_review" || observed.assigneeAgentId !== expectedReviewer
-        || observed.participantAgentId !== expectedReviewer || observed.returnAgentId !== expectedLead) {
-      const blocked = await finishReviewHandoff(ctx, claim.mission, {
-        state: "unknown",
-        reason: `Native ${label} review transition returned mismatched stage or actors`,
-      });
-      return { outcome: "unknown" as const, mission: blocked, receipt: claim.receipt };
-    }
-    const current = await confirmedMission();
-    if (current.confirmed) {
-      return { outcome: "requested" as const, mission: current.latest, receipt: claim.receipt };
-    }
-    const after = await finishReviewHandoff(ctx, current.latest, { state: "requested" });
-    return { outcome: "requested" as const, mission: after, receipt: claim.receipt };
-  } catch (error) {
-    const current = await confirmedMission();
-    if (current.confirmed) {
-      return { outcome: "requested" as const, mission: current.latest, receipt: claim.receipt };
-    }
-    const blocked = await finishReviewHandoff(ctx, current.latest, {
-      state: "unknown",
-      reason: `Native ${label} review response unavailable: ${error instanceof Error ? error.message : String(error)}`,
-    });
-    return { outcome: "unknown" as const, mission: blocked, receipt: claim.receipt };
-  }
 }
 
 export async function executeN2BoardCommand(ctx: PluginContext, input: {
@@ -1095,11 +1036,11 @@ export async function executeN2BoardCommand(ctx: PluginContext, input: {
       const claimed = n2Effect(mission.aggregate, (entry) => entry.kind === "n2_review_handoff"
         && entry.commandId === commandId && entry.state === "claimed");
       if (claimed) {
-        const blocked = await finishReviewHandoff(ctx, mission, {
-          state: "unknown",
-          reason: "Second review handoff claim was recovered without a confirmed native response",
+        return preparedNativeReviewTransition(mission, {
+          outcome: "applied",
+          mission,
+          receipt: prior,
         });
-        return { outcome: "unknown" as const, mission: blocked, receipt: prior };
       }
       return { outcome: "replayed" as const, mission, receipt: prior };
     }
@@ -1141,7 +1082,7 @@ export async function executeN2BoardCommand(ctx: PluginContext, input: {
         actorUserId: input.actorUserId, at: new Date().toISOString(),
       }],
     });
-    return requestNativeReviewTransition(ctx, mission, claim, "V2");
+    return preparedNativeReviewTransition(mission, claim);
   }
   if (input.body.command !== "start-review") {
     throw new MissionError(400, "unknown_command", "Unknown N2 board command");
@@ -1152,8 +1093,11 @@ export async function executeN2BoardCommand(ctx: PluginContext, input: {
   if (prior) {
     const claimed = n2Effect(mission.aggregate, (entry) => entry.kind === "n2_review_handoff" && entry.commandId === commandId && entry.state === "claimed");
     if (claimed) {
-      const blocked = await finishReviewHandoff(ctx, mission, { state: "unknown", reason: "Review handoff claim was recovered without a confirmed native response" });
-      return { outcome: "unknown" as const, mission: blocked, receipt: prior };
+      return preparedNativeReviewTransition(mission, {
+        outcome: "applied",
+        mission,
+        receipt: prior,
+      });
     }
     return { outcome: "replayed" as const, mission, receipt: prior };
   }
@@ -1186,7 +1130,7 @@ export async function executeN2BoardCommand(ctx: PluginContext, input: {
     journal: [...mission.aggregate.journal, { action: "n2_review_handoff_claimed", submissionId, reservationId, actorUserId: input.actorUserId, at: new Date().toISOString() }],
   };
   const claim = await n2CommandCas(ctx, mission, input.body, "user", input.actorUserId!, claimedAggregate);
-  return requestNativeReviewTransition(ctx, mission, claim, "initial");
+  return preparedNativeReviewTransition(mission, claim);
 }
 
 async function confirmReviewCommand(
@@ -1216,6 +1160,10 @@ async function confirmReviewCommand(
     phase: "reviewing",
     control: { status: "active" },
     n2: nextState,
+    effectIntents: mission.aggregate.effectIntents.map((entry) =>
+      entry.kind === "n2_review_handoff" && entry.state === "claimed"
+        ? { ...entry, state: "confirmed", reviewerRunId: input.actor.runId, confirmedAt: new Date().toISOString() }
+        : entry),
     journal: [...mission.aggregate.journal, { action: "n2_review_handoff_confirmed", actorAgentId: reviewer, runId: input.actor.runId, at: new Date().toISOString() }],
   };
   return n2CommandCas(ctx, mission, body, "agent", reviewer, aggregate);

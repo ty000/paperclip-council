@@ -1,6 +1,6 @@
 # N2 — ordinary correction and confirmed acceptance
 
-Updated: 2026-10-02 (Europe/Paris). Status: **second authorized campaign stopped at the native N2 handoff; public-transition correction prepared; fresh LIVE authorization required / not N2-qualified**.
+Updated: 2026-10-02 (Europe/Paris). Status: **third authorized campaign stopped at the native N2 handoff; operator-owned public-transition correction prepared; fresh LIVE authorization required / not N2-qualified**.
 
 ## Exact base and scope
 
@@ -48,8 +48,16 @@ data is changed.
   a usable `native_observed` receipt tied to the exact second reviewer run.
 - Persist `start-review`, handoff confirmation, decision application,
   correction wake/run binding, V2 preparation, second-review start and usage settlement through mission
-  CAS/command receipts. Persist intent before each native mutation; a lost or
-  mismatched response becomes `unknown` and is not retried.
+  CAS/command receipts. Persist intent before each native mutation; never infer
+  handoff or acceptance without exact native readback, and never retry an
+  unknown effect through a replacement identity.
+- Keep the native review transition under the authenticated owner/operator who
+  invokes the public issue route. `start-review` and `start-resubmitted-review`
+  now return a bounded `prepared` transition only after persisting the exact
+  submission, baseline and reservation. The operator then applies the returned
+  `PATCH /api/issues/:id {status: in_review}`; only the resulting pinned reviewer
+  run can confirm the handoff. A reviewer credential never crosses the lead's
+  active assignee/run lock.
 - Expose the current candidate, reviewer eligibility, round/handoff/verdict,
   correction, native application, blocker and next action through the existing
   owner-only Council mission inspection page.
@@ -156,12 +164,54 @@ and is not UI evidence.
 Diagnosis showed that the plugin SDK `ctx.issues.update` path persists the
 status directly but does not execute the public issue route's execution-policy
 transition, so it cannot create the required current reviewer and return
-assignee state. The source correction now performs the authenticated, bounded
+assignee state. The `586608b` correction performed the authenticated, bounded
 loopback PATCH through the qualified public issue API, validates HTTP/JSON size
 and checks the returned exact stage and actors. Unit/runtime regression tests
 exercise this public transition and the concurrent reviewer-confirmation race.
-This new source state has not received provider authorization and is not LIVE
-proof.
+That source state is the third campaign subject described below, not successful
+LIVE proof.
+
+## Authorized campaign observation — `586608b`
+
+A third campaign was explicitly authorized and executed exactly once on clean,
+published commit `586608b475ecc8fe71acd1ff1ee8014e2d93d9ae`, with observed
+`codex_local` / `gpt-5.6-sol` / `high` configuration for all four agents and the
+fresh 12,000,000-unit period. It stopped without retry, with
+`NON-CONCLUSIVE OR BLOCKED`, before any N2 reviewer run began.
+
+The N1 portion succeeded again. Lead run
+`b3e969da-6a60-44c5-9c20-757f8d4261f3`, Alpha run
+`050bf524-f1e7-4d6f-adf3-9629f5645d90`, and Beta run
+`a323c854-e00c-4087-b184-522b5ef7f5f7` consumed respectively `1,720,452`,
+`385,204`, and `173,379` token units. All three reservations settled with zero
+remaining exposure, for `2,279,035` known units. The verified N1 candidate was
+commit `459fba589de931bf971fb9ed4c1a809d2367598b`, bundle SHA-256
+`3578731b961ab9f226acc7ed16fe257a0cf843ae60009e89897c3dde5f29bc27`.
+
+Council persisted submission `135cf128-4fe4-4282-97b7-80b1e96e3941` and
+2,000,000-unit reservation `c6edcc43-944d-4ea1-aff1-3a8de1dc9eb5`. The
+configured reviewer credential then attempted the public `in_review` PATCH
+while the root issue remained `in_progress` and assigned to the Integration
+Lead. Paperclip correctly returned HTTP 409 under its
+`issue_write_assignee_run_lock`. Council recorded an unknown handoff and did
+not dispatch a reviewer, correction, V2 or final review. The N2 reservation
+remained unsettled with known 2,000,000-unit exposure; no replacement key or
+retry was used.
+
+The preserved JSON is
+`artifacts/n2-live-586608b475ecc8fe71acd1ff1ee8014e2d93d9ae.json`, 2,291,108
+bytes with SHA-256
+`0635d78130c7e1bbc5f3aa6e32f14df5256e7a312aa26a1df2afe6e4e373e0be`.
+The paired PNG is zero bytes with SHA-256
+`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+and is not UI evidence.
+
+The bounded correction removes reviewer-owned review entry. The board command
+now persists and returns an operator-owned public transition descriptor; the
+LIVE harness applies it with the existing human session and checks the native
+reviewer, current participant and return assignee before awaiting the reviewer
+run. Confirmation also closes the claimed handoff intent with that exact run.
+This source correction is locally tested only and is not retroactive LIVE proof.
 
 ## Open native dependency and exit criteria
 
@@ -184,7 +234,7 @@ starts from a qualified N1 candidate and persists/reloads the result:
 6. replay operator inspection after restart and capture the installed mission
    UI using the exact UUID locator.
 
-The authorizations for both `cbcb22c` and `0e5c814` were consumed and do not
+The authorizations for `cbcb22c`, `0e5c814` and `586608b` were consumed and do not
 transfer to the next corrected SHA. Commit/publication authority for this lot remains
 separate from LIVE authority. Once draft PR #18 readback identifies the new
 clean head on `main` and the local bounded qualification passes on that same

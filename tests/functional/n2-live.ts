@@ -136,7 +136,20 @@ export async function runLiveN2(input: {
     reservationId: randomUUID(),
   });
   assert.equal(started.status, 200, JSON.stringify(started.body));
-  assert.equal(started.body.outcome, "requested");
+  assert.equal(started.body.outcome, "prepared");
+  assert.deepEqual(started.body.nativeTransition, {
+    method: "PATCH",
+    path: `/api/issues/${rootIssueId}`,
+    body: { status: "in_review" },
+  });
+  const initialReviewTransition = await input.request("human", "PATCH", `/api/issues/${rootIssueId}`, {
+    status: "in_review",
+  });
+  assert.equal(initialReviewTransition.status, 200, JSON.stringify(initialReviewTransition.body));
+  assert.equal(initialReviewTransition.body.status, "in_review");
+  assert.equal(initialReviewTransition.body.assigneeAgentId, agents.reviewer.id);
+  assert.equal(initialReviewTransition.body.executionState?.currentParticipant?.agentId, agents.reviewer.id);
+  assert.equal(initialReviewTransition.body.executionState?.returnAssignee?.agentId, agents.lead.id);
 
   const reviewRun1 = await waitForNewRun(agents.reviewer.id, reviewerRunIds, input.listRuns);
   reviewerRunIds.add(reviewRun1.id);
@@ -198,7 +211,20 @@ export async function runLiveN2(input: {
     reservationId: randomUUID(),
   });
   assert.equal(secondReview.status, 200, JSON.stringify(secondReview.body));
-  assert.equal(secondReview.body.outcome, "requested");
+  assert.equal(secondReview.body.outcome, "prepared");
+  assert.deepEqual(secondReview.body.nativeTransition, {
+    method: "PATCH",
+    path: `/api/issues/${rootIssueId}`,
+    body: { status: "in_review" },
+  });
+  const finalReviewTransition = await input.request("human", "PATCH", `/api/issues/${rootIssueId}`, {
+    status: "in_review",
+  });
+  assert.equal(finalReviewTransition.status, 200, JSON.stringify(finalReviewTransition.body));
+  assert.equal(finalReviewTransition.body.status, "in_review");
+  assert.equal(finalReviewTransition.body.assigneeAgentId, agents.reviewer.id);
+  assert.equal(finalReviewTransition.body.executionState?.currentParticipant?.agentId, agents.reviewer.id);
+  assert.equal(finalReviewTransition.body.executionState?.returnAssignee?.agentId, agents.lead.id);
 
   const reviewRun2 = await waitForNewRun(agents.reviewer.id, reviewerRunIds, input.listRuns);
   reviewerRunIds.add(reviewRun2.id);
