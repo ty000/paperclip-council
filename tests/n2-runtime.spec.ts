@@ -397,7 +397,7 @@ describe("N2 persisted native journey", () => {
       councilRosterId: id.council, councilRevision: id.councilRevision, version: h.version(),
       aggregate: h.current(), createdAt: new Date(0).toISOString(), updatedAt: new Date().toISOString(),
     }, preparedDecision!);
-    await recordN2Decision(h.ctx, id.mission, decision, receipt(operationId));
+    await recordN2Decision(h.ctx, id.mission, preparedDecision!, receipt(operationId));
     expect(h.current()).toMatchObject({ phase: "correction_requested", n2: { correction: { reservationId: expect.any(String) } } });
 
     h.setIssue({

@@ -451,7 +451,9 @@ The authorizations for `cbcb22c`, `0e5c814`, `586608b`, `daa14fa`, `d285f85`,
 authority for this lot remains separate from LIVE authority. Once a clean local
 correction commit passes the provider-free bounded qualification, it is
 technically ready to be proposed for publication and a later fresh campaign;
-neither action is authorized here. Until an authorized campaign succeeds, the
+local commit and PR publication are already authorized for the parent operator,
+while any later provider campaign still requires a fresh exact-SHA authorization.
+Until an authorized campaign succeeds, the
 strongest verdict is **correctif local et intégration synthétique validés**,
 never **N2 qualified**.
 

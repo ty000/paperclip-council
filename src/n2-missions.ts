@@ -1353,6 +1353,18 @@ export type N2PreparedDecision = N2DecisionContext & {
   correctionReservationId?: string;
 };
 
+function n2DecisionPayload(decision: N2DecisionContext): N2DecisionContext {
+  return {
+    operationId: decision.operationId,
+    verdict: decision.verdict,
+    actorAgentId: decision.actorAgentId,
+    runId: decision.runId,
+    resultReference: decision.resultReference,
+    ...(decision.verdict === "approved" ? { approvedCommit: decision.approvedCommit } : {}),
+    justification: decision.justification,
+  };
+}
+
 function preparedDecisionFromIntent(intent: Record<string, unknown>): N2PreparedDecision {
   const decision = record(intent.decision, "prepared N2 decision");
   const verdict = decision.verdict;
@@ -1374,15 +1386,7 @@ function preparedDecisionFromIntent(intent: Record<string, unknown>): N2Prepared
     prepared.approvedCommit = runtimeString(decision.approvedCommit, "approvedCommit", 40);
   }
   if (typeof intent.reservationId === "string") prepared.correctionReservationId = runtimeUuid(intent.reservationId, "correctionReservationId");
-  if (prepared.decisionHash !== canonicalPayloadHash({
-    operationId: prepared.operationId,
-    verdict: prepared.verdict,
-    actorAgentId: prepared.actorAgentId,
-    runId: prepared.runId,
-    resultReference: prepared.resultReference,
-    ...(prepared.approvedCommit ? { approvedCommit: prepared.approvedCommit } : {}),
-    justification: prepared.justification,
-  })) {
+  if (prepared.decisionHash !== canonicalPayloadHash(n2DecisionPayload(prepared))) {
     throw new MissionError(409, "n2_decision_intent_invalid", "Prepared N2 decision content hash does not match its payload");
   }
   return prepared;
@@ -1423,7 +1427,8 @@ export async function prepareN2Decision(
     throw new MissionError(409, "n2_decision_target_mismatch", "Decision does not target the active N2 submission and confirmed reviewer run");
   }
   const prior = n2Effect(mission.aggregate, (entry) => entry.kind === "n2_decision" && entry.operationId === decision.operationId);
-  const decisionHash = canonicalPayloadHash(decision);
+  const payload = n2DecisionPayload(decision);
+  const decisionHash = canonicalPayloadHash(payload);
   if (prior) {
     if (prior.decisionHash !== decisionHash) {
       throw new MissionError(409, "operation_content_conflict", "operationId is already bound to different N2 decision content");
@@ -1448,7 +1453,7 @@ export async function prepareN2Decision(
       decisionHash,
       submissionId: submission.submissionId, verdict: decision.verdict,
       actorAgentId: decision.actorAgentId, actorRunId: decision.runId,
-      decision: structuredClone(decision), settlementCommandId: randomUUID(),
+      decision: payload, settlementCommandId: randomUUID(),
       ...correctionAdmission, at: new Date().toISOString(),
     }],
   });
@@ -1535,7 +1540,7 @@ export async function recordN2Decision(
   if (priorRound) return mission;
   const intent = n2Effect(mission.aggregate, (entry) => entry.kind === "n2_decision" && entry.operationId === decision.operationId);
   if (!intent) throw new MissionError(409, "n2_decision_intent_missing", "N2 decision has no durable pre-effect intent");
-  if (intent.decisionHash !== canonicalPayloadHash(decision)) {
+  if (intent.decisionHash !== canonicalPayloadHash(n2DecisionPayload(decision))) {
     throw new MissionError(409, "operation_content_conflict", "Persisted N2 decision intent does not match the receipt operation content");
   }
   let nextState = applyN2Decision(state, mission, {
