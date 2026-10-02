@@ -30,7 +30,7 @@ const APP_CLEANUP = "stopped only the plugin worker, listener, and application c
 const DATABASE_CLEANUP = "fresh isolated PostgreSQL cluster removed; parent-owned temporary instance retained";
 const SAFE_FIXTURE_BOUNDARY = "agents, issues, policies, and heartbeat runs are synthetic test preparation";
 const LIVE_FIXTURE_BOUNDARY = "The safe-boundary suite uses fixtures; the N1 live campaign below uses native APIs, native wakeups, exact Paperclip run IDs, and run-derived terminal token settlement.";
-const N2_ISOLATED_FIXTURE_BOUNDARY = "The safe-boundary suite uses fixtures; isolated N2 inserts three deterministic heartbeat fixture rows and builds N1 through public APIs without agent execution, then permits only reviewer-correction-reviewer native runs.";
+const N2_ISOLATED_FIXTURE_BOUNDARY = "The safe-boundary suite uses fixtures; isolated N2 terminalizes three deterministic heartbeat fixture rows and clears their exact issue locks after building N1 through public APIs without agent execution, then permits only reviewer-correction-reviewer native runs.";
 const SAFE_PROVIDER_BOUNDARY = "none; dispatch was deliberately not invoked because it requests native wakeup";
 const LIVE_STOP_BOUNDARY = "ready_for_review; N2 not started";
 const EXPECTED_HOST_COMMIT = "61b3fd57a695614dc4a37e2303f426a34a9795cf";
@@ -129,6 +129,8 @@ export const N2_PREREQUISITE_RESULT_KEYS = Object.freeze([
   "n2PrerequisiteZeroExposure",
   "n2PrerequisiteZeroProviderOrNativeRuns",
   "n2PrerequisiteStopsBeforeReviewer",
+  "n2PrerequisiteFixtureLifecycleFinished",
+  "n2PrerequisiteHandoffCommandsConsumable",
 ]);
 
 const N2_ISOLATED_LIVE_RESULT_KEYS = Object.freeze([
@@ -1220,7 +1222,8 @@ function matchesN2FixtureReadback(entry, fixtureRuns) {
     run?.id === fixture.runId,
     run?.companyId === fixture.companyId,
     run?.agentId === fixture.agentId,
-    run?.status === "running",
+    run?.status === "succeeded",
+    nonemptyString(run?.finishedAt),
     run?.invocationSource === "on_demand",
     run?.triggerDetail === fixture.fixtureSource,
     run?.issueId === fixture.issueId,
@@ -1273,7 +1276,7 @@ function assertN2PrerequisiteState(prerequisite) {
       && distinctStrings(fixtureRuns.map((entry) => entry?.runId))
       && fixtureRuns.every((entry) => UUID.test(entry?.runId)
         && entry?.companyId === prerequisite?.companyId
-        && entry?.status === "running"
+        && entry?.createdStatus === "running"
         && entry?.fixtureSource === "fixture:n2-prerequisite:deterministic-heartbeat")
       && Array.isArray(prerequisite?.runReadbacks)
       && prerequisite.runReadbacks.length === 4
@@ -1282,17 +1285,55 @@ function assertN2PrerequisiteState(prerequisite) {
       && reviewerReadback?.runCount === 0
       && reviewerReadback?.fixtureRunId === null,
   "three correctly attributed, unexecuted fixture heartbeat rows are not proven");
+  const lifecycle = prerequisite?.fixtureLifecycle;
+  requireProof(lifecycle?.fixtureSource === "fixture:n2-prerequisite:deterministic-heartbeat"
+      && nonemptyString(lifecycle?.completedAfter)
+      && Array.isArray(lifecycle?.terminalRuns) && lifecycle.terminalRuns.length === 3
+      && lifecycle.terminalRuns.every((run) => run?.status === "succeeded"
+        && nonemptyString(run?.finishedAt)
+        && run?.wakeupRequestId === null
+        && run?.processStartedAt === null)
+      && Array.isArray(lifecycle?.issueLocks) && lifecycle.issueLocks.length === 3
+      && lifecycle.activeRunCount === 0
+      && lifecycle.openCheckoutCount === 0
+      && lifecycle.openExecutionCount === 0,
+  "N2 prerequisite fixture lifecycle is not terminal and lock-free");
   requireProof(prerequisite?.providerBoundary?.providerInvocationCount === 0
       && prerequisite?.providerBoundary?.nativeAgentExecutionCount === 0
-      && prerequisite?.providerBoundary?.fixtureHeartbeatRowCount === 3
+      && prerequisite?.providerBoundary?.prerequisiteFixtureHeartbeatRowCount === 3
       && prerequisite?.providerBoundary?.wakeupCount === 0
       && prerequisite?.providerBoundary?.reviewerRunCount === 0,
   "zero provider, wakeup, reviewer, and native-agent execution is not proven");
   requireProof(prerequisite?.databaseBoundary
-      === "the functional harness inserts only three fixture heartbeat rows; mission transitions use public Paperclip and installed Council APIs",
+      === "the primary prerequisite seam inserts and terminalizes exactly three heartbeat fixtures, clears only their exact issue locks, and uses public Paperclip and installed Council APIs for business transitions",
   "public-command database boundary is missing");
   requireProof(prerequisite?.stopBoundary === "ready_for_review; N2 state absent; reviewer not started",
     "N2 prerequisite did not stop before reviewer dispatch");
+}
+
+function assertN2HandoffGuard(guard) {
+  requireProof(guard?.proofClass === "synthetic-provider-free-n2-handoff-guard"
+      && guard?.fixtureBoundary === "distinct ephemeral fixture; no provider, process, or native reviewer execution"
+      && guard?.reviewerHeartbeatConfiguration?.wakeOnDemand === false
+      && guard?.wakeupCount === 0
+      && guard?.processCount === 0
+      && Array.isArray(guard?.publicCommands)
+      && guard.publicCommands.includes("start-review")
+      && guard.publicCommands.includes("PATCH /api/issues/:id")
+      && guard?.startReviewOutcome === "prepared"
+      && guard?.operatorTransitionStatus === 200
+      && guard?.mission?.n2?.status === "reviewing"
+      && guard?.admission?.envelope?.reservations?.length === 1
+      && guard.admission.envelope.reservations[0]?.status === "settled"
+      && guard.admission.envelope.reservations[0]?.remainingExposure?.units === 0
+      && Array.isArray(guard?.fixtureRuns) && guard.fixtureRuns.length === 2
+      && guard.fixtureRuns.every((run) => run?.status === "succeeded"
+        && nonemptyString(run?.finishedAt)
+        && run?.wakeupRequestId === null
+        && run?.processStartedAt === null)
+      && guard?.issueReadback?.checkoutRunId === null
+      && guard?.issueReadback?.executionRunId === null,
+  "synthetic public N2 handoff guard is not consumable, settled, and lock-free");
 }
 
 export function assertN2PrerequisiteEvidence(evidence, { candidateCommit, notBefore }) {
@@ -1307,6 +1348,7 @@ export function assertN2PrerequisiteEvidence(evidence, { candidateCommit, notBef
   assertCleanup(evidence);
   assertExactResults(evidence.results, N2_PREREQUISITE_RESULT_KEYS, "n2-prerequisite");
   assertN2PrerequisiteState(evidence.n2Prerequisite);
+  assertN2HandoffGuard(evidence.n2Prerequisite?.handoffGuard);
   requireProof(evidence?.launcherCleanup?.ownedRuntimeRemoved === true,
     "owned qualification runtime cleanup is not proven");
   return evidence;

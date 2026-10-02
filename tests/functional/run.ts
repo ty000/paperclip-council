@@ -118,7 +118,7 @@ for (const key of [
 ]) delete process.env[key];
 
 const requireServer = createRequire(resolve(root, "server/package.json"));
-const { eq, sql } = requireServer("drizzle-orm");
+const { eq, inArray, sql } = requireServer("drizzle-orm");
 const evidence: Record<string, any> = {
   schemaVersion: 1,
   proofId: n2PrerequisiteMode
@@ -300,6 +300,128 @@ async function createN2PrerequisiteFixtureRun(actor: string, contextIssueId: str
   });
   agentTokens.set(actor, { ...current, runId });
   return runId;
+}
+
+async function finishN2PrerequisiteFixtureRuns(runs: readonly Array<{
+  actor: string;
+  runId: string;
+  companyId: string;
+  agentId: string;
+  issueId: string;
+}>) {
+  assert.equal(runs.length, 3, "N2 prerequisite must finish exactly its three deterministic fixtures");
+  const completedAt = new Date();
+  for (const fixture of runs) {
+    const [beforeRun] = await db.select({
+      status: tables.heartbeatRuns.status,
+      wakeupRequestId: tables.heartbeatRuns.wakeupRequestId,
+      processStartedAt: tables.heartbeatRuns.processStartedAt,
+    }).from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.id, fixture.runId));
+    assert.deepEqual(beforeRun, {
+      status: "running",
+      wakeupRequestId: null,
+      processStartedAt: null,
+    }, `fixture ${fixture.runId} must remain unexecuted until its last use`);
+    const [beforeIssue] = await db.select({
+      checkoutRunId: tables.issues.checkoutRunId,
+      executionRunId: tables.issues.executionRunId,
+    }).from(tables.issues).where(eq(tables.issues.id, fixture.issueId));
+    assert(beforeIssue, `fixture issue ${fixture.issueId} must exist`);
+    assert(beforeIssue.checkoutRunId === null || beforeIssue.checkoutRunId === fixture.runId,
+      `fixture issue ${fixture.issueId} checkout belongs to another run`);
+    assert(beforeIssue.executionRunId === null || beforeIssue.executionRunId === fixture.runId,
+      `fixture issue ${fixture.issueId} execution belongs to another run`);
+
+    await db.update(tables.heartbeatRuns).set({
+      status: "succeeded",
+      finishedAt: completedAt,
+      error: null,
+      exitCode: 0,
+      usageJson: { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
+    }).where(eq(tables.heartbeatRuns.id, fixture.runId));
+    await db.update(tables.issues).set({
+      checkoutRunId: null,
+      executionRunId: null,
+      executionAgentNameKey: null,
+      executionLockedAt: null,
+      updatedAt: completedAt,
+    }).where(eq(tables.issues.id, fixture.issueId));
+    const current = agentTokens.get(fixture.actor);
+    if (current?.runId === fixture.runId) agentTokens.set(fixture.actor, { ...current, runId: "" });
+  }
+
+  const runIds = runs.map((fixture) => fixture.runId);
+  const issueIds = runs.map((fixture) => fixture.issueId);
+  const terminalRuns = await db.select({
+    id: tables.heartbeatRuns.id,
+    companyId: tables.heartbeatRuns.companyId,
+    agentId: tables.heartbeatRuns.agentId,
+    status: tables.heartbeatRuns.status,
+    finishedAt: tables.heartbeatRuns.finishedAt,
+    wakeupRequestId: tables.heartbeatRuns.wakeupRequestId,
+    processStartedAt: tables.heartbeatRuns.processStartedAt,
+  }).from(tables.heartbeatRuns).where(inArray(tables.heartbeatRuns.id, runIds));
+  const issueLocks = await db.select({
+    id: tables.issues.id,
+    status: tables.issues.status,
+    assigneeAgentId: tables.issues.assigneeAgentId,
+    checkoutRunId: tables.issues.checkoutRunId,
+    executionRunId: tables.issues.executionRunId,
+  }).from(tables.issues).where(inArray(tables.issues.id, issueIds));
+  const activeRunCount = terminalRuns.filter((run: any) => ["running", "queued", "scheduled_retry"].includes(run.status)).length;
+  const openCheckoutCount = issueLocks.filter((issue: any) => issue.checkoutRunId !== null).length;
+  const openExecutionCount = issueLocks.filter((issue: any) => issue.executionRunId !== null).length;
+  assert.equal(terminalRuns.length, 3);
+  assert(terminalRuns.every((run: any) => run.status === "succeeded" && run.finishedAt
+    && run.wakeupRequestId === null && run.processStartedAt === null));
+  return { terminalRuns, issueLocks, activeRunCount, openCheckoutCount, openExecutionCount };
+}
+
+async function completeSyntheticRun(runId: string, targetIssueId: string, agentId: string, usageUnits: number) {
+  const completedAt = new Date();
+  await db.update(tables.heartbeatRuns).set({
+    status: "succeeded",
+    startedAt: completedAt,
+    finishedAt: completedAt,
+    error: null,
+    exitCode: 0,
+    usageJson: { inputTokens: usageUnits, cachedInputTokens: 0, outputTokens: 0 },
+  }).where(eq(tables.heartbeatRuns.id, runId));
+  const [completed] = await db.select({
+    id: tables.heartbeatRuns.id,
+    status: tables.heartbeatRuns.status,
+    finishedAt: tables.heartbeatRuns.finishedAt,
+  }).from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.id, runId));
+  assert.equal(completed?.status, "succeeded", `deterministic run ${runId} must be terminal`);
+  assert(completed?.finishedAt, `deterministic run ${runId} needs a terminal timestamp`);
+  if (usageUnits > 0) {
+    await db.insert(tables.costEvents).values({
+      id: randomUUID(),
+      companyId,
+      agentId,
+      issueId: targetIssueId,
+      projectId,
+      heartbeatRunId: runId,
+      provider: "synthetic-provider-free",
+      biller: "test-fixture",
+      billingType: "test",
+      costStatus: "reported",
+      model: "deterministic-executor",
+      inputTokens: usageUnits,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      costCents: 0,
+      occurredAt: completedAt,
+    });
+  }
+}
+
+async function seedSyntheticMission(syntheticMissionId: string, aggregate: Record<string, unknown>) {
+  await db.execute(sql`
+    UPDATE ${sql.raw("plugin_private_paperclip_council_270061461e.missions")}
+    SET aggregate = ${JSON.stringify(aggregate)}::jsonb, updated_at = now()
+    WHERE company_id = ${companyId}::uuid AND mission_id = ${syntheticMissionId}::uuid
+  `);
 }
 
 async function checkoutExecutor(expectedStatus: string) {
@@ -511,23 +633,53 @@ try {
         agentTokens.set(actor, { ...identity, runId: "", agentId: identity.id });
       },
       createFixtureRun: createN2PrerequisiteFixtureRun,
+      finishFixtureRuns: finishN2PrerequisiteFixtureRuns,
     });
-    evidence.configuration.fixtureBoundary = "Three deterministic heartbeat rows are inserted by the functional harness; N1 business state uses public Paperclip APIs and fixture-only public Council commands";
+    const handoff = await runSyntheticN2({
+      request,
+      pluginId,
+      baseUrl,
+      cookie,
+      runtime,
+      companyId,
+      projectId,
+      ownerUserId: userId,
+      secretId: secret.body.id,
+      agents: {
+        lead: executorId,
+        contributorA: contributorAId,
+        contributorB: contributorBId,
+        reviewer: councilId,
+      },
+      freshRun: async (actor, targetIssueId) => freshRun(actor, targetIssueId),
+      bindActorRun: (actor, runId) => {
+        const current = agentTokens.get(actor);
+        assert(current, `unknown synthetic actor ${actor}`);
+        agentTokens.set(actor, { ...current, runId });
+      },
+      completeRun: completeSyntheticRun,
+      seedMission: seedSyntheticMission,
+      evidence,
+      stopAfterHandoff: true,
+    });
+    assert("handoffGuard" in handoff, "synthetic N2 handoff guard must stop after the public boundary");
+    evidence.configuration.fixtureBoundary = "The primary prerequisite seam inserts and terminalizes three heartbeat fixtures and clears their exact issue locks; a distinct synthetic handoff guard uses the existing N1 seed seam plus two terminal fixture rows; all business transitions use public Paperclip and installed Council APIs";
     evidence.configuration.models = "none";
     evidence.n2Prerequisite = {
       proofClass: "N2 native-stage prerequisite validated",
       ...prerequisite,
+      handoffGuard: handoff.handoffGuard,
       providerBoundary: {
         providerInvocationCount: 0,
         nativeAgentExecutionCount: 0,
-        fixtureHeartbeatRowCount: prerequisite.fixtureHeartbeatRuns.length,
+        prerequisiteFixtureHeartbeatRowCount: prerequisite.fixtureHeartbeatRuns.length,
         wakeupCount: 0,
         reviewerRunCount: prerequisite.runReadbacks.find(
           (entry: { agentId: string }) => entry.agentId === prerequisite.agents.reviewer.id,
         )?.runCount ?? -1,
-        evidence: "public heartbeat-run readback attributes one unexecuted fixture row to lead, Alpha, and Beta; reviewer readback is empty",
+        evidence: "public heartbeat-run readback attributes one terminal, unexecuted fixture row to lead, Alpha, and Beta; the primary reviewer readback is empty",
       },
-      databaseBoundary: "the functional harness inserts only three fixture heartbeat rows; mission transitions use public Paperclip and installed Council APIs",
+      databaseBoundary: "the primary prerequisite seam inserts and terminalizes exactly three heartbeat fixtures, clears only their exact issue locks, and uses public Paperclip and installed Council APIs for business transitions",
     };
     Object.assign(evidence.results, {
       n2PrerequisitePublicMission: "PASS",
@@ -537,6 +689,8 @@ try {
       n2PrerequisiteZeroExposure: "PASS",
       n2PrerequisiteZeroProviderOrNativeRuns: "PASS",
       n2PrerequisiteStopsBeforeReviewer: "PASS",
+      n2PrerequisiteFixtureLifecycleFinished: "PASS",
+      n2PrerequisiteHandoffCommandsConsumable: "PASS",
     });
     evidence.outcome = "N2 native-stage prerequisite validated";
   } else {
@@ -1759,51 +1913,8 @@ try {
       assert(current, `unknown synthetic actor ${actor}`);
       agentTokens.set(actor, { ...current, runId });
     },
-    completeRun: async (runId, targetIssueId, agentId, usageUnits) => {
-      const completedAt = new Date();
-      await db.update(tables.heartbeatRuns).set({
-        status: "succeeded",
-        startedAt: completedAt,
-        finishedAt: completedAt,
-        error: null,
-        exitCode: 0,
-        usageJson: { inputTokens: usageUnits, cachedInputTokens: 0, outputTokens: 0 },
-      }).where(eq(tables.heartbeatRuns.id, runId));
-      const [completed] = await db.select({
-        id: tables.heartbeatRuns.id,
-        status: tables.heartbeatRuns.status,
-        finishedAt: tables.heartbeatRuns.finishedAt,
-      }).from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.id, runId));
-      assert.equal(completed?.status, "succeeded", `deterministic run ${runId} must be terminal`);
-      assert(completed?.finishedAt, `deterministic run ${runId} needs a terminal timestamp`);
-      if (usageUnits > 0) {
-        await db.insert(tables.costEvents).values({
-          id: randomUUID(),
-          companyId,
-          agentId,
-          issueId: targetIssueId,
-          projectId,
-          heartbeatRunId: runId,
-          provider: "synthetic-provider-free",
-          biller: "test-fixture",
-          billingType: "test",
-          costStatus: "reported",
-          model: "deterministic-executor",
-          inputTokens: usageUnits,
-          cachedInputTokens: 0,
-          outputTokens: 0,
-          costCents: 0,
-          occurredAt: completedAt,
-        });
-      }
-    },
-    seedMission: async (syntheticMissionId, aggregate) => {
-      await db.execute(sql`
-        UPDATE ${sql.raw("plugin_private_paperclip_council_270061461e.missions")}
-        SET aggregate = ${JSON.stringify(aggregate)}::jsonb, updated_at = now()
-        WHERE company_id = ${companyId}::uuid AND mission_id = ${syntheticMissionId}::uuid
-      `);
-    },
+    completeRun: completeSyntheticRun,
+    seedMission: seedSyntheticMission,
     evidence,
   });
 
@@ -1851,6 +1962,7 @@ try {
             agentTokens.set(actor, { ...identity, runId: "", agentId: identity.id });
           },
           createFixtureRun: createN2PrerequisiteFixtureRun,
+          finishFixtureRuns: finishN2PrerequisiteFixtureRuns,
         })
       : await runLiveN1({
       request,
@@ -1883,21 +1995,21 @@ try {
           effort: agent.adapterConfig?.modelReasoningEffort ?? null,
         })),
       };
-      evidence.configuration.fixtureBoundary = "The safe-boundary suite uses fixtures; isolated N2 inserts three deterministic heartbeat fixture rows and builds N1 through public APIs without agent execution, then permits only reviewer-correction-reviewer native runs.";
+      evidence.configuration.fixtureBoundary = "The safe-boundary suite uses fixtures; isolated N2 terminalizes three deterministic heartbeat fixture rows and clears their exact issue locks after building N1 through public APIs without agent execution, then permits only reviewer-correction-reviewer native runs.";
       evidence.n2Prerequisite = {
         proofClass: "N2 native-stage prerequisite validated",
         ...live,
         providerBoundary: {
           providerInvocationCount: 0,
           nativeAgentExecutionCount: 0,
-          fixtureHeartbeatRowCount: live.fixtureHeartbeatRuns.length,
+          prerequisiteFixtureHeartbeatRowCount: live.fixtureHeartbeatRuns.length,
           wakeupCount: 0,
           reviewerRunCount: live.runReadbacks.find(
             (entry: { agentId: string }) => entry.agentId === live.agents.reviewer.id,
           )?.runCount ?? -1,
-          evidence: "public heartbeat-run readback attributes one unexecuted fixture row to lead, Alpha, and Beta before N2; reviewer readback is empty",
+          evidence: "public heartbeat-run readback attributes one terminal, unexecuted fixture row to lead, Alpha, and Beta before N2; reviewer readback is empty",
         },
-        databaseBoundary: "the functional harness inserts only three fixture heartbeat rows; mission transitions use public Paperclip and installed Council APIs",
+        databaseBoundary: "the primary prerequisite seam inserts and terminalizes exactly three heartbeat fixtures, clears only their exact issue locks, and uses public Paperclip and installed Council APIs for business transitions",
       };
       Object.assign(evidence.results, {
         n2PrerequisitePublicMission: "PASS",
@@ -1907,6 +2019,7 @@ try {
         n2PrerequisiteZeroExposure: "PASS",
         n2PrerequisiteZeroProviderOrNativeRuns: "PASS",
         n2PrerequisiteStopsBeforeReviewer: "PASS",
+        n2PrerequisiteFixtureLifecycleFinished: "PASS",
       });
     }
     let liveMission = live.mission;

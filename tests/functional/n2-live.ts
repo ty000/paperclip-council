@@ -56,6 +56,18 @@ function errorEvidence(error: unknown) {
     : { name: "UnknownError", message: String(error) };
 }
 
+export function assertProviderFreeN2HandoffReady(n1: any) {
+  if (!n1?.providerFreePrerequisite) return;
+  const lifecycle = n1?.fixtureLifecycle;
+  assert.equal(lifecycle?.activeRunCount, 0, "N2 prerequisite fixture runs still occupy an execution slot");
+  assert.equal(lifecycle?.openCheckoutCount, 0, "N2 prerequisite fixture checkout remains open");
+  assert.equal(lifecycle?.openExecutionCount, 0, "N2 prerequisite fixture execution remains open");
+  assert.equal(lifecycle?.terminalRuns?.length, 3, "N2 prerequisite must retain exactly three terminal fixture runs");
+  assert(lifecycle.terminalRuns.every((run: any) => run.status === "succeeded"
+    && run.finishedAt && run.wakeupRequestId === null && run.processStartedAt === null),
+  "N2 prerequisite fixtures must be terminal without wakeup or process execution");
+}
+
 export async function preserveN2RunBeforeBusinessAssertion(input: {
   evidence: Record<string, any>;
   run: unknown;
@@ -184,11 +196,13 @@ export async function runLiveN2(input: {
     agents: { lead: any; contributorA: any; contributorB: any; reviewer: any };
     periodKey: string;
     providerFreePrerequisite?: boolean;
+    fixtureLifecycle?: any;
   };
   runEvidence: typeof nativeRunEvidence;
   persistEvidence: () => Promise<void>;
 }) {
   const { companyId, missionId, rootIssueId, agents } = input.n1;
+  assertProviderFreeN2HandoffReady(input.n1);
   const missionPath = `/api/plugins/${input.pluginId}/api/companies/${companyId}/missions/${missionId}`;
   const admissionPath = `/api/plugins/${input.pluginId}/api/companies/${companyId}/admission`;
   const reviewerRunIds = new Set((await input.listRuns(agents.reviewer.id)).map((run) => run.id));
@@ -416,6 +430,7 @@ export async function runLiveN2(input: {
     n2ChangedV2Verified: "PASS",
     n2FreshFinalReviewAccepted: "PASS",
     [input.n1.providerFreePrerequisite ? "n2AllThreeRunsSettled" : "n2AllSixRunsSettled"]: "PASS",
+    ...(input.n1.providerFreePrerequisite ? { n2PrerequisiteHandoffCommandsConsumable: "PASS" } : {}),
   });
   return { missionPath, finalMission, finalAdmission: finalAdmission.body, n2Runs };
 }

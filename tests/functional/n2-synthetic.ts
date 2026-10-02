@@ -156,6 +156,7 @@ export async function runSyntheticN2(input: {
   completeRun: (runId: string, issueId: string, agentId: string, usageUnits: number) => Promise<void>;
   seedMission: (missionId: string, aggregate: Record<string, unknown>) => Promise<void>;
   evidence: Record<string, any>;
+  stopAfterHandoff?: boolean;
 }) {
   const candidate = await createCandidateFixture(input.runtime);
   const rosterBase = `/api/plugins/${input.pluginId}/api/companies/${input.companyId}/rosters`;
@@ -388,6 +389,13 @@ export async function runSyntheticN2(input: {
   assert.equal(admission.status, 200, JSON.stringify(admission.body));
 
   const missionPath = `${missionBase}/${missionId}`;
+  let handoffReviewerRuntime: any = null;
+  if (input.stopAfterHandoff) {
+    const reviewerRuntime = await input.request("human", "GET", `/api/agents/${input.agents.reviewer}`);
+    assert.equal(reviewerRuntime.status, 200, JSON.stringify(reviewerRuntime.body));
+    assert.equal(reviewerRuntime.body.runtimeConfig?.heartbeat?.wakeOnDemand, false);
+    handoffReviewerRuntime = reviewerRuntime.body.runtimeConfig?.heartbeat;
+  }
   const beforeReview = await inspectMission(input.request, missionPath, input.companyId);
   const initialSubmissionId = randomUUID();
   const started = await input.request("human", "POST", `${missionPath}/commands`, {
@@ -439,6 +447,64 @@ export async function runSyntheticN2(input: {
   assert.equal(reviewingInspection1.status, 200, JSON.stringify(reviewingInspection1.body));
   assert.equal(reviewingInspection1.body.n2.status, "reviewing");
   assert.equal(reviewingInspection1.body.n2.review.handoff.reviewerRunId, reviewerRun1);
+  if (input.stopAfterHandoff) {
+    await input.completeRun(reviewerRun1, rootIssueId, input.agents.reviewer, 1);
+    await settleUsage({
+      request: input.request, missionPath, admissionPath, companyId: input.companyId,
+      periodKey: profile.periodKey, target: "review", round: 1,
+    });
+    const finalMission = await inspectMission(input.request, missionPath, input.companyId);
+    const finalAdmission = await input.request(
+      "human",
+      "GET",
+      `${admissionPath}?companyId=${input.companyId}&periodKey=${encodeURIComponent(profile.periodKey)}`,
+    );
+    assert.equal(finalAdmission.status, 200, JSON.stringify(finalAdmission.body));
+    const fixtureRuns = await Promise.all([input.agents.lead, input.agents.reviewer].map(async (agentId) => {
+      const readback = await input.request(
+        "human", "GET", `/api/companies/${input.companyId}/heartbeat-runs?agentId=${encodeURIComponent(agentId)}&limit=1000&summary=1`,
+      );
+      assert.equal(readback.status, 200, JSON.stringify(readback.body));
+      return { agentId, runs: readback.body };
+    }));
+    const guardRunIds = new Set([leadRunId, reviewerRun1]);
+    const guardRuns = fixtureRuns.flatMap((entry) => entry.runs)
+      .filter((run: any) => guardRunIds.has(run.id));
+    assert(fixtureRuns.every((entry) => entry.runs.length === 1), JSON.stringify(fixtureRuns));
+    assert.equal(guardRuns.length, 2, JSON.stringify(fixtureRuns));
+    assert(guardRuns.every((run: any) => run.status === "succeeded" && run.finishedAt
+      && run.wakeupRequestId === null && run.processStartedAt === null));
+    const issueReadback = await input.request("human", "GET", `/api/issues/${rootIssueId}`);
+    assert.equal(issueReadback.status, 200, JSON.stringify(issueReadback.body));
+    assert.equal(issueReadback.body.checkoutRunId, null);
+    assert.equal(issueReadback.body.executionRunId, null);
+    assert.equal(finalMission.n2.status, "reviewing");
+    assert.equal(finalMission.n2.review.handoff.reviewerRunId, reviewerRun1);
+    assert.equal(finalAdmission.body.envelope.reservations.length, 1);
+    assert.equal(finalAdmission.body.envelope.reservations[0].status, "settled");
+    assert.equal(finalAdmission.body.envelope.reservations[0].remainingExposure.units, 0);
+    const handoffGuard = {
+      proofClass: "synthetic-provider-free-n2-handoff-guard",
+      fixtureBoundary: "distinct ephemeral fixture; no provider, process, or native reviewer execution",
+      reviewerHeartbeatConfiguration: handoffReviewerRuntime,
+      wakeupCount: 0,
+      processCount: 0,
+      publicCommands: ["start-review", "PATCH /api/issues/:id", "inspect", "confirm-review-handoff", "settle-n2-usage"],
+      startReviewOutcome: started.body.outcome,
+      nativeTransition: started.body.nativeTransition,
+      operatorTransitionStatus: transitioned1.status,
+      missionId,
+      rootIssueId,
+      submissionId: initialSubmissionId,
+      reviewerFixtureRunId: reviewerRun1,
+      mission: finalMission,
+      admission: finalAdmission.body,
+      issueReadback: issueReadback.body,
+      fixtureRuns: guardRuns,
+    };
+    input.evidence.n2HandoffGuard = handoffGuard;
+    return { missionId, rootIssueId, missionPath, finalMission, handoffGuard };
+  }
   const correctionOperationId = randomUUID();
   const correctionDecision = await input.request("council", "POST", `/api/plugins/${input.pluginId}/api/issues/${rootIssueId}/decision`, {
     operationId: correctionOperationId,

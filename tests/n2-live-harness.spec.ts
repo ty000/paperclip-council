@@ -1,7 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { preserveN2RunBeforeBusinessAssertion } from "./functional/n2-live.js";
+import { assertProviderFreeN2HandoffReady, preserveN2RunBeforeBusinessAssertion } from "./functional/n2-live.js";
 
 describe("N2 live evidence preservation", () => {
+  it("admits the provider-free handoff only after every fixture is terminal and lock-free", () => {
+    const terminalRuns = ["lead", "alpha", "beta"].map((id) => ({
+      id,
+      status: "succeeded",
+      finishedAt: "2026-10-02T00:00:00.000Z",
+      wakeupRequestId: null,
+      processStartedAt: null,
+    }));
+    expect(() => assertProviderFreeN2HandoffReady({
+      providerFreePrerequisite: true,
+      fixtureLifecycle: {
+        activeRunCount: 0,
+        openCheckoutCount: 0,
+        openExecutionCount: 0,
+        terminalRuns,
+      },
+    })).not.toThrow();
+    expect(() => assertProviderFreeN2HandoffReady({
+      providerFreePrerequisite: true,
+      fixtureLifecycle: {
+        activeRunCount: 1,
+        openCheckoutCount: 1,
+        openExecutionCount: 1,
+        terminalRuns: [{ ...terminalRuns[0], status: "running", finishedAt: null }],
+      },
+    })).toThrow(/occupy an execution slot/);
+  });
+
   it("keeps a terminal reviewer proof and attempts settlement before surfacing a missing verdict", async () => {
     const events: string[] = [];
     const evidence: Record<string, any> = { runs: [], settlements: [] };

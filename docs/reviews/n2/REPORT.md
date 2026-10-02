@@ -103,6 +103,19 @@ approval run; six settled reservations; accepted restart readback; and the
 commit-qualified installed UI PNG. The launcher is implementation, not proof
 that such a provider campaign has succeeded.
 
+The provider-free isolated prerequisite now finishes its three explicitly
+labelled heartbeat fixtures only after both contributions, candidate publication
+and all three N1 settlements. The ephemeral harness marks those exact rows
+terminal, clears only their matching issue checkout/execution locks, and reads
+back zero active slots, zero open locks and zero remaining exposure while the
+primary mission stays at `ready_for_review` with no N2 state. A distinct
+synthetic guard uses the pre-existing N1 seed seam and two terminal fixture rows
+to exercise the same public `start-review` → prepared transition, authenticated
+operator PATCH, reviewer handoff confirmation and usage settlement. Wakeups are
+disabled and no provider or agent process runs. This proves a consumable
+provider-free handoff boundary; it does not prove a native reviewer, correction,
+V2, approval or LIVE qualification.
+
 ## Authorized campaign observation — `cbcb22c`
 
 One campaign was explicitly authorized and executed on exact clean published

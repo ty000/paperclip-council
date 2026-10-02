@@ -97,7 +97,7 @@ function n2PrerequisiteEvidence() {
     ...entry,
     runId: `50000000-0000-4000-8000-00000000000${index + 1}`,
     companyId,
-    status: "running",
+    createdStatus: "running",
     fixtureSource: "fixture:n2-prerequisite:deterministic-heartbeat",
   }));
   const runReadbacks = fixtureHeartbeatRuns.map((fixture) => ({
@@ -108,7 +108,8 @@ function n2PrerequisiteEvidence() {
       id: fixture.runId,
       companyId,
       agentId: fixture.agentId,
-      status: "running",
+      status: "succeeded",
+      finishedAt: "2026-10-02T10:00:30.000Z",
       invocationSource: "on_demand",
       triggerDetail: fixture.fixtureSource,
       issueId: fixture.issueId,
@@ -155,13 +156,56 @@ function n2PrerequisiteEvidence() {
       providerBoundary: {
         providerInvocationCount: 0,
         nativeAgentExecutionCount: 0,
-        fixtureHeartbeatRowCount: 3,
+        prerequisiteFixtureHeartbeatRowCount: 3,
         wakeupCount: 0,
         reviewerRunCount: 0,
       },
       fixtureHeartbeatRuns,
+      fixtureLifecycle: {
+        fixtureSource: "fixture:n2-prerequisite:deterministic-heartbeat",
+        completedAfter: "both contributions, candidate publication, and all three N1 reservation settlements",
+        terminalRuns: fixtureHeartbeatRuns.map((fixture) => ({
+          id: fixture.runId,
+          status: "succeeded",
+          finishedAt: "2026-10-02T10:00:30.000Z",
+          wakeupRequestId: null,
+          processStartedAt: null,
+        })),
+        issueLocks: fixtureHeartbeatRuns.map((fixture, index) => ({
+          id: fixture.issueId,
+          status: index === 0 ? "in_progress" : "done",
+          checkoutRunId: null,
+          executionRunId: null,
+        })),
+        activeRunCount: 0,
+        openCheckoutCount: 0,
+        openExecutionCount: 0,
+      },
+      handoffGuard: {
+        proofClass: "synthetic-provider-free-n2-handoff-guard",
+        fixtureBoundary: "distinct ephemeral fixture; no provider, process, or native reviewer execution",
+        reviewerHeartbeatConfiguration: { wakeOnDemand: false },
+        wakeupCount: 0,
+        processCount: 0,
+        publicCommands: ["start-review", "PATCH /api/issues/:id", "inspect", "confirm-review-handoff", "settle-n2-usage"],
+        startReviewOutcome: "prepared",
+        operatorTransitionStatus: 200,
+        mission: { n2: { status: "reviewing" } },
+        admission: { envelope: { reservations: [{
+          status: "settled",
+          remainingExposure: { status: "known", units: 0 },
+        }] } },
+        fixtureRuns: ["lead", "reviewer"].map((id) => ({
+          id,
+          status: "succeeded",
+          finishedAt: "2026-10-02T10:00:45.000Z",
+          wakeupRequestId: null,
+          processStartedAt: null,
+        })),
+        issueReadback: { checkoutRunId: null, executionRunId: null },
+      },
       runReadbacks,
-      databaseBoundary: "the functional harness inserts only three fixture heartbeat rows; mission transitions use public Paperclip and installed Council APIs",
+      databaseBoundary: "the primary prerequisite seam inserts and terminalizes exactly three heartbeat fixtures, clears only their exact issue locks, and uses public Paperclip and installed Council APIs for business transitions",
       stopBoundary: "ready_for_review; N2 state absent; reviewer not started",
     },
   };
@@ -462,7 +506,7 @@ function isolatedN2QualificationEvidence(): any {
     "n2RestartReadback",
     "n2InstalledBrowserObservableState",
   ].map((key) => [key, "PASS"]));
-  evidence.configuration.fixtureBoundary = "The safe-boundary suite uses fixtures; isolated N2 inserts three deterministic heartbeat fixture rows and builds N1 through public APIs without agent execution, then permits only reviewer-correction-reviewer native runs.";
+  evidence.configuration.fixtureBoundary = "The safe-boundary suite uses fixtures; isolated N2 terminalizes three deterministic heartbeat fixture rows and clears their exact issue locks after building N1 through public APIs without agent execution, then permits only reviewer-correction-reviewer native runs.";
   const verifiedCandidate = liveN1.mission.mission.aggregate.n1.candidate;
   const prerequisiteFixture = n2PrerequisiteEvidence().n2Prerequisite;
   evidence.configuration.models.observedAgentConfiguration = [
@@ -485,6 +529,8 @@ function isolatedN2QualificationEvidence(): any {
     agents: prerequisiteFixture.agents,
     providerBoundary: prerequisiteFixture.providerBoundary,
     fixtureHeartbeatRuns: prerequisiteFixture.fixtureHeartbeatRuns,
+    fixtureLifecycle: prerequisiteFixture.fixtureLifecycle,
+    handoffGuard: prerequisiteFixture.handoffGuard,
     runReadbacks: prerequisiteFixture.runReadbacks,
     databaseBoundary: prerequisiteFixture.databaseBoundary,
     stopBoundary: "ready_for_review; N2 state absent; reviewer not started",
@@ -508,6 +554,14 @@ describe("bounded qualification launcher", () => {
     const withExecution = structuredClone(evidence);
     withExecution.n2Prerequisite.providerBoundary.nativeAgentExecutionCount = 1;
     expect(() => assertN2PrerequisiteEvidence(withExecution, options)).toThrow(/zero provider, wakeup, reviewer, and native-agent execution/);
+
+    const withOccupiedSlot = structuredClone(evidence);
+    withOccupiedSlot.n2Prerequisite.fixtureLifecycle.activeRunCount = 1;
+    expect(() => assertN2PrerequisiteEvidence(withOccupiedSlot, options)).toThrow(/terminal and lock-free/);
+
+    const withoutPublicHandoff = structuredClone(evidence);
+    withoutPublicHandoff.n2Prerequisite.handoffGuard.startReviewOutcome = "refused";
+    expect(() => assertN2PrerequisiteEvidence(withoutPublicHandoff, options)).toThrow(/handoff guard is not consumable/);
 
     const withoutFixtureBinding = structuredClone(evidence);
     withoutFixtureBinding.n2Prerequisite.runReadbacks[0].runs[0].issueId = "wrong-issue";

@@ -9,6 +9,15 @@ type ApiResult = { status: number; body: any; headers: Headers };
 type ApiRequest = (actor: string, method: string, path: string, body?: unknown) => Promise<ApiResult>;
 
 type AgentIdentity = { id: string; companyId: string; token: string; keyId: string };
+type FixtureHeartbeatRun = {
+  actor: string;
+  runId: string;
+  companyId: string;
+  agentId: string;
+  issueId: string;
+  createdStatus: "running";
+  fixtureSource: "fixture:n2-prerequisite:deterministic-heartbeat";
+};
 type LiveN2Profile = {
   model: string;
   effort: string;
@@ -133,6 +142,13 @@ export async function prepareN2Prerequisite(input: {
   liveN2Profile?: LiveN2Profile;
   registerActor: (actor: string, identity: AgentIdentity) => void;
   createFixtureRun: (actor: string, issueId: string) => Promise<string>;
+  finishFixtureRuns: (runs: readonly FixtureHeartbeatRun[]) => Promise<{
+    terminalRuns: Array<Record<string, unknown>>;
+    issueLocks: Array<Record<string, unknown>>;
+    activeRunCount: number;
+    openCheckoutCount: number;
+    openExecutionCount: number;
+  }>;
 }) {
   const candidate = await createCandidate(input.runtime);
   const company = await input.request("human", "POST", "/api/companies", {
@@ -358,15 +374,7 @@ export async function prepareN2Prerequisite(input: {
   const rootStarted = await input.request("human", "PATCH", `/api/issues/${rootIssueId}`, { status: "in_progress" });
   assert.equal(rootStarted.status, 200, JSON.stringify(rootStarted.body));
 
-  const fixtureHeartbeatRuns: Array<{
-    actor: string;
-    runId: string;
-    companyId: string;
-    agentId: string;
-    issueId: string;
-    status: "running";
-    fixtureSource: "fixture:n2-prerequisite:deterministic-heartbeat";
-  }> = [];
+  const fixtureHeartbeatRuns: FixtureHeartbeatRun[] = [];
   const leadRunId = await input.createFixtureRun("n2-prerequisite-lead", rootIssueId);
   fixtureHeartbeatRuns.push({
     actor: "n2-prerequisite-lead",
@@ -374,7 +382,7 @@ export async function prepareN2Prerequisite(input: {
     companyId,
     agentId: lead.id,
     issueId: rootIssueId,
-    status: "running",
+    createdStatus: "running",
     fixtureSource: "fixture:n2-prerequisite:deterministic-heartbeat",
   });
   const leadCheckout = await input.request("n2-prerequisite-lead", "POST", `/api/issues/${rootIssueId}/checkout`, {
@@ -456,7 +464,7 @@ export async function prepareN2Prerequisite(input: {
       companyId,
       agentId: contribution.agent.id,
       issueId: contribution.childIssueId,
-      status: "running",
+      createdStatus: "running",
       fixtureSource: "fixture:n2-prerequisite:deterministic-heartbeat",
     });
     const checkout = await input.request(contribution.actor, "POST", `/api/issues/${contribution.childIssueId}/checkout`, {
@@ -514,6 +522,10 @@ export async function prepareN2Prerequisite(input: {
   assert.equal(published.status, 200, JSON.stringify(published.body));
   assert.equal(published.body.mission.aggregate.phase, "ready_for_review");
   await settleReservation(rootReservationId);
+  const fixtureLifecycle = await input.finishFixtureRuns(fixtureHeartbeatRuns);
+  assert.equal(fixtureLifecycle.activeRunCount, 0);
+  assert.equal(fixtureLifecycle.openCheckoutCount, 0);
+  assert.equal(fixtureLifecycle.openExecutionCount, 0);
 
   const finalMission = await input.request("human", "GET", `${missionPath}?companyId=${companyId}`);
   const finalAdmission = await input.request("human", "GET", `${admissionPath}?companyId=${companyId}&periodKey=${encodeURIComponent(periodKey)}`);
@@ -555,7 +567,8 @@ export async function prepareN2Prerequisite(input: {
     assert.equal(run.id, expected.runId);
     assert.equal(run.companyId, expected.companyId);
     assert.equal(run.agentId, expected.agentId);
-    assert.equal(run.status, expected.status);
+    assert.equal(run.status, "succeeded");
+    assert(run.finishedAt, `fixture heartbeat ${run.id} needs a terminal timestamp`);
     assert.equal(run.invocationSource, "on_demand");
     assert.equal(run.triggerDetail, expected.fixtureSource);
     assert.equal(run.contextSnapshot?.issueId, expected.issueId);
@@ -570,6 +583,7 @@ export async function prepareN2Prerequisite(input: {
         companyId: run.companyId,
         agentId: run.agentId,
         status: run.status,
+        finishedAt: run.finishedAt,
         invocationSource: run.invocationSource,
         triggerDetail: run.triggerDetail,
         issueId: run.contextSnapshot?.issueId,
@@ -603,6 +617,11 @@ export async function prepareN2Prerequisite(input: {
     mission: finalMission.body,
     admission: finalAdmission.body,
     fixtureHeartbeatRuns,
+    fixtureLifecycle: {
+      fixtureSource: "fixture:n2-prerequisite:deterministic-heartbeat",
+      completedAfter: "both contributions, candidate publication, and all three N1 reservation settlements",
+      ...fixtureLifecycle,
+    },
     runReadbacks,
     stopBoundary: "ready_for_review; N2 state absent; reviewer not started",
   };

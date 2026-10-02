@@ -28,7 +28,7 @@ function proofManifest({ candidateCommit, evidencePath, evidenceSha256, proofPat
     proof_id: `paperclip-council-n2-native-stage-prerequisite-v1:${candidateCommit}`,
     subject: `Provider-free isolated N2 prerequisite on Council candidate ${candidateCommit}`,
     status: "pass",
-    summary: "Three deterministic heartbeat rows prepared checkout identities; public Paperclip APIs and fixture-confined public Council commands produced a verified two-contribution N1 candidate at ready_for_review with every reservation settled, zero exposure, and no provider or agent execution.",
+    summary: "Three deterministic heartbeat fixtures prepared checkout identities, then became terminal and released their exact issue locks after publication and settlement. Public commands produced a verified two-contribution N1 candidate at ready_for_review, while a distinct synthetic guard proved the N2 prepared/operator handoff with settled exposure and no provider or agent process.",
     categories: ["functional", "compliance", "operations"],
     evidence: [
       {
@@ -37,7 +37,7 @@ function proofManifest({ candidateCommit, evidencePath, evidenceSha256, proofPat
         kind: "runtime-observation",
         location: artifactLocation(evidencePath),
         replayable: true,
-        notes: `Candidate-bound JSON sha256=${evidenceSha256}; inspect the mission, candidate, reservations, run readbacks, stop boundary, and cleanup fields.`,
+        notes: `Candidate-bound JSON sha256=${evidenceSha256}; inspect the primary mission, candidate, reservations, terminal fixture lifecycle, lock readbacks, distinct synthetic handoff guard, stop boundary, and cleanup fields.`,
       },
       {
         id: "owned-runtime-cleanup",
@@ -53,7 +53,7 @@ function proofManifest({ candidateCommit, evidencePath, evidenceSha256, proofPat
         kind: "runtime-observation",
         location: artifactLocation(evidencePath),
         replayable: true,
-        notes: "The evidence records three unexecuted heartbeat fixture rows for lead, Alpha, and Beta, an empty reviewer readback, zero wakeups and provider invocations, and no direct business-state mutation.",
+        notes: "The primary prerequisite seam records and terminalizes three unexecuted heartbeat fixtures and clears only their exact issue locks. The distinct non-native guard uses the existing synthetic N1 seed seam plus two terminal fixture rows; its N2 business transitions use public commands with wakeups disabled and zero remaining exposure.",
       },
     ],
     replay: {
@@ -65,7 +65,7 @@ function proofManifest({ candidateCommit, evidencePath, evidenceSha256, proofPat
       steps: [
         "corepack pnpm qualification:preflight:n2",
         `sha256sum ${artifactLocation(evidencePath)}`,
-        `python3 /home/davy-lp/.codex/plugins/cache/home-local/proof-gates/0.1.1/skills/proofGateReplayable/scripts/proof_manifest_check.py ${artifactLocation(proofPath)}`,
+        `python3 /home/davy-lp/.codex/plugins/cache/home-local/proof-gates/0.1.1/skills/proofGateReplayable/scripts/proof_manifest_check.py --manifest ${artifactLocation(proofPath)}`,
       ],
       expected_artifacts: [
         `${artifactLocation(evidencePath)} with sha256 ${evidenceSha256}`,
