@@ -161,11 +161,12 @@ export function leadInstructions(): string {
   ].join("\n");
 }
 
-export function n2LeadInstructions(): string {
+export function n2LeadInstructions(missionId: string): string {
+  assert.match(missionId, /^[0-9a-f-]{36}$/i, "N2 lead instructions require the exact mission ID");
   return [
     "You are the Council N2 Integration Lead. This root issue has two mutually exclusive phases.",
     "If the current issue execution state says lastDecisionOutcome=changes_requested, execute only the correction phase below. Otherwise execute the N1 integration procedure that follows.",
-    "Correction phase: POST /api/plugins/private.paperclip-council/api/issues/$PAPERCLIP_TASK_ID/council/commands with Authorization: Bearer $PAPERCLIP_API_KEY, x-paperclip-run-id: $PAPERCLIP_RUN_ID, and JSON body {\"command\":\"inspect\",\"missionId\":\"<mission-id>\"}. If the native wake has started before its returned run ID is persisted, repeat only this readback after two seconds, at most 30 times; this is not a model retry. Require HTTP 200, the exact missionId, n2.status=correcting, and n2.correction.runId=$PAPERCLIP_RUN_ID before any write. Read the immutable V1 base and candidate commits from the active N2 submission. In this phase only, these correction instructions replace the N1 rule that the lead does not author contribution-file changes.",
+    `Correction phase: POST /api/plugins/private.paperclip-council/api/issues/$PAPERCLIP_TASK_ID/council/commands with Authorization: Bearer $PAPERCLIP_API_KEY, x-paperclip-run-id: $PAPERCLIP_RUN_ID, and exact JSON body {"command":"inspect","missionId":"${missionId}"}. PAPERCLIP_TASK_ID is the root issue ID, never the mission ID. If the native wake has started before its returned run ID is persisted, repeat only this readback after two seconds, at most 30 times; this is not a model retry. Require HTTP 200, missionId=${missionId}, n2.status=correcting, and n2.correction.runId=$PAPERCLIP_RUN_ID before any write. Read the immutable V1 base and candidate commits from the active N2 submission. In this phase only, these correction instructions replace the N1 rule that the lead does not author contribution-file changes.`,
     "Create a replacement V2 integration commit directly on the parent of V1, not on top of V1: git switch -C n2-correction <V1-candidate>^. Change only alpha.txt to exactly 'alpha contribution corrected after independent review' plus a trailing newline, then commit it. The V2 commit must be distinct and its complete base delta must still consist only of alpha.txt and beta.txt.",
     "Create refs/heads/base at the immutable base and refs/heads/candidate at V2, create and verify a self-contained Git bundle, upload it to the root issue, and compute the exact SHA-256.",
     "POST the same inspect command again for the latest version, then POST command=prepare-resubmission with missionId, fresh commandId and submissionId, expectedVersion, attachmentId, baseCommit, candidateCommit, expectedSha256, and correctedPaths=['alpha.txt']. Require HTTP 200, then inspect once more and require n2.status=resubmission_prepared with the same correction run.",
@@ -173,15 +174,16 @@ export function n2LeadInstructions(): string {
     "Do not PATCH the issue status, start another review, settle usage, or wake another agent. Those effects occur only after this correction run is terminal and its usage is settled by the owner command path.",
     "On any mismatch or non-2xx response, stop without retrying a model run or changing native status.",
     "",
-    leadInstructions(),
+    leadInstructions().replaceAll("<mission-id>", missionId),
   ].join("\n");
 }
 
-export function n2ReviewerInstructions(): string {
+export function n2ReviewerInstructions(missionId: string): string {
+  assert.match(missionId, /^[0-9a-f-]{36}$/i, "N2 reviewer instructions require the exact mission ID");
   return [
     "You are the independent Council N2 final reviewer. You never edit the candidate.",
     "Use PAPERCLIP_API_URL, PAPERCLIP_API_KEY and PAPERCLIP_RUN_ID. Normalize a trailing /api and never print credentials.",
-    "POST /api/plugins/private.paperclip-council/api/issues/$PAPERCLIP_TASK_ID/council/commands with Authorization: Bearer $PAPERCLIP_API_KEY, x-paperclip-run-id: $PAPERCLIP_RUN_ID, and JSON body {\"command\":\"inspect\",\"missionId\":\"<mission-id>\"}. Require HTTP 200, the exact missionId, n2.status=review_handoff, and the active submission. Use the returned version to POST confirm-review-handoff with a fresh commandId. Require HTTP 200, then inspect again and require n2.status=reviewing, the exact reviewer run, active submission, and round.",
+    `POST /api/plugins/private.paperclip-council/api/issues/$PAPERCLIP_TASK_ID/council/commands with Authorization: Bearer $PAPERCLIP_API_KEY, x-paperclip-run-id: $PAPERCLIP_RUN_ID, and exact JSON body {"command":"inspect","missionId":"${missionId}"}. PAPERCLIP_TASK_ID is the root issue ID, never the mission ID. Require HTTP 200, missionId=${missionId}, n2.status=review_handoff, and the active submission. Use the returned version to POST confirm-review-handoff with a fresh commandId and the same missionId. Require HTTP 200, then inspect again and require n2.status=reviewing, the exact reviewer run, active submission, and round.`,
     "For round 1, require submission ordinal 1 and verify alpha.txt still contains exactly 'alpha contribution'. POST once to /api/plugins/<plugin-id>/api/issues/<root-issue-id>/decision with companyId, issueId, actorAgentId, runId, verdict=changes_requested, a fresh stable operationId and correctionReservationId, resultReference=council:n2:submission:<active-submission-id>, and justification='alpha.txt must contain the independently reviewed correction marker'. Use your exact agent and run identities. Require the native response to return the issue to the Integration Lead. Stop; do not wake the lead yourself.",
     "For round 2, require submission ordinal 2, predecessor identity equal to V1, and alpha.txt exactly 'alpha contribution corrected after independent review'. Require git rev-parse HEAD to equal the active candidateCommit. POST once to the same decision endpoint with companyId, issueId, actorAgentId, runId, verdict=approved, a fresh stable operationId, approvedCommit equal to that candidate, the exact resultReference, and justification='V2 contains the requested bounded correction'. Require native observed acceptance.",
     uuidGenerationPolicy("commandId, operationId, and correctionReservationId"),
@@ -373,6 +375,7 @@ export async function runLiveN1(input: {
   });
   assert.equal(company.status, 201, JSON.stringify(company.body));
   const companyId = company.body.id as string;
+  const missionId = randomUUID();
 
   const createAgent = async (name: string, role: string, instructions: string, needsGit = false) => {
     const created = await input.request("human", "POST", `/api/companies/${companyId}/agents`, {
@@ -397,11 +400,11 @@ export async function runLiveN1(input: {
     return created.body;
   };
 
-  const lead = await createAgent("N1 Integration Lead", "engineer", campaign === "n2" ? n2LeadInstructions() : leadInstructions(), true);
+  const lead = await createAgent("N1 Integration Lead", "engineer", campaign === "n2" ? n2LeadInstructions(missionId) : leadInstructions(), true);
   const contributorA = await createAgent("N1 Contributor Alpha", "engineer", contributorInstructions(), true);
   const contributorB = await createAgent("N1 Contributor Beta", "engineer", contributorInstructions(), true);
   const reviewer = await createAgent("N1 Independent Reviewer", "qa", campaign === "n2"
-    ? n2ReviewerInstructions()
+    ? n2ReviewerInstructions(missionId)
     : [
       "You are reserved for the later independent Council review. N1 must stop before waking you.",
       "",
@@ -553,7 +556,6 @@ export async function runLiveN1(input: {
     assigneeAgentId: lead.id,
   });
   assert.equal(root.status, 201, JSON.stringify(root.body));
-  const missionId = randomUUID();
   const contributionAId = randomUUID();
   const contributionBId = randomUUID();
   const missionBase = `/api/plugins/${input.pluginId}/api/companies/${companyId}/missions`;

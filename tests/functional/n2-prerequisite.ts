@@ -18,7 +18,7 @@ type FixtureHeartbeatRun = {
   agentId: string;
   issueId: string;
   createdStatus: "running";
-  fixtureSource: "fixture:n2-prerequisite:deterministic-heartbeat";
+  fixtureSource: "fixture:n2-prerequisite:deterministic-heartbeat" | "fixture:n2-handoff-guard:deterministic-reviewer";
 };
 type LiveN2Profile = {
   model: string;
@@ -188,7 +188,9 @@ async function prepareNativeN2Admission(input: {
 
 async function exercisePreparedN2Handoff(input: {
   request: ApiRequest;
+  pluginId: string;
   companyId: string;
+  missionId: string;
   missionPath: string;
   admissionPath: string;
   rootIssueId: string;
@@ -197,13 +199,23 @@ async function exercisePreparedN2Handoff(input: {
   missionVersion: number;
   nativeProfile: NativeG4Profile;
   candidate: { sha256: string; candidateCommit: string };
+  createFixtureRun: (actor: string, issueId: string, fixtureSource?: FixtureHeartbeatRun["fixtureSource"]) => Promise<string>;
+  finishFixtureRuns: (runs: readonly FixtureHeartbeatRun[]) => Promise<{
+    terminalRuns: Array<Record<string, unknown>>;
+    issueLocks: Array<Record<string, unknown>>;
+    activeRunCount: number;
+    openCheckoutCount: number;
+    openExecutionCount: number;
+  }>;
 }) {
   const reviewerBefore = await input.request("human", "GET", `/api/agents/${input.reviewerId}`);
   assert.equal(reviewerBefore.status, 200, JSON.stringify(reviewerBefore.body));
   assert.equal(reviewerBefore.body.runtimeConfig?.heartbeat?.wakeOnDemand, false);
-  await configureNativeN2ReviewEntry({
+  const reviewEntry = await configureNativeN2ReviewEntry({
     request: input.request,
+    pluginId: input.pluginId,
     rootIssueId: input.rootIssueId,
+    missionId: input.missionId,
     leadId: input.leadId,
     reviewerId: input.reviewerId,
   });
@@ -225,6 +237,44 @@ async function exercisePreparedN2Handoff(input: {
   const transitioned = await input.request("human", "PATCH", `/api/issues/${input.rootIssueId}`, { status: "in_review" });
   assert.equal(transitioned.status, 200, JSON.stringify(transitioned.body));
   assert.equal(transitioned.body.assigneeAgentId, input.reviewerId);
+  const reviewerFixtureSource = "fixture:n2-handoff-guard:deterministic-reviewer" as const;
+  const reviewerFixtureRunId = await input.createFixtureRun(
+    "n2-prerequisite-reviewer", input.rootIssueId, reviewerFixtureSource,
+  );
+  const reviewerCommandPath = reviewEntry.wakeContext.councilCommandRoute;
+  const inspected = await input.request("n2-prerequisite-reviewer", "POST", reviewerCommandPath, {
+    command: "inspect",
+    missionId: input.missionId,
+  });
+  assert.equal(inspected.status, 200, JSON.stringify(inspected.body));
+  assert.equal(inspected.body.missionId, input.missionId);
+  assert.equal(inspected.body.n2.status, "review_handoff");
+  const confirmed = await input.request("n2-prerequisite-reviewer", "POST", reviewerCommandPath, {
+    command: "confirm-review-handoff",
+    missionId: input.missionId,
+    commandId: randomUUID(),
+    expectedVersion: inspected.body.version,
+  });
+  assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body));
+  const reviewing = await input.request("n2-prerequisite-reviewer", "POST", reviewerCommandPath, {
+    command: "inspect",
+    missionId: input.missionId,
+  });
+  assert.equal(reviewing.status, 200, JSON.stringify(reviewing.body));
+  assert.equal(reviewing.body.n2.status, "reviewing");
+  assert.equal(reviewing.body.n2.review.handoff.reviewerRunId, reviewerFixtureRunId);
+  const reviewerFixtureLifecycle = await input.finishFixtureRuns([{
+    actor: "n2-prerequisite-reviewer",
+    runId: reviewerFixtureRunId,
+    companyId: input.companyId,
+    agentId: input.reviewerId,
+    issueId: input.rootIssueId,
+    createdStatus: "running",
+    fixtureSource: reviewerFixtureSource,
+  }]);
+  assert.equal(reviewerFixtureLifecycle.activeRunCount, 0);
+  assert.equal(reviewerFixtureLifecycle.openCheckoutCount, 0);
+  assert.equal(reviewerFixtureLifecycle.openExecutionCount, 0);
   const mission = await input.request("human", "GET", `${input.missionPath}?companyId=${input.companyId}`);
   const admission = await input.request(
     "human",
@@ -239,7 +289,8 @@ async function exercisePreparedN2Handoff(input: {
   assert.equal(admission.status, 200, JSON.stringify(admission.body));
   assert.equal(reviewerRuns.status, 200, JSON.stringify(reviewerRuns.body));
   assert.equal(issue.status, 200, JSON.stringify(issue.body));
-  assert.equal(mission.body.n2.status, "review_handoff");
+  assert.equal(mission.body.n2.status, "reviewing");
+  assert.equal(mission.body.n2.review.handoff.reviewerRunId, reviewerFixtureRunId);
   assert.equal(mission.body.n2.submission.submissionId, submissionId);
   assert.equal(mission.body.n2.submission.sha256, input.candidate.sha256);
   assert.equal(mission.body.n2.submission.candidateCommit, input.candidate.candidateCommit);
@@ -255,16 +306,29 @@ async function exercisePreparedN2Handoff(input: {
     admission.body.envelope.availablePeriodUnits,
     input.nativeProfile.periodAllowanceUnits - input.nativeProfile.runReservationUnits,
   );
-  assert.deepEqual(reviewerRuns.body, []);
+  assert.equal(reviewerRuns.body.length, 1, JSON.stringify(reviewerRuns.body));
+  assert.equal(reviewerRuns.body[0].id, reviewerFixtureRunId);
+  assert.equal(reviewerRuns.body[0].status, "succeeded");
+  assert.equal(reviewerRuns.body[0].triggerDetail, reviewerFixtureSource);
+  assert.equal(reviewerRuns.body[0].wakeupRequestId, null);
+  assert.equal(reviewerRuns.body[0].processStartedAt, null);
   assert.equal(issue.body.checkoutRunId, null);
   assert.equal(issue.body.executionRunId, null);
+  assert.equal(reviewEntry.wakeContext.missionId, input.missionId);
+  assert.equal(reviewEntry.wakeContext.rootIssueId, input.rootIssueId);
+  assert.notEqual(reviewEntry.wakeContext.missionId, reviewEntry.wakeContext.rootIssueId);
+  assert(issue.body.description.includes(`Mission ID: ${input.missionId}`));
+  assert(issue.body.description.includes(`Council command route: ${reviewerCommandPath}`));
   return {
     proofClass: "provider-free-native-n2-handoff-guard",
-    fixtureBoundary: "same prepared mission and candidate; native N2 reservation only; no reviewer run, wakeup, or process",
+    fixtureBoundary: "same prepared mission and candidate; one labelled reviewer fixture confirms the public handoff without wakeup, process, or provider",
     reviewerHeartbeatConfiguration: reviewerBefore.body.runtimeConfig?.heartbeat,
     wakeupCount: 0,
     processCount: 0,
-    publicCommands: ["start-review", "PATCH /api/issues/:id", "GET mission", "GET admission"],
+    providerInvocationCount: 0,
+    publicCommands: [
+      "start-review", "PATCH /api/issues/:id", "inspect", "confirm-review-handoff", "GET mission", "GET admission",
+    ],
     startReviewOutcome: started.body.outcome,
     nativeTransition: started.body.nativeTransition,
     operatorTransitionStatus: transitioned.status,
@@ -275,11 +339,20 @@ async function exercisePreparedN2Handoff(input: {
     nativePeriodKey: input.nativeProfile.periodKey,
     candidateSha256: input.candidate.sha256,
     candidateCommit: input.candidate.candidateCommit,
+    wakeContext: reviewEntry.wakeContext,
+    reviewerFixture: {
+      fixtureSource: reviewerFixtureSource,
+      runId: reviewerFixtureRunId,
+      lifecycle: reviewerFixtureLifecycle,
+      inspectHttpStatus: inspected.status,
+      confirmHttpStatus: confirmed.status,
+      postConfirmInspectHttpStatus: reviewing.status,
+    },
     mission: mission.body,
     admission: admission.body,
     issueReadback: issue.body,
     reviewerRuns: reviewerRuns.body,
-    openReservationDisposition: "retained as reserved because no reviewer run was dispatched; isolated sandbox cleanup removes the owned database",
+    openReservationDisposition: "retained as reserved because the labelled reviewer fixture proves handoff identity without provider usage or native token settlement; isolated sandbox cleanup removes the owned database",
   };
 }
 
@@ -295,7 +368,7 @@ export async function prepareN2Prerequisite(input: {
   liveN2Profile?: LiveN2Profile;
   exerciseProviderFreeHandoff?: boolean;
   registerActor: (actor: string, identity: AgentIdentity) => void;
-  createFixtureRun: (actor: string, issueId: string) => Promise<string>;
+  createFixtureRun: (actor: string, issueId: string, fixtureSource?: FixtureHeartbeatRun["fixtureSource"]) => Promise<string>;
   finishFixtureRuns: (runs: readonly FixtureHeartbeatRun[]) => Promise<{
     terminalRuns: Array<Record<string, unknown>>;
     issueLocks: Array<Record<string, unknown>>;
@@ -314,6 +387,7 @@ export async function prepareN2Prerequisite(input: {
   assert.equal(company.status, 201, JSON.stringify(company.body));
   const companyId = company.body.id as string;
   const live = input.liveN2Profile;
+  const missionId = randomUUID();
 
   const lead = await createAgent({
     request: input.request,
@@ -321,7 +395,7 @@ export async function prepareN2Prerequisite(input: {
     actor: "n2-prerequisite-lead",
     name: "N2 Prerequisite Lead",
     role: "engineer",
-    ...(live ? { live: { profile: live, repository: candidate.repository, instructions: n2LeadInstructions() } } : {}),
+    ...(live ? { live: { profile: live, repository: candidate.repository, instructions: n2LeadInstructions(missionId) } } : {}),
   });
   const alpha = await createAgent({
     request: input.request, companyId, actor: "n2-prerequisite-alpha", name: "N2 Prerequisite Alpha", role: "engineer",
@@ -335,7 +409,7 @@ export async function prepareN2Prerequisite(input: {
     actor: "n2-prerequisite-reviewer",
     name: "N2 Independent Reviewer",
     role: "qa",
-    ...(live ? { live: { profile: live, repository: candidate.repository, instructions: n2ReviewerInstructions() } } : {}),
+    ...(live ? { live: { profile: live, repository: candidate.repository, instructions: n2ReviewerInstructions(missionId) } } : {}),
   });
   for (const [actor, agent] of [
     ["n2-prerequisite-lead", lead],
@@ -467,7 +541,6 @@ export async function prepareN2Prerequisite(input: {
   });
   assert.equal(root.status, 201, JSON.stringify(root.body));
   const rootIssueId = root.body.id as string;
-  const missionId = randomUUID();
   const missionBase = `/api/plugins/${input.pluginId}/api/companies/${companyId}/missions`;
   const created = await input.request("human", "POST", missionBase, {
     companyId,
@@ -740,7 +813,9 @@ export async function prepareN2Prerequisite(input: {
   const handoffGuard = input.exerciseProviderFreeHandoff
     ? await exercisePreparedN2Handoff({
         request: input.request,
+        pluginId: input.pluginId,
         companyId,
+        missionId,
         missionPath,
         admissionPath,
         rootIssueId,
@@ -749,6 +824,8 @@ export async function prepareN2Prerequisite(input: {
         missionVersion: finalMission.body.mission.version,
         nativeProfile: nativeN2.profile,
         candidate: { sha256: candidate.sha256, candidateCommit: candidate.candidateCommit },
+        createFixtureRun: input.createFixtureRun,
+        finishFixtureRuns: input.finishFixtureRuns,
       })
     : null;
 
@@ -789,7 +866,7 @@ export async function prepareN2Prerequisite(input: {
     runReadbacks,
     handoffGuard,
     stopBoundary: handoffGuard
-      ? "review_handoff prepared on the same candidate; native reservation open; reviewer not dispatched"
+      ? "reviewing handoff confirmed by one labelled provider-free reviewer fixture; native reservation remains open and no provider was dispatched"
       : "ready_for_review snapshot retained; native N2 period prepared; reviewer not started",
   };
 }

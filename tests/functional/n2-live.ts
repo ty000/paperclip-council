@@ -65,15 +65,45 @@ async function setWakeOnDemand(request: ApiRequest, agentId: string, wakeOnDeman
   return response.body;
 }
 
+export function n2MissionWakeContext(input: {
+  pluginId: string;
+  rootIssueId: string;
+  missionId: string;
+}) {
+  assert.match(input.rootIssueId, /^[0-9a-f-]{36}$/i, "N2 wake context requires the exact root issue ID");
+  assert.match(input.missionId, /^[0-9a-f-]{36}$/i, "N2 wake context requires the exact mission ID");
+  assert.notEqual(input.rootIssueId, input.missionId, "N2 issue and mission identities must remain distinct");
+  const councilCommandRoute = `/api/plugins/${input.pluginId}/api/issues/${input.rootIssueId}/council/commands`;
+  return {
+    rootIssueId: input.rootIssueId,
+    missionId: input.missionId,
+    councilCommandRoute,
+    descriptionBlock: [
+      "Council N2 execution context (authoritative):",
+      `Root issue ID: ${input.rootIssueId}`,
+      `Mission ID: ${input.missionId}`,
+      `Council command route: ${councilCommandRoute}`,
+      "Use the Mission ID above in every inspect, confirm-review-handoff, and prepare-resubmission command. Never substitute PAPERCLIP_TASK_ID for the Mission ID.",
+    ].join("\n"),
+  };
+}
+
 export async function configureNativeN2ReviewEntry(input: {
   request: ApiRequest;
+  pluginId: string;
   rootIssueId: string;
+  missionId: string;
   leadId: string;
   reviewerId: string;
 }) {
+  const current = await input.request("human", "GET", `/api/issues/${input.rootIssueId}`);
+  assert.equal(current.status, 200, JSON.stringify(current.body));
+  const wakeContext = n2MissionWakeContext(input);
+  const existingDescription = typeof current.body.description === "string" ? current.body.description.trim() : "";
   const response = await input.request("human", "PATCH", `/api/issues/${input.rootIssueId}`, {
     status: "in_progress",
     assigneeAgentId: input.leadId,
+    description: [existingDescription, wakeContext.descriptionBlock].filter(Boolean).join("\n\n"),
     executionPolicy: {
       mode: "normal",
       commentRequired: true,
@@ -88,7 +118,9 @@ export async function configureNativeN2ReviewEntry(input: {
   assert.equal(response.status, 200, JSON.stringify(response.body));
   assert.equal(response.body.status, "in_progress");
   assert.equal(response.body.assigneeAgentId, input.leadId);
-  return response.body;
+  assert(response.body.description.includes(`Mission ID: ${input.missionId}`));
+  assert(response.body.description.includes(`Council command route: ${wakeContext.councilCommandRoute}`));
+  return { issue: response.body, wakeContext };
 }
 
 export function assertProviderFreeN2HandoffReady(n1: any) {
@@ -163,6 +195,67 @@ export async function preserveN2RunBeforeBusinessAssertion(input: {
   if (readbackError) throw readbackError;
   if (persistenceError) throw persistenceError;
   return observed;
+}
+
+async function closeOwnedN2Execution(input: {
+  request: ApiRequest;
+  getRun: (runId: string) => Promise<RunSnapshot | null>;
+  listRuns: (agentId: string) => Promise<RunSnapshot[]>;
+  leadId: string;
+  reviewerId: string;
+  baselineRunIds: Set<string>;
+  evidence: Record<string, any>;
+  runEvidence: typeof nativeRunEvidence;
+  persist: () => Promise<void>;
+}) {
+  const disabledAgents = [];
+  for (const agentId of [input.reviewerId, input.leadId]) {
+    const agent = await setWakeOnDemand(input.request, agentId, false);
+    disabledAgents.push({ agentId, wakeOnDemand: agent.runtimeConfig?.heartbeat?.wakeOnDemand });
+  }
+  const readCampaignRuns = async () => {
+    const runs = [...await input.listRuns(input.reviewerId), ...await input.listRuns(input.leadId)];
+    return runs.filter((run, index) => !input.baselineRunIds.has(run.id)
+      && runs.findIndex((candidate) => candidate.id === run.id) === index);
+  };
+  const beforeCancellation = await readCampaignRuns();
+  const cancellations = [];
+  for (const run of beforeCancellation.filter((entry) => !terminalStatuses.has(entry.status))) {
+    const cancelled = await input.request("human", "POST", `/api/heartbeat-runs/${run.id}/cancel`);
+    assert.equal(cancelled.status, 200, JSON.stringify(cancelled.body));
+    const terminal = await waitForTerminalRun(run.id, input.getRun, 60_000);
+    cancellations.push({ runId: run.id, requestedStatus: run.status, terminalStatus: terminal.status });
+  }
+  const observedRuns = await readCampaignRuns();
+  assert(observedRuns.every((run) => terminalStatuses.has(run.status)),
+    "owned N2 runs must be terminal before isolated database teardown");
+  const recordedRunIds = new Set((input.evidence.runs as Array<{ id?: string }>).map((run) => run.id));
+  input.evidence.wakeupCleanup = {
+    disabledAgents,
+    cancellations,
+    observedRuns: observedRuns.map(input.runEvidence),
+    additionalRuns: observedRuns.filter((run) => !recordedRunIds.has(run.id)).map(input.runEvidence),
+    nonterminalRunCount: 0,
+  };
+  await input.persist();
+}
+
+export async function withN2WakeCleanup<T>(input: Parameters<typeof closeOwnedN2Execution>[0], operation: () => Promise<T>) {
+  let operationError: unknown;
+  try {
+    return await operation();
+  } catch (error) {
+    operationError = error;
+    throw error;
+  } finally {
+    try {
+      await closeOwnedN2Execution(input);
+    } catch (cleanupError) {
+      input.evidence.wakeupCleanupError = errorEvidence(cleanupError);
+      await input.persist().catch(() => undefined);
+      if (!operationError) throw cleanupError;
+    }
+  }
 }
 
 async function inspectMission(request: ApiRequest, path: string, companyId: string) {
@@ -247,6 +340,8 @@ export async function runLiveN2(input: {
   const missionPath = `/api/plugins/${input.pluginId}/api/companies/${companyId}/missions/${missionId}`;
   const admissionPath = `/api/plugins/${input.pluginId}/api/companies/${companyId}/admission`;
   const reviewerRunIds = new Set((await input.listRuns(agents.reviewer.id)).map((run) => run.id));
+  const leadRunIds = new Set((await input.listRuns(agents.lead.id)).map((run) => run.id));
+  const baselineRunIds = new Set([...reviewerRunIds, ...leadRunIds]);
   input.evidence.liveN2 = {
     companyId,
     missionId,
@@ -268,12 +363,26 @@ export async function runLiveN2(input: {
   const progressiveEvidence = input.evidence.liveN2;
   await input.persistEvidence();
 
-  await configureNativeN2ReviewEntry({
+  return withN2WakeCleanup({
     request: input.request,
+    getRun: input.getRun,
+    listRuns: input.listRuns,
+    leadId: agents.lead.id,
+    reviewerId: agents.reviewer.id,
+    baselineRunIds,
+    evidence: progressiveEvidence,
+    runEvidence: input.runEvidence,
+    persist: input.persistEvidence,
+  }, async () => {
+  const reviewEntry = await configureNativeN2ReviewEntry({
+    request: input.request,
+    pluginId: input.pluginId,
     rootIssueId,
+    missionId,
     leadId: agents.lead.id,
     reviewerId: agents.reviewer.id,
   });
+  progressiveEvidence.wakeContext = reviewEntry.wakeContext;
 
   const beforeStart = await inspectMission(input.request, missionPath, companyId);
   const started = await input.request("human", "POST", `${missionPath}/commands`, {
@@ -303,6 +412,7 @@ export async function runLiveN2(input: {
 
   const reviewRun1 = await waitForNewRun(agents.reviewer.id, reviewerRunIds, input.listRuns);
   reviewerRunIds.add(reviewRun1.id);
+  await setWakeOnDemand(input.request, agents.reviewer.id, false);
   const terminalReview1 = await waitForTerminalRun(reviewRun1.id, input.getRun);
   await preserveN2RunBeforeBusinessAssertion({
     evidence: progressiveEvidence,
@@ -324,7 +434,6 @@ export async function runLiveN2(input: {
       assert.equal(mission.n2.review.verdict.verdict, "changes_requested");
     },
   });
-  await setWakeOnDemand(input.request, agents.reviewer.id, false);
   await setWakeOnDemand(input.request, agents.lead.id, true);
   const beforeCorrection = await inspectMission(input.request, missionPath, companyId);
   const correctionStart = await input.request("human", "POST", `${missionPath}/commands`, {
@@ -337,6 +446,7 @@ export async function runLiveN2(input: {
   assert.equal(correctionStart.body.outcome, "requested");
   const correctionRunId = correctionStart.body.mission.aggregate.n2.correction.runId as string;
   assert.match(correctionRunId, /^[0-9a-f-]{36}$/i);
+  await setWakeOnDemand(input.request, agents.lead.id, false);
   const correctionRun = await waitForTerminalRun(correctionRunId, input.getRun);
   await preserveN2RunBeforeBusinessAssertion({
     evidence: progressiveEvidence,
@@ -358,8 +468,6 @@ export async function runLiveN2(input: {
       assert.deepEqual(mission.n2.correction.correctedPaths, ["alpha.txt"]);
     },
   });
-  await setWakeOnDemand(input.request, agents.lead.id, false);
-
   const beforeSecondReview = await inspectMission(input.request, missionPath, companyId);
   const secondReview = await input.request("human", "POST", `${missionPath}/commands`, {
     companyId,
@@ -387,6 +495,7 @@ export async function runLiveN2(input: {
 
   const reviewRun2 = await waitForNewRun(agents.reviewer.id, reviewerRunIds, input.listRuns);
   reviewerRunIds.add(reviewRun2.id);
+  await setWakeOnDemand(input.request, agents.reviewer.id, false);
   const terminalReview2 = await waitForTerminalRun(reviewRun2.id, input.getRun);
   await preserveN2RunBeforeBusinessAssertion({
     evidence: progressiveEvidence,
@@ -409,7 +518,6 @@ export async function runLiveN2(input: {
       assert.equal(mission.n2.review.verdict.verdict, "approved");
     },
   });
-  await setWakeOnDemand(input.request, agents.reviewer.id, false);
   const finalMission = await inspectMission(input.request, missionPath, companyId);
   assert.equal(finalMission.mission.aggregate.phase, "accepted");
   assert.equal(finalMission.n2.status, "accepted");
@@ -488,4 +596,5 @@ export async function runLiveN2(input: {
     ...(input.n1.providerFreePrerequisite ? { n2PrerequisiteHandoffCommandsConsumable: "PASS" } : {}),
   });
   return { missionPath, finalMission, finalAdmission: finalAdmission.body, n2Runs };
+  });
 }

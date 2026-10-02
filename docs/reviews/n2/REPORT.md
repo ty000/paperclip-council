@@ -1,6 +1,6 @@
 # N2 — ordinary correction and confirmed acceptance
 
-Updated: 2026-10-02 (Europe/Paris). Status: **provider-free synthetic N2 integration validated through accepted restart readback; fresh LIVE authorization still required / not N2-qualified**.
+Updated: 2026-10-02 (Europe/Paris). Status: **provider-free synthetic N2 integration validated through accepted restart readback; the latest isolated LIVE campaign failed before handoff confirmation and is not N2-qualified**.
 
 ## Exact base and scope
 
@@ -112,10 +112,15 @@ back zero active slots, zero open locks and zero fixture exposure at the retaine
 public configuration route, creates a distinct native period with exact profile
 dates, and uses that period to carry the same mission and candidate through
 `start-review` → prepared and the authenticated operator PATCH. All wakeups stay
-disabled, the reviewer readback remains empty, and the single native reservation
-stays reserved at the handoff because no run was dispatched; the owned ephemeral
-database is removed at cleanup. This proves a consumable provider-free handoff
-boundary; it does not prove a native reviewer, correction, V2, approval or LIVE
+disabled. A separately labelled provider-free reviewer fixture then uses its
+exact agent/run identity to call the public `inspect` and
+`confirm-review-handoff` commands with the mission ID and Council route carried
+in the issue context. That fixture is terminalized and its issue locks are
+cleared after the readback reaches `reviewing`. The native reservation remains
+reserved because the fixture has no provider usage and cannot settle a native
+token ledger; the owned ephemeral database is removed at cleanup. This proves
+that the same prepared mission/candidate can cross the public handoff boundary.
+It does not prove a native reviewer, correction, V2, approval or LIVE
 qualification.
 
 ## Authorized campaign observation — `cbcb22c`
@@ -301,6 +306,47 @@ token envelope is displayed. Native review/correction consumption remains
 validated separately through the explicit native-period admission API recorded
 in `liveN2.admission`.
 
+## Authorized isolated campaign observation — `46640fd`
+
+The next isolated campaign was explicitly authorized and launched exactly once
+on clean commit `46640fd48d660593e6d4cc4ad790414a052f3d14`. Its deterministic N1
+prerequisite succeeded without a provider. The first native reviewer run
+`4f1fee68-0f10-4ee6-9e43-70ffb4d83699` reached `succeeded` with observed provider
+usage of `1,339,366` input plus `7,671` output units, `1,347,037` total. Council
+could not settle that run: `review_usage_binding_missing` left its 2,000,000-unit
+reservation open, with 4,000,000 units still available in the native envelope.
+
+The reviewer received no exact mission ID. Its instructions contained the
+literal `<mission-id>`, while the wake context exposed only root issue ID
+`a62c176b-37eb-46bd-aa80-a2a52f434830`. The reviewer explicitly inferred that
+`PAPERCLIP_TASK_ID` was the mission ID and called the Council `inspect` command
+with that value. The exact response was HTTP 404
+`{"error":"Mission not found","code":"mission_not_found"}`; the actual mission
+ID was `c2963e5d-172f-4488-b3c2-d00b238b3603`. No
+`confirm-review-handoff`, verdict, correction, V2, acceptance, receipt or UI
+proof followed.
+
+Because reviewer `wakeOnDemand` was disabled only after the terminal business
+assertion, that assertion failure left the wake source active and a second run
+`75fd029f-a426-491e-beca-d057d8dc2482` started. It was observed as unexpected;
+its provider process had already exited when targeted shutdown was authorized,
+and its provider usage is unknown rather than zero. The original evidence remains
+`artifacts/n2-live-46640fd48d660593e6d4cc4ad790414a052f3d14.json`, SHA-256
+`aa56e1e6c4b5047c448e029c4c7684013901d6ef401152a33a0304d3666ef555`.
+The immutable diagnostic addendum is
+`artifacts/n2-live-46640fd48d660593e6d4cc4ad790414a052f3d14.addendum.json`,
+SHA-256 `7598aafbcd771de241db1b5efa041dcac9edda3f97e93d62bc9535a5268413c0`.
+The paired PNG is empty and is not UI evidence.
+
+The bounded local correction injects the exact mission ID and Council command
+route into both the configured instructions and native issue context before the
+review transition. The harness disables wake-on-demand immediately after each
+expected reviewer or correction run is identified. Its final cleanup disables
+both campaign agents, reads all runs created after the captured baseline,
+cancels every owned nonterminal run through the public operator route, and
+requires terminal readback before ephemeral database teardown. This is a local
+correction only; it does not retroactively qualify the campaign.
+
 ## Provider-free synthetic integration
 
 The bounded qualification now contains one nominal N2 scenario on the pinned,
@@ -360,8 +406,8 @@ the result:
 6. replay operator inspection after restart and capture the installed mission
    UI using the exact UUID locator.
 
-The authorizations for `cbcb22c`, `0e5c814`, `586608b`, `daa14fa` and
-`d285f85` were consumed and do not transfer to the next corrected SHA. Commit/publication
+The authorizations for `cbcb22c`, `0e5c814`, `586608b`, `daa14fa`, `d285f85`
+and `46640fd` were consumed and do not transfer to the next corrected SHA. Commit/publication
 authority for this lot remains separate from LIVE authority. Once a clean local
 correction commit passes the provider-free bounded qualification, it is
 technically ready to be proposed for publication and a later fresh campaign;

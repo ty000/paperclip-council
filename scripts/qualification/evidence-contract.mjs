@@ -1339,8 +1339,9 @@ function assertN2PrerequisiteState(prerequisite) {
       && prerequisite?.providerBoundary?.prerequisiteFixtureHeartbeatRowCount === 3
       && prerequisite?.providerBoundary?.wakeupCount === 0
       && prerequisite?.providerBoundary?.reviewerRunCount === 0,
-  "zero provider, wakeup, reviewer, and native-agent execution is not proven");
+  "zero provider, wakeup, native-agent execution, and pre-handoff reviewer history is not proven");
   requireProof([
+    "the seam terminalizes exactly three N1 heartbeat fixtures and one separately labelled reviewer handoff fixture; public plugin and agent commands retain one native reservation without claiming provider usage or settlement",
     "the seam terminalizes exactly three N1 heartbeat fixtures and clears only their issue locks; public plugin configuration and admission APIs then create a distinct native N2 period whose single prepared reservation remains open without a run",
     "the seam terminalizes exactly three N1 heartbeat fixtures and clears only their issue locks; public plugin configuration and admission APIs then create a distinct native N2 period that remains empty until authorized reviewer dispatch",
   ].includes(prerequisite?.databaseBoundary),
@@ -1348,6 +1349,7 @@ function assertN2PrerequisiteState(prerequisite) {
   requireProof([
     "ready_for_review snapshot retained; native N2 period prepared; reviewer not started",
     "review_handoff prepared on the same candidate; native reservation open; reviewer not dispatched",
+    "reviewing handoff confirmed by one labelled provider-free reviewer fixture; native reservation remains open and no provider was dispatched",
   ].includes(prerequisite?.stopBoundary),
   "N2 prerequisite did not retain an allowed provider-free native boundary");
 }
@@ -1355,7 +1357,9 @@ function assertN2PrerequisiteState(prerequisite) {
 function hasExpectedN2HandoffCommands(guard) {
   return Array.isArray(guard?.publicCommands)
     && guard.publicCommands.includes("start-review")
-    && guard.publicCommands.includes("PATCH /api/issues/:id");
+    && guard.publicCommands.includes("PATCH /api/issues/:id")
+    && guard.publicCommands.includes("inspect")
+    && guard.publicCommands.includes("confirm-review-handoff");
 }
 
 function hasProviderFreeN2HandoffBoundary(guard) {
@@ -1367,10 +1371,11 @@ function hasProviderFreeN2HandoffBoundary(guard) {
     processCount,
   } = guard ?? {};
   return proofClass === "provider-free-native-n2-handoff-guard"
-    && fixtureBoundary === "same prepared mission and candidate; native N2 reservation only; no reviewer run, wakeup, or process"
+    && fixtureBoundary === "same prepared mission and candidate; one labelled reviewer fixture confirms the public handoff without wakeup, process, or provider"
     && reviewerHeartbeatConfiguration.wakeOnDemand === false
     && wakeupCount === 0
-    && processCount === 0;
+    && processCount === 0
+    && guard?.providerInvocationCount === 0;
 }
 
 function hasPreparedN2SubmissionIdentity(guard) {
@@ -1389,7 +1394,8 @@ function hasPreparedN2HandoffState(guard) {
     hasPreparedN2SubmissionIdentity(guard),
     guard?.startReviewOutcome === "prepared",
     guard?.operatorTransitionStatus === 200,
-    guard?.mission?.n2?.status === "review_handoff",
+    guard?.mission?.n2?.status === "reviewing",
+    guard?.mission?.n2?.review?.handoff?.reviewerRunId === guard?.reviewerFixture?.runId,
   ].every(Boolean);
 }
 
@@ -1406,12 +1412,38 @@ function hasPreparedN2HandoffReservation(guard) {
     guard?.admission?.envelope?.accountedUnits === 2_000_000,
     guard?.admission?.envelope?.availablePeriodUnits === 4_000_000,
     guard?.openReservationDisposition
-      === "retained as reserved because no reviewer run was dispatched; isolated sandbox cleanup removes the owned database",
+      === "retained as reserved because the labelled reviewer fixture proves handoff identity without provider usage or native token settlement; isolated sandbox cleanup removes the owned database",
   ].every(Boolean);
 }
 
-function hasNoN2HandoffRun(guard) {
-  return Array.isArray(guard?.reviewerRuns) && guard.reviewerRuns.length === 0;
+function hasProviderFreeN2ReviewerFixture(guard) {
+  const fixture = guard?.reviewerFixture;
+  const run = guard?.reviewerRuns?.[0];
+  const lifecycle = fixture?.lifecycle;
+  return Array.isArray(guard?.reviewerRuns) && guard.reviewerRuns.length === 1
+    && UUID.test(fixture?.runId)
+    && fixture?.fixtureSource === "fixture:n2-handoff-guard:deterministic-reviewer"
+    && fixture?.inspectHttpStatus === 200
+    && fixture?.confirmHttpStatus === 200
+    && fixture?.postConfirmInspectHttpStatus === 200
+    && run?.id === fixture.runId
+    && run?.status === "succeeded"
+    && run?.triggerDetail === fixture.fixtureSource
+    && run?.wakeupRequestId === null
+    && run?.processStartedAt === null
+    && lifecycle?.activeRunCount === 0
+    && lifecycle?.openCheckoutCount === 0
+    && lifecycle?.openExecutionCount === 0;
+}
+
+function hasExactN2WakeContext(guard) {
+  return guard?.wakeContext?.missionId === guard?.missionId
+    && guard?.wakeContext?.rootIssueId === guard?.rootIssueId
+    && guard?.wakeContext?.missionId !== guard?.wakeContext?.rootIssueId
+    && guard?.wakeContext?.councilCommandRoute
+      === `/api/plugins/private.paperclip-council/api/issues/${guard?.rootIssueId}/council/commands`
+    && guard?.issueReadback?.description?.includes(`Mission ID: ${guard?.missionId}`)
+    && guard?.issueReadback?.description?.includes(`Council command route: ${guard?.wakeContext?.councilCommandRoute}`);
 }
 
 function hasLockFreeN2HandoffReadback(guard) {
@@ -1423,9 +1455,10 @@ function assertN2HandoffGuard(guard) {
   requireProof(hasProviderFreeN2HandoffBoundary(guard)
       && hasPreparedN2HandoffState(guard)
       && hasPreparedN2HandoffReservation(guard)
-      && hasNoN2HandoffRun(guard)
+      && hasProviderFreeN2ReviewerFixture(guard)
+      && hasExactN2WakeContext(guard)
       && hasLockFreeN2HandoffReadback(guard),
-  "public N2 handoff guard is not consumable, reserved without dispatch, and lock-free");
+  "public N2 handoff guard does not prove exact context, provider-free reviewer confirmation, reservation, and lock cleanup");
 }
 
 export function assertN2PrerequisiteEvidence(evidence, { candidateCommit, notBefore }) {

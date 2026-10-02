@@ -23,6 +23,7 @@ import {
   reconcileTerminalN1Usage,
   UUID_GENERATION_COMMAND,
 } from "./functional/n1-live.js";
+import { n2MissionWakeContext, withN2WakeCleanup } from "./functional/n2-live.js";
 import { contributionDescription } from "../src/n1-missions.js";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -85,6 +86,8 @@ function n2PrerequisiteEvidence() {
   const companyId = "30000000-0000-4000-8000-000000000001";
   const missionId = "30000000-0000-4000-8000-000000000002";
   const rootIssueId = "40000000-0000-4000-8000-000000000001";
+  const reviewerFixtureRunId = "70000000-0000-4000-8000-000000000001";
+  const councilCommandRoute = `/api/plugins/private.paperclip-council/api/issues/${rootIssueId}/council/commands`;
   const fixturePeriodKey = "n2-prerequisite-fixture-period";
   const nativePeriodKey = "n2-prerequisite-native-period";
   const nativeProfile = {
@@ -220,11 +223,12 @@ function n2PrerequisiteEvidence() {
       },
       handoffGuard: {
         proofClass: "provider-free-native-n2-handoff-guard",
-        fixtureBoundary: "same prepared mission and candidate; native N2 reservation only; no reviewer run, wakeup, or process",
+        fixtureBoundary: "same prepared mission and candidate; one labelled reviewer fixture confirms the public handoff without wakeup, process, or provider",
         reviewerHeartbeatConfiguration: { wakeOnDemand: false },
         wakeupCount: 0,
         processCount: 0,
-        publicCommands: ["start-review", "PATCH /api/issues/:id", "GET mission", "GET admission"],
+        providerInvocationCount: 0,
+        publicCommands: ["start-review", "PATCH /api/issues/:id", "inspect", "confirm-review-handoff", "GET mission", "GET admission"],
         startReviewOutcome: "prepared",
         operatorTransitionStatus: 200,
         missionId,
@@ -234,15 +238,29 @@ function n2PrerequisiteEvidence() {
         nativePeriodKey,
         candidateSha256: candidate.sha256,
         candidateCommit: candidate.candidateCommit,
+        wakeContext: { missionId, rootIssueId, councilCommandRoute },
+        reviewerFixture: {
+          fixtureSource: "fixture:n2-handoff-guard:deterministic-reviewer",
+          runId: reviewerFixtureRunId,
+          inspectHttpStatus: 200,
+          confirmHttpStatus: 200,
+          postConfirmInspectHttpStatus: 200,
+          lifecycle: {
+            activeRunCount: 0,
+            openCheckoutCount: 0,
+            openExecutionCount: 0,
+          },
+        },
         mission: {
           mission: { missionId },
           n2: {
-            status: "review_handoff",
+            status: "reviewing",
             submission: {
               submissionId: "60000000-0000-4000-8000-000000000001",
               sha256: candidate.sha256,
               candidateCommit: candidate.candidateCommit,
             },
+            review: { handoff: { reviewerRunId: reviewerFixtureRunId } },
           },
         },
         admission: {
@@ -259,13 +277,23 @@ function n2PrerequisiteEvidence() {
             }],
           },
         },
-        reviewerRuns: [],
-        issueReadback: { checkoutRunId: null, executionRunId: null },
-        openReservationDisposition: "retained as reserved because no reviewer run was dispatched; isolated sandbox cleanup removes the owned database",
+        reviewerRuns: [{
+          id: reviewerFixtureRunId,
+          status: "succeeded",
+          triggerDetail: "fixture:n2-handoff-guard:deterministic-reviewer",
+          wakeupRequestId: null,
+          processStartedAt: null,
+        }],
+        issueReadback: {
+          description: `Mission ID: ${missionId}\nCouncil command route: ${councilCommandRoute}`,
+          checkoutRunId: null,
+          executionRunId: null,
+        },
+        openReservationDisposition: "retained as reserved because the labelled reviewer fixture proves handoff identity without provider usage or native token settlement; isolated sandbox cleanup removes the owned database",
       },
       runReadbacks,
-      databaseBoundary: "the seam terminalizes exactly three N1 heartbeat fixtures and clears only their issue locks; public plugin configuration and admission APIs then create a distinct native N2 period whose single prepared reservation remains open without a run",
-      stopBoundary: "review_handoff prepared on the same candidate; native reservation open; reviewer not dispatched",
+      databaseBoundary: "the seam terminalizes exactly three N1 heartbeat fixtures and one separately labelled reviewer handoff fixture; public plugin and agent commands retain one native reservation without claiming provider usage or settlement",
+      stopBoundary: "reviewing handoff confirmed by one labelled provider-free reviewer fixture; native reservation remains open and no provider was dispatched",
     },
   };
 }
@@ -625,14 +653,14 @@ function isolatedN2QualificationEvidence(): any {
 }
 
 describe("bounded qualification launcher", () => {
-  it("accepts only a cleaned provider-free N2 prerequisite stopped before review", () => {
+  it("accepts only a cleaned provider-free N2 prerequisite with an authenticated handoff fixture", () => {
     const evidence = n2PrerequisiteEvidence();
     const options = { candidateCommit: liveCommit, notBefore: Date.parse("2026-10-02T09:59:59.000Z") };
     expect(() => assertN2PrerequisiteEvidence(evidence, options)).not.toThrow();
 
     const withExecution = structuredClone(evidence);
     withExecution.n2Prerequisite.providerBoundary.nativeAgentExecutionCount = 1;
-    expect(() => assertN2PrerequisiteEvidence(withExecution, options)).toThrow(/zero provider, wakeup, reviewer, and native-agent execution/);
+    expect(() => assertN2PrerequisiteEvidence(withExecution, options)).toThrow(/zero provider, wakeup, native-agent execution/);
 
     const withOccupiedSlot = structuredClone(evidence);
     withOccupiedSlot.n2Prerequisite.fixtureLifecycle.activeRunCount = 1;
@@ -640,7 +668,7 @@ describe("bounded qualification launcher", () => {
 
     const withoutPublicHandoff = structuredClone(evidence);
     withoutPublicHandoff.n2Prerequisite.handoffGuard.startReviewOutcome = "refused";
-    expect(() => assertN2PrerequisiteEvidence(withoutPublicHandoff, options)).toThrow(/handoff guard is not consumable/);
+    expect(() => assertN2PrerequisiteEvidence(withoutPublicHandoff, options)).toThrow(/public N2 handoff guard/);
 
     const withoutFixtureBinding = structuredClone(evidence);
     withoutFixtureBinding.n2Prerequisite.runReadbacks[0].runs[0].issueId = "wrong-issue";
@@ -650,6 +678,80 @@ describe("bounded qualification launcher", () => {
     const withExposure = structuredClone(evidence);
     withExposure.n2Prerequisite.admission.envelope.exposure.units = 1;
     expect(() => assertN2PrerequisiteEvidence(withExposure, options)).toThrow(/known and zero/);
+  });
+
+  it("keeps the exact mission identity distinct from the root issue in the reviewer wake context", () => {
+    const missionId = "30000000-0000-4000-8000-000000000002";
+    const rootIssueId = "40000000-0000-4000-8000-000000000001";
+    const context = n2MissionWakeContext({
+      pluginId: "private.paperclip-council",
+      missionId,
+      rootIssueId,
+    });
+
+    expect(context).toMatchObject({
+      missionId,
+      rootIssueId,
+      councilCommandRoute: `/api/plugins/private.paperclip-council/api/issues/${rootIssueId}/council/commands`,
+    });
+    expect(context.descriptionBlock).toContain(`Mission ID: ${missionId}`);
+    expect(context.descriptionBlock).toContain("Never substitute PAPERCLIP_TASK_ID for the Mission ID.");
+  });
+
+  it("disables wakes and cancels a queued campaign run even when the N2 operation fails", async () => {
+    const leadId = "10000000-0000-4000-8000-000000000001";
+    const reviewerId = "10000000-0000-4000-8000-000000000002";
+    const queuedRunId = "20000000-0000-4000-8000-000000000001";
+    let status = "queued";
+    const requests: Array<{ method: string; path: string; body: unknown }> = [];
+    const run = () => ({
+      id: queuedRunId,
+      agentId: reviewerId,
+      status,
+      startedAt: null,
+      finishedAt: status === "cancelled" ? "2026-10-02T10:00:00.000Z" : null,
+      error: null,
+      usageJson: null,
+    });
+    const request = async (_actor: string, method: string, path: string, body?: unknown) => {
+      requests.push({ method, path, body });
+      if (method === "PATCH") {
+        return {
+          status: 200,
+          body: { runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: false, maxConcurrentRuns: 1 } } },
+          headers: new Headers(),
+        };
+      }
+      expect(path).toBe(`/api/heartbeat-runs/${queuedRunId}/cancel`);
+      status = "cancelled";
+      return { status: 200, body: { run: run() }, headers: new Headers() };
+    };
+    const evidence = { runs: [] as Array<Record<string, unknown>> };
+
+    await expect(withN2WakeCleanup({
+      request,
+      getRun: async (runId) => runId === queuedRunId ? run() : null,
+      listRuns: async (agentId) => agentId === reviewerId ? [run()] : [],
+      leadId,
+      reviewerId,
+      baselineRunIds: new Set(),
+      evidence,
+      runEvidence: nativeRunEvidence,
+      persist: async () => undefined,
+    }, async () => {
+      throw new Error("review handoff failed");
+    })).rejects.toThrow("review handoff failed");
+
+    expect(requests.slice(0, 2)).toEqual([
+      { method: "PATCH", path: `/api/agents/${reviewerId}`, body: { runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: false, maxConcurrentRuns: 1 } } } },
+      { method: "PATCH", path: `/api/agents/${leadId}`, body: { runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: false, maxConcurrentRuns: 1 } } } },
+    ]);
+    expect(requests[2]).toMatchObject({ method: "POST", path: `/api/heartbeat-runs/${queuedRunId}/cancel` });
+    expect((evidence as any).wakeupCleanup).toMatchObject({
+      nonterminalRunCount: 0,
+      cancellations: [{ runId: queuedRunId, requestedStatus: "queued", terminalStatus: "cancelled" }],
+      additionalRuns: [{ id: queuedRunId, agentId: reviewerId, status: "cancelled" }],
+    });
   });
 
   it("guards the future isolated N2 command with explicit authorization and exact HEAD", () => {
@@ -669,7 +771,7 @@ describe("bounded qualification launcher", () => {
     expect(prerequisite).not.toContain("setActorRun");
     expect(functionalHarness).toContain("async function createN2PrerequisiteFixtureRun");
     expect(functionalHarness).toContain("db.insert(tables.heartbeatRuns)");
-    expect(functionalHarness).toContain('triggerDetail: "fixture:n2-prerequisite:deterministic-heartbeat"');
+    expect(functionalHarness).toContain("triggerDetail: fixtureSource");
     expect(functionalHarness).toContain("contextSnapshot: {");
     expect(functionalHarness).toContain("issueId: contextIssueId");
     expect(functionalHarness).toContain("Measurement: ${liveMission.admission.measurement.unit} from ${liveMission.admission.measurement.source}.");
@@ -1006,11 +1108,12 @@ describe("bounded qualification launcher", () => {
   });
 
   it("requires separately generated UUIDs and preserves sanitized non-2xx evidence in every agent instruction", () => {
+    const n2MissionId = "11111111-1111-4111-8111-111111111111";
     const instructions = [
       contributorInstructions(),
       leadInstructions(),
-      n2LeadInstructions(),
-      n2ReviewerInstructions(),
+      n2LeadInstructions(n2MissionId),
+      n2ReviewerInstructions(n2MissionId),
     ];
     for (const instruction of instructions) {
       expect(instruction).toContain(UUID_GENERATION_COMMAND);
@@ -1019,6 +1122,11 @@ describe("bounded qualification launcher", () => {
       expect(instruction).toContain("preserve the HTTP status and sanitized JSON response body");
       expect(instruction).toContain("without exposing credentials");
     }
+
+    expect(n2LeadInstructions(n2MissionId)).toContain(`"missionId":"${n2MissionId}"`);
+    expect(n2ReviewerInstructions(n2MissionId)).toContain(`"missionId":"${n2MissionId}"`);
+    expect(n2LeadInstructions(n2MissionId)).not.toContain("<mission-id>");
+    expect(n2ReviewerInstructions(n2MissionId)).not.toContain("<mission-id>");
 
     const nativeDescription = contributionDescription({
       missionId: "11111111-1111-4111-8111-111111111111",

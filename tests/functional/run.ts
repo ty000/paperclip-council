@@ -278,7 +278,12 @@ async function freshRun(actor: string, contextIssueId: string | undefined = issu
   return runId;
 }
 
-async function createN2PrerequisiteFixtureRun(actor: string, contextIssueId: string) {
+async function createN2PrerequisiteFixtureRun(
+  actor: string,
+  contextIssueId: string,
+  fixtureSource: "fixture:n2-prerequisite:deterministic-heartbeat" | "fixture:n2-handoff-guard:deterministic-reviewer"
+    = "fixture:n2-prerequisite:deterministic-heartbeat",
+) {
   const current = agentTokens.get(actor);
   assert(current, `unknown N2 prerequisite actor ${actor}`);
   assert(current.companyId, `N2 prerequisite actor ${actor} has no company identity`);
@@ -288,12 +293,12 @@ async function createN2PrerequisiteFixtureRun(actor: string, contextIssueId: str
     companyId: current.companyId,
     agentId: current.agentId,
     invocationSource: "on_demand",
-    triggerDetail: "fixture:n2-prerequisite:deterministic-heartbeat",
+    triggerDetail: fixtureSource,
     status: "running",
     responsibleUserId: evidence.configuration.humanUserId,
     contextSnapshot: {
       issueId: contextIssueId,
-      fixture: "n2-prerequisite-deterministic-heartbeat",
+      fixture: fixtureSource,
       providerInvocation: "none",
     },
     startedAt: new Date(),
@@ -309,7 +314,7 @@ async function finishN2PrerequisiteFixtureRuns(runs: readonly Array<{
   agentId: string;
   issueId: string;
 }>) {
-  assert.equal(runs.length, 3, "N2 prerequisite must finish exactly its three deterministic fixtures");
+  assert(runs.length > 0, "N2 prerequisite fixture cleanup requires at least one owned run");
   const completedAt = new Date();
   for (const fixture of runs) {
     const [beforeRun] = await db.select({
@@ -371,7 +376,7 @@ async function finishN2PrerequisiteFixtureRuns(runs: readonly Array<{
   const activeRunCount = terminalRuns.filter((run: any) => ["running", "queued", "scheduled_retry"].includes(run.status)).length;
   const openCheckoutCount = issueLocks.filter((issue: any) => issue.checkoutRunId !== null).length;
   const openExecutionCount = issueLocks.filter((issue: any) => issue.executionRunId !== null).length;
-  assert.equal(terminalRuns.length, 3);
+  assert.equal(terminalRuns.length, runs.length);
   assert(terminalRuns.every((run: any) => run.status === "succeeded" && run.finishedAt
     && run.wakeupRequestId === null && run.processStartedAt === null));
   return { terminalRuns, issueLocks, activeRunCount, openCheckoutCount, openExecutionCount };
@@ -643,7 +648,7 @@ try {
       exerciseProviderFreeHandoff: true,
     });
     assert(prerequisite.handoffGuard, "provider-free N2 handoff guard must stop after the public boundary");
-    evidence.configuration.fixtureBoundary = "The prerequisite seam terminalizes three N1 heartbeat fixtures and clears their exact issue locks before the same mission and candidate enter a distinct native N2 period; the handoff leaves one native reservation open without dispatching a reviewer run";
+    evidence.configuration.fixtureBoundary = "The prerequisite seam terminalizes three N1 heartbeat fixtures before the same mission and candidate enter a distinct native N2 period; one separately labelled reviewer fixture then exercises inspect and confirm-review-handoff without provider, wakeup, or process execution";
     evidence.configuration.models = "gpt-5.6-sol/high configured on disabled agents; no provider invocation";
     evidence.n2Prerequisite = {
       proofClass: "N2 native-stage prerequisite validated",
@@ -656,9 +661,9 @@ try {
         reviewerRunCount: prerequisite.runReadbacks.find(
           (entry: { agentId: string }) => entry.agentId === prerequisite.agents.reviewer.id,
         )?.runCount ?? -1,
-        evidence: "public heartbeat-run readback attributes one terminal, unexecuted fixture row to lead, Alpha, and Beta; reviewer readbacks remain empty before and after the same-mission native handoff",
+        evidence: "the pre-handoff readback attributes one terminal, unexecuted fixture row to lead, Alpha, and Beta while reviewer history is empty; the handoff guard reports its later reviewer fixture separately",
       },
-      databaseBoundary: "the seam terminalizes exactly three N1 heartbeat fixtures and clears only their issue locks; public plugin configuration and admission APIs then create a distinct native N2 period whose single prepared reservation remains open without a run",
+      databaseBoundary: "the seam terminalizes exactly three N1 heartbeat fixtures and one separately labelled reviewer handoff fixture; public plugin and agent commands retain one native reservation without claiming provider usage or settlement",
     };
     Object.assign(evidence.results, {
       n2PrerequisitePublicMission: "PASS",
@@ -1986,9 +1991,11 @@ try {
           reviewerRunCount: live.runReadbacks.find(
             (entry: { agentId: string }) => entry.agentId === live.agents.reviewer.id,
           )?.runCount ?? -1,
-          evidence: "public heartbeat-run readback attributes one terminal, unexecuted fixture row to lead, Alpha, and Beta before N2; reviewer readback is empty",
+          evidence: "pre-handoff public heartbeat-run readback attributes one terminal, unexecuted fixture row to lead, Alpha, and Beta; the handoff guard later records its separately labelled reviewer fixture",
         },
-        databaseBoundary: "the seam terminalizes exactly three N1 heartbeat fixtures and clears only their issue locks; public plugin configuration and admission APIs then create a distinct native N2 period that remains empty until authorized reviewer dispatch",
+        databaseBoundary: live.handoffGuard
+          ? "the seam terminalizes exactly three N1 heartbeat fixtures and one separately labelled reviewer handoff fixture; public plugin and agent commands retain one native reservation without claiming provider usage or settlement"
+          : "the seam terminalizes exactly three N1 heartbeat fixtures and clears only their issue locks; public plugin configuration and admission APIs then create a distinct native N2 period that remains empty until authorized reviewer dispatch",
       };
       Object.assign(evidence.results, {
         n2PrerequisitePublicMission: "PASS",
