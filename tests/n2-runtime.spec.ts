@@ -20,8 +20,13 @@ vi.mock("../src/integration.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/integration.js")>();
   return { ...actual, verifyIntegratedCandidate: vi.fn() };
 });
+vi.mock("../src/decision-adapter.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/decision-adapter.js")>();
+  return { ...actual, emitCouncilReviewTransition: vi.fn() };
+});
 
 import { readAdmission, reserveAdmission } from "../src/admission.js";
+import { emitCouncilReviewTransition } from "../src/decision-adapter.js";
 import type { DecisionReceipt } from "../src/decision-receipts.js";
 import {
   readNativeG4Profile,
@@ -141,36 +146,40 @@ function harness(options: { confirmReviewDuringNativeUpdate?: boolean } = {}) {
     version += 1;
     return { rowCount: 1 };
   });
-  const update = vi.fn(async (_issueId: string, patch: Record<string, unknown>) => {
-    if (patch.status === "in_review") {
-      issue = {
-        ...issue,
-        status: "in_review",
-        assigneeAgentId: id.reviewer,
-        executionState: {
-          currentParticipant: { type: "agent", agentId: id.reviewer },
-          returnAssignee: { type: "agent", agentId: id.lead },
-          lastDecisionOutcome: null,
-        },
+  vi.mocked(emitCouncilReviewTransition).mockImplementation(async () => {
+    issue = {
+      ...issue,
+      status: "in_review",
+      assigneeAgentId: id.reviewer,
+      executionState: {
+        currentParticipant: { type: "agent", agentId: id.reviewer },
+        returnAssignee: { type: "agent", agentId: id.lead },
+        lastDecisionOutcome: null,
+      },
+    };
+    if (options.confirmReviewDuringNativeUpdate) {
+      stored = {
+        ...stored,
+        phase: "reviewing",
+        n2: confirmN2ReviewHandoff(stored.n2!, { aggregate: stored } as never, {
+          status: "in_review",
+          assigneeAgentId: id.reviewer,
+          currentParticipantAgentId: id.reviewer,
+          returnAssigneeAgentId: id.lead,
+          observedRunIds: [id.leadRun, id.reviewerRun1].sort(),
+          reviewerRunId: id.reviewerRun1,
+        }),
       };
-      if (options.confirmReviewDuringNativeUpdate) {
-        stored = {
-          ...stored,
-          phase: "reviewing",
-          n2: confirmN2ReviewHandoff(stored.n2!, { aggregate: stored } as never, {
-            status: "in_review",
-            assigneeAgentId: id.reviewer,
-            currentParticipantAgentId: id.reviewer,
-            returnAssigneeAgentId: id.lead,
-            observedRunIds: [id.leadRun, id.reviewerRun1].sort(),
-            reviewerRunId: id.reviewerRun1,
-          }),
-        };
-        version += 1;
-      }
+      version += 1;
     }
-    return structuredClone(issue);
+    return {
+      nativeStatus: 200,
+      nativeResponse: structuredClone(issue),
+      nativeBodyValid: true,
+      nativeBodyTruncated: false,
+    };
   });
+  const update = vi.fn(async () => structuredClone(issue));
   const requestWakeup = vi.fn(async () => ({ queued: true, runId: id.correctionRun }));
   const ctx = {
     db: { namespace: "plugin_private_n2_runtime", query, execute },
@@ -236,6 +245,7 @@ let currentN2: () => NonNullable<MissionAggregate["n2"]>;
 
 describe("N2 persisted native journey", () => {
   beforeEach(() => {
+    vi.mocked(emitCouncilReviewTransition).mockReset();
     vi.mocked(readNativeG4Profile).mockReset().mockResolvedValue(profile);
     vi.mocked(readAdmission).mockReset().mockResolvedValue({
       ...profile,
@@ -276,6 +286,40 @@ describe("N2 persisted native journey", () => {
     });
   });
 
+  it("blocks without retry when the public review transition is not confirmed", async () => {
+    const h = harness();
+    currentN2 = () => h.current().n2!;
+    vi.mocked(readNativeSequentialUsageBaseline).mockResolvedValue({ runIds: [id.leadRun], tokenTotal: 100 });
+    vi.mocked(emitCouncilReviewTransition).mockResolvedValueOnce({
+      nativeStatus: 403,
+      nativeResponse: { error: "denied" },
+      nativeBodyValid: true,
+      nativeBodyTruncated: false,
+    });
+
+    const started = await executeN2BoardCommand(h.ctx, {
+      companyId: id.company,
+      missionId: id.mission,
+      actorUserId: id.owner,
+      body: {
+        command: "start-review", commandId: randomUUID(), expectedVersion: h.version(),
+        submissionId: randomUUID(), reservationId: randomUUID(),
+      },
+    });
+
+    expect(started).toMatchObject({
+      outcome: "unknown",
+      mission: {
+        aggregate: {
+          phase: "blocked",
+          control: { status: "blocked", reason: "native_review_handoff_unknown" },
+          n2: { rounds: [{ handoff: { state: "unknown", reviewerRunId: null } }] },
+        },
+      },
+    });
+    expect(vi.mocked(emitCouncilReviewTransition)).toHaveBeenCalledTimes(1);
+  });
+
   it("persists handoff, correction admission, changed V2 and second independent review", async () => {
     const h = harness();
     currentN2 = () => h.current().n2!;
@@ -292,7 +336,10 @@ describe("N2 persisted native journey", () => {
       },
     });
     expect(start).toMatchObject({ outcome: "requested", mission: { aggregate: { phase: "review_handoff" } } });
-    expect(h.update).toHaveBeenCalledWith(id.root, { status: "in_review" }, id.company, { actorUserId: id.owner });
+    expect(vi.mocked(emitCouncilReviewTransition)).toHaveBeenCalledWith(h.ctx, {
+      companyId: id.company,
+      issueId: id.root,
+    });
     expect(vi.mocked(reserveAdmission)).toHaveBeenLastCalledWith(h.ctx, expect.objectContaining({
       missionId: id.mission,
       effectId: submission1,

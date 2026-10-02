@@ -1,6 +1,6 @@
 # N2 — ordinary correction and confirmed acceptance
 
-Updated: 2026-10-02 (Europe/Paris). Status: **first authorized campaign stopped before N2 review; admission UUID correction prepared; fresh LIVE authorization required / not N2-qualified**.
+Updated: 2026-10-02 (Europe/Paris). Status: **second authorized campaign stopped at the native N2 handoff; public-transition correction prepared; fresh LIVE authorization required / not N2-qualified**.
 
 ## Exact base and scope
 
@@ -123,6 +123,46 @@ review reservation and decision operation ID for the correction reservation.
 Focused runtime tests now assert those exact values. This is a source fix, not
 a retroactive qualification of the failed campaign.
 
+## Authorized campaign observation — `0e5c814`
+
+A second campaign was explicitly authorized and executed once on exact clean,
+published commit `0e5c81468239d2fa697eafc3bb5acee323c68840` with the observed
+`gpt-5.6-sol` / `high` configuration and the fresh six-run envelope. It also
+stopped without retry, with `NON-CONCLUSIVE OR BLOCKED`, before any N2 reviewer
+run began.
+
+The N1 portion again succeeded and settled with zero remaining exposure: lead
+run `e71fa454-3b71-411b-a87e-495ede4f7d55` used `1,048,832` units, Alpha run
+`49ac1466-31b8-4612-bac1-afac0e87bac8` used `231,817`, and Beta run
+`86931aed-8c13-4d08-bcde-b6f3e3337565` used `406,814`. Known usage was
+therefore `1,687,463` units. The exact N1 candidate reached
+`ready_for_review` at commit `92e4590dae3157536de228797d5a71839dbe0c1a`.
+
+The corrected UUID admission succeeded for submission
+`6cd89395-39fc-468f-b49d-948e0191cd94` and reservation
+`803bc104-2003-4542-9a77-15edcd1db8b9`. The native transition then returned a
+mismatched stage/actor readback, so Council durably recorded
+`native_review_handoff_unknown`, left the 2,000,000-unit review reservation
+unsettled with known exposure, and refused to wake or bind a reviewer. No V1
+verdict, correction, V2, approval, restart acceptance or UI proof exists.
+
+The preserved JSON is
+`artifacts/n2-live-0e5c81468239d2fa697eafc3bb5acee323c68840.json`, SHA-256
+`ee946d282a38743ac794086b0b81458e9dad626aaf50e1f271b545fb36caa0b6`.
+The paired PNG is again zero bytes with SHA-256
+`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+and is not UI evidence.
+
+Diagnosis showed that the plugin SDK `ctx.issues.update` path persists the
+status directly but does not execute the public issue route's execution-policy
+transition, so it cannot create the required current reviewer and return
+assignee state. The source correction now performs the authenticated, bounded
+loopback PATCH through the qualified public issue API, validates HTTP/JSON size
+and checks the returned exact stage and actors. Unit/runtime regression tests
+exercise this public transition and the concurrent reviewer-confirmation race.
+This new source state has not received provider authorization and is not LIVE
+proof.
+
 ## Open native dependency and exit criteria
 
 Merged N1 produced two contributions, a verified integrated candidate and
@@ -144,13 +184,13 @@ starts from a qualified N1 candidate and persists/reloads the result:
 6. replay operator inspection after restart and capture the installed mission
    UI using the exact UUID locator.
 
-The authorization for the `cbcb22c` attempt was consumed and does not transfer
-to the corrected SHA. Commit/publication authority for this lot remains
+The authorizations for both `cbcb22c` and `0e5c814` were consumed and do not
+transfer to the next corrected SHA. Commit/publication authority for this lot remains
 separate from LIVE authority. Once draft PR #18 readback identifies the new
 clean head on `main` and the local bounded qualification passes on that same
 head, the remaining launch gate is a fresh explicit authorization for one N2
 provider campaign with the named agents and fresh token envelope. Until that
-campaign succeeds, the strongest verdict is **ready to request a corrected N2
+campaign succeeds, the strongest verdict is **ready to request another corrected N2
 campaign**, never **N2 qualified**.
 
 ## N3 interface checkpoint

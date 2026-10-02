@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { AdmissionError, readAdmission, reserveAdmission } from "./admission.js";
+import { emitCouncilReviewTransition } from "./decision-adapter.js";
 import type { DecisionReceipt } from "./decision-receipts.js";
 import {
   assertNativeEnvelope,
@@ -859,7 +860,6 @@ async function requestNativeReviewTransition(
   ctx: PluginContext,
   mission: MissionRecord,
   claim: Awaited<ReturnType<typeof n2CommandCas>>,
-  actorUserId: string,
   label: string,
 ) {
   if (claim.outcome !== "applied") return claim;
@@ -874,13 +874,14 @@ async function requestNativeReviewTransition(
     };
   };
   try {
-    const updated = await ctx.issues.update(
-      mission.rootIssueId,
-      { status: "in_review" },
-      mission.companyId,
-      { actorUserId },
-    );
-    const observed = executionPrincipals(updated);
+    const transition = await emitCouncilReviewTransition(ctx, {
+      companyId: mission.companyId,
+      issueId: mission.rootIssueId,
+    });
+    if (transition.nativeStatus !== 200 || !transition.nativeBodyValid || transition.nativeBodyTruncated) {
+      throw new Error(`Native ${label} review transition returned HTTP ${transition.nativeStatus}`);
+    }
+    const observed = executionPrincipals(transition.nativeResponse);
     const expectedReviewer = mission.aggregate.responsibilities.finalReviewerAgentId;
     const expectedLead = mission.aggregate.responsibilities.integrationLeadAgentId;
     if (observed.status !== "in_review" || observed.assigneeAgentId !== expectedReviewer
@@ -1140,7 +1141,7 @@ export async function executeN2BoardCommand(ctx: PluginContext, input: {
         actorUserId: input.actorUserId, at: new Date().toISOString(),
       }],
     });
-    return requestNativeReviewTransition(ctx, mission, claim, input.actorUserId!, "V2");
+    return requestNativeReviewTransition(ctx, mission, claim, "V2");
   }
   if (input.body.command !== "start-review") {
     throw new MissionError(400, "unknown_command", "Unknown N2 board command");
@@ -1185,7 +1186,7 @@ export async function executeN2BoardCommand(ctx: PluginContext, input: {
     journal: [...mission.aggregate.journal, { action: "n2_review_handoff_claimed", submissionId, reservationId, actorUserId: input.actorUserId, at: new Date().toISOString() }],
   };
   const claim = await n2CommandCas(ctx, mission, input.body, "user", input.actorUserId!, claimedAggregate);
-  return requestNativeReviewTransition(ctx, mission, claim, input.actorUserId!, "initial");
+  return requestNativeReviewTransition(ctx, mission, claim, "initial");
 }
 
 async function confirmReviewCommand(
