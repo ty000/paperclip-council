@@ -980,43 +980,85 @@ function assertSafeBoundary(evidence) {
   assertSafeCapabilityLists(evidence);
 }
 
-function assertSyntheticN2Proof(evidence) {
-  const synthetic = evidence.syntheticN2;
+function assertSyntheticN2Boundary(synthetic) {
   requireProof(synthetic?.proofClass === "synthetic-provider-free-integration",
     "synthetic N2 proof class is missing");
   requireProof(synthetic?.operatorBoundary?.preparedExecutor
-      === "authenticated human operator through PATCH /api/issues/:id"
-      && synthetic?.operatorBoundary?.automationStatus
+      === "authenticated human operator through PATCH /api/issues/:id",
+  "synthetic N2 prepared executor is missing");
+  requireProof(synthetic?.operatorBoundary?.automationStatus
       === "human-assisted; no autonomous executor consumes prepared in this mini-lot",
-  "synthetic N2 prepared transition operator boundary is missing");
-  requireProof(synthetic?.regressions?.uuidEffectAccepted === true
-      && synthetic?.regressions?.publicTransitionActorsObserved === true
-      && synthetic?.regressions?.unauthorizedReviewerPatchStatus === 409
-      && synthetic?.regressions?.intendedHumanPatchStatus === 200,
-  "synthetic N2 regression evidence is incomplete");
-  requireProof(COMMIT.test(synthetic?.candidates?.v1?.commit)
-      && COMMIT.test(synthetic?.candidates?.v2?.commit)
-      && synthetic.candidates.v1.commit !== synthetic.candidates.v2.commit
-      && DIGEST.test(synthetic?.candidates?.v1?.sha256)
-      && DIGEST.test(synthetic?.candidates?.v2?.sha256)
-      && synthetic.candidates.v1.sha256 !== synthetic.candidates.v2.sha256,
-  "synthetic N2 V1/V2 identities are missing or unchanged");
+  "synthetic N2 automation boundary is missing");
+}
+
+function assertSyntheticN2Regressions(synthetic) {
+  requireProof(synthetic?.regressions?.uuidEffectAccepted === true,
+    "synthetic N2 UUID admission evidence is incomplete");
+  requireProof(synthetic?.regressions?.publicTransitionActorsObserved === true,
+    "synthetic N2 transition actor evidence is incomplete");
+  requireProof(synthetic?.regressions?.unauthorizedReviewerPatchStatus === 409,
+    "synthetic N2 unauthorized identity refusal is incomplete");
+  requireProof(synthetic?.regressions?.intendedHumanPatchStatus === 200,
+    "synthetic N2 intended operator transition is incomplete");
+}
+
+function assertSyntheticN2Candidates(synthetic) {
+  requireProof(COMMIT.test(synthetic?.candidates?.v1?.commit),
+    "synthetic N2 V1 commit identity is missing");
+  requireProof(COMMIT.test(synthetic?.candidates?.v2?.commit),
+    "synthetic N2 V2 commit identity is missing");
+  requireProof(synthetic.candidates.v1.commit !== synthetic.candidates.v2.commit,
+    "synthetic N2 V1/V2 commits are unchanged");
+  requireProof(DIGEST.test(synthetic?.candidates?.v1?.sha256),
+    "synthetic N2 V1 digest is missing");
+  requireProof(DIGEST.test(synthetic?.candidates?.v2?.sha256),
+    "synthetic N2 V2 digest is missing");
+  requireProof(synthetic.candidates.v1.sha256 !== synthetic.candidates.v2.sha256,
+    "synthetic N2 V1/V2 digests are unchanged");
+}
+
+function assertSyntheticN2AcceptedState(synthetic) {
   const inspection = synthetic?.mission;
-  requireProof(inspection?.mission?.aggregate?.phase === "accepted"
-      && inspection?.n2?.status === "accepted"
-      && inspection?.mission?.aggregate?.n2?.correctionsUsed === 1
-      && inspection?.n2?.submissions?.length === 2
-      && inspection?.n2?.usage?.complete === true,
-  "synthetic N2 accepted state or usage settlement is incomplete");
-  requireProof(synthetic?.decisionReceipts?.length === 2
-      && synthetic.decisionReceipts[0]?.verdict === "changes_requested"
-      && synthetic.decisionReceipts[1]?.verdict === "approved"
-      && synthetic.decisionReceipts.every((receipt) => receipt.state === "native_observed"),
-  "synthetic N2 native decision receipts are incomplete");
-  requireProof(synthetic?.restartReadback?.mission?.aggregate?.phase === "accepted"
-      && JSON.stringify(synthetic.restartReadback.mission.aggregate.n2)
+  requireProof(inspection?.mission?.aggregate?.phase === "accepted",
+    "synthetic N2 mission phase is not accepted");
+  requireProof(inspection?.n2?.status === "accepted",
+    "synthetic N2 inspection status is not accepted");
+  requireProof(inspection?.mission?.aggregate?.n2?.correctionsUsed === 1,
+    "synthetic N2 correction count is unexpected");
+  requireProof(inspection?.n2?.submissions?.length === 2,
+    "synthetic N2 submission count is unexpected");
+  requireProof(inspection?.n2?.usage?.complete === true,
+    "synthetic N2 usage settlement is incomplete");
+  return inspection;
+}
+
+function assertSyntheticN2Receipts(synthetic) {
+  requireProof(synthetic?.decisionReceipts?.length === 2,
+    "synthetic N2 decision receipt count is unexpected");
+  requireProof(synthetic.decisionReceipts[0]?.verdict === "changes_requested",
+    "synthetic N2 first verdict is unexpected");
+  requireProof(synthetic.decisionReceipts[1]?.verdict === "approved",
+    "synthetic N2 second verdict is unexpected");
+  requireProof(synthetic.decisionReceipts.every((receipt) => receipt.state === "native_observed"),
+    "synthetic N2 decision receipts are not native-observed");
+}
+
+function assertSyntheticN2Restart(synthetic, inspection) {
+  requireProof(synthetic?.restartReadback?.mission?.aggregate?.phase === "accepted",
+    "synthetic N2 restart phase is not accepted");
+  requireProof(JSON.stringify(synthetic.restartReadback.mission.aggregate.n2)
       === JSON.stringify(inspection.mission.aggregate.n2),
   "synthetic N2 restart readback does not match the persisted accepted state");
+}
+
+function assertSyntheticN2Proof(evidence) {
+  const synthetic = evidence.syntheticN2;
+  assertSyntheticN2Boundary(synthetic);
+  assertSyntheticN2Regressions(synthetic);
+  assertSyntheticN2Candidates(synthetic);
+  const inspection = assertSyntheticN2AcceptedState(synthetic);
+  assertSyntheticN2Receipts(synthetic);
+  assertSyntheticN2Restart(synthetic, inspection);
 }
 
 export function assertQualificationEvidence(evidence, {
