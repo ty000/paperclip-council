@@ -43,6 +43,12 @@ it("records divergent head as observed without mutating historical acceptance or
   expect(observation.matchesCandidate).toBe(false); expect(inspectN5(f.mission)?.ready).toBe(false);
   expect(f.mission.aggregate.n5!.publication!.submission).toEqual(before);
 });
+it("never replaces the first correlated PR under the same publication intent", () => {
+  const f = fixture();
+  f.mission.aggregate.n5!.publication!.observation = correlateN5Readback(f.mission, f.document, f.products, f.objects);
+  f.document.body = f.document.body.replace("/pull/23", "/pull/24");
+  expect(() => correlateN5Readback(f.mission, f.document, f.products, f.objects)).toThrow(/another PR/);
+});
 it("requires nondraft open PR and exact attributed checks/reviews, expires native readiness", () => {
   const f = fixture(); const p = f.mission.aggregate.n5!.publication!;
   p.observation = correlateN5Readback(f.mission, f.document, f.products, f.objects);
@@ -52,6 +58,10 @@ it("requires nondraft open PR and exact attributed checks/reviews, expires nativ
   p.observation.draft = true; expect(inspectN5(f.mission)?.ready).toBe(false);
   p.observation.draft = false; p.checks.state = "pending"; expect(inspectN5(f.mission)?.ready).toBe(false);
   p.checks.state = "passed"; p.observation.lastResolvedAt = new Date(Date.now() - 400_000).toISOString(); expect(inspectN5(f.mission)?.ready).toBe(false);
+  p.observation.lastResolvedAt = new Date().toISOString(); p.readbackUnavailable = "n5_native_read_unavailable";
+  expect(inspectN5(f.mission)?.ready).toBe(false);
+  delete p.readbackUnavailable; f.mission.aggregate.mandate.objective = "changed";
+  expect(inspectN5(f.mission)?.ready).toBe(false);
 });
 it("retains an ambiguous publication across reconciliation without emitting another native create", async () => {
   const f = fixture(); const create = vi.fn();

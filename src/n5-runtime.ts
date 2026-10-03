@@ -132,6 +132,7 @@ export async function handleN5Agent(ctx: PluginContext, input: PluginApiRequestI
       p = { ...p, state: "unknown", claimedAt: new Date().toISOString(), claimCommandId: String(body.commandId) };
     } else if (body.command === "n5-observe-delivery") {
       if (!p.claimedAt) throw new MissionError(409, "n5_intent_required", "Persist the one-shot publication intent before any effect");
+      await assertCurrentN5Plan(ctx, m);
       const observation = await observeN5Native(ctx, m);
       p = { ...p, state: "opened", readbackUnavailable: undefined, observation,
         checks: body.checks ? attributedObservation(body.checks, ["unknown", "pending", "passed", "failed"], input.actor, observation.headSha) as NonNullable<typeof p.checks> : undefined,

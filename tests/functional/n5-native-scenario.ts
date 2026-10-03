@@ -60,12 +60,20 @@ export async function prepareN5Scenario(input: any, prepared: any) {
       const after = await readMission(); assert.equal(after.body.n5.ready, true, JSON.stringify(after.body.n5));
       assert(after.body.n5.publication.checks.userId); assert.equal(after.body.n5.publication.checks.runId, null);
       fakeN5GitHub.headSha = "e".repeat(40);
-      await request("human", "POST", `${issuePath}/external-objects/refresh`, { objectIds: [p.observation.objectId] });
+      const nextRefreshAt = refresh.body.refreshed[0].object.nextRefreshAt;
+      const waitMs = Math.max(0, Date.parse(nextRefreshAt) - Date.now() + 30);
+      assert(waitMs <= 301_000, "Bound native refresh TTL; never bypass host backoff");
+      guards.push({ waitingForNativeRefresh: { nextRefreshAt, waitMs, publisherFinished: true } });
+      await input.save();
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+      const refreshed = await request("human", "POST", `${issuePath}/external-objects/refresh`, { objectIds: [p.observation.objectId] });
+      assert.equal(refreshed.body.refreshed[0].refreshed, true, JSON.stringify(refreshed.body));
       const mismatch = await request("human", "POST", `${prepared.missionPath}/commands`, { companyId: prepared.companyId, command: "reconcile-delivery" });
       assert.equal(mismatch.status, 200, JSON.stringify(mismatch.body));
       const divergent = await readMission(); assert.equal(divergent.body.n5.ready, false);
       assert.equal(divergent.body.n5.publication.observation.matchesCandidate, false);
       assert.equal(fakeN5GitHub.createCount, 1);
+      assert.equal(canonicalPayloadHash(divergent.body.mission.aggregate.n2), canonicalPayloadHash(current.aggregate.n2));
       guards.push({ afterPublisherTerminal: { runId: p.runId, settledAt: p.settledAt, lateChecks: after.body.n5.publication.checks,
         readinessWithLateObservations: after.body.n5.ready, divergentAfterTerminal: divergent.body.n5.publication.observation, fakeEffectCount: fakeN5GitHub.createCount } });
     },
@@ -112,16 +120,14 @@ export async function prepareN5Scenario(input: any, prepared: any) {
       assert.equal(ready.status, 200, JSON.stringify(ready.body));
       inspected = await call({ command: "n5-inspect" }); assert.equal(inspected.body.delivery.ready, true);
       const acceptedHistory = canonicalPayloadHash((await readMission()).body.mission.aggregate.n2);
-      fakeN5GitHub.headSha = "f".repeat(40); await refresh();
-      const divergent = await call({ command: "n5-observe-delivery", commandId: randomUUID(), expectedVersion: inspected.body.version });
-      assert.equal(divergent.status, 200, JSON.stringify(divergent.body));
-      inspected = await call({ command: "n5-inspect" }); assert.equal(inspected.body.delivery.ready, false);
-      assert.equal(inspected.body.delivery.publication.observation.matchesCandidate, false);
-      assert.equal(canonicalPayloadHash((await readMission()).body.mission.aggregate.n2), acceptedHistory);
+      // Finish with pending checks; later owner observations use no active model/run.
+      const pending = await call({ command: "n5-observe-delivery", commandId: randomUUID(), expectedVersion: inspected.body.version,
+        checks: { ...checks, state: "pending" }, reviews: { ...reviews, state: "pending" } });
+      assert.equal(pending.status, 200, JSON.stringify(pending.body));
       guards.push({ runId, issueId, intentId: p.intentId, missingIntent: pre.body.code, wrongActor: wrongActor.body.code,
         replayPermission: replay.body.effectPermission, duplicate: duplicate.body.code, persistedUnknown: durable.state,
         nativeReadback: observed.body.mission.aggregate.n5.publication.observation, readyObserved: ready.body.mission.aggregate.n5.publication,
-        divergentReadback: inspected.body.delivery, acceptedHistorySha256: acceptedHistory, fakeEffectCount: fakeN5GitHub.createCount,
+        pendingAtFinish: pending.body.mission.aggregate.n5.publication, acceptedHistorySha256: acceptedHistory, fakeEffectCount: fakeN5GitHub.createCount,
         githubTransportCalls: fakeN5GitHub.calls });
       return true;
     },

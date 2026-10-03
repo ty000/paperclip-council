@@ -5,7 +5,9 @@ import type { N5Plan, N5State } from "./n5-state.js";
 
 type ObjectRecord = Record<string, any>;
 async function readDeliveryNative(ctx: PluginContext, mission: MissionRecord, issueId: string, resource: string): Promise<any> {
-  const result = await councilNativeRequest(ctx, mission.companyId, `/api/issues/${issueId}/${resource}`);
+  let result;
+  try { result = await councilNativeRequest(ctx, mission.companyId, `/api/issues/${issueId}/${resource}`); }
+  catch { throw new MissionError(409, "n5_native_read_unavailable", `Native ${resource} transport unavailable; readback remains unknown`); }
   if (result.status !== 200) throw new MissionError(409, "n5_native_read_unavailable", `Native ${resource} read unavailable (${result.status})`);
   return result.body;
 }
@@ -42,6 +44,7 @@ export function correlateN5Readback(mission: MissionRecord, document: ObjectReco
   let report: ObjectRecord;
   try { report = JSON.parse(document.body); } catch { throw new MissionError(409, "n5_delivery_document", "Native delivery document must contain its intent and canonical PR URL"); }
   const url = typeof report?.url === "string" ? report.url : "";
+  if (p.observation && p.observation.url !== url) throw new MissionError(409, "n5_pr_identity_changed", "A confirmed publication cannot be rebound to another PR");
   const match = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/pull\/([1-9][0-9]*)$/.exec(url);
   if (!match || match[1] !== authority.repository || report.intentId !== p.intentId || document.issueId !== p.issueId
       || !document.latestRevisionId || !p.claimedAt) throw new MissionError(409, "n5_delivery_binding", "Delivery document, intent and canonical repository PR must match");
