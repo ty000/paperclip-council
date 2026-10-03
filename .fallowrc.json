@@ -2,6 +2,10 @@
   "entry": [
     "src/ui/index.tsx",
     "tests/receipts/crash-child.ts",
-    "tests/receipts/ui-fixture.tsx"
+    "tests/receipts/ui-fixture.tsx",
+    "scripts/qualification/n2-native-dependency.config.mjs",
+    "scripts/qualification/n2-native-lifecycle.config.mjs",
+    "tests/functional/n2-native-dependency.test.ts",
+    "tests/functional/n2-native-lifecycle.test.ts"
   ]
 }

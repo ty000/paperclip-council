@@ -61,6 +61,16 @@ export async function runN2NativeLifecycle(input: any) {
               assert.equal(response.status, 200, JSON.stringify(response.body)); return response.body;
             };
             let inspection = await call({ command: "inspect" });
+            if (!reviewer && inspection.native.transmission.attestedAt) {
+              const predecessor = inspection.n2.review;
+              const nativeCosts = await db.select().from(tables.costEvents).where(eq(tables.costEvents.issueId, prepared.rootIssueId));
+              const predecessorRun = (await db.select().from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.id, predecessor.handoff.reviewerRunId)))[0];
+              assert.equal(predecessorRun.status, "succeeded");
+              assert(inspection.n2.usage.reviews[0].settled);
+              assert(nativeCosts.some((cost: any) => cost.heartbeatRunId === predecessorRun.id));
+              trace.push({ event: "correction_admitted_after_reviewer_cost_and_settlement", correctionRunId: runId,
+                reviewerRunId: predecessorRun.id, reviewerFinishedAt: predecessorRun.finishedAt, reviewCost: nativeCosts.find((cost: any) => cost.heartbeatRunId === predecessorRun.id), usage: inspection.n2.usage });
+            }
             if (reviewer) {
               await call({ command: "confirm-review-handoff", commandId: randomUUID(), expectedVersion: inspection.version });
               inspection = await call({ command: "inspect" });

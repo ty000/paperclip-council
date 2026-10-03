@@ -6,7 +6,7 @@ import { settleAdmission } from "../src/admission.js";
 import { settleNativeExactRunUsage } from "../src/g4-native.js";
 const binding = { companyId: "company", issueId: "issue", agentId: "agent", runId: "run", commandId: "command", reservationId: "reservation", periodKey: "period", expectedVersion: 1 };
 const run = () => ({ id: "run", companyId: "company", agentId: "agent", nativeIssueId: "issue", contextSnapshot: { issueId: "issue" },
-  status: "succeeded", startedAt: "2026-10-03T10:00:00Z", finishedAt: "2026-10-03T10:01:00Z", usageJson: { inputTokens: 101, cachedInputTokens: 40, outputTokens: 23 } });
+  status: "succeeded", startedAt: "2026-10-03T10:00:00Z", finishedAt: "2026-10-03T10:01:00Z", usageJson: { usageSource: "per_run", inputTokens: 101, cachedInputTokens: 40, outputTokens: 23 } });
 beforeEach(() => { vi.resetAllMocks(); vi.mocked(councilNativeRequest).mockResolvedValue({ status: 200, body: run() }); });
 it("settles one public run without relying on aggregate tokens or counting cached tokens twice", async () => {
   await settleNativeExactRunUsage({} as never, binding);
@@ -19,6 +19,7 @@ it.each([
   ["running", { status: "running", finishedAt: null }, "g4_run_not_terminal"],
   ["not started", { startedAt: null }, "g4_run_not_terminal"],
   ["missing usage", { usageJson: null }, "g4_usage_unavailable"],
+  ["unqualified measurement", { usageJson: { inputTokens: 1, outputTokens: 2 } }, "g4_usage_unavailable"],
   ["zero usage", { usageJson: { inputTokens: 0, outputTokens: 0 } }, "g4_usage_unavailable"],
   ["invalid cached usage", { usageJson: { inputTokens: 1, cachedInputTokens: 2, outputTokens: 3 } }, "g4_usage_unavailable"],
 ])("keeps the reservation held for %s", async (_label, patch, code) => {

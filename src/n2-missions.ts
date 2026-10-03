@@ -1435,6 +1435,9 @@ export async function prepareN2Decision(
       || (decision.verdict === "approved" && decision.approvedCommit !== submission.candidateCommit)) {
     throw new MissionError(409, "n2_decision_target_mismatch", "Decision does not target the active N2 submission and confirmed reviewer run");
   }
+  if (decision.verdict === "changes_requested" && (round.round !== 1 || state.correctionsUsed >= state.correctionLimit)) {
+    throw new MissionError(409, "correction_limit_exceeded", "Only one ordinary correction is supported");
+  }
   if (decision.verdict === "approved") {
     // N2 already verified the bundle bytes, base, candidate and attributed paths
     // when creating this immutable submission. Recheck its native attachment

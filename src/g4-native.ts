@@ -47,7 +47,7 @@ export async function settleNativeExactRunUsage(ctx: PluginContext, input: {
   const inputTokens = usage?.inputTokens;
   const outputTokens = usage?.outputTokens;
   const cached = usage?.cachedInputTokens ?? 0;
-  if (![inputTokens, outputTokens, cached].every(value => Number.isSafeInteger(value) && Number(value) >= 0)
+  if (usage?.usageSource !== "per_run" || ![inputTokens, outputTokens, cached].every(value => Number.isSafeInteger(value) && Number(value) >= 0)
       || Number(cached) > Number(inputTokens) || !Number.isSafeInteger(Number(inputTokens) + Number(outputTokens))
       || Number(inputTokens) + Number(outputTokens) <= 0) {
     throw new AdmissionError(409, "g4_usage_unavailable", "Exact terminal run usage remains unknown; its reservation remains held");
