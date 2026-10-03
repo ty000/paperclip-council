@@ -63,6 +63,12 @@ export async function handleN2RunFinished(
   }
 
   let mission = await getMissionByRootIssue(ctx, event.companyId, run.issueId);
+  if (!mission) {
+    const issue = await ctx.issues.get(run.issueId, event.companyId);
+    if (issue?.parentId) mission = await getMissionByRootIssue(ctx, event.companyId, issue.parentId);
+  }
+  if (mission?.aggregate.n3 && run.issueId !== mission.rootIssueId
+      && !mission.aggregate.n3.rounds.some(round => round.specialists.some(item => item.issueId === run.issueId && item.runId === run.runId))) return { outcome: "ignored", reason: "n3_child_unbound" };
   if (!mission?.aggregate.n2) return { outcome: "ignored", reason: "n2_mission_unavailable" };
   if (mission.aggregate.n2.native) {
     const { reconcileNativeN2 } = await import("./n2-native-runtime.js");
@@ -76,7 +82,7 @@ export async function handleN2RunFinished(
         if (!retryable) throw error;
         if (attempt === attempts) return { outcome: "prepared", reason: "usage_not_ready", attempts };
         await pause(delayMs);
-        mission = (await getMissionByRootIssue(ctx, event.companyId, run.issueId))!;
+        mission = (await getMissionByRootIssue(ctx, event.companyId, mission.rootIssueId))!;
       }
     }
   }

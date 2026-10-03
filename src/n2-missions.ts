@@ -1,3 +1,4 @@
+import { N3OpinionError } from "./n3-opinions.js";
 import { createHash, randomUUID } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { AdmissionError, readAdmission, reserveAdmission } from "./admission.js";
@@ -1338,6 +1339,7 @@ export async function handleN2AgentApi(input: PluginApiRequestInput, ctx: Plugin
     }
     throw new MissionError(400, "unknown_command", "Unknown N2 agent command");
   } catch (error) {
+    if (error instanceof N3OpinionError) return { status: 409, body: { error: error.message, code: error.code, details: error.details } };
     if (error instanceof MissionError || error instanceof AdmissionError) {
       return { status: error.status, body: { error: error.message, code: error.code, details: error.details } };
     }

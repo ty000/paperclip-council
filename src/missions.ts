@@ -1,3 +1,4 @@
+import { inspectN3 } from "./n3-state.js";
 import { createHash } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { AdmissionError } from "./admission.js";
@@ -77,6 +78,7 @@ export type MissionAggregate = {
   effectIntents: Array<Record<string, unknown>>;
   n1?: Record<string, unknown>;
   n2?: N2State;
+  n3?: import("./n3-state.js").N3State;
 };
 
 export type PinnedRoster = {
@@ -618,6 +620,7 @@ export function inspectMission(mission: MissionRecord) {
     nextAction: n2?.nextAction.label ?? n1?.nextAction ?? "Resolve and qualify G4 before adding any dispatch or activation command.",
     n1,
     n2,
+    n3: inspectN3(mission),
   };
 }
 

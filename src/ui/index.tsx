@@ -1,3 +1,4 @@
+import type { inspectN3 } from "../n3-state.js";
 import { CouncilDecisionReceipts } from "./decision-receipts.js";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import {
@@ -76,6 +77,7 @@ type MissionInspection = {
     };
     blocker: string | null;
   };
+  n3?: ReturnType<typeof inspectN3>;
   n2: null | {
     submission: null | {
       submissionId: string; ordinal: 1 | 2; predecessorSubmissionId: string | null;
@@ -694,6 +696,23 @@ export function CouncilMissionsPage({ context }: PluginPageProps) {
         <p>Bundle SHA-256: {selected.n1.candidate.candidate.sha256}</p>
         <p><a href={issueLink(selected.mission.rootIssueId) + "#attachment-" + encodeURIComponent(selected.n1.candidate.candidate.attachmentId)}>Open candidate attachment</a></p>
         <ul>{selected.n1.candidate.checks.map((check) => <li key={check.name}>{check.name}: {check.status} — {check.detail}</li>)}</ul>
+      </section>}
+      {selected?.n3 && <section style={card} aria-label="Specialist opinions">
+        <h2>Specialist opinions</h2>
+        <p>Submission {selected.n3.review.subject.submissionId} · commit {selected.n3.review.subject.candidateCommit}</p>
+        <p>Evidence revision {selected.n3.review.subject.evidenceRevision} · bundle {selected.n3.review.subject.bundleSha256} · mandate {selected.n3.review.subject.mandateHash}</p>
+        <p>Missing opinions: {selected.n3.missing.join(", ") || "none"}. Unknown usage: {selected.n3.usageUnknown.join(", ") || "none"}.</p>
+        {selected.n3.review.opinions.map(opinion => <article key={opinion.opinionId}>
+          <h3>{opinion.perspective}: {opinion.outcome}</h3>
+          <p>Agent {opinion.specialistAgentId} · run {opinion.specialistRunId}</p>
+          <p>{opinion.rationale}</p>
+          {opinion.findings.map(finding => <p key={finding.findingId}>{finding.classification}: {finding.criterionOrRisk} — {finding.consequence}</p>)}
+        </article>)}
+        {selected.n3.review.synthesis && <article><h3>Final synthesis: {selected.n3.review.synthesis.verdict}</h3>
+          <p>{selected.n3.review.synthesis.rationale}</p>
+          {selected.n3.review.synthesis.dispositions.map(item => <p key={item.findingId}>{item.findingId}: {item.disposition} — {item.reason}</p>)}
+        </article>}
+        <p><strong>Next actor:</strong> {selected.n3.nextActor}</p>
       </section>}
       {selected?.n2 && <section style={card} aria-labelledby="n2-review-title">
         <h2 id="n2-review-title" style={{ marginTop: 0 }}>Independent review and correction</h2>

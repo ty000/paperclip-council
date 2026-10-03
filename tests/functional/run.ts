@@ -127,7 +127,7 @@ const requireServer = createRequire(resolve(root, "server/package.json"));
 const { eq, inArray, sql } = requireServer("drizzle-orm");
 const evidence: Record<string, any> = {
   schemaVersion: 1,
-  proofId: n2NativeLifecycleMode ? "paperclip-council-n2-native-deterministic-lifecycle-v1" : n2PrerequisiteMode
+  proofId: n2NativeLifecycleMode ? `paperclip-council-${process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1" ? "n3" : "n2"}-native-deterministic-lifecycle-v1` : n2PrerequisiteMode
     ? "paperclip-council-n2-native-stage-prerequisite-v1"
     : isolatedLiveN2Authorized
     ? "paperclip-council-n2-isolated-observable-native-qualification-v1"
