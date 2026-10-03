@@ -23,7 +23,7 @@ export function continuationScenario(input: any, prepared: any, readMission: any
       assert.equal(resumed.status, 200, JSON.stringify(resumed.body));
       const afterRoot = await request("human", "GET", `/api/issues/${prepared.rootIssueId}`);
       guards.push({ ownerResume: { command: body.commandId, reservationId: body.reservationId, action, status: resumed.status, nativeStatus: resumed.body.status,
-        workspaceBoundary: { profile: "shared_workspace/project_primary", before: { id: beforeRoot.body.executionWorkspaceId ?? null, rootStatus: beforeRoot.body.status, workspaceStatus: beforeRoot.body.currentExecutionWorkspace?.status ?? null }, after: { id: resumed.body.executionWorkspaceId ?? null, rootStatus: afterRoot.body.status, workspaceStatus: afterRoot.body.currentExecutionWorkspace?.status ?? null }, reconstructionClaim: false },
+        workspaceBoundary: { profile: "shared_workspace/project_primary", before: workspaceObservation(beforeRoot.body), after: workspaceObservation(afterRoot.body), reconstructionClaim: false },
         historicalApplication: result.body.mission.aggregate.n5.continuation.previousApplication, replayPermission: replay.body.effectPermission } });
     },
     async rebind(actor: string, call: any) {
@@ -69,4 +69,8 @@ export function continuationScenario(input: any, prepared: any, readMission: any
         newHead: final.n5.publication.observation.headSha, ready: true, createCount: github.createCount, updateCount: github.updateCount, exhausted: exhausted.body.code } });
     },
   };
+}
+
+function workspaceObservation(issue: any) {
+  return { id: issue.executionWorkspaceId ?? null, rootStatus: issue.status, workspaceStatus: issue.currentExecutionWorkspace?.status ?? null };
 }
