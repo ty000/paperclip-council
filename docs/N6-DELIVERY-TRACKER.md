@@ -7,13 +7,13 @@ Objective: a useful Council mission reaches its exact accepted candidate and obs
 | N2/N3 | Merged #18/#21; deterministic native candidate/review/correction/opinion/accounting boundaries exist. Real provider usability remains to be demonstrated. |
 | N5 | Merged #22/#23; native plan, publisher authority, one-shot create/update, same-PR continuation and separate readbacks. These deterministic effects do not prove real publication. |
 | Preparation | Merged #24; isolated six-identity recipe and ordinary native gateway capability. No campaign run. Projected terminal sandbox remains unqualified; `launchReady=false`. |
-| Native review contract | Adopted native verdict followed by Council verification of frozen candidate, N3 report and exact terminal costs. Owner-assisted lead hold/release; no new reviewer run or authority. See [contract](n5/NATIVE-REVIEW-READBACK.md). |
+| Native review contract | Implemented and qualified without providers: native verdict followed by Council verification of frozen candidate, N3 report and exact terminal costs. Owner-assisted lead hold/release; no new reviewer run or authority. See [contract](n5/NATIVE-REVIEW-READBACK.md). |
 | M1 and N6 | OPEN. The representative mission is the Council Delivery panel, with backend presentation/tests and frontend contributions, Development and Quality opinions, an independent reviewer and authorized publisher. |
 
 Next two bounded lots:
 
-1. Finish source and installed provider-free qualification of the adopted native-verdict readback, including genuine logical correction, costs and operator release. Review its exact candidate/evidence before publication.
-2. Separately qualify the projected terminal/provider/tool environment, present the single proposed 15-run / 2M reserved per run / 30M period envelope for explicit owner authorization, then execute the representative mission only when authorized. Nominal expectation remains nine runs; no extra reviewer is added. Reservations are not a hard provider consumption cap. N6 follows usable M1; no cross-mission scheduler is implemented here.
+1. Separately qualify the projected terminal/provider/tool environment; the native-verdict readback source and installed provider-free correction/accounting proof are delivered for independent review and publication.
+2. Present the single proposed 15-run / 2M reserved per run / 30M period envelope for explicit owner authorization, then execute the representative mission only when authorized. Nominal expectation remains nine runs; no extra reviewer is added. Reservations are not a hard provider consumption cap. N6 follows usable M1; no cross-mission scheduler is implemented here.
 
 Real UI proof must serve the accepted candidate build in the temporary instance, not capture the campaign's original build. Old evidence is immutable; whole-command exit and artifact outcome must both be checked. The historical N5 continuation's complete scenario JSON did not erase its launcher exit1 label failure. Provider-free native cards/costs and simulated model/GitHub results remain separately attributed. Remaining profile coverage is NOT EVALUATED, not silently complete.
 

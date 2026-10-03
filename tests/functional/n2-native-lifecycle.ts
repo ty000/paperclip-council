@@ -1,4 +1,4 @@
-import { nativeReviewerTurn, holdDedicatedLead, releaseReservedCorrection } from "./n2-native-reviewer.js";
+import { nativeReviewerTurn, holdDedicatedLead, observeNativeReview } from "./n2-native-reviewer.js";
 import { nativeLifecycleLabel } from "../../scripts/qualification/native-lifecycle-label.mjs";
 import { continuationMode } from "./n5-continuation-scenario.js";
 import { prepareN5Scenario } from "./n5-native-scenario.js";
@@ -160,7 +160,7 @@ export async function runN2NativeLifecycle(input: any) {
     command: "start-review", commandId: randomUUID(), expectedVersion: before.body.mission.version,
     submissionId: randomUUID(), reservationId: randomUUID(), transmissionReservationId: randomUUID(), ...(n3 ? { n3Slots: n3.slots } : {}) });
   assert.equal(started.status, 200, JSON.stringify(started.body));
-  const { heartbeat, mission: initialMission, admission: initialAdmission } = await awaitLifecycle(input, prepared, n5, trace, errors);
+  const { heartbeat, mission: initialMission, admission: initialAdmission } = await observeNativeReview(input, prepared, n5, trace, errors, lifecycleComplete);
   let mission = initialMission; const admission = initialAdmission;
   if (n5 && !errors.length) { await n5.afterFinish(); mission = (await n5.readMission()).body.mission; }
   const runs = (await db.select().from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.companyId, prepared.companyId)));
@@ -208,22 +208,6 @@ function lifecycleComplete(mission: any, admission: any, n5: boolean) {
 }
 
 
-async function awaitLifecycle(input: any, prepared: any, n5: any, trace: any[], errors: string[]) {
-  const { heartbeatService } = await input.hostImport("server/src/services/heartbeat.ts");
-  const heartbeat = heartbeatService(input.db);
-  let mission: any; let admission: any;
-  for (let attempt = 0; attempt < 80; attempt++) {
-    await heartbeat.drainActiveRunExecutions();
-    mission = (await input.request("human", "GET", `${prepared.missionPath}?companyId=${prepared.companyId}`)).body.mission;
-    admission = (await input.request("human", "GET", `${prepared.admissionPath}?companyId=${prepared.companyId}&periodKey=${encodeURIComponent(prepared.nativePeriodKey)}`)).body.envelope;
-    if (errors.length) break;
-    await releaseReservedCorrection(input, prepared, mission, trace, heartbeat);
-    if (n5) await n5.advance(mission);
-    if (lifecycleComplete(mission, admission, Boolean(n5))) break;
-    await new Promise(resolve => setTimeout(resolve, 250));
-  }
-  return { heartbeat, mission, admission };
-}
 
 async function measureNativeRunResponse(input: any, runId: string, trace: any[]) {
   const key = input.agentTokens.get("n2-prerequisite-reviewer").token;

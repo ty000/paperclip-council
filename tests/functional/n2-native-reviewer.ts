@@ -65,3 +65,20 @@ function reviewerReport(packet: any, approved: boolean) {
     dispositions: packet.opinions?.opinions.flatMap((opinion: any) => opinion.findings.filter((f: any) => f.classification !== "deferrable_improvement")
       .map((f: any) => ({ findingId: f.findingId, disposition: "upheld_with_correction", reason: "The required marker is absent; one bounded correction is necessary", evidenceRefs: f.evidenceRefs }))) ?? [] };
  }
+
+export async function observeNativeReview(input: any, prepared: any, n5: any, trace: any[], errors: string[], complete: (mission: any, admission: any, n5: boolean) => boolean) {
+  const { heartbeatService } = await input.hostImport("server/src/services/heartbeat.ts");
+  const heartbeat = heartbeatService(input.db);
+  let mission: any; let admission: any;
+  for (let attempt = 0; attempt < 80; attempt++) {
+    await heartbeat.drainActiveRunExecutions();
+    mission = (await input.request("human", "GET", `${prepared.missionPath}?companyId=${prepared.companyId}`)).body.mission;
+    admission = (await input.request("human", "GET", `${prepared.admissionPath}?companyId=${prepared.companyId}&periodKey=${encodeURIComponent(prepared.nativePeriodKey)}`)).body.envelope;
+    if (errors.length) break;
+    await releaseReservedCorrection(input, prepared, mission, trace, heartbeat);
+    if (n5) await n5.advance(mission);
+    if (complete(mission, admission, Boolean(n5))) break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  return { heartbeat, mission, admission };
+}
