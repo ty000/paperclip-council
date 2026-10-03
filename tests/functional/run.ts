@@ -316,7 +316,7 @@ async function createN2PrerequisiteFixtureRun(
   return runId;
 }
 
-async function finishN2PrerequisiteFixtureRuns(runs: readonly Array<{
+async function finishN2PrerequisiteFixtureRuns(runs: ReadonlyArray<{
   actor: string;
   runId: string;
   companyId: string;

@@ -245,8 +245,8 @@ export async function reconcileNativeN2(ctx: PluginContext, initial: MissionReco
     idempotencyKey: `council:n2:correction:${correction.reservationId}`, reason: "council_n2_settled_correction",
   });
   mission = await fresh(ctx, mission); state = storedN2(mission); native = requireNative(mission);
-  await n2Cas(ctx, mission, { ...mission.aggregate, phase: wake.runId ? "correcting" : "blocked",
-    n2: { ...state, status: wake.runId ? "correcting" : state.status,
+  await n2Cas(ctx, mission, { ...mission.aggregate, phase: wake.runId && state.status === "correction_requested" ? "correcting" : mission.aggregate.phase,
+    n2: { ...state, status: wake.runId && state.status === "correction_requested" ? "correcting" : state.status,
       native: { ...native, releaseState: wake.runId ? "released" : "claimed" },
       correction: { ...state.correction!, runId: state.correction?.runId ?? wake.runId, wakeState: wake.runId ? "requested" : "unknown" } } });
 }
