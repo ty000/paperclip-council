@@ -10,16 +10,20 @@ import { ProcessGroupDrainError, runProcessGroup } from "../scripts/qualificatio
 // @ts-expect-error The qualification launcher is intentionally plain ESM.
 import { prepareQualificationHost, withOwnedQualificationRuntime } from "../scripts/qualification/run-bounded.mjs";
 // @ts-expect-error The qualification evidence contract is intentionally plain ESM.
-import { __claimLiveEvidencePathsForTest, assertQualificationEvidence, claimLiveEvidencePaths, LIVE_RESULT_KEYS, SAFE_RESULT_KEYS, writeClaimedArtifact } from "../scripts/qualification/evidence-contract.mjs";
+import { __claimLiveEvidencePathsForTest, assertN2PrerequisiteEvidence, assertQualificationEvidence, claimLiveEvidencePaths, claimN2LiveEvidencePaths, LIVE_RESULT_KEYS, N2_LIVE_RESULT_KEYS, N2_PREREQUISITE_RESULT_KEYS, SAFE_RESULT_KEYS, writeClaimedArtifact } from "../scripts/qualification/evidence-contract.mjs";
 import {
   assertNoReviewerRuns,
   assertOnlyExpectedAgentRun,
   contributorInstructions,
   leadInstructions,
   n1DeliveryAdapterConfig,
+  n2LeadInstructions,
+  n2ReviewerInstructions,
   nativeRunEvidence,
   reconcileTerminalN1Usage,
+  UUID_GENERATION_COMMAND,
 } from "./functional/n1-live.js";
+import { n2MissionWakeContext, withN2WakeCleanup } from "./functional/n2-live.js";
 import { contributionDescription } from "../src/n1-missions.js";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -29,9 +33,269 @@ const liveScreenshotBytes = Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
   Buffer.from("bounded-png-fixture"),
 ]);
+const n2LiveScreenshotPath = resolve("/tmp", `n2-live-${liveCommit}-accepted.png`);
 
 function liveOptions(notBefore: number) {
   return { mode: "live", candidateCommit: liveCommit, notBefore, screenshotPath: liveScreenshotPath, screenshotBytes: liveScreenshotBytes };
+}
+
+function n2LiveOptions(notBefore: number) {
+  return { mode: "live-n2", candidateCommit: liveCommit, notBefore, screenshotPath: n2LiveScreenshotPath, screenshotBytes: liveScreenshotBytes };
+}
+
+function syntheticN2Evidence() {
+  const state = {
+    status: "accepted",
+    correctionsUsed: 1,
+    submissions: [
+      { candidateCommit: "1".repeat(40), sha256: "2".repeat(64) },
+      { candidateCommit: "3".repeat(40), sha256: "4".repeat(64) },
+    ],
+  };
+  const inspection = {
+    mission: { aggregate: { phase: "accepted", n2: state } },
+    n2: { status: "accepted", correctionsUsed: 1, submissions: state.submissions, usage: { complete: true } },
+  };
+  return {
+    proofClass: "synthetic-provider-free-integration",
+    operatorBoundary: {
+      preparedExecutor: "authenticated human operator through PATCH /api/issues/:id",
+      automationStatus: "human-assisted; no autonomous executor consumes prepared in this mini-lot",
+    },
+    regressions: {
+      uuidEffectAccepted: true,
+      publicTransitionActorsObserved: true,
+      unauthorizedReviewerPatchStatus: 409,
+      intendedHumanPatchStatus: 200,
+    },
+    candidates: {
+      v1: { commit: "1".repeat(40), sha256: "2".repeat(64) },
+      v2: { commit: "3".repeat(40), sha256: "4".repeat(64) },
+    },
+    mission: inspection,
+    decisionReceipts: [
+      { verdict: "changes_requested", state: "native_observed" },
+      { verdict: "approved", state: "native_observed" },
+    ],
+    restartReadback: inspection,
+  };
+}
+
+function n2PrerequisiteEvidence() {
+  const candidate = { candidateCommit: "3".repeat(40), sha256: "4".repeat(64) };
+  const companyId = "30000000-0000-4000-8000-000000000001";
+  const missionId = "30000000-0000-4000-8000-000000000002";
+  const rootIssueId = "40000000-0000-4000-8000-000000000001";
+  const reviewerFixtureRunId = "70000000-0000-4000-8000-000000000001";
+  const councilCommandRoute = `/api/plugins/private.paperclip-council/api/issues/${rootIssueId}/council/commands`;
+  const fixturePeriodKey = "n2-prerequisite-fixture-period";
+  const nativePeriodKey = "n2-prerequisite-native-period";
+  const nativeProfile = {
+    kind: "paperclip-orchestration-tokens-v1",
+    periodKey: nativePeriodKey,
+    periodStart: "2026-10-02T09:59:00.000Z",
+    periodEnd: "2026-10-02T11:30:00.000Z",
+    periodAllowanceUnits: 6_000_000,
+    runReservationUnits: 2_000_000,
+    initialKnownUsageUnits: 0,
+    initialExposureUnits: 0,
+    initialTokenAccountingSource: `n2-prerequisite-native:${companyId}`,
+    maxCorrections: 1,
+  };
+  const agents = {
+    lead: { id: "lead" },
+    contributorA: { id: "alpha" },
+    contributorB: { id: "beta" },
+    reviewer: { id: "reviewer" },
+  };
+  const fixtureHeartbeatRuns = [
+    { actor: "n2-prerequisite-lead", agentId: agents.lead.id, issueId: "40000000-0000-4000-8000-000000000001" },
+    { actor: "n2-prerequisite-alpha", agentId: agents.contributorA.id, issueId: "40000000-0000-4000-8000-000000000002" },
+    { actor: "n2-prerequisite-beta", agentId: agents.contributorB.id, issueId: "40000000-0000-4000-8000-000000000003" },
+  ].map((entry, index) => ({
+    ...entry,
+    runId: `50000000-0000-4000-8000-00000000000${index + 1}`,
+    companyId,
+    createdStatus: "running",
+    fixtureSource: "fixture:n2-prerequisite:deterministic-heartbeat",
+  }));
+  const runReadbacks = fixtureHeartbeatRuns.map((fixture) => ({
+    agentId: fixture.agentId,
+    fixtureRunId: fixture.runId,
+    runCount: 1,
+    runs: [{
+      id: fixture.runId,
+      companyId,
+      agentId: fixture.agentId,
+      status: "succeeded",
+      finishedAt: "2026-10-02T10:00:30.000Z",
+      invocationSource: "on_demand",
+      triggerDetail: fixture.fixtureSource,
+      issueId: fixture.issueId,
+      wakeupRequestId: null,
+      processStartedAt: null,
+    }],
+  }));
+  runReadbacks.push({ agentId: agents.reviewer.id, fixtureRunId: null, runCount: 0, runs: [] } as any);
+  const participants = [
+    { contributionId: "10000000-0000-4000-8000-000000000001", assigneeAgentId: "alpha", commit: "1".repeat(40) },
+    { contributionId: "10000000-0000-4000-8000-000000000002", assigneeAgentId: "beta", commit: "2".repeat(40) },
+  ];
+  const reservations = [0, 1, 2].map((index) => ({
+    reservationId: `20000000-0000-4000-8000-00000000000${index + 1}`,
+    status: "settled",
+    usage: { status: "known", units: 0 },
+    remainingExposure: { status: "known", units: 0 },
+  }));
+  return {
+    schemaVersion: 1,
+    proofId: "paperclip-council-n2-native-stage-prerequisite-v1",
+    startedAt: "2026-10-02T10:00:00.000Z",
+    finishedAt: "2026-10-02T10:01:00.000Z",
+    candidate: { commit: liveCommit, clean: true },
+    outcome: "N2 native-stage prerequisite validated",
+    results: Object.fromEntries(N2_PREREQUISITE_RESULT_KEYS.map((key: string) => [key, "PASS"])),
+    appCleanup: "stopped only the plugin worker, listener, and application created by this run",
+    databaseCleanup: "fresh isolated PostgreSQL cluster removed; parent-owned temporary instance retained",
+    launcherCleanup: { ownedRuntimeRemoved: true },
+    n2Prerequisite: {
+      proofClass: "N2 native-stage prerequisite validated",
+      companyId,
+      missionId,
+      rootIssueId,
+      periodKey: fixturePeriodKey,
+      fixturePeriodKey,
+      nativePeriodKey,
+      nativeProfile,
+      nativeConfiguration: { configJson: { n1OperatingProfile: nativeProfile } },
+      nativeAdmission: {
+        envelope: {
+          periodKey: nativePeriodKey,
+          periodStart: nativeProfile.periodStart,
+          periodEnd: nativeProfile.periodEnd,
+          measurement: {
+            status: "known",
+            source: "paperclip:issues.summaries.getOrchestration:terminal-token-ledger",
+            unit: "tokens",
+          },
+          reservations: [],
+          exposure: { status: "known", units: 0 },
+        },
+      },
+      mission: {
+        mission: { missionId, aggregate: { phase: "ready_for_review", control: { status: "inactive" } } },
+        n1: {
+          participants,
+          candidate: { outcome: "verified", publicationEligible: true, candidate },
+        },
+        n2: null,
+      },
+      candidate,
+      admission: { envelope: { reservations, exposure: { status: "known", units: 0 } } },
+      agents,
+      providerBoundary: {
+        providerInvocationCount: 0,
+        nativeAgentExecutionCount: 0,
+        prerequisiteFixtureHeartbeatRowCount: 3,
+        wakeupCount: 0,
+        reviewerRunCount: 0,
+      },
+      fixtureHeartbeatRuns,
+      fixtureLifecycle: {
+        fixtureSource: "fixture:n2-prerequisite:deterministic-heartbeat",
+        completedAfter: "both contributions, candidate publication, and all three N1 reservation settlements",
+        terminalRuns: fixtureHeartbeatRuns.map((fixture) => ({
+          id: fixture.runId,
+          status: "succeeded",
+          finishedAt: "2026-10-02T10:00:30.000Z",
+          wakeupRequestId: null,
+          processStartedAt: null,
+        })),
+        issueLocks: fixtureHeartbeatRuns.map((fixture, index) => ({
+          id: fixture.issueId,
+          status: index === 0 ? "in_progress" : "done",
+          checkoutRunId: null,
+          executionRunId: null,
+        })),
+        activeRunCount: 0,
+        openCheckoutCount: 0,
+        openExecutionCount: 0,
+      },
+      handoffGuard: {
+        proofClass: "provider-free-native-n2-handoff-guard",
+        fixtureBoundary: "same prepared mission and candidate; one labelled reviewer fixture confirms the public handoff without wakeup, process, or provider",
+        reviewerHeartbeatConfiguration: { wakeOnDemand: false },
+        wakeupCount: 0,
+        processCount: 0,
+        providerInvocationCount: 0,
+        publicCommands: ["start-review", "PATCH /api/issues/:id", "inspect", "confirm-review-handoff", "GET mission", "GET admission"],
+        startReviewOutcome: "prepared",
+        operatorTransitionStatus: 200,
+        missionId,
+        rootIssueId,
+        submissionId: "60000000-0000-4000-8000-000000000001",
+        reservationId: "60000000-0000-4000-8000-000000000002",
+        nativePeriodKey,
+        candidateSha256: candidate.sha256,
+        candidateCommit: candidate.candidateCommit,
+        wakeContext: { pluginId: "private.paperclip-council", missionId, rootIssueId, councilCommandRoute },
+        reviewerFixture: {
+          fixtureSource: "fixture:n2-handoff-guard:deterministic-reviewer",
+          runId: reviewerFixtureRunId,
+          inspectHttpStatus: 200,
+          confirmHttpStatus: 200,
+          postConfirmInspectHttpStatus: 200,
+          lifecycle: {
+            activeRunCount: 0,
+            openCheckoutCount: 0,
+            openExecutionCount: 0,
+          },
+        },
+        mission: {
+          mission: { missionId },
+          n2: {
+            status: "reviewing",
+            submission: {
+              submissionId: "60000000-0000-4000-8000-000000000001",
+              sha256: candidate.sha256,
+              candidateCommit: candidate.candidateCommit,
+            },
+            review: { handoff: { reviewerRunId: reviewerFixtureRunId } },
+          },
+        },
+        admission: {
+          envelope: {
+            periodKey: nativePeriodKey,
+            exposure: { status: "known", units: 0 },
+            accountedUnits: 2_000_000,
+            availablePeriodUnits: 4_000_000,
+            reservations: [{
+              reservationId: "60000000-0000-4000-8000-000000000002",
+              status: "reserved",
+              requestedUnits: 2_000_000,
+              remainingExposure: { status: "known", units: 2_000_000 },
+            }],
+          },
+        },
+        reviewerRuns: [{
+          id: reviewerFixtureRunId,
+          status: "succeeded",
+          triggerDetail: "fixture:n2-handoff-guard:deterministic-reviewer",
+          wakeupRequestId: null,
+          processStartedAt: null,
+        }],
+        issueReadback: {
+          description: `Mission ID: ${missionId}\nCouncil command route: ${councilCommandRoute}`,
+          checkoutRunId: null,
+          executionRunId: null,
+        },
+        openReservationDisposition: "retained as reserved because the labelled reviewer fixture proves handoff identity without provider usage or native token settlement; isolated sandbox cleanup removes the owned database",
+      },
+      runReadbacks,
+      databaseBoundary: "the seam terminalizes exactly three N1 heartbeat fixtures and one separately labelled reviewer handoff fixture; public plugin and agent commands retain one native reservation without claiming provider usage or settlement",
+      stopBoundary: "reviewing handoff confirmed by one labelled provider-free reviewer fixture; native reservation remains open and no provider was dispatched",
+    },
+  };
 }
 
 function qualificationEvidence(mode: "safe" | "live"): any {
@@ -68,7 +332,7 @@ function qualificationEvidence(mode: "safe" | "live"): any {
     schemaVersion: 1,
     proofId: live
       ? "paperclip-council-n1-observable-native-qualification-v1"
-      : "paperclip-council-n1-safe-boundary-qualification-v1",
+      : "paperclip-council-n2-synthetic-integration-v1",
     startedAt: "2026-10-01T10:00:00.000Z",
     finishedAt: "2026-10-01T10:01:00.000Z",
     head: "61b3fd57a695614dc4a37e2303f426a34a9795cf",
@@ -81,7 +345,7 @@ function qualificationEvidence(mode: "safe" | "live"): any {
       sourceArchiveSha256: "b".repeat(64),
       distSha256: "c".repeat(64),
     },
-    outcome: live ? "N1 OBSERVABLE RESULT VALIDATED" : "N1 SAFE BOUNDARY VALIDATED",
+    outcome: live ? "N1 OBSERVABLE RESULT VALIDATED" : "N2 SYNTHETIC INTEGRATION VALIDATED",
     results,
     appCleanup: "stopped only the plugin worker, listener, and application created by this run",
     databaseCleanup: "fresh isolated PostgreSQL cluster removed; parent-owned temporary instance retained",
@@ -101,6 +365,7 @@ function qualificationEvidence(mode: "safe" | "live"): any {
       demonstrated: ["safe capability"],
       incomplete: ["live capability"],
     },
+    syntheticN2: syntheticN2Evidence(),
     ...(live ? {
       liveN1: {
         companyId: "company",
@@ -205,7 +470,321 @@ function qualificationEvidence(mode: "safe" | "live"): any {
   };
 }
 
+function n2QualificationEvidence(): any {
+  const evidence = qualificationEvidence("live");
+  evidence.proofId = "paperclip-council-n2-observable-native-qualification-v1";
+  evidence.outcome = "N2 OBSERVABLE RESULT VALIDATED";
+  evidence.results = Object.fromEntries(N2_LIVE_RESULT_KEYS.map((key: string) => [key, "PASS"]));
+  evidence.configuration.models.observedAgentConfiguration.push({
+    agentId: "reviewer", adapterType: "codex_local", model: "gpt-5.6-sol", effort: "high",
+  });
+  delete evidence.liveN1.ui;
+  const n2Runs = [
+    { id: "review-run-1", agentId: "reviewer", inputTokens: 700, cachedInputTokens: 100, outputTokens: 80, baseline: 3_240 },
+    { id: "correction-run", agentId: "lead", inputTokens: 650, cachedInputTokens: 50, outputTokens: 90, baseline: 4_020 },
+    { id: "review-run-2", agentId: "reviewer", inputTokens: 720, cachedInputTokens: 120, outputTokens: 75, baseline: 4_760 },
+  ];
+  const n2ReservationIds = [
+    "10000000-0000-4000-8000-000000000004",
+    "10000000-0000-4000-8000-000000000005",
+    "10000000-0000-4000-8000-000000000006",
+  ];
+  const submissionIds = ["30000000-0000-4000-8000-000000000001", "30000000-0000-4000-8000-000000000002"];
+  const operationIds = ["40000000-0000-4000-8000-000000000001", "40000000-0000-4000-8000-000000000002"];
+  const n2Reservations = n2Runs.map((run, index) => ({
+    reservationId: n2ReservationIds[index],
+    missionId: "mission",
+    effectId: index === 1 ? operationIds[0] : submissionIds[index === 0 ? 0 : 1],
+    status: "settled",
+    usage: {
+      status: "known",
+      units: run.inputTokens + run.outputTokens,
+      source: `paperclip:issues.summaries.getOrchestration:terminal-token-ledger;run=${run.id};issue-baseline=${run.baseline};monetary-cost=unpriced`,
+    },
+    remainingExposure: { status: "known", units: 0 },
+  }));
+  const submissions = [
+    {
+      submissionId: submissionIds[0], ordinal: 1, predecessorSubmissionId: null,
+      candidateCommit: "3".repeat(40), sha256: "4".repeat(64), baseCommit: "0".repeat(40), mandateHash: "5".repeat(64),
+    },
+    {
+      submissionId: submissionIds[1], ordinal: 2, predecessorSubmissionId: submissionIds[0],
+      candidateCommit: "6".repeat(40), sha256: "7".repeat(64), baseCommit: "0".repeat(40), mandateHash: "5".repeat(64),
+    },
+  ];
+  const rounds = [0, 1].map((index) => ({
+    round: index + 1,
+    submissionId: submissionIds[index],
+    reviewerAgentId: "reviewer",
+    handoff: {
+      state: "confirmed", reviewerRunId: n2Runs[index === 0 ? 0 : 2].id,
+      reservationId: n2ReservationIds[index === 0 ? 0 : 2],
+      baselineTokenTotal: n2Runs[index === 0 ? 0 : 2].baseline,
+      usageSettledAt: "2026-10-01T10:00:58.000Z",
+    },
+    verdict: {
+      verdict: index === 0 ? "changes_requested" : "approved",
+      operationId: operationIds[index], actorAgentId: "reviewer",
+      runId: n2Runs[index === 0 ? 0 : 2].id,
+    },
+  }));
+  const state = {
+    status: "accepted", correctionLimit: 1, correctionsUsed: 1, submissions, rounds,
+    correction: {
+      requestedByOperationId: operationIds[0], executorAgentId: "lead", runId: "correction-run",
+      reservationId: n2ReservationIds[1], baselineTokenTotal: n2Runs[1].baseline,
+      usageSettledAt: "2026-10-01T10:00:57.000Z", correctedPaths: ["alpha.txt"],
+    },
+    application: {
+      state: "observed", submissionId: submissionIds[1], operationId: operationIds[1],
+      receiptState: "native_observed", nativeStatus: 200,
+    },
+  };
+  const allReservations = [...evidence.liveN1.admission.envelope.reservations, ...n2Reservations];
+  const inspection = {
+    mission: { ...evidence.liveN1.mission.mission, aggregate: { ...evidence.liveN1.mission.mission.aggregate, phase: "accepted", control: { status: "inactive" }, n2: state } },
+    n1: evidence.liveN1.mission.n1,
+    n2: { status: "accepted", submission: submissions[1], usage: { complete: true } },
+    nextAction: "Mission accepted; no further action.",
+    admission: { periodKey: "period", measurement: { source: "paperclip:issues.summaries.getOrchestration:terminal-token-ledger" } },
+  };
+  evidence.liveN2 = {
+    companyId: "company", missionId: "mission", rootIssueId: "root-issue",
+    runs: n2Runs.map((run, index) => ({
+      id: run.id, agentId: run.agentId, status: "succeeded",
+      finishedAt: `2026-10-01T10:00:${50 + index}.000Z`,
+      usageJson: {
+        inputTokens: run.inputTokens, cachedInputTokens: run.cachedInputTokens, outputTokens: run.outputTokens,
+        rawInputTokens: run.inputTokens, rawCachedInputTokens: run.cachedInputTokens, rawOutputTokens: run.outputTokens,
+        usageSource: "per_run",
+      },
+    })),
+    mission: inspection,
+    admission: { envelope: { allowance: { status: "known", knownUsageUnits: allReservations.reduce((total, item) => total + item.usage.units, 0) }, reservations: allReservations } },
+    decisionReceipts: rounds.map((round) => ({
+      verdict: round.verdict.verdict, state: "native_observed", actorAgentId: "reviewer",
+      runId: round.handoff.reviewerRunId, operationId: round.verdict.operationId,
+    })),
+    restartReadback: inspection,
+    ui: { screenshot: n2LiveScreenshotPath, missionId: "mission", rootIssueId: "root-issue" },
+  };
+  return evidence;
+}
+
+function isolatedN2QualificationEvidence(): any {
+  const evidence = n2QualificationEvidence();
+  const liveN1 = evidence.liveN1;
+  const prerequisiteReservations = structuredClone(liveN1.admission.envelope.reservations);
+  for (const reservation of prerequisiteReservations) {
+    reservation.usage = { status: "known", units: 0, source: "fixture:local-sandbox" };
+  }
+  evidence.proofId = "paperclip-council-n2-isolated-observable-native-qualification-v1";
+  evidence.outcome = "N2 ISOLATED OBSERVABLE RESULT VALIDATED";
+  evidence.results = Object.fromEntries([
+    ...SAFE_RESULT_KEYS,
+    ...N2_PREREQUISITE_RESULT_KEYS.filter((key: string) => !SAFE_RESULT_KEYS.includes(key)),
+    "n2InitialIndependentReview",
+    "n2ChangesRequestedApplied",
+    "n2CorrectionRunSettled",
+    "n2ChangedV2Verified",
+    "n2FreshFinalReviewAccepted",
+    "n2AllThreeRunsSettled",
+    "n2RestartReadback",
+    "n2InstalledBrowserObservableState",
+  ].map((key) => [key, "PASS"]));
+  evidence.configuration.fixtureBoundary = "Isolated N2 terminalizes three deterministic N1 heartbeat fixture rows and clears their exact issue locks before public configuration creates a distinct native N2 period; only reviewer-correction-reviewer may then run against that native period.";
+  const verifiedCandidate = liveN1.mission.mission.aggregate.n1.candidate;
+  const prerequisiteFixture = n2PrerequisiteEvidence().n2Prerequisite;
+  evidence.configuration.models.observedAgentConfiguration = [
+    prerequisiteFixture.agents.lead.id,
+    prerequisiteFixture.agents.reviewer.id,
+  ].map((agentId) => ({
+    agentId, adapterType: "codex_local", model: "gpt-5.6-sol", effort: "high",
+  }));
+  evidence.n2Prerequisite = {
+    proofClass: "N2 native-stage prerequisite validated",
+    companyId: prerequisiteFixture.companyId,
+    missionId: prerequisiteFixture.missionId,
+    rootIssueId: prerequisiteFixture.rootIssueId,
+    periodKey: prerequisiteFixture.periodKey,
+    fixturePeriodKey: prerequisiteFixture.fixturePeriodKey,
+    nativePeriodKey: prerequisiteFixture.nativePeriodKey,
+    nativeProfile: prerequisiteFixture.nativeProfile,
+    nativeConfiguration: prerequisiteFixture.nativeConfiguration,
+    nativeAdmission: prerequisiteFixture.nativeAdmission,
+    mission: {
+      ...liveN1.mission,
+      mission: { ...liveN1.mission.mission, missionId: prerequisiteFixture.missionId },
+      n1: { ...liveN1.mission.n1, candidate: verifiedCandidate },
+      n2: null,
+    },
+    candidate: verifiedCandidate.candidate,
+    admission: {
+      envelope: {
+        reservations: prerequisiteReservations,
+        exposure: { status: "known", units: 0 },
+      },
+    },
+    agents: prerequisiteFixture.agents,
+    providerBoundary: prerequisiteFixture.providerBoundary,
+    fixtureHeartbeatRuns: prerequisiteFixture.fixtureHeartbeatRuns,
+    fixtureLifecycle: prerequisiteFixture.fixtureLifecycle,
+    handoffGuard: null,
+    runReadbacks: prerequisiteFixture.runReadbacks,
+    databaseBoundary: "the seam terminalizes exactly three N1 heartbeat fixtures and clears only their issue locks; public plugin configuration and admission APIs then create a distinct native N2 period that remains empty until authorized reviewer dispatch",
+    stopBoundary: "ready_for_review snapshot retained; native N2 period prepared; reviewer not started",
+  };
+  const nativeReservations = evidence.liveN2.admission.envelope.reservations.slice(3);
+  evidence.liveN2.fixtureAdmission = {
+    envelope: {
+      periodKey: prerequisiteFixture.fixturePeriodKey,
+      reservations: prerequisiteReservations,
+      exposure: { status: "known", units: 0 },
+    },
+  };
+  evidence.liveN2.admission.envelope.reservations = nativeReservations;
+  evidence.liveN2.admission.envelope.periodKey = prerequisiteFixture.nativePeriodKey;
+  evidence.liveN2.admission.envelope.allowance.knownUsageUnits = evidence.liveN2.admission.envelope.reservations
+    .reduce((total: number, reservation: any) => total + reservation.usage.units, 0);
+  evidence.liveN2.limits = { runCount: 3, maxConcurrent: 2, maxRetries: 0, maxCorrections: 1 };
+  delete evidence.liveN1;
+  return evidence;
+}
+
 describe("bounded qualification launcher", () => {
+  it("accepts only a cleaned provider-free N2 prerequisite with an authenticated handoff fixture", () => {
+    const evidence = n2PrerequisiteEvidence();
+    const options = { candidateCommit: liveCommit, notBefore: Date.parse("2026-10-02T09:59:59.000Z") };
+    expect(() => assertN2PrerequisiteEvidence(evidence, options)).not.toThrow();
+
+    const withExecution = structuredClone(evidence);
+    withExecution.n2Prerequisite.providerBoundary.nativeAgentExecutionCount = 1;
+    expect(() => assertN2PrerequisiteEvidence(withExecution, options)).toThrow(/zero provider, wakeup, native-agent execution/);
+
+    const withOccupiedSlot = structuredClone(evidence);
+    withOccupiedSlot.n2Prerequisite.fixtureLifecycle.activeRunCount = 1;
+    expect(() => assertN2PrerequisiteEvidence(withOccupiedSlot, options)).toThrow(/terminal and lock-free/);
+
+    const withoutPublicHandoff = structuredClone(evidence);
+    withoutPublicHandoff.n2Prerequisite.handoffGuard.startReviewOutcome = "refused";
+    expect(() => assertN2PrerequisiteEvidence(withoutPublicHandoff, options)).toThrow(/public N2 handoff guard/);
+
+    const withoutFixtureBinding = structuredClone(evidence);
+    withoutFixtureBinding.n2Prerequisite.runReadbacks[0].runs[0].issueId = "wrong-issue";
+    expect(() => assertN2PrerequisiteEvidence(withoutFixtureBinding, options))
+      .toThrow(/three correctly attributed, unexecuted fixture heartbeat rows/);
+
+    const withExposure = structuredClone(evidence);
+    withExposure.n2Prerequisite.admission.envelope.exposure.units = 1;
+    expect(() => assertN2PrerequisiteEvidence(withExposure, options)).toThrow(/known and zero/);
+  });
+
+  it("keeps the exact mission identity distinct from the root issue in the reviewer wake context", () => {
+    const missionId = "30000000-0000-4000-8000-000000000002";
+    const rootIssueId = "40000000-0000-4000-8000-000000000001";
+    const context = n2MissionWakeContext({
+      pluginId: "private.paperclip-council",
+      missionId,
+      rootIssueId,
+    });
+
+    expect(context).toMatchObject({
+      pluginId: "private.paperclip-council",
+      missionId,
+      rootIssueId,
+      councilCommandRoute: `/api/plugins/private.paperclip-council/api/issues/${rootIssueId}/council/commands`,
+    });
+    expect(context.descriptionBlock).toContain(`Mission ID: ${missionId}`);
+    expect(context.descriptionBlock).toContain("Never substitute PAPERCLIP_TASK_ID for the Mission ID.");
+  });
+
+  it("disables wakes and cancels a queued campaign run even when the N2 operation fails", async () => {
+    const leadId = "10000000-0000-4000-8000-000000000001";
+    const reviewerId = "10000000-0000-4000-8000-000000000002";
+    const queuedRunId = "20000000-0000-4000-8000-000000000001";
+    let status = "queued";
+    const requests: Array<{ method: string; path: string; body: unknown }> = [];
+    const run = () => ({
+      id: queuedRunId,
+      agentId: reviewerId,
+      status,
+      startedAt: null,
+      finishedAt: status === "cancelled" ? "2026-10-02T10:00:00.000Z" : null,
+      error: null,
+      usageJson: null,
+    });
+    const request = async (_actor: string, method: string, path: string, body?: unknown) => {
+      requests.push({ method, path, body });
+      if (method === "PATCH") {
+        return {
+          status: 200,
+          body: { runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: false, maxConcurrentRuns: 1 } } },
+          headers: new Headers(),
+        };
+      }
+      expect(path).toBe(`/api/heartbeat-runs/${queuedRunId}/cancel`);
+      status = "cancelled";
+      return { status: 200, body: { run: run() }, headers: new Headers() };
+    };
+    const evidence = { runs: [] as Array<Record<string, unknown>> };
+
+    await expect(withN2WakeCleanup({
+      request,
+      getRun: async (runId) => runId === queuedRunId ? run() : null,
+      listRuns: async (agentId) => agentId === reviewerId ? [run()] : [],
+      leadId,
+      reviewerId,
+      baselineRunIds: new Set(),
+      evidence,
+      runEvidence: nativeRunEvidence,
+      persist: async () => undefined,
+    }, async () => {
+      throw new Error("review handoff failed");
+    })).rejects.toThrow("review handoff failed");
+
+    expect(requests.slice(0, 2)).toEqual([
+      { method: "PATCH", path: `/api/agents/${reviewerId}`, body: { runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: false, maxConcurrentRuns: 1 } } } },
+      { method: "PATCH", path: `/api/agents/${leadId}`, body: { runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: false, maxConcurrentRuns: 1 } } } },
+    ]);
+    expect(requests[2]).toMatchObject({ method: "POST", path: `/api/heartbeat-runs/${queuedRunId}/cancel` });
+    expect((evidence as any).wakeupCleanup).toMatchObject({
+      nonterminalRunCount: 0,
+      cancellations: [{ runId: queuedRunId, requestedStatus: "queued", terminalStatus: "cancelled" }],
+      additionalRuns: [{ id: queuedRunId, agentId: reviewerId, status: "cancelled" }],
+    });
+  });
+
+  it("guards the future isolated N2 command with explicit authorization and exact HEAD", () => {
+    const launcher = readFileSync(resolve(packageRoot, "scripts/qualification/run-live.mjs"), "utf8");
+    const wrapper = readFileSync(resolve(packageRoot, "scripts/qualification/run-live-n2-isolated.mjs"), "utf8");
+    const prerequisite = readFileSync(resolve(packageRoot, "tests/functional/n2-prerequisite.ts"), "utf8");
+    const functionalHarness = readFileSync(resolve(packageRoot, "tests/functional/run.ts"), "utf8");
+    const preflight = readFileSync(resolve(packageRoot, "scripts/qualification/run-n2-prerequisite.mjs"), "utf8");
+    const packageJson = JSON.parse(readFileSync(resolve(packageRoot, "package.json"), "utf8"));
+    expect(launcher).toContain('envPrefix: "COUNCIL_N2_ISOLATED_LIVE"');
+    expect(launcher).toContain('required(`${contract.envPrefix}_CANDIDATE_SHA`) !== candidateCommit');
+    expect(launcher).toContain('runCount: 3');
+    expect(wrapper).toContain('runLiveQualification("n2-isolated")');
+    expect(prerequisite).not.toMatch(/\bdb\.(?:execute|insert|update|delete)\b|\bUPDATE\s+[a-z_]/i);
+    expect(prerequisite).toContain('await input.createFixtureRun("n2-prerequisite-lead", rootIssueId)');
+    expect(prerequisite).toContain("await input.createFixtureRun(contribution.actor, contribution.childIssueId)");
+    expect(prerequisite).not.toContain("setActorRun");
+    expect(functionalHarness).toContain("async function createN2PrerequisiteFixtureRun");
+    expect(functionalHarness).toContain("db.insert(tables.heartbeatRuns)");
+    expect(functionalHarness).toContain("triggerDetail: fixtureSource");
+    expect(functionalHarness).toContain("contextSnapshot: {");
+    expect(functionalHarness).toContain("issueId: contextIssueId");
+    expect(functionalHarness).toContain("Measurement: ${liveMission.admission.measurement.unit} from ${liveMission.admission.measurement.source}.");
+    expect(functionalHarness).toContain("section[aria-labelledby=\"admission-title\"]");
+    expect(functionalHarness).toContain("liveMission.admission.reservations.flatMap");
+    expect(functionalHarness).not.toContain("getByText(/terminal-token-ledger/)");
+    expect(preflight).toContain("withOwnedQualificationRuntime");
+    expect(preflight).toContain("ownedRuntimeRemoved: true");
+    expect(packageJson.scripts["qualification:live:n2:isolated"])
+      .toBe("node scripts/qualification/run-live-n2-isolated.mjs");
+  });
+
   it("atomically gives only one contender the commit-qualified evidence and screenshot paths", async () => {
     const root = await mkdtemp(resolve(tmpdir(), "council-live-evidence-"));
     const commit = "a".repeat(40);
@@ -225,6 +804,13 @@ describe("bounded qualification launcher", () => {
       const winner = contenders.find((result) => result.status === "fulfilled");
       if (winner?.status === "fulfilled") winner.value.release();
 
+      const n2Claim = claimN2LiveEvidencePaths(root, commit, undefined);
+      expect(n2Claim).toMatchObject({
+        evidencePath: resolve(root, `artifacts/n2-live-${commit}.json`),
+        screenshotPath: resolve(root, `artifacts/n2-live-${commit}-accepted.png`),
+      });
+      n2Claim.release();
+
       expect(() => claimLiveEvidencePaths(root, commit, resolve(root, "unqualified.json")))
         .toThrow(/must be JSON and contain candidate commit/);
     } finally {
@@ -233,9 +819,9 @@ describe("bounded qualification launcher", () => {
   });
 
   it("claims live artifact paths after preflight and before provider-capable work", () => {
-    const launcherSource = readFileSync(resolve(packageRoot, "scripts/qualification/run-live-n1.mjs"), "utf8");
-    const claimAt = launcherSource.indexOf("const claim = claimLiveEvidencePaths(");
-    const hostAt = launcherSource.indexOf("const host = preparedHost();");
+    const launcherSource = readFileSync(resolve(packageRoot, "scripts/qualification/run-live.mjs"), "utf8");
+    const claimAt = launcherSource.indexOf("const claim = contract.claim(");
+    const hostAt = launcherSource.indexOf("const host = preparedHost(contract);");
     const browserAt = launcherSource.indexOf("await installChromium(host");
     const runtimeAt = launcherSource.indexOf("await withOwnedQualificationRuntime", claimAt);
     expect(claimAt).toBeGreaterThan(-1);
@@ -522,6 +1108,39 @@ describe("bounded qualification launcher", () => {
     expect(result.leadSettlement.body.mission.aggregate.phase).toBe("ready_for_review");
   });
 
+  it("requires separately generated UUIDs and preserves sanitized non-2xx evidence in every agent instruction", () => {
+    const n2MissionId = "11111111-1111-4111-8111-111111111111";
+    const instructions = [
+      contributorInstructions(),
+      leadInstructions(),
+      n2LeadInstructions(n2MissionId),
+      n2ReviewerInstructions(n2MissionId),
+    ];
+    for (const instruction of instructions) {
+      expect(instruction).toContain(UUID_GENERATION_COMMAND);
+      expect(instruction).toContain("once and separately for that identifier");
+      expect(instruction).toContain("Never invent, partially copy, or manually edit a UUID.");
+      expect(instruction).toContain("preserve the HTTP status and sanitized JSON response body");
+      expect(instruction).toContain("without exposing credentials");
+    }
+
+    expect(n2LeadInstructions(n2MissionId)).toContain(`"missionId":"${n2MissionId}"`);
+    expect(n2ReviewerInstructions(n2MissionId)).toContain(`"missionId":"${n2MissionId}"`);
+    expect(n2LeadInstructions(n2MissionId)).not.toContain("<mission-id>");
+    expect(n2ReviewerInstructions(n2MissionId)).not.toContain("<mission-id>");
+
+    const nativeDescription = contributionDescription({
+      missionId: "11111111-1111-4111-8111-111111111111",
+      contributionId: "22222222-2222-4222-8222-222222222222",
+      ownedPaths: ["alpha.txt"],
+    });
+    expect(nativeDescription).toContain(UUID_GENERATION_COMMAND);
+    expect(nativeDescription).toContain("run this exact command once and separately");
+    expect(nativeDescription).toContain("Never invent, partially copy, or manually edit a UUID.");
+    expect(nativeDescription).toContain("preserve the HTTP status and sanitized JSON response body");
+    expect(nativeDescription).toContain("without exposing credentials");
+  });
+
   it("settles a terminal child without a contribution and does not authorize another dispatch", async () => {
     const requests: Array<Record<string, any>> = [];
     const request = async (_actor: string, _method: string, _path: string, body?: unknown) => {
@@ -611,12 +1230,20 @@ describe("bounded qualification launcher", () => {
   });
 
   it("keeps the exact evidence contract synchronized with functional producer assignments", () => {
-    const producerSources = ["tests/functional/run.ts", "tests/functional/n1-live.ts"]
+    const producerSources = ["tests/functional/run.ts", "tests/functional/n1-live.ts", "tests/functional/n2-synthetic.ts"]
       .map((path) => readFileSync(resolve(packageRoot, path), "utf8"))
       .join("\n");
     const assignedKeys = [...producerSources.matchAll(/\bevidence\.results\.([A-Za-z][A-Za-z0-9_]*)\s*=/g)]
       .map((match) => match[1]);
-    expect([...new Set(assignedKeys)].sort()).toEqual([...LIVE_RESULT_KEYS].sort());
+    expect([...new Set(assignedKeys)].sort()).toEqual([
+      ...LIVE_RESULT_KEYS,
+      "n2InstalledBrowserObservableState",
+      "n2RestartReadback",
+    ].sort());
+    const n2Producer = readFileSync(resolve(packageRoot, "tests/functional/n2-live.ts"), "utf8");
+    for (const key of N2_LIVE_RESULT_KEYS.filter((key: string) => !LIVE_RESULT_KEYS.includes(key))) {
+      expect(`${producerSources}\n${n2Producer}`).toContain(key);
+    }
     expect(SAFE_RESULT_KEYS).toContain("n1MissionExactLookupBeyondLatestList");
   });
 
@@ -625,6 +1252,8 @@ describe("bounded qualification launcher", () => {
     for (const path of [
       `artifacts/n1-live-${commit}.json`,
       `artifacts/n1-live-${commit}-ready-for-review.png`,
+      `artifacts/n2-live-${commit}.json`,
+      `artifacts/n2-live-${commit}-accepted.png`,
     ]) {
       expect(() => execFileSync("git", ["check-ignore", "-q", path], { cwd: packageRoot }))
         .not.toThrow();
@@ -654,6 +1283,12 @@ describe("bounded qualification launcher", () => {
     })).not.toThrow();
     expect(() => assertQualificationEvidence(qualificationEvidence("live"), {
       ...liveOptions(notBefore),
+    })).not.toThrow();
+    expect(() => assertQualificationEvidence(n2QualificationEvidence(), {
+      ...n2LiveOptions(notBefore),
+    })).not.toThrow();
+    expect(() => assertQualificationEvidence(isolatedN2QualificationEvidence(), {
+      ...n2LiveOptions(notBefore), mode: "live-n2-isolated",
     })).not.toThrow();
 
     for (const results of [undefined, {}, { ...qualificationEvidence("safe").results }]) {

@@ -66,10 +66,10 @@ async function main() {
     ?? resolve(repositoryRoot, `artifacts/functional-${candidateCommit}.json`);
   const proofManifest = JSON.parse(readFileSync(resolve(repositoryRoot, "qualification/proof-manifest.json"), "utf8"));
   if (proofManifest.schema_version !== "proof-manifest.v1"
-      || proofManifest.proof_id !== "paperclip-council-n1-safe-boundary-qualification-v1"
+      || proofManifest.proof_id !== "paperclip-council-n2-synthetic-integration-v1"
       || proofManifest.status !== "partial"
       || proofManifest.closure?.decision !== "keep-open") {
-    throw new Error("N1 qualification proof manifest must remain canonical and keep-open");
+    throw new Error("Synthetic N2 qualification proof manifest must remain canonical and keep-open");
   }
   const playwrightBrowsersPath = resolve(repositoryRoot, ".paperclip/qualification/playwright");
   mkdirSync(playwrightBrowsersPath, { recursive: true });

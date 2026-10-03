@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { AdmissionError } from "./admission.js";
 import { executeN1BoardCommand, inspectN1State, readN1AdmissionForMission } from "./n1-missions.js";
+import { executeN2BoardCommand, inspectN2State, type N2State } from "./n2-missions.js";
 import {
   RosterError,
   validateRosterPair,
@@ -11,6 +12,14 @@ import {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_RECEIPTS = 100;
 const MAX_LIST_ITEMS = 50;
+const N1_BOARD_COMMANDS = new Set([
+  "activate",
+  "start-lead",
+  "fixture-bind-lead-run",
+  "fixture-bind-contribution-run",
+  "reconcile-lead-usage",
+  "reconcile-contribution-usage",
+]);
 
 export type MissionMandate = {
   objective: string;
@@ -26,7 +35,9 @@ export type MissionMandate = {
 
 export type MissionReceipt = {
   commandId: string;
-  command: "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish";
+  command: "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "fixture-bind-contribution-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish"
+    | "start-review" | "confirm-review-handoff" | "start-correction" | "prepare-resubmission"
+    | "start-resubmitted-review" | "settle-n2-usage" | "attest-transmission" | "reconcile-native-n2";
   actorType: "user" | "agent";
   actorId: string;
   payloadHash: string;
@@ -53,8 +64,8 @@ export type MissionAggregate = {
     finalReviewerAgentId: string;
     requiredPerspectives: string[];
   };
-  phase: "draft" | "executing" | "integrating" | "ready_for_review" | "blocked";
-  control: { status: "inactive"; reason: "mission_not_enabled" | "candidate_ready_for_review" } | { status: "active" } | { status: "blocked"; reason: string };
+  phase: "draft" | "executing" | "integrating" | "ready_for_review" | "review_handoff" | "reviewing" | "correction_requested" | "correcting" | "application_unknown" | "accepted" | "blocked";
+  control: { status: "inactive"; reason: "mission_not_enabled" | "candidate_ready_for_review" | "mission_accepted" } | { status: "active" } | { status: "blocked"; reason: string };
   readiness: {
     mission: "recorded";
     compositions: "pinned";
@@ -65,6 +76,7 @@ export type MissionAggregate = {
   commandReceipts: MissionReceipt[];
   effectIntents: Array<Record<string, unknown>>;
   n1?: Record<string, unknown>;
+  n2?: N2State;
 };
 
 export type PinnedRoster = {
@@ -314,6 +326,18 @@ async function getMissionByIdentity(
       ORDER BY CASE WHEN mission_id = $2 THEN 0 ELSE 1 END
       LIMIT 1`,
     [companyId, missionId, rootIssueId],
+  );
+  return rows[0] ? parseMissionRow(rows[0]) : null;
+}
+
+export async function getMissionByRootIssue(
+  ctx: PluginContext,
+  companyId: string,
+  rootIssueId: string,
+): Promise<MissionRecord | null> {
+  const rows = await ctx.db.query<MissionRow>(
+    `SELECT ${selectColumns} FROM ${table(ctx)} WHERE company_id = $1 AND root_issue_id = $2`,
+    [companyId, rootIssueId],
   );
   return rows[0] ? parseMissionRow(rows[0]) : null;
 }
@@ -582,6 +606,7 @@ function companyIdFromRequest(input: PluginApiRequestInput): string {
 
 export function inspectMission(mission: MissionRecord) {
   const n1 = inspectN1State(mission);
+  const n2 = inspectN2State(mission);
   return {
     mission,
     state: {
@@ -590,8 +615,9 @@ export function inspectMission(mission: MissionRecord) {
       executable: mission.aggregate.control.status === "active",
     },
     prerequisites: n1?.prerequisites ?? mission.aggregate.readiness.blockers,
-    nextAction: n1?.nextAction ?? "Resolve and qualify G4 before adding any dispatch or activation command.",
+    nextAction: n2?.nextAction.label ?? n1?.nextAction ?? "Resolve and qualify G4 before adding any dispatch or activation command.",
     n1,
+    n2,
   };
 }
 
@@ -618,10 +644,11 @@ export async function handleMissionApi(input: PluginApiRequestInput, ctx: Plugin
     if (input.routeKey === "missions-command" || input.routeKey === "mission-command") {
       const body = asRecord(input.body);
       const missionId = input.params.missionId ? uuid(input.params.missionId, "missionId") : undefined;
-      const result = (body.command === "activate" || body.command === "start-lead"
-        || body.command === "fixture-bind-lead-run" || body.command === "reconcile-lead-usage"
-        || body.command === "reconcile-contribution-usage") && missionId
+      const result = N1_BOARD_COMMANDS.has(String(body.command)) && missionId
         ? await executeN1BoardCommand(ctx, { companyId, missionId, actorUserId, body })
+        : (body.command === "start-review" || body.command === "start-correction"
+          || body.command === "start-resubmitted-review" || body.command === "settle-n2-usage" || body.command === "reconcile-native-n2") && missionId
+          ? await executeN2BoardCommand(ctx, { companyId, missionId, actorUserId, body })
         : await executeMissionCommand(ctx, {
         companyId,
         missionId,

@@ -16,8 +16,11 @@ import {
 } from "./decision-receipts.js";
 import { ApprovalPreflightError, verifyApprovalCandidate } from "./delivery-manifest.js";
 import { handleFoundationProbe } from "./foundation-probe.js";
-import { handleMissionApi } from "./missions.js";
+import { getMissionByRootIssue, handleMissionApi, MissionError } from "./missions.js";
 import { handleN1AdmissionApi, handleN1AgentApi } from "./n1-missions.js";
+import { handleN2AgentApi, prepareN2Decision, recordN2Decision } from "./n2-missions.js";
+import { registerN2FinishedEventHandler } from "./n2-finished-event.js";
+import { AdmissionError } from "./admission.js";
 import { handleRosterApi, registerRosterBridge } from "./rosters.js";
 
 let ctx: PluginContext;
@@ -93,12 +96,65 @@ export async function handleDecision(
     runId,
     ...decision,
   };
+  const mission = await getMissionByRootIssue(context, input.companyId, issueId);
+  if (mission?.aggregate.n2) {
+    try {
+      if (mission.aggregate.n2.native) {
+        const { decideNativeN2 } = await import("./n2-native-runtime.js");
+        return await decideNativeN2(context, mission, input, decisionInput);
+      }
+      const issue = await context.issues.get(issueId, input.companyId);
+      if (!issue) return { status: 404, body: { error: "Issue not found" } };
+      if (issue.companyId !== input.companyId || issue.status !== "in_review" || issue.assigneeAgentId !== config.councilAgentId) {
+        return { status: 409, body: { error: "Issue is not pending this council" } };
+      }
+      const n2DecisionInput = {
+        operationId: decision.operationId,
+        verdict: decision.verdict,
+        actorAgentId: config.councilAgentId,
+        runId,
+        resultReference: decision.resultReference,
+        ...(decision.verdict === "approved" ? { approvedCommit: decision.approvedCommit } : {}),
+        justification: decision.justification,
+      };
+      const prepared = await prepareN2Decision(
+        context,
+        mission,
+        n2DecisionInput,
+        typeof (input.body as Record<string, unknown>).correctionReservationId === "string"
+          ? (input.body as Record<string, unknown>).correctionReservationId as string
+          : undefined,
+      );
+      return {
+        status: 202,
+        body: {
+          integration: "prepared N2 decision -> terminal run event -> settled usage -> public issue PATCH",
+          verdict: decision.verdict,
+          operationId: decision.operationId,
+          runId,
+          prepared: true,
+          missionVersion: prepared.version,
+        },
+      };
+    } catch (error) {
+      if (error instanceof MissionError || error instanceof AdmissionError) {
+        return { status: error.status, body: { error: error.message, code: error.code, details: error.details } };
+      }
+      throw error;
+    }
+  }
   try {
     const replay = await findDecisionReplay(context, config, decisionInput);
-    if (replay) return decisionResponse(replay.receipt, true);
+    if (replay) {
+      if (mission?.aggregate.n2) await recordN2Decision(context, mission.missionId, decisionInput, replay.receipt);
+      return decisionResponse(replay.receipt, true);
+    }
   } catch (error) {
     if (error instanceof DecisionReceiptError) {
       return { status: error.status, body: { error: error.message, code: error.code, receipt: error.receipt } };
+    }
+    if (error instanceof MissionError || error instanceof AdmissionError) {
+      return { status: error.status, body: { error: error.message, code: error.code, details: error.details } };
     }
     throw error;
   }
@@ -119,10 +175,14 @@ export async function handleDecision(
 
   try {
     const result = await executeCouncilDecision(context, config, decisionInput);
+    if (mission?.aggregate.n2) await recordN2Decision(context, mission.missionId, decisionInput, result.receipt);
     return decisionResponse(result.receipt, result.replayed);
   } catch (error) {
     if (error instanceof DecisionReceiptError) {
       return { status: error.status, body: { error: error.message, code: error.code, receipt: error.receipt } };
+    }
+    if (error instanceof MissionError || error instanceof AdmissionError) {
+      return { status: error.status, body: { error: error.message, code: error.code, details: error.details } };
     }
     throw error;
   }
@@ -132,7 +192,18 @@ export async function handlePluginRequest(input: PluginApiRequestInput, context:
   if (input.routeKey === "decision") return handleDecision(input, context);
   if (input.routeKey.startsWith("council-decision")) return handleDecisionReceiptApi(input, context);
   if (input.routeKey === "admission-read" || input.routeKey === "admission-command") return handleN1AdmissionApi(input, context);
-  if (input.routeKey === "mission-agent-command") return handleN1AgentApi(input, context);
+  if (input.routeKey === "mission-agent-command") {
+    const command = input.body && typeof input.body === "object" && !Array.isArray(input.body)
+      ? (input.body as Record<string, unknown>).command : null;
+    if (command === "inspect") {
+      const mission = await getMissionByRootIssue(context, input.companyId, input.params.issueId);
+      if (mission?.aggregate.n2) return handleN2AgentApi(input, context);
+    }
+    if (command === "confirm-review-handoff" || command === "prepare-resubmission" || command === "attest-transmission") {
+      return handleN2AgentApi(input, context);
+    }
+    return handleN1AgentApi(input, context);
+  }
   if (input.routeKey.startsWith("roster")) return handleRosterApi(input, context);
   if (input.routeKey.startsWith("mission")) return handleMissionApi(input, context);
   if (input.routeKey !== "foundation-probe") {
@@ -151,6 +222,7 @@ const plugin = definePlugin({
     ctx = context;
     registerRosterBridge(context);
     registerDecisionReceiptBridge(context);
+    registerN2FinishedEventHandler(context);
   },
   async onHealth() { return { status: "ok", message: "Council decision adapter ready" }; },
   async onApiRequest(input) { return handlePluginRequest(input); },

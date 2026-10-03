@@ -186,6 +186,7 @@ describe("integrated Git candidate verification", () => {
     expect(result).toMatchObject({
       outcome: "verified",
       publicationEligible: true,
+      subject: { companyId: input.companyId, issueId: input.issueId },
       candidate: {
         attachmentId: input.attachmentId,
         byteSize: input.expectedByteSize,
@@ -333,6 +334,28 @@ describe("integrated Git candidate verification", () => {
 
     await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow(
       "contribution-tree-preservation failed: alpha changed paths do not survive in the candidate tree",
+    );
+  });
+
+  it("accepts one explicitly bounded material correction on an attributed path", async () => {
+    const { ctx, input } = await fixture({ candidateRewritesAlpha: true });
+    input.correctedPaths = ["alpha.txt"];
+
+    const result = await verifyIntegratedCandidate(ctx, input);
+
+    expect(result.checks).toContainEqual({
+      name: "bounded-material-correction",
+      status: "passed",
+      detail: "changed attributed paths: alpha.txt",
+    });
+  });
+
+  it("rejects a declared correction outside the attributed contribution paths", async () => {
+    const { ctx, input } = await fixture({ candidateRewritesAlpha: true });
+    input.correctedPaths = ["README.md"];
+
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow(
+      "Corrected path is not attributed to an N1 contribution: README.md",
     );
   });
 

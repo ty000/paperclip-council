@@ -296,7 +296,9 @@ export function contributionDescription(input: {
     `Owned paths: ${input.ownedPaths.join(", ")}`,
     "Do not modify files outside the owned paths. Commit the completed change on the current shared branch.",
     `Use the authenticated endpoint /api/plugins/private.paperclip-council/api/issues/<this-child-issue-id>/council/commands. The first request body is exactly {"command":"inspect","missionId":"${input.missionId}"}. Read body.version, then send command=record-contribution with missionId, a fresh commandId, that expectedVersion, the contributionId, and the 40-character commit SHA.`,
+    `For every fresh commandId, run this exact command once and separately: node -e "console.log(require('node:crypto').randomUUID())". Never invent, partially copy, or manually edit a UUID.`,
     "Mark this Paperclip child issue done only after record-contribution succeeds.",
+    "For any non-2xx response, preserve the HTTP status and sanitized JSON response body in your final report without exposing credentials.",
     "",
     "Plugins/skills à utiliser",
     "Use the Paperclip skill injected by the host for issue context, authenticated API calls, and status updates. No additional plugin is required.",
@@ -419,6 +421,73 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
       journal: [...mission.aggregate.journal, {
         action: "fixture_lead_run_bound_without_wakeup", runId, actorUserId: input.actorUserId,
         at: new Date().toISOString(),
+      }],
+    };
+    return commandCas(ctx, mission, input.body, "user", input.actorUserId!, next);
+  }
+  if (input.body.command === "fixture-bind-contribution-run") {
+    if (!await isOwnedFixtureRuntime(ctx, mission.companyId) || input.body.fixtureSource !== "fixture:local-sandbox") {
+      throw new MissionError(403, "fixture_only", "Synthetic run binding is confined to the owned local sandbox");
+    }
+    const commandId = uuid(input.body.commandId, "commandId");
+    const replay = receipt(mission, commandId, input.actorUserId!, canonicalPayloadHash(input.body));
+    if (replay) return { outcome: "replayed" as const, mission, receipt: replay };
+    requireFreshCommand(mission, input.body);
+    const state = n1State(mission);
+    const contributionId = uuid(input.body.contributionId, "contributionId");
+    const index = state?.contributions.findIndex((entry) => entry.contributionId === contributionId) ?? -1;
+    const slot = index >= 0 ? state!.contributions[index] : undefined;
+    if (!state || mission.aggregate.control.status !== "active" || !slot?.childIssueId
+        || slot.issueState !== "confirmed" || slot.dispatchState) {
+      throw new MissionError(409, "dispatch_unavailable", "Synthetic binding requires one confirmed undispatched contribution");
+    }
+    for (const prior of state.contributions.slice(0, index)) {
+      const priorIssue = prior.childIssueId
+        ? await ctx.issues.get(prior.childIssueId, mission.companyId)
+        : null;
+      if (!prior.commit || !prior.authorRunId || prior.dispatchState !== "requested"
+          || !prior.dispatchReservationId || !prior.dispatchRunId
+          || prior.authorRunId !== prior.dispatchRunId || priorIssue?.status !== "done") {
+        throw new MissionError(409, "prior_contribution_incomplete",
+          "Every earlier fixture contribution must be recorded and done before the next binding");
+      }
+    }
+    const runId = uuid(input.body.runId, "runId");
+    const reservationId = uuid(input.body.reservationId, "reservationId");
+    const requestedUnits = integer(input.body.requestedUnits, "requestedUnits");
+    const issue = await ctx.issues.get(slot.childIssueId, mission.companyId);
+    if (!issue || issue.companyId !== mission.companyId || issue.projectId !== mission.projectId
+        || issue.parentId !== mission.rootIssueId || issue.assigneeAgentId !== slot.assigneeAgentId
+        || issue.status !== "in_progress") {
+      throw new MissionError(409, "child_ownership_changed", "Synthetic contribution run needs its mapped in-progress child issue");
+    }
+    await ctx.issues.assertCheckoutOwner({
+      issueId: slot.childIssueId, companyId: mission.companyId,
+      actorAgentId: slot.assigneeAgentId, actorRunId: runId,
+    });
+    const envelope = await readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
+    if (!envelope) throw new MissionError(422, "g4_not_configured", "No task/period admission envelope is configured");
+    const reserved = await reserveAdmission(ctx, {
+      companyId: mission.companyId, periodKey: state.periodKey,
+      reservationId, missionId: mission.missionId, effectId: contributionId,
+      requestedUnits, attempt: { kind: "initial", ordinal: 0 }, expectedVersion: envelope.version,
+    });
+    if (!reserved.reservation || reserved.reservation.status !== "reserved") {
+      throw new MissionError(409, "g4_reservation_unavailable", "Synthetic contribution reservation is unavailable");
+    }
+    const contributions = [...state.contributions];
+    contributions[index] = {
+      ...slot,
+      dispatchState: "requested",
+      dispatchReservationId: reservationId,
+      dispatchRunId: runId,
+    };
+    const next: MissionAggregate = {
+      ...mission.aggregate,
+      n1: { ...state, contributions },
+      journal: [...mission.aggregate.journal, {
+        action: "fixture_contribution_run_bound_without_wakeup", contributionId, reservationId, runId,
+        actorUserId: input.actorUserId, at: new Date().toISOString(),
       }],
     };
     return commandCas(ctx, mission, input.body, "user", input.actorUserId!, next);

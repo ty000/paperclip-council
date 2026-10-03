@@ -33,9 +33,75 @@ sequentially, and settles only from the expected terminal run. A zero monetary
 cost is labelled unpriced, while a zero token total remains unknown and blocks
 publication. The historical `n1FixtureMode: ephemeral-local-sandbox` remains a
 test-only transition proof. The separate `qualification:live:n1` command needs
-explicit provider authorization and a clean committed candidate. N2 verdict
-and review handoff are not part of this slice. See the
+explicit provider authorization and a clean committed candidate. N2 consumes
+this exact persisted candidate without rewriting the N1 path. See the
 [N1 report](docs/reviews/n1/REPORT.md) for the exact profile and proof boundary.
+
+## N2 development boundary
+
+The current opt-in profile is `n2RuntimeProfile: paperclip_runner-experimental`.
+It consumes the existing verified N1 candidate through a separately reserved native
+transmission, then runs independent review, one optional correction and final
+review. Native completion cards, verdicts, scheduling, costs and recovery are real;
+Council preserves the candidate/run/card receipt binding and individual reservations.
+After rejection, a dependency holds correction until reviewer usage is known and
+settled. Native reviewers are individually reserved before their source finishes.
+
+The installed-package qualification passes with four native runs and four cost rows
+on unchanged host `61b3fd57`, with only the official model backend substituted.
+It uses no provider, core patch, model rendezvous or wake toggles during the cycle.
+This does not qualify durable installation or LIVE provider execution. The
+[N2 report](docs/reviews/n2/REPORT.md) records the exact source/proof, owner setup,
+agent instructions, accounting boundaries and remaining N6 admission limitation.
+
+### Historical legacy N2 launchers
+
+The following `codex_local` LIVE/preflight commands and operator-assisted sequence
+are retained as history. They do not launch the experimental native profile and
+must not be reused as its campaign recipe. No new provider launcher is supplied.
+
+The proposed campaign command is:
+
+```sh
+COUNCIL_N2_LIVE_AUTHORIZED=1 \
+COUNCIL_N2_LIVE_MODEL=gpt-5.6-sol \
+COUNCIL_N2_LIVE_EFFORT=high \
+COUNCIL_N2_LIVE_RUN_UNITS=2000000 \
+COUNCIL_N2_LIVE_PERIOD_UNITS=12000000 \
+pnpm qualification:live:n2
+```
+
+Do not set the authorization variable until the operator has explicitly
+authorized that provider campaign for the exact published commit.
+
+For the isolated N2 path, `pnpm qualification:preflight:n2` first builds the
+same `ready_for_review` prerequisite through public Paperclip APIs and
+fixture-confined public Council commands. It records two distinct contributions,
+a verified integrated candidate, three settled zero-usage N1 reservations,
+zero fixture exposure, three terminal checkout heartbeat fixtures for lead/Alpha/Beta,
+no open checkout/execution locks, an empty primary reviewer readback, and
+owned-runtime cleanup. It then removes fixture mode through public configuration,
+creates a distinct native 2M-per-run/6M-period envelope with the profile's exact
+dates, and carries the same mission and candidate through `start-review` and the
+operator PATCH. The reviewer stays disabled, so the resulting native reservation
+remains open without any wakeup, run, process, or provider call; the owned sandbox
+is then destroyed. A later, separately
+authorized campaign can reuse that deterministic builder in the same ephemeral
+runtime and launch only reviewer V1, the bounded correction, and reviewer V2:
+
+```sh
+COUNCIL_N2_ISOLATED_LIVE_AUTHORIZED=1 \
+COUNCIL_N2_ISOLATED_LIVE_CANDIDATE_SHA=<exact-published-sha> \
+COUNCIL_N2_ISOLATED_LIVE_MODEL=gpt-5.6-sol \
+COUNCIL_N2_ISOLATED_LIVE_EFFORT=high \
+COUNCIL_N2_ISOLATED_LIVE_RUN_UNITS=2000000 \
+COUNCIL_N2_ISOLATED_LIVE_PERIOD_UNITS=6000000 \
+pnpm qualification:live:n2:isolated
+```
+
+The isolated LIVE launcher refuses a dirty candidate, a mismatched candidate
+SHA, a missing explicit authorization, a substituted model/effort, or any
+period allowance other than exactly three run reservations.
 
 ## Compatibility
 
@@ -131,7 +197,8 @@ Create a company-scoped configuration with Paperclip's plugin configuration API:
       "runReservationUnits": 60000,
       "initialKnownUsageUnits": 0,
       "initialExposureUnits": 0,
-      "initialTokenAccountingSource": "owner-attested:fresh-company-and-period:<IDENTIFIER>"
+      "initialTokenAccountingSource": "owner-attested:fresh-company-and-period:<IDENTIFIER>",
+      "maxCorrections": 0
     }
   }
 }
@@ -150,6 +217,7 @@ explicit admission policy; they do not claim a future provider bill ceiling.
 Initial known usage and exposure are required activation inputs, and
 `initialTokenAccountingSource` must identify the company/period readback or
 bounded fresh-period attestation that supports them. Zero is never inferred.
+`maxCorrections` defaults to `0`; the N2 profile must set it explicitly to `1`.
 
 Using a board session authorized for the target company:
 
@@ -296,3 +364,33 @@ idempotent reconciliation run or an update to its manifest after the trigger is
 ready. A green PR does not activate this gate on a Paperclip instance.
 
 Licensed under the MIT License; see [LICENSE](./LICENSE).
+
+### Native N2 lifecycle with a deterministic model
+
+`pnpm qualification:native:n2` builds and installs the exact clean Council candidate
+in an ephemeral authenticated instance using `PAPERCLIP_TEST_HOST_ROOT` and its
+exact `COUNCIL_N2_NATIVE_HOST_COMMIT`. The qualified host is unchanged
+`61b3fd57a695614dc4a37e2303f426a34a9795cf`.
+
+Only `nativeSessionBackendFactory` is substituted. Real Paperclip services own
+admission, API authorization, native review cards, finalization, costs, events and
+recovery. Three N1 preparation rows remain labelled fixtures; N2 executes a real
+native transmission, reviewer1, correction and reviewer2. Each run has its own
+reservation and public per-run usage readback. Unknown usage retains its exposure.
+
+General CI does not install the optional Paperclip host. Fallow's
+`ignoreUnresolvedImports` lists only the 17 exact external host specifiers used by
+the native tests; their files, other imports and other findings remain audited.
+The native qualification resolves those imports against the pinned host at runtime.
+
+The launcher checks final exact-candidate acceptance, four successful runs/costs,
+settled reservations, replay without a fifth execution, and owned runtime cleanup.
+The dependency-cancelled predispatch row remains visible in the evidence. Neither
+an operator rendezvous nor wake disabling masks the reviewer-to-correction boundary.
+The earlier three-run, patched-host approach is historical and has been replaced.
+
+See the [N2 report](docs/reviews/n2/REPORT.md) for the explicit experimental setup
+and agent command contract. No durable agent is migrated and no provider is called.
+N2 approval still rechecks the immutable verified submission attachment; the
+non-N2 legacy approval path still requires its delivery manifest. Native final
+acceptance is not yet an N6 guarantee that all dependent work waits for final cost.

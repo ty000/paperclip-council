@@ -109,6 +109,26 @@ function nativeIssue(decision: CouncilDecisionInput, status = "in_progress") {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("durable council decision receipts", () => {
+  it.each([false, true])("binds native review receipts to their exact source run (mismatch=%s)", async (mismatch) => {
+    const h = harness();
+    const decision = input({ nativeReview: { interactionId: "card", decisionId: "decision", sourceRunId: "transmission" } });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      id: "card", issueId: decision.issueId, companyId: decision.companyId, status: "rejected",
+      sourceRunId: mismatch ? "other-transmission" : "transmission", resolvedByRunId: decision.runId,
+      resolvedByAgentId: decision.actorAgentId, payload: { target: { key: "native_completion_review", revisionId: "decision" } },
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await executeCouncilDecision(h.ctx, config, decision);
+    expect(result.receipt.state).toBe(mismatch ? "indeterminate" : "native_observed");
+    expect(result.receipt.requestBody.nativeReview).toEqual(decision.nativeReview);
+    const [url, options] = fetchMock.mock.calls[0]!;
+    expect(url).toContain("/interactions/card/reject");
+    expect(options.method).toBe("POST");
+    expect(JSON.parse(options.body)).toEqual({ reason: result.receipt.requestBody.comment });
+    expect((await executeCouncilDecision(h.ctx, config, decision)).replayed).toBe(true);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it("returns the original attributed receipt for an exact replay in a new run", async () => {
     const h = harness();
     const firstInput = input();

@@ -2,6 +2,29 @@
   "entry": [
     "src/ui/index.tsx",
     "tests/receipts/crash-child.ts",
-    "tests/receipts/ui-fixture.tsx"
+    "tests/receipts/ui-fixture.tsx",
+    "scripts/qualification/n2-native-dependency.config.mjs",
+    "scripts/qualification/n2-native-lifecycle.config.mjs",
+    "tests/functional/n2-native-dependency.test.ts",
+    "tests/functional/n2-native-lifecycle.test.ts"
+  ],
+  "ignoreUnresolvedImports": [
+    "../../.paperclip/qualification/paperclip/packages/db/src/index.ts",
+    "../../.paperclip/qualification/paperclip/server/node_modules/drizzle-orm/index.js",
+    "../../.paperclip/qualification/paperclip/server/node_modules/express/index.js",
+    "../../.paperclip/qualification/paperclip/server/src/__tests__/helpers/embedded-postgres.ts",
+    "../../.paperclip/qualification/paperclip/server/src/adapters/registry.ts",
+    "../../.paperclip/qualification/paperclip/server/src/middleware/auth.ts",
+    "../../.paperclip/qualification/paperclip/server/src/middleware/error-handler.ts",
+    "../../.paperclip/qualification/paperclip/server/src/routes/agents.ts",
+    "../../.paperclip/qualification/paperclip/server/src/routes/issues.ts",
+    "../../.paperclip/qualification/paperclip/server/src/services/heartbeat.ts",
+    "../../.paperclip/qualification/paperclip/server/src/services/native-runtime/native-review-participant.ts",
+    "../../.paperclip/qualification/paperclip/server/src/services/native-runtime/native-run-finalizer.ts",
+    "../../.paperclip/qualification/paperclip/server/src/services/native-runtime/paperclip-control-plane-port.ts",
+    "../../.paperclip/qualification/paperclip/server/src/services/native-runtime/paperclip-runner-tool-authority.ts",
+    "../../.paperclip/qualification/paperclip/server/src/services/plugin-event-bus.ts",
+    "../../.paperclip/qualification/paperclip/server/src/services/plugin-host-services.ts",
+    "../../.paperclip/qualification/paperclip/server/src/vendor/paperclip-runner/testing.ts"
   ]
 }

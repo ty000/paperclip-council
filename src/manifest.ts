@@ -5,7 +5,7 @@ export const PLUGIN_ID = "private.paperclip-council";
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
-  version: "0.5.0",
+  version: "0.6.0",
   displayName: "Paperclip Council",
   description: "Private Council integration with revisioned rosters, bounded admission and checked candidate preparation.",
   author: "Local Paperclip integration",
@@ -23,7 +23,10 @@ const manifest: PaperclipPluginManifestV1 = {
     "issues.update",
     "issues.checkout",
     "issues.wakeup",
+    "issue.relations.read",
+    "issue.relations.write",
     "issues.orchestration.read",
+    "events.subscribe",
     "issue.documents.read",
     "issue.attachments.read",
     "issue.interactions.create",
@@ -60,6 +63,10 @@ const manifest: PaperclipPluginManifestV1 = {
         title: "Council agent API key",
         description: "Reference to the Paperclip company secret containing the dedicated council agent token.",
       },
+      n2RuntimeProfile: {
+        type: "string", enum: ["paperclip_runner-experimental"],
+        description: "Experimental native N2 with an individually admitted transmission run. Requires paperclip_runner lead/reviewer and native runner rollout.",
+      },
       n1FixtureMode: {
         type: "string",
         enum: ["ephemeral-local-sandbox"],
@@ -74,7 +81,7 @@ const manifest: PaperclipPluginManifestV1 = {
           "initialKnownUsageUnits", "initialExposureUnits", "initialTokenAccountingSource",
         ],
         title: "N1 bounded operating profile",
-        description: "One native token-ledger profile for sequential N1 contribution runs.",
+        description: "One native token-ledger profile for sequential N1 contribution runs and an explicitly bounded N2 correction.",
         properties: {
           kind: { type: "string", enum: ["paperclip-orchestration-tokens-v1"] },
           periodKey: { type: "string", minLength: 1, maxLength: 200 },
@@ -85,6 +92,7 @@ const manifest: PaperclipPluginManifestV1 = {
           initialKnownUsageUnits: { type: "integer", minimum: 0 },
           initialExposureUnits: { type: "integer", minimum: 0 },
           initialTokenAccountingSource: { type: "string", minLength: 1, maxLength: 200 },
+          maxCorrections: { type: "integer", enum: [0, 1], default: 0 },
         },
       },
     },

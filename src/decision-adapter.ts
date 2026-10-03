@@ -65,8 +65,10 @@ export function buildCouncilDecisionRequest(config: CouncilConfig, input: Counci
         `Operation ID: ${input.operationId}`,
         ...(input.verdict === "approved" ? [`Approved commit: ${input.approvedCommit}`] : []),
       ].join("\n"),
+      ...(input.nativeReview ? { nativeReview: input.nativeReview } : {}),
     },
-    targetUrl: `${config.apiBaseUrl}/api/issues/${input.issueId}`,
+    targetUrl: `${config.apiBaseUrl}/api/issues/${input.issueId}${input.nativeReview
+      ? `/interactions/${input.nativeReview.interactionId}/${input.verdict === "approved" ? "accept" : "reject"}` : ""}`,
   } as const;
 }
 
@@ -107,6 +109,28 @@ async function readBoundedResponse(response: Response): Promise<{
   }
 }
 
+/** Public telemetry and native interactions use the configured Council identity. */
+export async function councilNativeRequest(
+  ctx: PluginContext,
+  companyId: string,
+  path: string,
+  options: { method?: "GET" | "POST"; runId?: string; body?: unknown } = {},
+): Promise<{ status: number; body: unknown }> {
+  const config = parseCouncilConfig(await ctx.config.get(companyId));
+  if (!/^\/api\/(heartbeat-runs|issues)\/[a-zA-Z0-9/-]+$/.test(path)) throw new Error("Invalid Council native resource path");
+  const apiKey = await ctx.secrets.resolve(config.councilApiKey, { companyId, configPath: "councilApiKey" });
+  const response = await fetch(`${config.apiBaseUrl}${path}`, {
+    method: options.method ?? "GET",
+    headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json",
+      ...(options.runId ? { "x-paperclip-run-id": options.runId } : {}) },
+    ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+    signal: AbortSignal.timeout(15_000), redirect: "error",
+  });
+  const parsed = await readBoundedResponse(response);
+  if (!parsed.validJson || parsed.truncated) throw new Error("Native response is not bounded valid JSON");
+  return { status: response.status, body: parsed.body };
+}
+
 /**
  * The only adapter that emits council decisions. It deliberately uses the
  * qualified public issue API instead of ctx.issues.update or direct storage.
@@ -122,13 +146,13 @@ export async function emitCouncilDecision(
   });
   const patch = buildCouncilDecisionRequest(config, input);
   const response = await fetch(patch.targetUrl, {
-    method: "PATCH",
+    method: input.nativeReview ? "POST" : "PATCH",
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`,
       "x-paperclip-run-id": input.runId,
     },
-    body: JSON.stringify(patch.body),
+    body: JSON.stringify(input.nativeReview ? { reason: patch.body.comment } : patch.body),
     signal: AbortSignal.timeout(15_000),
     redirect: "error",
   });

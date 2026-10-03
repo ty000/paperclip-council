@@ -8,7 +8,11 @@ import { tmpdir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { prepareCandidatePackage } from "./candidate-package.js";
-import { runLiveN1 } from "./n1-live.js";
+import { nativeRunEvidence, runLiveN1 } from "./n1-live.js";
+import { runLiveN2 } from "./n2-live.js";
+import { prepareN2Prerequisite } from "./n2-prerequisite.js";
+import { runN2NativeLifecycle } from "./n2-native-lifecycle.js";
+import { runSyntheticN2 } from "./n2-synthetic.js";
 import { createFunctionalRuntimeCleanup } from "./runtime-cleanup.js";
 // @ts-expect-error The qualification evidence contract is intentionally plain ESM.
 import { writeClaimedArtifact } from "../../scripts/qualification/evidence-contract.mjs";
@@ -34,26 +38,43 @@ const candidateBranch = execFileSync("git", ["branch", "--show-current"], {
   encoding: "utf8",
 }).trim();
 const liveN1Authorized = process.env.COUNCIL_N1_LIVE_AUTHORIZED === "1";
+const liveN2Authorized = process.env.COUNCIL_N2_LIVE_AUTHORIZED === "1";
+const isolatedLiveN2Authorized = process.env.COUNCIL_N2_ISOLATED_LIVE_AUTHORIZED === "1";
+const n2NativeLifecycleMode = process.env.COUNCIL_N2_NATIVE_LIFECYCLE === "1";
+const n2PrerequisiteMode = process.env.COUNCIL_N2_PREREQUISITE === "1";
+assert([liveN1Authorized, liveN2Authorized, isolatedLiveN2Authorized].filter(Boolean).length <= 1,
+  "Only one native campaign can be authorized at a time");
+assert(!(n2PrerequisiteMode && (liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized)),
+  "The provider-free N2 prerequisite cannot run inside a LIVE campaign");
+assert(!(n2NativeLifecycleMode && (n2PrerequisiteMode || liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized)), "Native deterministic qualification excludes every LIVE mode");
+const liveNativeAuthorized = liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized;
+const liveN2Campaign = liveN2Authorized || isolatedLiveN2Authorized;
+const liveEnvironmentPrefix = isolatedLiveN2Authorized
+  ? "COUNCIL_N2_ISOLATED_LIVE"
+  : liveN2Authorized ? "COUNCIL_N2_LIVE" : "COUNCIL_N1_LIVE";
 type ArtifactIdentity = { dev: string; ino: string };
 function claimedArtifactIdentity(name: string): ArtifactIdentity {
   const serialized = process.env[name];
-  if (!serialized) throw new Error(`${name} is required for the explicitly authorized N1 live run`);
+  if (!serialized) throw new Error(`${name} is required for the explicitly authorized native live run`);
   try {
     return JSON.parse(serialized) as ArtifactIdentity;
   } catch {
     throw new Error(`${name} must contain the serialized create-only claim identity`);
   }
 }
-const liveEvidenceIdentity = liveN1Authorized
-  ? claimedArtifactIdentity("COUNCIL_N1_LIVE_EVIDENCE_IDENTITY") : undefined;
-const liveScreenshotIdentity = liveN1Authorized
-  ? claimedArtifactIdentity("COUNCIL_N1_LIVE_SCREENSHOT_IDENTITY") : undefined;
+const liveEvidenceIdentity = liveNativeAuthorized
+  ? claimedArtifactIdentity(`${liveEnvironmentPrefix}_EVIDENCE_IDENTITY`) : undefined;
+const liveScreenshotIdentity = liveNativeAuthorized
+  ? claimedArtifactIdentity(`${liveEnvironmentPrefix}_SCREENSHOT_IDENTITY`) : undefined;
 const hostRootInput = process.env.PAPERCLIP_TEST_HOST_ROOT;
 if (!hostRootInput) {
   throw new Error("PAPERCLIP_TEST_HOST_ROOT must point to the Paperclip checkout under test");
 }
 const root = resolve(hostRootInput);
-const expectedHostCommit = "61b3fd57a695614dc4a37e2303f426a34a9795cf";
+const expectedHostCommit = n2NativeLifecycleMode
+  ? process.env.COUNCIL_N2_NATIVE_HOST_COMMIT
+  : "61b3fd57a695614dc4a37e2303f426a34a9795cf";
+assert(expectedHostCommit && /^[a-f0-9]{40}$/.test(expectedHostCommit), "Explicit exact native lifecycle host SHA is required");
 const hostCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
 assert.equal(hostCommit, expectedHostCommit, `functional host must be Paperclip ${expectedHostCommit}`);
 const hostStatus = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], {
@@ -103,19 +124,33 @@ for (const key of [
 ]) delete process.env[key];
 
 const requireServer = createRequire(resolve(root, "server/package.json"));
-const { eq } = requireServer("drizzle-orm");
+const { eq, inArray, sql } = requireServer("drizzle-orm");
 const evidence: Record<string, any> = {
   schemaVersion: 1,
-  proofId: liveN1Authorized
+  proofId: n2NativeLifecycleMode ? "paperclip-council-n2-native-deterministic-lifecycle-v1" : n2PrerequisiteMode
+    ? "paperclip-council-n2-native-stage-prerequisite-v1"
+    : isolatedLiveN2Authorized
+    ? "paperclip-council-n2-isolated-observable-native-qualification-v1"
+    : liveN2Authorized
+    ? "paperclip-council-n2-observable-native-qualification-v1"
+    : liveN1Authorized
     ? "paperclip-council-n1-observable-native-qualification-v1"
-    : "paperclip-council-n1-safe-boundary-qualification-v1",
+    : "paperclip-council-n2-synthetic-integration-v1",
   startedAt: new Date().toISOString(),
   head: hostCommit,
   hostTrackedFilesClean: hostStatus === "",
   branch: execFileSync("git", ["branch", "--show-current"], { cwd: root, encoding: "utf8" }).trim(),
   node: process.version,
-  command: liveN1Authorized
+  command: n2NativeLifecycleMode
+    ? "PAPERCLIP_TEST_HOST_ROOT=<clean-host> COUNCIL_N2_NATIVE_HOST_COMMIT=<exact-host-sha> pnpm qualification:native:n2"
+    : liveN2Authorized
+    ? "COUNCIL_N2_LIVE_AUTHORIZED=1 COUNCIL_N2_LIVE_MODEL=gpt-5.6-sol COUNCIL_N2_LIVE_EFFORT=high COUNCIL_N2_LIVE_RUN_UNITS=<positive> COUNCIL_N2_LIVE_PERIOD_UNITS=<exactly-6x-run> pnpm qualification:live:n2"
+    : isolatedLiveN2Authorized
+    ? "COUNCIL_N2_ISOLATED_LIVE_AUTHORIZED=1 COUNCIL_N2_ISOLATED_LIVE_CANDIDATE_SHA=<exact-head> COUNCIL_N2_ISOLATED_LIVE_MODEL=gpt-5.6-sol COUNCIL_N2_ISOLATED_LIVE_EFFORT=high COUNCIL_N2_ISOLATED_LIVE_RUN_UNITS=<positive> COUNCIL_N2_ISOLATED_LIVE_PERIOD_UNITS=<exactly-3x-run> pnpm qualification:live:n2:isolated"
+    : liveN1Authorized
     ? "COUNCIL_N1_LIVE_AUTHORIZED=1 COUNCIL_N1_LIVE_MODEL=gpt-5.6-sol COUNCIL_N1_LIVE_EFFORT=high COUNCIL_N1_LIVE_RUN_UNITS=<positive> COUNCIL_N1_LIVE_PERIOD_UNITS=<at-least-3x-run> pnpm qualification:live:n1"
+    : n2PrerequisiteMode
+    ? "pnpm qualification:preflight:n2"
     : "COUNCIL_PACKAGE_EXPECTED_COMMIT=<candidate-sha> PAPERCLIP_TEST_HOST_ROOT=<checkout> PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH=<chromium> pnpm test:functional",
   candidate: {
     commit: candidateCommit,
@@ -152,6 +187,7 @@ let db: any;
 let app: any;
 let server: Server | undefined;
 let workerManager: any;
+let publishPluginDomainEvent: ((event: Record<string, unknown>) => void) | undefined;
 let baseUrl = "";
 let cookie = "";
 let intruderCookie = "";
@@ -165,7 +201,13 @@ const contributorAId = randomUUID();
 const contributorBId = randomUUID();
 const councilId = randomUUID();
 const foreignCompanyId = randomUUID();
-const agentTokens = new Map<string, { token: string; keyId: string; runId: string; agentId: string }>();
+const agentTokens = new Map<string, {
+  token: string;
+  keyId: string;
+  runId: string;
+  agentId: string;
+  companyId?: string;
+}>();
 
 async function safeSnapshot() {
   if (!issueId) return null;
@@ -245,6 +287,180 @@ async function freshRun(actor: string, contextIssueId: string | undefined = issu
   return runId;
 }
 
+async function createN2PrerequisiteFixtureRun(
+  actor: string,
+  contextIssueId: string,
+  fixtureSource: "fixture:n2-prerequisite:deterministic-heartbeat" | "fixture:n2-handoff-guard:deterministic-reviewer"
+    = "fixture:n2-prerequisite:deterministic-heartbeat",
+) {
+  const current = agentTokens.get(actor);
+  assert(current, `unknown N2 prerequisite actor ${actor}`);
+  assert(current.companyId, `N2 prerequisite actor ${actor} has no company identity`);
+  const runId = randomUUID();
+  await db.insert(tables.heartbeatRuns).values({
+    id: runId,
+    companyId: current.companyId,
+    agentId: current.agentId,
+    invocationSource: "on_demand",
+    triggerDetail: fixtureSource,
+    status: "running",
+    responsibleUserId: evidence.configuration.humanUserId,
+    contextSnapshot: {
+      issueId: contextIssueId,
+      fixture: fixtureSource,
+      providerInvocation: "none",
+    },
+    startedAt: new Date(),
+  });
+  agentTokens.set(actor, { ...current, runId });
+  return runId;
+}
+
+async function finishN2PrerequisiteFixtureRuns(runs: ReadonlyArray<{
+  actor: string;
+  runId: string;
+  companyId: string;
+  agentId: string;
+  issueId: string;
+}>) {
+  assert(runs.length > 0, "N2 prerequisite fixture cleanup requires at least one owned run");
+  const completedAt = new Date();
+  for (const fixture of runs) {
+    const [beforeRun] = await db.select({
+      status: tables.heartbeatRuns.status,
+      wakeupRequestId: tables.heartbeatRuns.wakeupRequestId,
+      processStartedAt: tables.heartbeatRuns.processStartedAt,
+    }).from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.id, fixture.runId));
+    assert.deepEqual(beforeRun, {
+      status: "running",
+      wakeupRequestId: null,
+      processStartedAt: null,
+    }, `fixture ${fixture.runId} must remain unexecuted until its last use`);
+    const [beforeIssue] = await db.select({
+      checkoutRunId: tables.issues.checkoutRunId,
+      executionRunId: tables.issues.executionRunId,
+    }).from(tables.issues).where(eq(tables.issues.id, fixture.issueId));
+    assert(beforeIssue, `fixture issue ${fixture.issueId} must exist`);
+    assert(beforeIssue.checkoutRunId === null || beforeIssue.checkoutRunId === fixture.runId,
+      `fixture issue ${fixture.issueId} checkout belongs to another run`);
+    assert(beforeIssue.executionRunId === null || beforeIssue.executionRunId === fixture.runId,
+      `fixture issue ${fixture.issueId} execution belongs to another run`);
+
+    await db.update(tables.heartbeatRuns).set({
+      status: "succeeded",
+      finishedAt: completedAt,
+      error: null,
+      exitCode: 0,
+      usageJson: { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
+    }).where(eq(tables.heartbeatRuns.id, fixture.runId));
+    await db.update(tables.issues).set({
+      checkoutRunId: null,
+      executionRunId: null,
+      executionAgentNameKey: null,
+      executionLockedAt: null,
+      updatedAt: completedAt,
+    }).where(eq(tables.issues.id, fixture.issueId));
+    const current = agentTokens.get(fixture.actor);
+    if (current?.runId === fixture.runId) agentTokens.set(fixture.actor, { ...current, runId: "" });
+  }
+
+  const runIds = runs.map((fixture) => fixture.runId);
+  const issueIds = runs.map((fixture) => fixture.issueId);
+  const terminalRuns = await db.select({
+    id: tables.heartbeatRuns.id,
+    companyId: tables.heartbeatRuns.companyId,
+    agentId: tables.heartbeatRuns.agentId,
+    status: tables.heartbeatRuns.status,
+    finishedAt: tables.heartbeatRuns.finishedAt,
+    wakeupRequestId: tables.heartbeatRuns.wakeupRequestId,
+    processStartedAt: tables.heartbeatRuns.processStartedAt,
+  }).from(tables.heartbeatRuns).where(inArray(tables.heartbeatRuns.id, runIds));
+  const issueLocks = await db.select({
+    id: tables.issues.id,
+    status: tables.issues.status,
+    assigneeAgentId: tables.issues.assigneeAgentId,
+    checkoutRunId: tables.issues.checkoutRunId,
+    executionRunId: tables.issues.executionRunId,
+  }).from(tables.issues).where(inArray(tables.issues.id, issueIds));
+  const activeRunCount = terminalRuns.filter((run: any) => ["running", "queued", "scheduled_retry"].includes(run.status)).length;
+  const openCheckoutCount = issueLocks.filter((issue: any) => issue.checkoutRunId !== null).length;
+  const openExecutionCount = issueLocks.filter((issue: any) => issue.executionRunId !== null).length;
+  assert.equal(terminalRuns.length, runs.length);
+  assert(terminalRuns.every((run: any) => run.status === "succeeded" && run.finishedAt
+    && run.wakeupRequestId === null && run.processStartedAt === null));
+  return { terminalRuns, issueLocks, activeRunCount, openCheckoutCount, openExecutionCount };
+}
+
+async function completeSyntheticRun(runId: string, targetIssueId: string, agentId: string, usageUnits: number) {
+  const completedAt = new Date();
+  await db.update(tables.heartbeatRuns).set({
+    status: "succeeded",
+    startedAt: completedAt,
+    finishedAt: completedAt,
+    error: null,
+    exitCode: 0,
+    usageJson: { inputTokens: usageUnits, cachedInputTokens: 0, outputTokens: 0 },
+  }).where(eq(tables.heartbeatRuns.id, runId));
+  const [completed] = await db.select({
+    id: tables.heartbeatRuns.id,
+    status: tables.heartbeatRuns.status,
+    finishedAt: tables.heartbeatRuns.finishedAt,
+  }).from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.id, runId));
+  assert.equal(completed?.status, "succeeded", `deterministic run ${runId} must be terminal`);
+  assert(completed?.finishedAt, `deterministic run ${runId} needs a terminal timestamp`);
+  if (usageUnits > 0) {
+    await db.insert(tables.costEvents).values({
+      id: randomUUID(),
+      companyId,
+      agentId,
+      issueId: targetIssueId,
+      projectId,
+      heartbeatRunId: runId,
+      provider: "synthetic-provider-free",
+      biller: "test-fixture",
+      billingType: "test",
+      costStatus: "reported",
+      model: "deterministic-executor",
+      inputTokens: usageUnits,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      costCents: 0,
+      occurredAt: completedAt,
+    });
+  }
+  assert(publishPluginDomainEvent, "synthetic SDK event seam is unavailable");
+  publishPluginDomainEvent({
+    eventId: randomUUID(),
+    eventType: "agent.run.finished",
+    occurredAt: completedAt.toISOString(),
+    actorId: agentId,
+    actorType: "agent",
+    entityId: runId,
+    entityType: "heartbeat_run",
+    companyId,
+    payload: {
+      runId,
+      agentId,
+      issueId: targetIssueId,
+      status: "succeeded",
+      invocationSource: "synthetic_provider_free_fixture",
+      triggerDetail: "fixture:n2-finished-event",
+      error: null,
+      errorCode: null,
+      startedAt: completedAt.toISOString(),
+      finishedAt: completedAt.toISOString(),
+    },
+  });
+}
+
+async function seedSyntheticMission(syntheticMissionId: string, aggregate: Record<string, unknown>) {
+  await db.execute(sql`
+    UPDATE ${sql.raw("plugin_private_paperclip_council_270061461e.missions")}
+    SET aggregate = ${JSON.stringify(aggregate)}::jsonb, updated_at = now()
+    WHERE company_id = ${companyId}::uuid AND mission_id = ${syntheticMissionId}::uuid
+  `);
+}
+
 async function checkoutExecutor(expectedStatus: string) {
   await freshRun("executor");
   const principal = agentTokens.get("executor")!;
@@ -285,6 +501,7 @@ try {
     resolveBetterAuthSession,
   } = await hostImport("server/src/auth/better-auth.ts");
   const { createPluginWorkerManager } = await hostImport("server/src/services/plugin-worker-manager.ts");
+  ({ publishPluginDomainEvent } = await hostImport("server/src/services/activity-log.ts"));
   const { createStorageService } = await hostImport("server/src/storage/service.ts");
   const { createLocalDiskStorageProvider } = await hostImport("server/src/storage/local-disk-provider.ts");
 
@@ -442,6 +659,63 @@ try {
   assert(workerManager.isRunning(pluginId), "installed package worker must load after restart");
   evidence.results.installation = "PASS";
 
+  if (n2NativeLifecycleMode) {
+    await runN2NativeLifecycle({ request, pluginId, baseUrl, cookie, runtime, ownerUserId: userId,
+      hostImport, evidence, save, agentTokens, db, tables, eq,
+      createFixtureRun: createN2PrerequisiteFixtureRun, finishFixtureRuns: finishN2PrerequisiteFixtureRuns });
+  } else if (n2PrerequisiteMode) {
+    const prerequisite = await prepareN2Prerequisite({
+      request,
+      pluginId,
+      baseUrl,
+      cookie,
+      runtime,
+      ownerUserId: userId,
+      registerActor: (actor, identity) => {
+        agentTokens.set(actor, { ...identity, runId: "", agentId: identity.id });
+      },
+      createFixtureRun: createN2PrerequisiteFixtureRun,
+      finishFixtureRuns: finishN2PrerequisiteFixtureRuns,
+      liveN2Profile: {
+        model: "gpt-5.6-sol",
+        effort: "high",
+        runReservationUnits: 2_000_000,
+        periodAllowanceUnits: 6_000_000,
+      },
+      exerciseProviderFreeHandoff: true,
+    });
+    assert(prerequisite.handoffGuard, "provider-free N2 handoff guard must stop after the public boundary");
+    evidence.configuration.fixtureBoundary = "The prerequisite seam terminalizes three N1 heartbeat fixtures before the same mission and candidate enter a distinct native N2 period; one separately labelled reviewer fixture then exercises inspect and confirm-review-handoff without provider, wakeup, or process execution";
+    evidence.configuration.models = "gpt-5.6-sol/high configured on disabled agents; no provider invocation";
+    evidence.n2Prerequisite = {
+      proofClass: "N2 native-stage prerequisite validated",
+      ...prerequisite,
+      providerBoundary: {
+        providerInvocationCount: 0,
+        nativeAgentExecutionCount: 0,
+        prerequisiteFixtureHeartbeatRowCount: prerequisite.fixtureHeartbeatRuns.length,
+        wakeupCount: 0,
+        reviewerRunCount: prerequisite.runReadbacks.find(
+          (entry: { agentId: string }) => entry.agentId === prerequisite.agents.reviewer.id,
+        )?.runCount ?? -1,
+        evidence: "the pre-handoff readback attributes one terminal, unexecuted fixture row to lead, Alpha, and Beta while reviewer history is empty; the handoff guard reports its later reviewer fixture separately",
+      },
+      databaseBoundary: "the seam terminalizes exactly three N1 heartbeat fixtures and one separately labelled reviewer handoff fixture; public plugin and agent commands retain one native reservation without claiming provider usage or settlement",
+    };
+    Object.assign(evidence.results, {
+      n2PrerequisitePublicMission: "PASS",
+      n2PrerequisiteDistinctContributions: "PASS",
+      n2PrerequisiteVerifiedCandidate: "PASS",
+      n2PrerequisiteN1ReservationsSettled: "PASS",
+      n2PrerequisiteFixtureZeroExposure: "PASS",
+      n2PrerequisiteZeroProviderOrNativeRuns: "PASS",
+      n2PrerequisiteStopsBeforeReviewer: "PASS",
+      n2PrerequisiteFixtureLifecycleFinished: "PASS",
+      n2PrerequisiteHandoffCommandsConsumable: "PASS",
+    });
+    evidence.outcome = "N2 native-stage prerequisite validated";
+  } else {
+
   const migrationNames = [
     "001_foundation_probe.sql", "002_revisioned_rosters.sql", "003_missions.sql",
     "004_decision_receipts.sql", "005_admission.sql",
@@ -457,7 +731,7 @@ try {
     const source = await readFile(resolve(packageRoot, "migrations", migration.migrationKey), "utf8");
     assert.equal(migration.checksum, createHash("sha256").update(source).digest("hex"));
     assert.equal(migration.status, "applied");
-    assert.equal(migration.pluginVersion, "0.5.0");
+    assert.equal(migration.pluginVersion, "0.6.0");
   }
   evidence.migrations = installedMigrations.map((item: any) => ({
     key: item.migrationKey, checksum: item.checksum, status: item.status, pluginVersion: item.pluginVersion,
@@ -1637,8 +1911,81 @@ try {
     replacementAndRevocation: "documented-only",
     reason: "the required package journey used native ephemeral keys; durable key mutation was not requested",
   };
-  if (liveN1Authorized) {
-    const live = await runLiveN1({
+
+  const syntheticN2 = await runSyntheticN2({
+    request,
+    pluginId,
+    baseUrl,
+    cookie,
+    runtime,
+    companyId,
+    projectId,
+    ownerUserId: userId,
+    secretId: secret.body.id,
+    agents: {
+      lead: executorId,
+      contributorA: contributorAId,
+      contributorB: contributorBId,
+      reviewer: councilId,
+    },
+    freshRun: async (actor, targetIssueId) => freshRun(actor, targetIssueId),
+    bindActorRun: (actor, runId) => {
+      const current = agentTokens.get(actor);
+      assert(current, `unknown synthetic actor ${actor}`);
+      agentTokens.set(actor, { ...current, runId });
+    },
+    completeRun: completeSyntheticRun,
+    seedMission: seedSyntheticMission,
+    evidence,
+  });
+
+  await closeApp();
+  workerManager = createPluginWorkerManager();
+  app = await createApp(db, opts("vite-dev"));
+  server = createServer(app);
+  await new Promise<void>((resolveListen, reject) => {
+    server!.once("error", reject);
+    server!.listen(address.port, "127.0.0.1", resolveListen);
+  });
+  await app.locals.bundledPluginsStartup;
+  assert(workerManager.isRunning(pluginId), "installed package worker must reload after synthetic N2 acceptance");
+  const syntheticRestartReadback = await request(
+    "human",
+    "GET",
+    `${syntheticN2.missionPath}?companyId=${companyId}`,
+  );
+  assert.equal(syntheticRestartReadback.status, 200, JSON.stringify(syntheticRestartReadback.body));
+  assert.equal(syntheticRestartReadback.body.mission.aggregate.phase, "accepted");
+  assert.equal(syntheticRestartReadback.body.n2.status, "accepted");
+  assert.deepEqual(
+    syntheticRestartReadback.body.mission.aggregate.n2,
+    syntheticN2.finalMission.mission.aggregate.n2,
+  );
+  evidence.syntheticN2.restartReadback = syntheticRestartReadback.body;
+  evidence.results.n2SyntheticPersistedReadback = "PASS";
+
+  if (liveNativeAuthorized) {
+    const live = isolatedLiveN2Authorized
+      ? await prepareN2Prerequisite({
+          request,
+          pluginId,
+          baseUrl,
+          cookie,
+          runtime,
+          ownerUserId: userId,
+          liveN2Profile: {
+            model: process.env.COUNCIL_N2_ISOLATED_LIVE_MODEL!,
+            effort: process.env.COUNCIL_N2_ISOLATED_LIVE_EFFORT!,
+            runReservationUnits: Number(process.env.COUNCIL_N2_ISOLATED_LIVE_RUN_UNITS),
+            periodAllowanceUnits: Number(process.env.COUNCIL_N2_ISOLATED_LIVE_PERIOD_UNITS),
+          },
+          registerActor: (actor, identity) => {
+            agentTokens.set(actor, { ...identity, runId: "", agentId: identity.id });
+          },
+          createFixtureRun: createN2PrerequisiteFixtureRun,
+          finishFixtureRuns: finishN2PrerequisiteFixtureRuns,
+        })
+      : await runLiveN1({
       request,
       getRun: async (runId) => db.select({
         id: tables.heartbeatRuns.id,
@@ -1654,7 +2001,100 @@ try {
       baseUrl,
       ownerUserId: userId,
       evidence,
+      campaign: liveN2Authorized ? "n2" : "n1",
     });
+    if (isolatedLiveN2Authorized) {
+      evidence.configuration.models = {
+        authorized: {
+          model: process.env.COUNCIL_N2_ISOLATED_LIVE_MODEL,
+          effort: process.env.COUNCIL_N2_ISOLATED_LIVE_EFFORT,
+        },
+        observedAgentConfiguration: [live.agents.lead, live.agents.reviewer].map((agent: any) => ({
+          agentId: agent.id,
+          adapterType: agent.adapterType,
+          model: agent.adapterConfig?.model ?? null,
+          effort: agent.adapterConfig?.modelReasoningEffort ?? null,
+        })),
+      };
+      evidence.configuration.fixtureBoundary = "Isolated N2 terminalizes three deterministic N1 heartbeat fixture rows and clears their exact issue locks before public configuration creates a distinct native N2 period; only reviewer-correction-reviewer may then run against that native period.";
+      evidence.n2Prerequisite = {
+        proofClass: "N2 native-stage prerequisite validated",
+        ...live,
+        providerBoundary: {
+          providerInvocationCount: 0,
+          nativeAgentExecutionCount: 0,
+          prerequisiteFixtureHeartbeatRowCount: live.fixtureHeartbeatRuns.length,
+          wakeupCount: 0,
+          reviewerRunCount: live.runReadbacks.find(
+            (entry: { agentId: string }) => entry.agentId === live.agents.reviewer.id,
+          )?.runCount ?? -1,
+          evidence: "pre-handoff public heartbeat-run readback attributes one terminal, unexecuted fixture row to lead, Alpha, and Beta; the handoff guard later records its separately labelled reviewer fixture",
+        },
+        databaseBoundary: live.handoffGuard
+          ? "the seam terminalizes exactly three N1 heartbeat fixtures and one separately labelled reviewer handoff fixture; public plugin and agent commands retain one native reservation without claiming provider usage or settlement"
+          : "the seam terminalizes exactly three N1 heartbeat fixtures and clears only their issue locks; public plugin configuration and admission APIs then create a distinct native N2 period that remains empty until authorized reviewer dispatch",
+      };
+      Object.assign(evidence.results, {
+        n2PrerequisitePublicMission: "PASS",
+        n2PrerequisiteDistinctContributions: "PASS",
+        n2PrerequisiteVerifiedCandidate: "PASS",
+        n2PrerequisiteN1ReservationsSettled: "PASS",
+        n2PrerequisiteFixtureZeroExposure: "PASS",
+        n2PrerequisiteZeroProviderOrNativeRuns: "PASS",
+        n2PrerequisiteStopsBeforeReviewer: "PASS",
+        n2PrerequisiteFixtureLifecycleFinished: "PASS",
+      });
+    }
+    let liveMission = live.mission;
+    if (liveN2Campaign) {
+      const n2 = await runLiveN2({
+        request,
+        getRun: async (runId) => db.select({
+          id: tables.heartbeatRuns.id,
+          agentId: tables.heartbeatRuns.agentId,
+          status: tables.heartbeatRuns.status,
+          startedAt: tables.heartbeatRuns.startedAt,
+          finishedAt: tables.heartbeatRuns.finishedAt,
+          error: tables.heartbeatRuns.error,
+          usageJson: tables.heartbeatRuns.usageJson,
+        }).from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.id, runId)).then((rows: any[]) => rows[0] ?? null),
+        listRuns: async (agentId) => db.select({
+          id: tables.heartbeatRuns.id,
+          agentId: tables.heartbeatRuns.agentId,
+          status: tables.heartbeatRuns.status,
+          startedAt: tables.heartbeatRuns.startedAt,
+          finishedAt: tables.heartbeatRuns.finishedAt,
+          error: tables.heartbeatRuns.error,
+          usageJson: tables.heartbeatRuns.usageJson,
+        }).from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.agentId, agentId)),
+        pluginId,
+        evidence,
+        n1: live,
+        runEvidence: nativeRunEvidence,
+        persistEvidence: save,
+      });
+      liveMission = n2.finalMission;
+
+      await closeApp();
+      workerManager = createPluginWorkerManager();
+      app = await createApp(db, opts("vite-dev"));
+      server = createServer(app);
+      await new Promise<void>((resolveListen, reject) => {
+        server!.once("error", reject);
+        server!.listen(address.port, "127.0.0.1", resolveListen);
+      });
+      await app.locals.bundledPluginsStartup;
+      assert(workerManager.isRunning(pluginId), "installed package worker must reload after N2 acceptance");
+      const restartReadback = await request("human", "GET",
+        `/api/plugins/${pluginId}/api/companies/${live.companyId}/missions/${live.missionId}?companyId=${live.companyId}`);
+      assert.equal(restartReadback.status, 200, JSON.stringify(restartReadback.body));
+      assert.equal(restartReadback.body.mission.aggregate.phase, "accepted");
+      assert.equal(restartReadback.body.n2.status, "accepted");
+      assert.deepEqual(restartReadback.body.n2.submission, liveMission.n2.submission);
+      evidence.liveN2.restartReadback = restartReadback.body;
+      evidence.results.n2RestartReadback = "PASS";
+      liveMission = restartReadback.body;
+    }
     const { chromium: liveChromium } = requireServer("@playwright/test");
     const liveBrowser = await liveChromium.launch({
       headless: true,
@@ -1671,26 +2111,53 @@ try {
       const page = await context.newPage();
       await page.goto(`${baseUrl}/${live.issuePrefix}/council-missions`, { waitUntil: "networkidle" });
       await page.getByRole("heading", { name: "Council missions" }).waitFor();
-      await page.getByLabel("Select mission").selectOption(live.missionId);
-      await page.getByText("ready_for_review").first().waitFor();
+      await page.getByLabel("Mission UUID").fill(live.missionId);
+      await page.getByRole("button", { name: "Find mission" }).click();
+      await page.getByText("Mission found and selected.", { exact: true }).waitFor();
+      const selectedMission = page.locator('section[aria-labelledby="mission-state-title"]');
+      await selectedMission.locator("#mission-state-title").waitFor();
+      assert.equal(
+        await selectedMission.locator("#mission-state-title").textContent(),
+        liveMission.mission.aggregate.mandate.objective,
+      );
+      await selectedMission.getByText(liveN2Campaign ? "accepted" : "ready_for_review", { exact: true }).waitFor();
       await page.getByRole("heading", { name: "Contributions" }).waitFor();
-      await page.getByRole("heading", { name: "Admission and usage" }).waitFor();
-      await page.getByText(/terminal-token-ledger/).waitFor();
+      const admissionSection = page.locator('section[aria-labelledby="admission-title"]');
+      await admissionSection.getByRole("heading", { name: "Admission and usage" }).waitFor();
+      await admissionSection.getByText(
+        `Measurement: ${liveMission.admission.measurement.unit} from ${liveMission.admission.measurement.source}.`,
+        { exact: true },
+      ).waitFor();
+      if (liveN2Campaign) {
+        await page.getByRole("heading", { name: "Independent review and correction" }).waitFor();
+        await page.getByText("V2 / evidence revision 2", { exact: true }).waitFor();
+        await page.getByText("eligible and independent", { exact: true }).waitFor();
+      }
       const rendered = await page.locator("body").innerText();
       const renderedValues = [
-        live.mission.nextAction,
-        live.mission.mission.aggregate.responsibilities.integrationLeadAgentId,
-        live.mission.mission.aggregate.responsibilities.finalReviewerAgentId,
-        live.mission.n1.candidate.candidate.candidateCommit,
-        live.mission.n1.candidate.candidate.baseCommit,
-        live.mission.n1.candidate.candidate.sha256,
-        live.admission.envelope.periodKey,
-        live.admission.envelope.measurement.source,
-        ...live.mission.n1.participants.flatMap((slot: any) => [
+        liveMission.nextAction,
+        liveMission.mission.aggregate.responsibilities.integrationLeadAgentId,
+        liveMission.mission.aggregate.responsibilities.finalReviewerAgentId,
+        liveMission.n1.candidate.candidate.candidateCommit,
+        liveMission.n1.candidate.candidate.baseCommit,
+        liveMission.n1.candidate.candidate.sha256,
+        liveMission.admission.periodKey,
+        liveMission.admission.measurement.source,
+        ...liveMission.n1.participants.flatMap((slot: any) => [
           slot.title, slot.assigneeAgentId, slot.dispatchRunId, slot.commit, ...slot.ownedPaths,
         ]),
-        ...live.mission.n1.candidate.checks.flatMap((check: any) => [check.name, check.status, check.detail]),
-        ...live.admission.envelope.reservations.flatMap((reservation: any) => [
+        ...liveMission.n1.candidate.checks.flatMap((check: any) => [check.name, check.status, check.detail]),
+        ...(liveN2Campaign ? [
+          liveMission.n2.submission.submissionId,
+          liveMission.n2.submission.candidateCommit,
+          liveMission.n2.submission.sha256,
+          liveMission.n2.review.handoff.reviewerRunId,
+          liveMission.n2.review.verdict.verdict,
+          liveMission.n2.application.state,
+          liveMission.n2.application.operationId,
+          liveMission.n2.application.receiptState,
+        ] : []),
+        ...liveMission.admission.reservations.flatMap((reservation: any) => [
           reservation.reservationId,
           String(reservation.requestedUnits),
           String(reservation.usage.units),
@@ -1700,23 +2167,35 @@ try {
         ]),
       ];
       for (const value of renderedValues) {
-        assert(value !== undefined && value !== null && rendered.includes(String(value)), `N1 UI is missing observed value: ${String(value)}`);
+        assert(value !== undefined && value !== null && rendered.includes(String(value)),
+          `${liveN2Campaign ? "N2" : "N1"} UI is missing observed value: ${String(value)}`);
       }
-      const liveScreenshotPath = process.env.COUNCIL_N1_LIVE_SCREENSHOT_PATH;
-      assert(liveScreenshotPath, "live screenshot path must be claimed by the N1 launcher");
+      const liveScreenshotPath = process.env[`${liveEnvironmentPrefix}_SCREENSHOT_PATH`];
+      assert(liveScreenshotPath, "live screenshot path must be claimed by the launcher");
       await mkdir(dirname(liveScreenshotPath), { recursive: true });
-      assert(liveScreenshotIdentity, "live screenshot identity must be claimed by the N1 launcher");
+      assert(liveScreenshotIdentity, "live screenshot identity must be claimed by the launcher");
       const screenshot = await page.screenshot({ type: "png", fullPage: true });
       writeClaimedArtifact(liveScreenshotPath, liveScreenshotIdentity, screenshot, "screenshot");
-      evidence.liveN1.ui = { screenshot: liveScreenshotPath, missionId: live.missionId, rootIssueId: live.rootIssueId };
-      evidence.results.n1InstalledBrowserObservableState = "PASS";
+      const uiEvidence = { screenshot: liveScreenshotPath, missionId: live.missionId, rootIssueId: live.rootIssueId };
+      if (liveN2Campaign) {
+        evidence.liveN2.ui = uiEvidence;
+        evidence.results.n2InstalledBrowserObservableState = "PASS";
+      } else {
+        evidence.liveN1.ui = uiEvidence;
+        evidence.results.n1InstalledBrowserObservableState = "PASS";
+      }
       await context.close();
     } finally {
       await liveBrowser.close();
     }
-    evidence.outcome = "N1 OBSERVABLE RESULT VALIDATED";
+    evidence.outcome = isolatedLiveN2Authorized
+      ? "N2 ISOLATED OBSERVABLE RESULT VALIDATED"
+      : liveN2Authorized
+      ? "N2 OBSERVABLE RESULT VALIDATED"
+      : "N1 OBSERVABLE RESULT VALIDATED";
   } else {
-    evidence.outcome = "N1 SAFE BOUNDARY VALIDATED";
+    evidence.outcome = "N2 SYNTHETIC INTEGRATION VALIDATED";
+  }
   }
 } catch (error) {
   evidence.outcome = "NON-CONCLUSIVE OR BLOCKED";

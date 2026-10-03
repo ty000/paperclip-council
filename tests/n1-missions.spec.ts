@@ -493,6 +493,108 @@ describe("N1 mission transitions", () => {
     expect(h.assertCheckoutOwner).not.toHaveBeenCalled();
   });
 
+  it("binds a fixture contribution through the public owner command without a native wake", async () => {
+    const reservationId = randomUUID();
+    const value = activeAggregate();
+    value.n1 = {
+      ...(value.n1 as object),
+      contributions: [{
+        ...plan[0],
+        issueState: "confirmed",
+        childIssueId: id.childA,
+      }],
+    };
+    const h = harness(value);
+    h.issues.set(id.childA, nativeIssue({
+      id: id.childA,
+      parentId: id.root,
+      assigneeAgentId: id.contributorA,
+      status: "in_progress",
+    }));
+
+    const result = await executeN1BoardCommand(h.ctx, {
+      companyId: id.company,
+      missionId: id.mission,
+      actorUserId: id.owner,
+      body: {
+        command: "fixture-bind-contribution-run",
+        fixtureSource: "fixture:local-sandbox",
+        commandId: randomUUID(),
+        expectedVersion: 1,
+        contributionId: id.contributionA,
+        reservationId,
+        requestedUnits: 1,
+        runId: id.contributorRun,
+      },
+    });
+
+    expect(result.outcome).toBe("applied");
+    expect(h.row().aggregate.n1).toMatchObject({
+      contributions: [{
+        contributionId: id.contributionA,
+        dispatchState: "requested",
+        dispatchReservationId: reservationId,
+        dispatchRunId: id.contributorRun,
+      }],
+    });
+    expect(reserveAdmission).toHaveBeenCalledWith(h.ctx, expect.objectContaining({
+      reservationId,
+      effectId: id.contributionA,
+      requestedUnits: 1,
+      expectedVersion: 4,
+    }));
+    expect(h.assertCheckoutOwner).toHaveBeenCalledWith(expect.objectContaining({
+      issueId: id.childA,
+      actorAgentId: id.contributorA,
+      actorRunId: id.contributorRun,
+    }));
+    expect(h.requestWakeup).not.toHaveBeenCalled();
+  });
+
+  it("keeps fixture contribution binding unavailable outside the owned test runtime", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const value = activeAggregate();
+    value.n1 = {
+      ...(value.n1 as object),
+      contributions: [{ ...plan[0], issueState: "confirmed", childIssueId: id.childA }],
+    };
+    const h = harness(value);
+
+    await expect(executeN1BoardCommand(h.ctx, {
+      companyId: id.company,
+      missionId: id.mission,
+      actorUserId: id.owner,
+      body: {
+        command: "fixture-bind-contribution-run",
+        fixtureSource: "fixture:local-sandbox",
+        commandId: randomUUID(),
+        expectedVersion: 1,
+        contributionId: id.contributionA,
+        reservationId: randomUUID(),
+        requestedUnits: 1,
+        runId: id.contributorRun,
+      },
+    })).rejects.toMatchObject({ status: 403, code: "fixture_only" });
+    expect(reserveAdmission).not.toHaveBeenCalled();
+    expect(h.requestWakeup).not.toHaveBeenCalled();
+  });
+
+  it("rejects a command UUID whose variant group is invalid", async () => {
+    const h = harness(activeAggregate());
+    const result = await handleN1AgentApi(agentRequest({
+      command: "plan",
+      commandId: "20f1c266-ef9e-453b-ea8d-b9e5f93d9fa7",
+      expectedVersion: 1,
+      contributions: plan,
+    }, { agentId: id.lead, runId: id.leadRun }, id.root), h.ctx);
+
+    expect(result).toMatchObject({
+      status: 400,
+      body: { code: "malformed_request", error: "commandId must be a UUID" },
+    });
+    expect(h.execute).not.toHaveBeenCalled();
+  });
+
   it("exposes the current mission version only to the admitted lead or mapped contribution run", async () => {
     const value = activeAggregate();
     value.n1 = {
@@ -768,6 +870,7 @@ describe("N1 mission transitions", () => {
     vi.mocked(verifyIntegratedCandidate).mockResolvedValueOnce({
       outcome: "verified",
       publicationEligible: true,
+      subject: { companyId: id.company, issueId: id.root },
       candidate: {
         attachmentId: id.root,
         byteSize: 100,
@@ -1183,6 +1286,7 @@ describe("N1 mission transitions", () => {
     vi.mocked(verifyIntegratedCandidate).mockResolvedValue({
       outcome: "verified",
       publicationEligible: true,
+      subject: { companyId: id.company, issueId: id.root },
       candidate: {
         attachmentId: id.root, byteSize: 100, sha256: "d".repeat(64),
         baseCommit: "0".repeat(40), candidateCommit: "c".repeat(40),

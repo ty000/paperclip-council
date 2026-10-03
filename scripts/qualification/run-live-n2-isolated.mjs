@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { runLiveQualification } from "./run-live.mjs";
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  runLiveQualification("n1").catch((error) => {
+  runLiveQualification("n2-isolated").catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   });

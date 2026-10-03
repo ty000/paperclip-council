@@ -1,5 +1,6 @@
 import type { PluginContext, PluginIssueOrchestrationSummary } from "@paperclipai/plugin-sdk";
 import { isDeepStrictEqual } from "node:util";
+import { councilNativeRequest } from "./decision-adapter.js";
 import {
   AdmissionError,
   readAdmission,
@@ -14,6 +15,50 @@ const MEASUREMENT_SOURCE = "paperclip:issues.summaries.getOrchestration:terminal
 const ALLOWANCE_SOURCE = "plugin-config:n1OperatingProfile";
 const TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed", "cancelled", "timed_out", "interrupted"]);
 
+export type NativeRunReadback = {
+  id: string; companyId: string; agentId: string; status: string; nativeIssueId: string;
+  startedAt: string | null; finishedAt: string | null;
+  contextSnapshot: Record<string, unknown>; usageJson: Record<string, unknown> | null;
+};
+
+export async function readNativeRun(ctx: PluginContext, input: {
+  companyId: string; issueId: string; runId: string; agentId: string;
+}): Promise<NativeRunReadback> {
+  const response = await councilNativeRequest(ctx, input.companyId, `/api/heartbeat-runs/${input.runId}`);
+  const run = response.body as NativeRunReadback | null;
+  if (response.status !== 200 || !run || run.id !== input.runId || run.companyId !== input.companyId
+      || run.agentId !== input.agentId || run.nativeIssueId !== input.issueId
+      || run.contextSnapshot?.issueId !== input.issueId) {
+    throw new AdmissionError(409, "g4_run_identity_unqualified", "Public native run identity does not match its reservation binding");
+  }
+  return run;
+}
+
+/** Independent reservations permit native reviewer admission before source cost persistence. */
+export async function settleNativeExactRunUsage(ctx: PluginContext, input: {
+  commandId: string; companyId: string; issueId: string; runId: string; agentId: string;
+  periodKey: string; reservationId: string; expectedVersion: number;
+}): Promise<AdmissionResult> {
+  const run = await readNativeRun(ctx, input);
+  if (!TERMINAL_RUN_STATUSES.has(run.status) || !run.startedAt || !run.finishedAt) {
+    throw new AdmissionError(409, "g4_run_not_terminal", "Exact native run must have started and reached its terminal state");
+  }
+  const usage = run.usageJson;
+  const inputTokens = usage?.inputTokens;
+  const outputTokens = usage?.outputTokens;
+  const cached = usage?.cachedInputTokens ?? 0;
+  if (usage?.usageSource !== "per_run" || ![inputTokens, outputTokens, cached].every(value => Number.isSafeInteger(value) && Number(value) >= 0)
+      || Number(cached) > Number(inputTokens) || !Number.isSafeInteger(Number(inputTokens) + Number(outputTokens))
+      || Number(inputTokens) + Number(outputTokens) <= 0) {
+    throw new AdmissionError(409, "g4_usage_unavailable", "Exact terminal run usage remains unknown; its reservation remains held");
+  }
+  const source = `paperclip:GET-heartbeat-run:terminal-token-ledger;run=${run.id};agent=${run.agentId};issue=${input.issueId}`;
+  return settleAdmission(ctx, { commandId: input.commandId, companyId: input.companyId,
+    periodKey: input.periodKey, reservationId: input.reservationId, expectedVersion: input.expectedVersion,
+    usage: { status: "known", source, units: Number(inputTokens) + Number(outputTokens) },
+    remainingExposure: { status: "known", source: `${source};terminal=${run.status}`, units: 0 } });
+}
+
 export type NativeG4Profile = {
   kind: typeof PROFILE_KIND;
   periodKey: string;
@@ -24,6 +69,7 @@ export type NativeG4Profile = {
   initialKnownUsageUnits: number;
   initialExposureUnits: number;
   initialTokenAccountingSource: string;
+  maxCorrections: 0 | 1;
 };
 
 function requiredString(value: unknown, label: string, max = 200): string {
@@ -82,6 +128,10 @@ export async function readNativeG4Profile(
   const runReservationUnits = positiveInteger(record.runReservationUnits, "n1OperatingProfile.runReservationUnits");
   const initialKnownUsageUnits = nonnegativeInteger(record.initialKnownUsageUnits, "n1OperatingProfile.initialKnownUsageUnits");
   const initialExposureUnits = nonnegativeInteger(record.initialExposureUnits, "n1OperatingProfile.initialExposureUnits");
+  const maxCorrections = record.maxCorrections === undefined ? 0 : record.maxCorrections;
+  if (maxCorrections !== 0 && maxCorrections !== 1) {
+    throw new AdmissionError(422, "g4_profile_invalid", "n1OperatingProfile.maxCorrections must be zero or one");
+  }
   const initialCommittedUnits = initialKnownUsageUnits + initialExposureUnits + runReservationUnits;
   if (!Number.isSafeInteger(initialCommittedUnits) || initialCommittedUnits > periodAllowanceUnits) {
     throw new AdmissionError(422, "g4_profile_invalid", "Initial token usage, exposure, and one run reservation exceed the period allowance");
@@ -96,6 +146,7 @@ export async function readNativeG4Profile(
     initialKnownUsageUnits,
     initialExposureUnits,
     initialTokenAccountingSource: requiredString(record.initialTokenAccountingSource, "n1OperatingProfile.initialTokenAccountingSource"),
+    maxCorrections,
   };
 }
 
@@ -120,7 +171,7 @@ export function nativeAdmissionConfiguration(
       knownUsageUnits: profile.initialKnownUsageUnits,
     },
     exposure: { status: "known", source: accountingSource, units: profile.initialExposureUnits },
-    limits: { maxConcurrent: 2, maxRetries: 0, maxCorrections: 0 },
+    limits: { maxConcurrent: 2, maxRetries: 0, maxCorrections: profile.maxCorrections },
   };
 }
 
@@ -149,7 +200,7 @@ export function assertNativeEnvelope(
     || envelope.exposure.units !== profile.initialExposureUnits
     || envelope.limits.maxConcurrent !== 2
     || envelope.limits.maxRetries !== 0
-    || envelope.limits.maxCorrections !== 0;
+    || envelope.limits.maxCorrections !== profile.maxCorrections;
   if (mismatch) {
     throw new AdmissionError(409, "g4_profile_mismatch", "Admission envelope does not match the configured native N1 operating profile");
   }
@@ -298,6 +349,96 @@ export async function settleNativeRunUsage(
       status: "known",
       source: `${MEASUREMENT_SOURCE};run=${run.id};issue-baseline=${input.baselineUsageUnits};${pricing}`,
       units: usageUnits,
+    },
+    remainingExposure: {
+      status: "known",
+      source: `${MEASUREMENT_SOURCE};terminal=${run.status}`,
+      units: 0,
+    },
+    expectedVersion: input.expectedVersion,
+  });
+}
+
+export type NativeSequentialUsageBaseline = {
+  runIds: string[];
+  tokenTotal: number;
+};
+
+function tokenTotal(summary: PluginIssueOrchestrationSummary): number {
+  return orchestrationUsageUnits(summary);
+}
+
+export async function readNativeSequentialUsageBaseline(
+  ctx: PluginContext,
+  input: { companyId: string; issueId: string },
+): Promise<NativeSequentialUsageBaseline> {
+  const summary = await readNativeOrchestration(ctx, input);
+  const runs = summary.runs.filter((run) => run.issueId === input.issueId);
+  if (new Set(runs.map((run) => run.id)).size !== runs.length) {
+    throw new AdmissionError(409, "g4_run_identity_unqualified", "Native orchestration returned duplicate run identities");
+  }
+  return { runIds: runs.map((run) => run.id).sort(), tokenTotal: tokenTotal(summary) };
+}
+
+/**
+ * Attributes one sequential native run from a previously persisted issue-level
+ * checkpoint. The host exposes aggregate issue tokens, so an unexpected extra
+ * run makes the delta unattributable and fails closed.
+ */
+export async function settleNativeSequentialRunUsage(
+  ctx: PluginContext,
+  input: {
+    commandId: string;
+    companyId: string;
+    issueId: string;
+    expectedRunId: string;
+    baseline: NativeSequentialUsageBaseline;
+    periodKey: string;
+    reservationId: string;
+    expectedVersion: number;
+  },
+): Promise<AdmissionResult> {
+  if (!Number.isSafeInteger(input.baseline.tokenTotal) || input.baseline.tokenTotal < 0
+      || new Set(input.baseline.runIds).size !== input.baseline.runIds.length
+      || input.baseline.runIds.includes(input.expectedRunId)) {
+    throw new AdmissionError(422, "g4_baseline_invalid", "Sequential usage baseline is malformed or already contains the expected run");
+  }
+  const summary = await readNativeOrchestration(ctx, input);
+  const issueRuns = summary.runs.filter((run) => run.issueId === input.issueId);
+  const expectedIds = [...input.baseline.runIds, input.expectedRunId].sort();
+  const observedIds = issueRuns.map((run) => run.id).sort();
+  if (!isDeepStrictEqual(observedIds, expectedIds)) {
+    throw new AdmissionError(409, "g4_run_identity_unqualified", "Sequential usage requires exactly one expected run beyond the persisted baseline", {
+      expectedRunId: input.expectedRunId,
+      baselineRunIds: input.baseline.runIds,
+      observedRunIds: observedIds,
+    });
+  }
+  const run = issueRuns.find((item) => item.id === input.expectedRunId)!;
+  if (!TERMINAL_RUN_STATUSES.has(run.status) || !run.finishedAt) {
+    throw new AdmissionError(409, "g4_run_not_terminal", "Native run usage remains unsettled until the expected run is terminal");
+  }
+  const currentTotal = tokenTotal(summary);
+  const delta = currentTotal - input.baseline.tokenTotal;
+  if (!Number.isSafeInteger(delta) || delta <= 0) {
+    throw new AdmissionError(409, "g4_usage_unavailable", "The expected terminal run has no positive attributable token delta", {
+      runId: run.id,
+      baselineTokenTotal: input.baseline.tokenTotal,
+      currentTokenTotal: currentTotal,
+    });
+  }
+  const pricing = summary.costs.costCents > 0
+    ? `aggregate-priced-cost-cents=${summary.costs.costCents}`
+    : "monetary-cost=unpriced";
+  return settleAdmission(ctx, {
+    commandId: input.commandId,
+    companyId: input.companyId,
+    periodKey: input.periodKey,
+    reservationId: input.reservationId,
+    usage: {
+      status: "known",
+      source: `${MEASUREMENT_SOURCE};sequential-run=${run.id};baseline-tokens=${input.baseline.tokenTotal};${pricing}`,
+      units: delta,
     },
     remainingExposure: {
       status: "known",

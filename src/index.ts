@@ -9,6 +9,7 @@ export {
 } from "./foundation-probe.js";
 export * from "./rosters.js";
 export * from "./missions.js";
+export * from "./n2-missions.js";
 export type {
   CouncilConfig,
   CouncilDecisionInput,

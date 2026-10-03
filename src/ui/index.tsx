@@ -76,6 +76,38 @@ type MissionInspection = {
     };
     blocker: string | null;
   };
+  n2: null | {
+    submission: null | {
+      submissionId: string; ordinal: 1 | 2; predecessorSubmissionId: string | null;
+      attachmentId: string; byteSize: number; sha256: string; baseCommit: string;
+      candidateCommit: string; evidenceRevision: number; mandateHash: string; verifiedAt: string;
+    };
+    reviewer: { agentId: string; eligible: boolean; independent: boolean; conflictReasons: string[] };
+    review: null | {
+      round: 1 | 2; submissionId: string; reviewerAgentId: string;
+      handoff: {
+        state: "awaiting_native" | "confirmed" | "unknown"; reviewerRunId: string | null;
+        reason: string | null; observedAt: string | null;
+      };
+      verdict: null | {
+        verdict: "changes_requested" | "approved"; operationId: string; actorAgentId: string;
+        runId: string; criteria: string[]; reasons: string[];
+        receiptState: "indeterminate" | "native_observed"; nativeStatus: number | null; decidedAt: string;
+      };
+    };
+    status: string;
+    correction: null | {
+      requestedByOperationId: string; criteria: string[]; reasons: string[];
+      executorAgentId: string; runId: string | null;
+    };
+    application: {
+      state: "none" | "observed" | "unknown"; submissionId: string | null;
+      operationId: string | null; receiptState: "indeterminate" | "native_observed" | null;
+      nativeStatus: number | null;
+    };
+    blockage: null | { code: string; message: string; nextActorId: string | null };
+    nextAction: { actorKind: "agent" | "operator"; actorId: string | null; label: string };
+  };
   admission: null | {
     periodKey: string;
     status: string;
@@ -585,7 +617,7 @@ export function CouncilMissionsPage({ context }: PluginPageProps) {
   return (
     <main style={{ ...stack, padding: "1.5rem", maxWidth: "75rem", margin: "0 auto" }}>
       <div style={{ ...row, justifyContent: "space-between" }}>
-        <div><h1 style={{ marginBottom: "0.25rem" }}>Council missions</h1><p style={{ marginTop: 0 }}>Owner inspection of pinned teams, contributions, admission and the integrated candidate.</p></div>
+        <div><h1 style={{ marginBottom: "0.25rem" }}>Council missions</h1><p style={{ marginTop: 0 }}>Owner inspection of pinned teams, contributions, admission, review and the integrated candidate.</p></div>
         <button style={button} onClick={refreshMissions} disabled={loading}>Refresh</button>
       </div>
       {loading && <p role="status">Loading missions…</p>}
@@ -639,6 +671,7 @@ export function CouncilMissionsPage({ context }: PluginPageProps) {
             <p><a href={issueLink(selected.mission.rootIssueId)}>Open root issue</a></p>
             <p><strong>Next actor/action:</strong> {selected.nextAction}</p>
             {selected.n1?.blocker && <p role="status"><strong>Blocker:</strong> {selected.n1.blocker}</p>}
+            {selected.n2?.blockage && <p role="alert"><strong>{selected.n2.blockage.code}:</strong> {selected.n2.blockage.message}</p>}
           </section>}
         </div>
       )}
@@ -661,6 +694,54 @@ export function CouncilMissionsPage({ context }: PluginPageProps) {
         <p>Bundle SHA-256: {selected.n1.candidate.candidate.sha256}</p>
         <p><a href={issueLink(selected.mission.rootIssueId) + "#attachment-" + encodeURIComponent(selected.n1.candidate.candidate.attachmentId)}>Open candidate attachment</a></p>
         <ul>{selected.n1.candidate.checks.map((check) => <li key={check.name}>{check.name}: {check.status} — {check.detail}</li>)}</ul>
+      </section>}
+      {selected?.n2 && <section style={card} aria-labelledby="n2-review-title">
+        <h2 id="n2-review-title" style={{ marginTop: 0 }}>Independent review and correction</h2>
+        <div style={grid}>
+          <section aria-labelledby="n2-submission-title">
+            <h3 id="n2-submission-title">Current submission</h3>
+            {!selected.n2.submission ? <p>No active submission is recorded.</p> : <dl style={{ overflowWrap: "anywhere" }}>
+              <dt>Version</dt><dd>V{selected.n2.submission.ordinal} / evidence revision {selected.n2.submission.evidenceRevision}</dd>
+              <dt>Submission</dt><dd>{selected.n2.submission.submissionId}</dd>
+              <dt>Commit</dt><dd>{selected.n2.submission.candidateCommit}</dd>
+              <dt>Bundle SHA-256</dt><dd>{selected.n2.submission.sha256}</dd>
+              <dt>Mandate SHA-256</dt><dd>{selected.n2.submission.mandateHash}</dd>
+              <dt>Predecessor</dt><dd>{selected.n2.submission.predecessorSubmissionId ?? "Initial submission"}</dd>
+            </dl>}
+          </section>
+          <section aria-labelledby="n2-reviewer-title">
+            <h3 id="n2-reviewer-title">Review</h3>
+            <dl style={{ overflowWrap: "anywhere" }}>
+              <dt>State</dt><dd><Status value={selected.n2.status} /></dd>
+              <dt>Reviewer</dt><dd>{selected.n2.reviewer.agentId}</dd>
+              <dt>Eligibility</dt><dd>{selected.n2.reviewer.eligible && selected.n2.reviewer.independent
+                ? "eligible and independent" : `blocked: ${selected.n2.reviewer.conflictReasons.join(", ")}`}</dd>
+              <dt>Round</dt><dd>{selected.n2.review?.round ?? "not started"}</dd>
+              <dt>Native handoff</dt><dd>{selected.n2.review?.handoff.state ?? "not recorded"}</dd>
+              <dt>Reviewer run</dt><dd>{selected.n2.review?.handoff.reviewerRunId ?? "not observed"}</dd>
+              <dt>Verdict</dt><dd>{selected.n2.review?.verdict?.verdict ?? "pending"}</dd>
+            </dl>
+          </section>
+          <section aria-labelledby="n2-correction-title">
+            <h3 id="n2-correction-title">Correction</h3>
+            {!selected.n2.correction ? <p>No correction is pending.</p> : <>
+              <p>Executor: {selected.n2.correction.executorAgentId}; run: {selected.n2.correction.runId ?? "not bound"}.</p>
+              <h4>Criteria</h4><ul>{selected.n2.correction.criteria.map((criterion) => <li key={criterion}>{criterion}</li>)}</ul>
+              <h4>Reasons</h4><ul>{selected.n2.correction.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+            </>}
+          </section>
+          <section aria-labelledby="n2-application-title">
+            <h3 id="n2-application-title">Native application</h3>
+            <dl style={{ overflowWrap: "anywhere" }}>
+              <dt>State</dt><dd>{selected.n2.application.state}</dd>
+              <dt>Submission</dt><dd>{selected.n2.application.submissionId ?? "none"}</dd>
+              <dt>Operation</dt><dd>{selected.n2.application.operationId ?? "none"}</dd>
+              <dt>Receipt</dt><dd>{selected.n2.application.receiptState ?? "none"}</dd>
+              <dt>Native status</dt><dd>{selected.n2.application.nativeStatus ?? "not observed"}</dd>
+            </dl>
+            <p><strong>Next:</strong> {selected.n2.nextAction.label}</p>
+          </section>
+        </div>
       </section>}
       {selected && <section style={card} aria-labelledby="admission-title">
         <h2 id="admission-title" style={{ marginTop: 0 }}>Admission and usage</h2>

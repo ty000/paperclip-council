@@ -1,9 +1,9 @@
 {
   "schema_version": "proof-manifest.v1",
-  "proof_id": "paperclip-council-n1-safe-boundary-qualification-v1",
-  "subject": "Partial N1 safe-boundary implementation on the exact committed candidate and pinned ephemeral Paperclip host",
+  "proof_id": "paperclip-council-n2-synthetic-integration-v1",
+  "subject": "Provider-free synthetic N2 integration on the exact committed candidate and pinned ephemeral Paperclip host",
   "status": "partial",
-  "summary": "Authenticated installed fixture transitions and fail-closed guards are replayable; trusted G4 usage, real dispatch, two attributed contributions, and an integrated candidate remain unproven.",
+  "summary": "A synthetic valid N1 candidate traverses real N2 routes, permissions, admission, native transitions, decisions, settlement and restart persistence with deterministic local executors; model-backed native N2 execution remains unproven.",
   "categories": ["functional", "quality", "compliance", "documentation"],
   "evidence": [
     {
@@ -12,7 +12,7 @@
       "kind": "runtime-observation",
       "location": "artifacts/functional-<candidate-commit>.json",
       "replayable": true,
-      "notes": "Generated and ignored by Git at a commit-qualified path. Check proofId, candidate.commit, host identity, all named results, n1Boundary, cleanup and the SHA-256 printed by the launcher. All N1 identities, allowances and usage are fixtures; no model/provider launch. The local file is replay evidence, not an immutable closure archive."
+      "notes": "Generated and ignored by Git at a commit-qualified path. Check proofId, candidate.commit, host identity, all named results, syntheticN2, n1Boundary, cleanup and the SHA-256 printed by the launcher. N2 model work and terminal telemetry are deterministic ephemeral fixtures; routes, auth, admission, transitions, receipts and persistence are real. No model/provider launch occurs."
     },
     {
       "id": "parallel-fast-checks",
@@ -45,17 +45,17 @@
     ],
     "expected_artifacts": [
       "All fast checks pass; generated evidence uses this proof_id and exact replay HEAD.",
-      "All named functional results pass with outcome N1 SAFE BOUNDARY VALIDATED; n1Boundary explicitly lists incomplete N1 behavior; the commit-qualified path and printed SHA-256 identify the exact local bytes.",
+      "All named functional results pass with outcome N2 SYNTHETIC INTEGRATION VALIDATED; syntheticN2 records the operator boundary, deterministic executor boundary, regressions, decisions, settlements and restart readback.",
       "Pinned host identity and ephemeral application/database cleanup are recorded."
     ]
   },
   "closure": {
     "decision": "keep-open",
-    "rationale": "The observable N1 exit needs authoritative G4 measurement, real admitted dispatch, two attributed contributions and a verified integrated candidate; fixture-safe proof cannot close it.",
+    "rationale": "Synthetic N2 integration does not prove model-backed reviewer or correction execution and cannot qualify native N2 or authorize another LIVE campaign.",
     "next_required_actions": [
-      "Keep the accepted token-only profile limited to the explicitly configured N1 pilot; general monetary admission and every later provider authorization remain open.",
-      "Provide a path-confined commit mechanism and API-level prevention of blocker self-wakeup, then separately authorize and replay N1 with two native contributor runs, real attributed commits, integrated candidate and failed-integration refusal.",
-      "Publish the exact live JSON and screenshot digests in durable review evidence before any complete verdict; local ignored files alone cannot close N1."
+      "Review the provider-free N2 evidence and operator-assisted prepared transition before considering a separately authorized LIVE campaign.",
+      "Keep model-backed reviewer and correction execution, provider usage, and general autonomy outside this proof.",
+      "Publish exact LIVE JSON and screenshot digests only after a separate authorization; local ignored evidence does not establish native N2 qualification."
     ]
   }
 }
