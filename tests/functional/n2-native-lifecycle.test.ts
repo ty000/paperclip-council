@@ -1,3 +1,4 @@
+import { nativeLifecycleLabel } from "../../scripts/qualification/native-lifecycle-label.mjs";
 import { readFile } from "node:fs/promises";
 import { expect, it, vi } from "vitest";
 vi.mock("../../.paperclip/qualification/paperclip/server/src/services/heartbeat.ts", async original => {
@@ -19,5 +20,5 @@ vi.mock("../../.paperclip/qualification/paperclip/server/src/services/github-ext
 it("qualifies the four-run Council native lifecycle through the installed plugin", async () => {
   await import("./run.js");
   const proof = JSON.parse(await readFile(process.env.COUNCIL_PACKAGE_EVIDENCE_PATH!, "utf8"));
-  expect(proof.outcome, JSON.stringify(proof.error)).toBe(`${process.env.COUNCIL_N5_NATIVE_LIFECYCLE === "1" ? "N5" : process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1" ? "N3" : "N2"} NATIVE LIFECYCLE WITH DETERMINISTIC MODEL VALIDATED`);
+  expect(proof.outcome, JSON.stringify(proof.error)).toBe(`${nativeLifecycleLabel()} NATIVE LIFECYCLE WITH DETERMINISTIC MODEL VALIDATED`);
 }, 600000);

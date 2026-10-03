@@ -1,3 +1,4 @@
+import { nativeLifecycleLabel } from "./native-lifecycle-label.mjs";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -39,7 +40,7 @@ try {
   writeFileSync(path, `${JSON.stringify(evidence, null, 2)}\n`);
 }
 const evidence = JSON.parse(readFileSync(path, "utf8"));
-if (evidence.outcome !== `${continuation ? "N5 CONTINUATION" : n5 ? "N5" : n3 ? "N3" : "N2"} NATIVE LIFECYCLE WITH DETERMINISTIC MODEL VALIDATED`
+if (evidence.outcome !== `${nativeLifecycleLabel()} NATIVE LIFECYCLE WITH DETERMINISTIC MODEL VALIDATED`
     || evidence.head !== hostCommit || evidence.candidate?.commit !== candidate
     || evidence.nativeLifecycle?.finalRuns?.length !== ((n3 ? 10 : 4) + (n5 ? continuation ? 2 : 1 : 0)) || evidence.nativeLifecycle?.costs?.length !== ((n3 ? 10 : 4) + (n5 ? continuation ? 2 : 1 : 0))
     || !evidence.launcherCleanup.ownedRuntimeRemoved) {
