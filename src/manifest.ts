@@ -2,6 +2,13 @@ import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
 
 export const PLUGIN_ID = "private.paperclip-council";
 
+export const missionToolDeclaration = {
+  name: "mission-command", displayName: "Council mission command",
+  description: "Execute an existing Council agent command or independent decision for this exact active native run. Owner commands are unavailable.",
+  parametersSchema: { type: "object", additionalProperties: false, required: ["operation", "body"], properties: {
+    operation: { type: "string", enum: ["command", "decision"] }, body: { type: "object", additionalProperties: true } } },
+};
+
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
@@ -12,6 +19,7 @@ const manifest: PaperclipPluginManifestV1 = {
   categories: ["automation"],
   capabilities: [
     "api.routes.register",
+    "agent.tools.register",
     "companies.read",
     "projects.read",
     "agents.read",
@@ -35,6 +43,7 @@ const manifest: PaperclipPluginManifestV1 = {
     "secrets.read-ref",
     "ui.page.register",
   ],
+  tools: [missionToolDeclaration],
   entrypoints: { worker: "./dist/worker.js", ui: "./dist/ui" },
   database: {
     namespaceSlug: "private_paperclip_council",

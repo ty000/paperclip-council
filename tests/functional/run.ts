@@ -12,6 +12,9 @@ import { nativeRunEvidence, runLiveN1 } from "./n1-live.js";
 import { runLiveN2 } from "./n2-live.js";
 import { prepareN2Prerequisite } from "./n2-prerequisite.js";
 import { runN2NativeLifecycle } from "./n2-native-lifecycle.js";
+import { runN45Preparation } from "./n45-campaign.js";
+// @ts-expect-error Qualification contracts are plain ESM.
+import { n45Profile as validateN45Profile } from "../../scripts/qualification/n45-contract.mjs";
 import { runSyntheticN2 } from "./n2-synthetic.js";
 import { createFunctionalRuntimeCleanup } from "./runtime-cleanup.js";
 // @ts-expect-error The qualification evidence contract is intentionally plain ESM.
@@ -37,6 +40,7 @@ const candidateBranch = execFileSync("git", ["branch", "--show-current"], {
   cwd: packageRoot,
   encoding: "utf8",
 }).trim();
+const n45Profile = process.env.COUNCIL_N45_PROFILE ? validateN45Profile(JSON.parse(process.env.COUNCIL_N45_PROFILE), "prepare", candidateCommit) : null;
 const liveN1Authorized = process.env.COUNCIL_N1_LIVE_AUTHORIZED === "1";
 const liveN2Authorized = process.env.COUNCIL_N2_LIVE_AUTHORIZED === "1";
 const isolatedLiveN2Authorized = process.env.COUNCIL_N2_ISOLATED_LIVE_AUTHORIZED === "1";
@@ -47,6 +51,7 @@ assert([liveN1Authorized, liveN2Authorized, isolatedLiveN2Authorized].filter(Boo
 assert(!(n2PrerequisiteMode && (liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized)),
   "The provider-free N2 prerequisite cannot run inside a LIVE campaign");
 assert(!(n2NativeLifecycleMode && (n2PrerequisiteMode || liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized)), "Native deterministic qualification excludes every LIVE mode");
+assert(!(n45Profile && (n2NativeLifecycleMode || n2PrerequisiteMode || liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized)), "N45 preparation excludes every execution mode");
 const liveNativeAuthorized = liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized;
 const liveN2Campaign = liveN2Authorized || isolatedLiveN2Authorized;
 const liveEnvironmentPrefix = isolatedLiveN2Authorized
@@ -127,7 +132,7 @@ const requireServer = createRequire(resolve(root, "server/package.json"));
 const { eq, inArray, sql } = requireServer("drizzle-orm");
 const evidence: Record<string, any> = {
   schemaVersion: 1,
-  proofId: n2NativeLifecycleMode ? `paperclip-council-${process.env.COUNCIL_N5_CONTINUATION === "1" ? "n5-continuation" : process.env.COUNCIL_N5_NATIVE_LIFECYCLE === "1" ? "n5" : process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1" ? "n3" : "n2"}-native-deterministic-lifecycle-v1` : n2PrerequisiteMode
+  proofId: n45Profile ? "paperclip-council-n45-provider-free-preparation-v1" : n2NativeLifecycleMode ? `paperclip-council-${process.env.COUNCIL_N5_CONTINUATION === "1" ? "n5-continuation" : process.env.COUNCIL_N5_NATIVE_LIFECYCLE === "1" ? "n5" : process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1" ? "n3" : "n2"}-native-deterministic-lifecycle-v1` : n2PrerequisiteMode
     ? "paperclip-council-n2-native-stage-prerequisite-v1"
     : isolatedLiveN2Authorized
     ? "paperclip-council-n2-isolated-observable-native-qualification-v1"
@@ -141,7 +146,7 @@ const evidence: Record<string, any> = {
   hostTrackedFilesClean: hostStatus === "",
   branch: execFileSync("git", ["branch", "--show-current"], { cwd: root, encoding: "utf8" }).trim(),
   node: process.version,
-  command: n2NativeLifecycleMode
+  command: n45Profile ? "node scripts/qualification/run-n45-campaign.mjs prepare <exact-profile.json>" : n2NativeLifecycleMode
     ? `${process.env.COUNCIL_N5_CONTINUATION === "1" ? "COUNCIL_N5_CONTINUATION=1 COUNCIL_N5_NATIVE_LIFECYCLE=1 " : process.env.COUNCIL_N5_NATIVE_LIFECYCLE === "1" ? "COUNCIL_N5_NATIVE_LIFECYCLE=1 " : ""}${process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1" ? "COUNCIL_N3_NATIVE_LIFECYCLE=1 " : ""}PAPERCLIP_TEST_HOST_ROOT=<clean-host> COUNCIL_N2_NATIVE_HOST_COMMIT=<exact-host-sha> pnpm qualification:native:n2`
     : liveN2Authorized
     ? "COUNCIL_N2_LIVE_AUTHORIZED=1 COUNCIL_N2_LIVE_MODEL=gpt-5.6-sol COUNCIL_N2_LIVE_EFFORT=high COUNCIL_N2_LIVE_RUN_UNITS=<positive> COUNCIL_N2_LIVE_PERIOD_UNITS=<exactly-6x-run> pnpm qualification:live:n2"
@@ -542,7 +547,7 @@ try {
     hostVersion: "0.3.1",
     localPluginDir: resolve(runtime, "plugins"),
     pluginWorkerManager: workerManager,
-    decisionServiceOptions: { wakeOriginAgent: async () => undefined },
+    ...(n45Profile ? {} : { decisionServiceOptions: { wakeOriginAgent: async () => undefined } }),
     betterAuthHandler: createBetterAuthHandler(auth),
     resolveSession: (req: any) => resolveBetterAuthSession(auth, req),
   });
@@ -659,7 +664,9 @@ try {
   assert(workerManager.isRunning(pluginId), "installed package worker must load after restart");
   evidence.results.installation = "PASS";
 
-  if (n2NativeLifecycleMode) {
+  if (n45Profile) {
+    await runN45Preparation({ request, pluginId, baseUrl, cookie, runtime, ownerUserId: userId, packageRoot, hostImport, evidence, save, db, tables, eq }, n45Profile);
+  } else if (n2NativeLifecycleMode) {
     await runN2NativeLifecycle({ request, pluginId, baseUrl, cookie, runtime, ownerUserId: userId,
       hostImport, evidence, save, agentTokens, db, tables, eq,
       createFixtureRun: createN2PrerequisiteFixtureRun, finishFixtureRuns: finishN2PrerequisiteFixtureRuns });

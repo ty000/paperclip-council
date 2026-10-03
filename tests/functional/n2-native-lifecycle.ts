@@ -1,3 +1,4 @@
+import { nativeLifecycleLabel } from "../../scripts/qualification/native-lifecycle-label.mjs";
 import { continuationMode } from "./n5-continuation-scenario.js";
 import { prepareN5Scenario } from "./n5-native-scenario.js";
 import { prepareN3Scenario } from "./n3-native-scenario.js";
@@ -205,12 +206,12 @@ export async function runN2NativeLifecycle(input: any) {
 }
 
 async function prepareScenarios(input: any, prepared: any) {
-  let n3: any = null; let n5: any = null; let limit = 4; let label = "N2"; const additionalAgents: any[] = [];
+  let n3: any = null; let n5: any = null; let limit = 4; const label = nativeLifecycleLabel(); const additionalAgents: any[] = [];
   if (process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1") {
-    n3 = await prepareN3Scenario(input, prepared); limit = 10; label = "N3"; additionalAgents.push(...n3.agents);
+    n3 = await prepareN3Scenario(input, prepared); limit = 10; additionalAgents.push(...n3.agents);
   }
   if (process.env.COUNCIL_N5_NATIVE_LIFECYCLE === "1") {
-    n5 = await prepareN5Scenario(input, prepared); limit += continuationMode ? 2 : 1; label = continuationMode ? "N5 CONTINUATION" : "N5"; additionalAgents.push(n5.agent);
+    n5 = await prepareN5Scenario(input, prepared); limit += continuationMode ? 2 : 1; additionalAgents.push(n5.agent);
   }
   return { n3, n5, limit, label, additionalAgents };
 }

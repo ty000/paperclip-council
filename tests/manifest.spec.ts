@@ -37,6 +37,8 @@ describe("paperclip council manifest", () => {
         path: "/companies/:companyId/missions/:missionId",
       }),
     ]));
+    expect(parsed.tools).toEqual([expect.objectContaining({ name: "mission-command" })]);
+    expect(parsed.capabilities).toContain("agent.tools.register");
     expect(parsed.database).toEqual(expect.objectContaining({
       namespaceSlug: "private_paperclip_council",
       migrationsDir: "migrations",

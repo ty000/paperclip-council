@@ -26,6 +26,8 @@ import { registerN2FinishedEventHandler } from "./n2-finished-event.js";
 import { AdmissionError } from "./admission.js";
 import { handleRosterApi, registerRosterBridge } from "./rosters.js";
 
+import { registerMissionTool } from "./mission-tool.js";
+
 let ctx: PluginContext;
 
 function requiredString(value: unknown, label: string): string {
@@ -235,6 +237,7 @@ export async function handlePluginRequest(input: PluginApiRequestInput, context:
 const plugin = definePlugin({
   async setup(context) {
     ctx = context;
+    registerMissionTool(context, input => handlePluginRequest(input, context));
     registerRosterBridge(context);
     registerDecisionReceiptBridge(context);
     registerN2FinishedEventHandler(context);
