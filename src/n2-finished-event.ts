@@ -67,6 +67,11 @@ export async function handleN2RunFinished(
     const issue = await ctx.issues.get(run.issueId, event.companyId);
     if (issue?.parentId) mission = await getMissionByRootIssue(ctx, event.companyId, issue.parentId);
   }
+  if (mission?.aggregate.n5?.publication?.issueId === run.issueId) {
+    if (mission.aggregate.n5.publication.runId !== run.runId || mission.aggregate.n5.authority.publisherAgentId !== run.agentId) return { outcome: "ignored", reason: "n5_child_unbound" };
+    await (await import("./n5-runtime.js")).reconcileN5(ctx, mission);
+    return { outcome: "reconciled" };
+  }
   if (mission?.aggregate.n3 && run.issueId !== mission.rootIssueId
       && !mission.aggregate.n3.rounds.some(round => round.specialists.some(item => item.issueId === run.issueId && item.runId === run.runId))) return { outcome: "ignored", reason: "n3_child_unbound" };
   if (!mission?.aggregate.n2) return { outcome: "ignored", reason: "n2_mission_unavailable" };
@@ -75,6 +80,8 @@ export async function handleN2RunFinished(
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       try {
         await reconcileNativeN2(ctx, mission);
+        const latest = (await getMissionByRootIssue(ctx, event.companyId, mission.rootIssueId))!;
+        if (latest.aggregate.n5 && latest.aggregate.n2?.status === "accepted") await (await import("./n5-runtime.js")).reconcileN5(ctx, latest);
         return { outcome: "reconciled" };
       } catch (error) {
         const retryable = error instanceof AdmissionError && ["g4_usage_unavailable", "g4_run_not_terminal", "version_conflict"].includes(error.code)

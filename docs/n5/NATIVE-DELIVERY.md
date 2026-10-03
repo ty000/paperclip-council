@@ -1,0 +1,37 @@
+# N5 native initial delivery binding
+
+This slice connects the merged N1–N3 mission to an authorized publisher. It is not M1/provider qualification. The first real representative mission remains the Missions Delivery panel: complementary backend projection/tests and frontend work, a shared planner/orchestrator/integration lead, Development and Quality specialists, and an independent final reviewer. That UI is deliberately left to that mission.
+
+## Ownership and native boundary
+
+Council owns the mission aggregate, mandate binding, authority, one-shot intent and attributed observations. The pinned Paperclip host `61b3fd57a695614dc4a37e2303f426a34a9795cf` owns revisioned documents, child issues/workspace inheritance, run identities, costs, work products, external-object detection/refresh and GitHub snapshots. No host writes, migration, new table, scheduler or generic GitHub service are introduced. Git/gh in the publisher's existing adapter is the publication effect boundary. Network, credentials, repository access, gh availability and actual model behavior require a fresh real-runtime preflight before LIVE.
+
+## Native plan and initial authority
+
+Write a native document with key `plan` using `write_document` or `PUT /api/issues/:id/documents/plan`. Its Markdown body contains one JSON object with `missionId`, `mandateHash` (Council canonical payload hash of the mandate), `plannerAgentId`, `orchestratorAgentId`, `integrationLeadAgentId`, `qaAgentId` and `work`. Each of at least two complementary work entries contains `assigneeAgentId`, `sourceRefs`, `ownedPaths`, `dependencies`, `evidenceRefs`, `skills` and `interface`. These references consume prepared work rather than recreate an upstream backlog. Read the current document/revision and use `baseRevisionId` for updates. Never put credentials in documents.
+
+The mission owner calls the existing mission commands route with `configure-delivery`, `commandId`, `expectedVersion`, `planRevisionId`, `publisherAgentId`, `repository` (`owner/repo`), `baseRef` and `headRef`. Configuration explicitly authorizes one initial PR creation for the independently accepted candidate on these refs. The plan is read from native storage and its exact revision/hash retained; Council does not store a second plan body. Reconfiguration before admission supports replanning within the mandate. An admitted intent cannot be replaced by a new key or authority.
+
+The terminal N2 event admits the publisher only after native acceptance and final review accounting. Configuration may precede acceptance. For a mission already accepted before configuration, the owner can use `reconcile-delivery`; this recovery uses the persisted authority. One native child inherits the root execution workspace and receives its own G4 reservation. Planning, orchestration and integration may share a lead; independent acceptance remains the final reviewer's responsibility.
+
+## Publisher instructions
+
+1. Use the native child assignment and exact active run. Call `n5-inspect` on `/api/plugins/:pluginId/api/issues/:childId/council/commands` with `missionId`.
+2. Inspect the native plan, accepted submission, repository remote and base/head. Verify `git rev-parse HEAD`, the target branch and remote candidate against the accepted commit; check gh authentication and permission without disclosing tokens. Stop if the worktree/ref/candidate differs. A role label alone never grants publication authority.
+3. Call `n5-claim-publication` with `missionId`, `commandId`, `expectedVersion`. Only an applied response with `effectPermission: execute` authorizes the single create. The durable state becomes `unknown` before the external effect. A replay returns `effectPermission: none`. A lost response or timeout is not permission to retry create.
+4. Use the existing git/gh terminal tool for the authorized target. A draft is allowed as an observed PR but never counts as ready. No merge/deploy is authorized by this contract.
+5. On the publisher child, create the native `pull_request` work product with `provider: github`, the canonical URL and exact `createdByRunId`. Write the native `delivery` document with JSON `{ "intentId": "...", "url": "https://github.com/owner/repo/pull/123" }`. A work product alone does not create an external-object mention.
+6. Read `/api/issues/:childId/external-objects`, then refresh the exact object with authenticated `POST /api/issues/:childId/external-objects/refresh`. Council reads only; it does not impersonate the publisher for this mutation.
+7. Call `n5-observe-delivery`. Council independently reads the document, work products and external objects. The native snapshot must be fresh and resolved after the intent, belong to the exact repository/PR/document and contain the actual SHA/base/head. Missing SHA is unknown, never filled from the request. Work-product branch fields alone are not head proof.
+8. Optionally supply `checks` and `reviews`, each with `headSha`, explicit `state` and nonempty `evidenceRefs` pointing to the tool results. Checks states: `unknown`, `pending`, `passed`, `failed`; review states: `unknown`, `pending`, `approved`, `changes_requested`. These are authenticated publisher observations, explicitly distinct from native GitHub head observations and Council acceptance. Missing observations cannot be ready.
+9. Finish the native run. Exact terminal usage settles its own reservation; `reconcile-delivery` is the supported owner recovery if terminal telemetry was delayed. Unknown usage retains exposure.
+
+The mission read route exposes `n5`: referenced plan, responsibilities, authority, intent/run/child, accepted submission, native PR snapshot, separately attributed checks/reviews, readiness and next actor. Native readback readiness expires after five minutes. This backend inspection is the intended input to the future Delivery UI.
+
+## Deliberately open continuation
+
+A divergent PR head is retained as an observed mismatch, invalidates readiness and names the integration lead. The historical N2 submission and verdict remain unchanged. This does **not** implement or qualify post-acceptance correction, independent reacceptance and update of the same PR. The host supports native children and workspace inheritance; a follow-up must link a new Council attempt to the business mission, preserve history and company G4 limits, and authorize update of the same PR only after the new attempt's exact independent acceptance. N2 `start-review` cannot restart an existing N2 state. Do not reset its counters, copy its pipeline, create a replacement PR or claim N5/M1 complete from this slice.
+
+## Deterministic qualification
+
+Run canonical checks with `node scripts/ci/run-checks.mjs`. Installed qualification extends the existing native N3 harness with one publisher run. Use `COUNCIL_N5_NATIVE_LIFECYCLE=1 COUNCIL_N3_NATIVE_LIFECYCLE=1`, the explicit clean pinned host and `COUNCIL_N2_NATIVE_HOST_COMMIT`, then `node scripts/qualification/run-n2-native-lifecycle.mjs`. Only N1 prerequisite records, model contents/usage and the explicitly labelled GitHub create/transport are simulated. Native admission, runs, finalizers, costs, document revisions, work products, external-object detection/refresh/storage and Council commands remain real. The proof must preserve fixture limits and exact candidate identity; it does not establish real GitHub rights, network or credential scopes.

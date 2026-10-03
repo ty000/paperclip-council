@@ -193,6 +193,7 @@ export async function handleDecision(
 async function handleMissionAgentCommand(input: PluginApiRequestInput, context: PluginContext) {
   const command = input.body && typeof input.body === "object" && !Array.isArray(input.body)
     ? (input.body as Record<string, unknown>).command : null;
+  if (typeof command === "string" && command.startsWith("n5-")) return (await import("./n5-runtime.js")).handleN5Agent(context, input);
   if (command === "n3-inspect" || command === "n3-opinion") {
     try { return { status: 200, body: await handleN3Specialist(context, input) }; }
     catch (error) {

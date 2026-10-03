@@ -1,3 +1,4 @@
+import { inspectN5 } from "./n5-state.js";
 import { inspectN3 } from "./n3-state.js";
 import { createHash } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
@@ -79,6 +80,7 @@ export type MissionAggregate = {
   n1?: Record<string, unknown>;
   n2?: N2State;
   n3?: import("./n3-state.js").N3State;
+  n5?: import("./n5-state.js").N5State;
 };
 
 export type PinnedRoster = {
@@ -621,6 +623,7 @@ export function inspectMission(mission: MissionRecord) {
     n1,
     n2,
     n3: inspectN3(mission),
+    n5: inspectN5(mission),
   };
 }
 
@@ -647,7 +650,9 @@ export async function handleMissionApi(input: PluginApiRequestInput, ctx: Plugin
     if (input.routeKey === "missions-command" || input.routeKey === "mission-command") {
       const body = asRecord(input.body);
       const missionId = input.params.missionId ? uuid(input.params.missionId, "missionId") : undefined;
-      const result = N1_BOARD_COMMANDS.has(String(body.command)) && missionId
+      const result = (body.command === "configure-delivery" || body.command === "reconcile-delivery") && missionId
+        ? await (await import("./n5-runtime.js")).executeN5Board(ctx, { companyId, missionId, actorUserId, body })
+        : N1_BOARD_COMMANDS.has(String(body.command)) && missionId
         ? await executeN1BoardCommand(ctx, { companyId, missionId, actorUserId, body })
         : (body.command === "start-review" || body.command === "start-correction"
           || body.command === "start-resubmitted-review" || body.command === "settle-n2-usage" || body.command === "reconcile-native-n2") && missionId
