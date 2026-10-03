@@ -361,7 +361,16 @@ export async function settleNativeSequentialRunUsage(
   const summary = await readNativeOrchestration(ctx, input);
   const issueRuns = summary.runs.filter((run) => run.issueId === input.issueId);
   const expectedIds = [...input.baseline.runIds, input.expectedRunId].sort();
-  const observedIds = issueRuns.map((run) => run.id).sort();
+  // Paperclip 61b3fd57 can promote a deferred wake into a queued row, then
+  // cancel it at the dependency gate before the claim sets startedAt. The
+  // SDK exposes that gate's exact error and both timestamps, but no per-run
+  // usage. Only this host-qualified pre-dispatch cancellation is inert;
+  // retain every baseline identity and never exempt the expected run.
+  const excluded = issueRuns.filter((run) => !expectedIds.includes(run.id)
+    && run.status === "cancelled" && run.startedAt === null && Boolean(run.finishedAt)
+    && run.error === "Cancelled because issue dependencies are still blocked; Paperclip will wake the assignee when blockers resolve");
+  const excludedIds = new Set(excluded.map((run) => run.id));
+  const observedIds = issueRuns.filter((run) => !excludedIds.has(run.id)).map((run) => run.id).sort();
   if (!isDeepStrictEqual(observedIds, expectedIds)) {
     throw new AdmissionError(409, "g4_run_identity_unqualified", "Sequential usage requires exactly one expected run beyond the persisted baseline", {
       expectedRunId: input.expectedRunId,
@@ -392,7 +401,8 @@ export async function settleNativeSequentialRunUsage(
     reservationId: input.reservationId,
     usage: {
       status: "known",
-      source: `${MEASUREMENT_SOURCE};sequential-run=${run.id};baseline-tokens=${input.baseline.tokenTotal};${pricing}`,
+      source: `${MEASUREMENT_SOURCE};sequential-run=${run.id};baseline-tokens=${input.baseline.tokenTotal};${pricing}`
+        + (excluded.length ? `;dependency-gated-before-start=${[...excludedIds].sort().join(",")}` : ""),
       units: delta,
     },
     remainingExposure: {
