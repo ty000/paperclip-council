@@ -650,9 +650,7 @@ export async function handleMissionApi(input: PluginApiRequestInput, ctx: Plugin
     if (input.routeKey === "missions-command" || input.routeKey === "mission-command") {
       const body = asRecord(input.body);
       const missionId = input.params.missionId ? uuid(input.params.missionId, "missionId") : undefined;
-      const result = (body.command === "configure-delivery" || body.command === "reconcile-delivery") && missionId
-        ? await (await import("./n5-runtime.js")).executeN5Board(ctx, { companyId, missionId, actorUserId, body })
-        : N1_BOARD_COMMANDS.has(String(body.command)) && missionId
+      const result = N1_BOARD_COMMANDS.has(String(body.command)) && missionId
         ? await executeN1BoardCommand(ctx, { companyId, missionId, actorUserId, body })
         : (body.command === "start-review" || body.command === "start-correction"
           || body.command === "start-resubmitted-review" || body.command === "settle-n2-usage" || body.command === "reconcile-native-n2") && missionId

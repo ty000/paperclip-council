@@ -26,6 +26,8 @@ The terminal N2 event admits the publisher only after native acceptance and fina
 8. Optionally supply `checks` and `reviews`, each with `headSha`, explicit `state` and nonempty `evidenceRefs` pointing to the tool results. Checks states: `unknown`, `pending`, `passed`, `failed`; review states: `unknown`, `pending`, `approved`, `changes_requested`. These are authenticated publisher observations, explicitly distinct from native GitHub head observations and Council acceptance. Missing observations cannot be ready.
 9. Finish the native run. Exact terminal usage settles its own reservation; `reconcile-delivery` is the supported owner recovery if terminal telemetry was delayed. Unknown usage retains exposure.
 
+After the publisher finishes, the owner may refresh the native external object and call `reconcile-delivery` to deterministically reread the plan, delivery document, work product and GitHub snapshot. Optional `checks`/`reviews` on this command are explicitly attributed to that authenticated owner, with no fabricated agent run. Failed native readback removes readiness. This path admits no extra model run and never repeats GitHub creation.
+
 The mission read route exposes `n5`: referenced plan, responsibilities, authority, intent/run/child, accepted submission, native PR snapshot, separately attributed checks/reviews, readiness and next actor. Native readback readiness expires after five minutes. This backend inspection is the intended input to the future Delivery UI.
 
 ## Deliberately open continuation

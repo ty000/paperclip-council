@@ -4,7 +4,7 @@ import { canonicalPayloadHash, MissionError, type MissionRecord } from "./missio
 import type { N5Plan, N5State } from "./n5-state.js";
 
 type ObjectRecord = Record<string, any>;
-export async function readDeliveryNative(ctx: PluginContext, mission: MissionRecord, issueId: string, resource: string): Promise<any> {
+async function readDeliveryNative(ctx: PluginContext, mission: MissionRecord, issueId: string, resource: string): Promise<any> {
   const result = await councilNativeRequest(ctx, mission.companyId, `/api/issues/${issueId}/${resource}`);
   if (result.status !== 200) throw new MissionError(409, "n5_native_read_unavailable", `Native ${resource} read unavailable (${result.status})`);
   return result.body;
@@ -16,7 +16,7 @@ export async function readN5Plan(ctx: PluginContext, mission: MissionRecord, rev
   try { plan = JSON.parse(document.body); } catch { throw new MissionError(422, "n5_plan_format", "Plan document must contain the JSON operational plan"); }
   const mandateHash = canonicalPayloadHash(mission.aggregate.mandate);
   const roles = ["plannerAgentId", "orchestratorAgentId", "integrationLeadAgentId", "qaAgentId"] as const;
-  if (plan.missionId !== mission.missionId || plan.mandateHash !== mandateHash
+  if (!plan || Array.isArray(plan) || plan.missionId !== mission.missionId || plan.mandateHash !== mandateHash
       || roles.some(role => typeof plan[role] !== "string")
       || plan.integrationLeadAgentId !== mission.aggregate.responsibilities.integrationLeadAgentId
       || !Array.isArray(plan.work) || plan.work.length < 2 || !plan.work.every((work: ObjectRecord) =>
@@ -41,7 +41,7 @@ export function correlateN5Readback(mission: MissionRecord, document: ObjectReco
   const n5 = mission.aggregate.n5!; const p = n5.publication!; const authority = n5.authority;
   let report: ObjectRecord;
   try { report = JSON.parse(document.body); } catch { throw new MissionError(409, "n5_delivery_document", "Native delivery document must contain its intent and canonical PR URL"); }
-  const url = typeof report.url === "string" ? report.url : "";
+  const url = typeof report?.url === "string" ? report.url : "";
   const match = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/pull\/([1-9][0-9]*)$/.exec(url);
   if (!match || match[1] !== authority.repository || report.intentId !== p.intentId || document.issueId !== p.issueId
       || !document.latestRevisionId || !p.claimedAt) throw new MissionError(409, "n5_delivery_binding", "Delivery document, intent and canonical repository PR must match");
@@ -53,7 +53,7 @@ export function correlateN5Readback(mission: MissionRecord, document: ObjectReco
   const object = entry?.object; const data = object?.data;
   if (!product || !object || object.companyId !== mission.companyId || object.liveness !== "fresh"
       || !Number.isFinite(Date.parse(object.lastResolvedAt)) || Date.parse(object.lastResolvedAt) < Date.parse(p.claimedAt)
-      || Date.now() - Date.parse(object.lastResolvedAt) > 300_000 || !/^[a-f0-9]{40}$/.test(data?.headSha ?? "")
+      || Date.parse(object.lastResolvedAt) > Date.now() + 5_000 || Date.now() - Date.parse(object.lastResolvedAt) > 300_000 || !/^[a-f0-9]{40}$/.test(data?.headSha ?? "")
       || typeof data.baseRef !== "string" || typeof data.headRef !== "string" || typeof data.draft !== "boolean") {
     throw new MissionError(409, "n5_readback_unqualified", "Attributed work product and fresh native GitHub head readback after intent are required");
   }

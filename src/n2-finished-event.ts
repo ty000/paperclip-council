@@ -1,3 +1,4 @@
+import { reconcileN5 } from "./n5-runtime.js";
 import type { PluginContext, PluginEvent } from "@paperclipai/plugin-sdk";
 import { AdmissionError } from "./admission.js";
 import { parseCouncilConfig } from "./decision-adapter.js";
@@ -69,7 +70,7 @@ export async function handleN2RunFinished(
   }
   if (mission?.aggregate.n5?.publication?.issueId === run.issueId) {
     if (mission.aggregate.n5.publication.runId !== run.runId || mission.aggregate.n5.authority.publisherAgentId !== run.agentId) return { outcome: "ignored", reason: "n5_child_unbound" };
-    await (await import("./n5-runtime.js")).reconcileN5(ctx, mission);
+    await reconcileN5(ctx, mission);
     return { outcome: "reconciled" };
   }
   if (mission?.aggregate.n3 && run.issueId !== mission.rootIssueId
@@ -81,7 +82,7 @@ export async function handleN2RunFinished(
       try {
         await reconcileNativeN2(ctx, mission);
         const latest = (await getMissionByRootIssue(ctx, event.companyId, mission.rootIssueId))!;
-        if (latest.aggregate.n5 && latest.aggregate.n2?.status === "accepted") await (await import("./n5-runtime.js")).reconcileN5(ctx, latest);
+        if (latest.aggregate.n5 && latest.aggregate.n2?.status === "accepted") await reconcileN5(ctx, latest);
         return { outcome: "reconciled" };
       } catch (error) {
         const retryable = error instanceof AdmissionError && ["g4_usage_unavailable", "g4_run_not_terminal", "version_conflict"].includes(error.code)

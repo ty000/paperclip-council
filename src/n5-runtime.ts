@@ -14,6 +14,11 @@ function accepted(m: MissionRecord) {
   const n2 = inspectN2State(m);
   if (n2?.status !== "accepted" || n2.application.state !== "observed" || !n2.usage.complete
       || !n2.submission || n2.application.submissionId !== n2.submission.submissionId) throw new MissionError(409, "n5_accepted_candidate_required", "Native acceptance and exact terminal accounting must precede publication");
+  const native = m.aggregate.n2?.native;
+  if (native && !native.transmission.settledAt) throw new MissionError(409, "n5_source_usage_pending", "Native transmission accounting is required before publication");
+  if (m.aggregate.n3?.rounds.some(round => !round.transmission.settledAt || round.specialists.some(item => !item.settledAt))) {
+    throw new MissionError(409, "n5_source_usage_pending", "Every N3 specialist and transmission must be settled before publication");
+  }
   return n2.submission;
 }
 function text(value: unknown, label: string) {
@@ -75,15 +80,20 @@ export async function reconcileN5(ctx: PluginContext, initial: MissionRecord) {
     m = await fresh(ctx, m); p = m.aggregate.n5!.publication!;
     m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...p, settledAt: new Date().toISOString() } });
   }
-  return m;
+  return m.aggregate.n5!.publication!.claimedAt ? refreshN5Observation(ctx, m) : m;
 }
 
-export async function executeN5Board(ctx: PluginContext, input: { companyId: string; missionId: string; actorUserId: string | null; body: Record<string, unknown> }) {
+async function executeN5Board(ctx: PluginContext, input: { companyId: string; missionId: string; actorUserId: string | null; body: Record<string, unknown> }) {
   const m = await getMission(ctx, input.companyId, input.missionId);
   if (!m) throw new MissionError(404, "mission_not_found", "Mission not found");
   const company = await ctx.companies.get(m.companyId);
   if (!input.actorUserId || input.actorUserId !== m.ownerUserId || input.actorUserId !== company?.defaultResponsibleUserId) throw new MissionError(403, "mission_owner_required", "Mission owner required");
-  if (input.body.command === "reconcile-delivery") return { outcome: "reconciled", mission: await reconcileN5(ctx, m) };
+  if (input.body.command === "reconcile-delivery") {
+    const reconciled = await reconcileN5(ctx, m);
+    const updated = input.body.checks || input.body.reviews ? await refreshN5Observation(ctx, reconciled,
+      { actorType: "user", actorId: input.actorUserId, userId: input.actorUserId }, input.body) : reconciled;
+    return { outcome: "reconciled", mission: updated };
+  }
   const prior = runtimeReceipt(m, runtimeUuid(input.body.commandId, "commandId"), input.actorUserId, canonicalPayloadHash(input.body));
   if (prior) return { outcome: "replayed", mission: m, receipt: prior };
   return authorize(ctx, m, input.body, input.actorUserId);
@@ -98,11 +108,11 @@ async function bindPublisher(ctx: PluginContext, m: MissionRecord, input: Plugin
   if (run.status !== "running" || !run.startedAt || run.finishedAt) throw new MissionError(409, "n5_publisher_not_running", "Publisher run must be active");
   return p.runId ? m : save(ctx, m, { ...n5, publication: { ...p, runId: input.actor.runId } });
 }
-function attributedObservation(value: unknown, states: string[], input: PluginApiRequestInput, headSha: string) {
+function attributedObservation(value: unknown, states: string[], actor: PluginApiRequestInput["actor"], headSha: string) {
   const v = value as Record<string, unknown>;
   if (!v || !states.includes(String(v.state)) || v.headSha !== headSha || !Array.isArray(v.evidenceRefs)
       || !v.evidenceRefs.length || v.evidenceRefs.some(r => typeof r !== "string" || !r || r.length > 1000)) throw new MissionError(422, "n5_checks_binding", "Checks/reviews need explicit state, exact head and evidence references");
-  return { headSha, state: v.state, evidenceRefs: v.evidenceRefs, observedAt: new Date().toISOString(), agentId: input.actor.agentId!, runId: input.actor.runId! };
+  return { headSha, state: v.state, evidenceRefs: v.evidenceRefs, observedAt: new Date().toISOString(), agentId: actor.agentId ?? null, userId: actor.userId ?? null, runId: actor.runId ?? null };
 }
 export async function handleN5Agent(ctx: PluginContext, input: PluginApiRequestInput) {
   try {
@@ -122,9 +132,9 @@ export async function handleN5Agent(ctx: PluginContext, input: PluginApiRequestI
     } else if (body.command === "n5-observe-delivery") {
       if (!p.claimedAt) throw new MissionError(409, "n5_intent_required", "Persist the one-shot publication intent before any effect");
       const observation = await observeN5Native(ctx, m);
-      p = { ...p, state: "opened", observation,
-        checks: body.checks ? attributedObservation(body.checks, ["unknown", "pending", "passed", "failed"], input, observation.headSha) as NonNullable<typeof p.checks> : undefined,
-        reviews: body.reviews ? attributedObservation(body.reviews, ["unknown", "pending", "approved", "changes_requested"], input, observation.headSha) as NonNullable<typeof p.reviews> : undefined };
+      p = { ...p, state: "opened", readbackUnavailable: undefined, observation,
+        checks: body.checks ? attributedObservation(body.checks, ["unknown", "pending", "passed", "failed"], input.actor, observation.headSha) as NonNullable<typeof p.checks> : undefined,
+        reviews: body.reviews ? attributedObservation(body.reviews, ["unknown", "pending", "approved", "changes_requested"], input.actor, observation.headSha) as NonNullable<typeof p.reviews> : undefined };
     } else throw new MissionError(400, "n5_unknown_command", "Unknown delivery command");
     const result = await n2CommandCas(ctx, m, body, "agent", input.actor.agentId!, { ...m.aggregate, n5: { ...n5, publication: p } });
     return { status: 200, body: { ...result, effectPermission: body.command === "n5-claim-publication" && result.outcome === "applied" ? "execute" : "none" } };
@@ -132,4 +142,30 @@ export async function handleN5Agent(ctx: PluginContext, input: PluginApiRequestI
     if (error instanceof MissionError || error instanceof AdmissionError) return { status: error.status, body: { code: error.code, error: error.message } };
     throw error;
   }
+}
+
+export async function handleN5Board(ctx: PluginContext, input: PluginApiRequestInput) {
+  try {
+    if (input.params.companyId !== input.companyId) throw new MissionError(403, "company_scope_mismatch", "Company route does not match host scope");
+    const result = await executeN5Board(ctx, { companyId: input.companyId, missionId: runtimeUuid(input.params.missionId, "missionId"),
+      actorUserId: input.actor.actorType === "user" ? input.actor.userId ?? null : null, body: input.body as Record<string, unknown> });
+    return { status: 200, body: result };
+  } catch (error) {
+    if (error instanceof MissionError || error instanceof AdmissionError) return { status: error.status, body: { code: error.code, error: error.message } };
+    throw error;
+  }
+}
+
+async function refreshN5Observation(ctx: PluginContext, m: MissionRecord, actor?: PluginApiRequestInput["actor"], body: Record<string, unknown> = {}) {
+  const n5 = m.aggregate.n5!; const p = n5.publication!;
+  let observation;
+  try { await assertCurrentN5Plan(ctx, m); observation = await observeN5Native(ctx, m); }
+  catch (error) {
+    if (!(error instanceof MissionError)) throw error;
+    return save(ctx, m, { ...n5, publication: { ...p, readbackUnavailable: error.code } });
+  }
+  const sameHead = observation.headSha === p.observation?.headSha;
+  const checks = actor && body.checks ? attributedObservation(body.checks, ["unknown", "pending", "passed", "failed"], actor, observation.headSha) as NonNullable<typeof p.checks> : sameHead ? p.checks : undefined;
+  const reviews = actor && body.reviews ? attributedObservation(body.reviews, ["unknown", "pending", "approved", "changes_requested"], actor, observation.headSha) as NonNullable<typeof p.reviews> : sameHead ? p.reviews : undefined;
+  return save(ctx, m, { ...n5, publication: { ...p, state: "opened", observation, readbackUnavailable: undefined, checks, reviews } });
 }

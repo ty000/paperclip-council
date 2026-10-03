@@ -30,7 +30,7 @@ export async function prepareN5Scenario(input: any, prepared: any) {
     work: ["alpha", "beta"].map(name => ({ assigneeAgentId: prepared.agents.lead.id, sourceRefs: [`prepared:${name}`], ownedPaths: [`${name}.txt`],
       dependencies: [], evidenceRefs: [`git:${name}`], skills: ["native-git"], interface: "Two complementary text inputs form the integrated candidate" })) };
   const document = await request("human", "PUT", `/api/issues/${prepared.rootIssueId}/documents/plan`, { format: "markdown", body: JSON.stringify(plan), title: "Native N5 operational plan" });
-  assert.equal(document.status, 200, JSON.stringify(document.body));
+  assert.equal(document.status, 201, JSON.stringify(document.body));
   const doc = document.body.document ?? document.body;
   const configure = { companyId: prepared.companyId, command: "configure-delivery", commandId: randomUUID(), expectedVersion: initial.version,
     planRevisionId: randomUUID(), publisherAgentId: agent.id, repository: "ty000/paperclip-council", baseRef: "main", headRef: "codex/n5-fixture" };
@@ -40,6 +40,30 @@ export async function prepareN5Scenario(input: any, prepared: any) {
   assert.equal(configured.status, 200, JSON.stringify(configured.body));
   guards.push({ stalePlan: stale.body.code, documentId: doc.id, planRevisionId: doc.latestRevisionId, configuredVersion: configured.body.mission.version });
   return { agent, guards, readMission,
+    async afterFinish() {
+      const current = (await readMission()).body.mission;
+      const p = current.aggregate.n5.publication;
+      assert(p.settledAt, "Publisher must finish before late observations");
+      const issuePath = `/api/issues/${p.issueId}`;
+      fakeN5GitHub.headSha = p.submission.candidateCommit;
+      const refresh = await request("human", "POST", `${issuePath}/external-objects/refresh`, { objectIds: [p.observation.objectId] });
+      assert.equal(refresh.status, 200, JSON.stringify(refresh.body));
+      const late = await request("human", "POST", `${prepared.missionPath}/commands`, { companyId: prepared.companyId, command: "reconcile-delivery",
+        checks: { headSha: fakeN5GitHub.headSha, state: "passed", evidenceRefs: ["fixture:late-checks-after-terminal"] },
+        reviews: { headSha: fakeN5GitHub.headSha, state: "approved", evidenceRefs: ["fixture:late-review-after-terminal"] } });
+      assert.equal(late.status, 200, JSON.stringify(late.body));
+      const after = await readMission(); assert.equal(after.body.n5.ready, true, JSON.stringify(after.body.n5));
+      assert(after.body.n5.publication.checks.userId); assert.equal(after.body.n5.publication.checks.runId, null);
+      fakeN5GitHub.headSha = "e".repeat(40);
+      await request("human", "POST", `${issuePath}/external-objects/refresh`, { objectIds: [p.observation.objectId] });
+      const mismatch = await request("human", "POST", `${prepared.missionPath}/commands`, { companyId: prepared.companyId, command: "reconcile-delivery" });
+      assert.equal(mismatch.status, 200, JSON.stringify(mismatch.body));
+      const divergent = await readMission(); assert.equal(divergent.body.n5.ready, false);
+      assert.equal(divergent.body.n5.publication.observation.matchesCandidate, false);
+      assert.equal(fakeN5GitHub.createCount, 1);
+      guards.push({ afterPublisherTerminal: { runId: p.runId, settledAt: p.settledAt, lateChecks: after.body.n5.publication.checks,
+        readinessWithLateObservations: after.body.n5.ready, divergentAfterTerminal: divergent.body.n5.publication.observation, fakeEffectCount: fakeN5GitHub.createCount } });
+    },
     async publisher(execution: any) {
       if (execution.binding.agentId !== agent.id) return false;
       const { issueId, runId } = execution.binding;
@@ -65,7 +89,7 @@ export async function prepareN5Scenario(input: any, prepared: any) {
       const product = await request(actor, "POST", `/api/issues/${issueId}/work-products`, { type: "pull_request", provider: "github", title: "Explicit fake N5 PR", url, createdByRunId: runId });
       assert.equal(product.status, 201, JSON.stringify(product.body));
       const delivery = await request(actor, "PUT", `/api/issues/${issueId}/documents/delivery`, { format: "markdown", title: "N5 delivery binding", body: JSON.stringify({ intentId: p.intentId, url }) });
-      assert.equal(delivery.status, 200, JSON.stringify(delivery.body));
+      assert.equal(delivery.status, 201, JSON.stringify(delivery.body));
       const objects = await request(actor, "GET", `/api/issues/${issueId}/external-objects`);
       assert.equal(objects.status, 200, JSON.stringify(objects.body)); const objectId = objects.body[0]?.object?.id; assert(objectId, JSON.stringify(objects.body));
       const refresh = async () => {

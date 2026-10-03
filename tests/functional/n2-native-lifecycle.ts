@@ -16,9 +16,7 @@ export async function runN2NativeLifecycle(input: any) {
     registerActor: (actor: string, identity: any) => agentTokens.set(actor, { ...identity, runId: "", agentId: identity.id }),
     liveN2Profile: { model: "deterministic-test", effort: "high", runReservationUnits: 2_000_000, periodAllowanceUnits: 10_000_000 },
   });
-  const n3 = process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1" ? await prepareN3Scenario(input, prepared) : null;
-  const n5 = process.env.COUNCIL_N5_NATIVE_LIFECYCLE === "1" ? await prepareN5Scenario(input, prepared) : null;
-  const limit = (n3 ? 10 : 4) + (n5 ? 1 : 0);
+  const { n3, n5, limit, label, additionalAgents } = await prepareScenarios(input, prepared);
   const config = await request("human", "GET", `/api/plugins/${input.pluginId}/config?companyId=${prepared.companyId}`);
   assert.equal(config.status, 200, JSON.stringify(config.body));
   const configured = await request("human", "POST", `/api/plugins/${input.pluginId}/config`, { companyId: prepared.companyId,
@@ -57,8 +55,7 @@ export async function runN2NativeLifecycle(input: any) {
             result.completionClaim.criteria = contract.criteria.map((c: any) => ({ ...result.completionClaim.criteria[0], criterionId: c.id }));
             assert(executions.length < limit, "Unexpected extra model execution");
             executions.push({ runId, agentId: execution.binding.agentId, issueId: execution.binding.issueId });
-            if (n5 && await n5.publisher(execution)) { await save(); completed(); return { turnId }; }
-            if (n3 && await n3.specialist(execution)) { await save(); completed(); return { turnId }; }
+            if (await executeExtraRole(n5, n3, execution)) { await save(); completed(); return { turnId }; }
             assert.equal(execution.binding.issueId, prepared.rootIssueId);
             const reviewer = execution.binding.agentId === prepared.agents.reviewer.id;
             assert(reviewer || execution.binding.agentId === prepared.agents.lead.id);
@@ -159,7 +156,7 @@ export async function runN2NativeLifecycle(input: any) {
       }; },
     };
   };
-  for (const agent of [prepared.agents.lead, prepared.agents.reviewer, ...(n3?.agents ?? []), ...(n5 ? [n5.agent] : [])]) {
+  for (const agent of [prepared.agents.lead, prepared.agents.reviewer, ...additionalAgents]) {
     const changed = await request("human", "PATCH", `/api/agents/${agent.id}`, { runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: true, maxConcurrentRuns: 1 } } });
     assert.equal(changed.status, 200, JSON.stringify(changed.body));
   }
@@ -175,9 +172,10 @@ export async function runN2NativeLifecycle(input: any) {
     await heartbeat.drainActiveRunExecutions();
     mission = (await request("human", "GET", `${prepared.missionPath}?companyId=${prepared.companyId}`)).body.mission;
     admission = (await request("human", "GET", `${prepared.admissionPath}?companyId=${prepared.companyId}&periodKey=${encodeURIComponent(prepared.nativePeriodKey)}`)).body.envelope;
-    if (errors.length || mission.aggregate.n2?.status === "accepted" && admission.reservations.every((entry: any) => entry.status === "settled") && (!n5 || mission.aggregate.n5?.publication?.settledAt)) break;
+    if (errors.length || lifecycleComplete(mission, admission, Boolean(n5))) break;
     await new Promise(resolve => setTimeout(resolve, 250));
   }
+  if (n5 && !errors.length) { await n5.afterFinish(); mission = (await n5.readMission()).body.mission; }
   const runs = (await db.select().from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.companyId, prepared.companyId)));
   const finalRuns = runs.filter((run: any) => executions.some(execution => execution.runId === run.id));
   const costs = (await db.select().from(tables.costEvents).where(eq(tables.costEvents.companyId, prepared.companyId))).filter((cost: any) => executions.some(entry => entry.runId === cost.heartbeatRunId));
@@ -199,6 +197,21 @@ export async function runN2NativeLifecycle(input: any) {
   await heartbeat.reconcileStrandedAssignedIssues(); await heartbeat.drainActiveRunExecutions();
   assert.equal(executions.length, limit, "Replay must not dispatch another model run");
   evidence.nativeLifecycle.recovery = { status: recovery.status, executionsAfter: executions.length };
-  evidence.outcome = `${n5 ? "N5" : n3 ? "N3" : "N2"} NATIVE LIFECYCLE WITH DETERMINISTIC MODEL VALIDATED`;
+  evidence.outcome = `${label} NATIVE LIFECYCLE WITH DETERMINISTIC MODEL VALIDATED`;
   await save();
+}
+
+async function prepareScenarios(input: any, prepared: any) {
+  const n3 = process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1" ? await prepareN3Scenario(input, prepared) : null;
+  const n5 = process.env.COUNCIL_N5_NATIVE_LIFECYCLE === "1" ? await prepareN5Scenario(input, prepared) : null;
+  return { n3, n5, limit: (n3 ? 10 : 4) + (n5 ? 1 : 0), label: n5 ? "N5" : n3 ? "N3" : "N2",
+    additionalAgents: [...(n3?.agents ?? []), ...(n5 ? [n5.agent] : [])] };
+}
+async function executeExtraRole(n5: any, n3: any, execution: any) {
+  if (n5 && await n5.publisher(execution)) return true;
+  return Boolean(n3 && await n3.specialist(execution));
+}
+function lifecycleComplete(mission: any, admission: any, n5: boolean) {
+  return mission.aggregate.n2?.status === "accepted" && admission.reservations.every((entry: any) => entry.status === "settled")
+    && (!n5 || mission.aggregate.n5?.publication?.settledAt);
 }
