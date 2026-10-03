@@ -21,7 +21,8 @@ export async function n45ToolBoundary(input: any, campaign: any) {
     catch (error) { nativeReviewRefusal = error instanceof Error ? error.message : String(error); }
     assert.match(nativeReviewRefusal, /may only inspect the assigned task and resolve its review/);
     const catalog = await call("GET /api/plugins/tools");
-    assert(JSON.stringify(catalog).includes("mission-command"), "native runner catalogue must expose Council tool");
+    input.evidence.n45.gatewayCatalog = catalog; await input.save();
+    assert(JSON.stringify(catalog).includes("mission-command"), JSON.stringify(catalog));
     const execute = (parameters: any, context = runContext) => call("POST /api/plugins/tools/execute", { tool: "private.paperclip-council:mission-command", parameters, runContext: context });
     // A real handler refusal proves dispatch reached Council with this native identity.
     // The fixture is deliberately outside the campaign mission and must not mutate it.

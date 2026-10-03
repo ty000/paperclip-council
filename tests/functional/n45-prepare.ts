@@ -30,6 +30,12 @@ export async function prepareN45(input: any, profile: any) {
     agents[role] = await api("GET", `/api/agents/${created.id}`);
     assert.equal(agents[role].runtimeConfig.heartbeat.wakeOnDemand, false);
   }
+  const toolProfile = await api("POST", `/api/companies/${companyId}/tools/profiles`, {
+    profileKey: "council-delivery-mission", name: "Council Delivery exact agent command", defaultAction: "deny",
+    entries: [{ selectorType: "tool_name", effect: "include", toolName: "private.paperclip-council:mission-command" }] });
+  for (const agent of Object.values(agents) as any[]) {
+    await api("POST", `/api/companies/${companyId}/tools/profiles/${toolProfile.id}/bind`, { targetType: "agent", targetId: agent.id });
+  }
   const key = await api("POST", `/api/agents/${agents.reviewer.id}/keys`, { name: "Council native delivery authority", scope: { kind: "standard" } });
   const secret = await api("POST", `/api/companies/${companyId}/secrets`, { name: "Council API authority", key: "COUNCIL_API_KEY", provider: "local_encrypted", value: key.token });
   const now = Date.now(); const operatingProfile = { kind: "paperclip-orchestration-tokens-v1", periodKey: `n45-${randomUUID()}`,
@@ -70,5 +76,5 @@ export async function prepareN45(input: any, profile: any) {
     nativeCommands: "Use the advertised Council plugin tool through native call_api; never inject an API token into the terminal.", acceptanceCriteria: deliveryCriteria }) });
   const missionPath = `${missionBase}/${missionId}`;
   const n3Slots = ["development", "quality"].map(role => ({ slotId: randomUUID(), perspective: role, specialistAgentId: agents[role].id, required: true, question: role === "development" ? "Is the integrated implementation correct and scoped?" : "Do observations substantiate each user-visible acceptance criterion?" }));
-  return { api, companyId, projectId: project.id, rootIssueId: root.id, missionId, missionPath, admissionPath, agents, repository, planRevisionId: document.latestRevisionId, operatingProfile, n3Slots, work };
+  return { api, toolProfile, companyId, projectId: project.id, rootIssueId: root.id, missionId, missionPath, admissionPath, agents, repository, planRevisionId: document.latestRevisionId, operatingProfile, n3Slots, work };
 }
