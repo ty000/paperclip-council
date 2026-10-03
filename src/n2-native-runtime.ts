@@ -152,7 +152,8 @@ export async function executeNativeN2Agent(ctx: PluginContext, initial: MissionR
   }
   if (body.command === "attest-n3-transmission") {
     const attested = await attestN3Transmission(ctx, mission, input, body);
-    return { ...attested, mission: await (await import("./n2-native-report.js")).freezeNativeReviewPacket(ctx, attested.mission, input.actor.runId!) };
+    const { freezeNativeReviewPacket } = await import("./n2-native-report.js");
+    return { ...attested, mission: await freezeNativeReviewPacket(ctx, attested.mission, input.actor.runId!) };
   }
   if (body.command === "attest-transmission") {
     identity(mission, input, lead);
@@ -168,8 +169,9 @@ export async function executeNativeN2Agent(ctx: PluginContext, initial: MissionR
       n2: { ...current, native: { ...native, transmission: { ...native.transmission, attestedAt: new Date().toISOString() } } },
       journal: [...mission.aggregate.journal, { action: "n2_transmission_candidate_verified", runId: input.actor.runId, submissionId: submission.submissionId, candidateCommit: submission.candidateCommit }],
     });
+    const { freezeNativeReviewPacket } = await import("./n2-native-report.js");
     return { ...attested, mission: mission.aggregate.n3 ? await prepareN3Collection(ctx, attested.mission)
-      : await (await import("./n2-native-report.js")).freezeNativeReviewPacket(ctx, attested.mission, input.actor.runId!) };
+      : await freezeNativeReviewPacket(ctx, attested.mission, input.actor.runId!) };
   }
   if (body.command === "confirm-review-handoff") {
     const binding = await reviewBinding(ctx, mission, input);
@@ -196,8 +198,9 @@ export async function executeNativeN2Agent(ctx: PluginContext, initial: MissionR
     const n3 = mission.aggregate.n3;
     mission = await n2Cas(ctx, mission, { ...mission.aggregate, phase: "review_handoff", n2: next,
       ...(n3 ? { n3: { ...n3, rounds: [...n3.rounds, freshN3Round(mission, submission, n3.slots)] } } : {}) });
+    const { freezeNativeReviewPacket } = await import("./n2-native-report.js");
     return { ...prepared, mission: n3 ? await prepareN3Collection(ctx, mission)
-      : await (await import("./n2-native-report.js")).freezeNativeReviewPacket(ctx, mission, input.actor.runId!) };
+      : await freezeNativeReviewPacket(ctx, mission, input.actor.runId!) };
   }
   throw new MissionError(400, "native_n2_command", `Unknown native N2 agent command: ${String(body.command)}`);
 }
@@ -329,18 +332,10 @@ async function releaseNativeCorrection(ctx: PluginContext, mission: MissionRecor
   if (native.reviewProtocol && state.correction?.runId && native.correctionOwnerAction) return { outcome: "observed", mission };
   if (mission.version !== body.expectedVersion || state.status !== "correction_requested" || native.correctionOwnerAction !== "restore_wake_policy"
       || native.releaseState !== "claimed" || !state.correction?.reservationId) throw new MissionError(409, "native_correction_not_reserved", "Settled native verdict and the existing correction reservation must precede owner release");
-  await (await import("./n2-native-report.js")).assertNativeLeadWakePolicy(ctx, mission, false);
-  const summary = await ctx.issues.summaries.getOrchestration({ companyId: mission.companyId, issueId: mission.rootIssueId, includeSubtree: false });
-  const active = summary.runs.filter(r => r.issueId === mission.rootIssueId && r.agentId === mission.aggregate.responsibilities.integrationLeadAgentId
-    && ["queued", "running"].includes(r.status));
-  if (active.length > 1) throw new MissionError(409, "native_correction_run_ambiguous", "Multiple lead runs cannot consume one correction reservation");
-  if (active[0]) {
-    const run = await readNativeRun(ctx, { companyId: mission.companyId, issueId: mission.rootIssueId, agentId: active[0].agentId, runId: active[0].id });
-    const observed = await n2CommandCas(ctx, mission, body, "user", input.actorUserId!, { ...mission.aggregate, phase: "correcting",
-      n2: { ...state, status: "correcting", native: { ...native, releaseState: "released", correctionOwnerAction: "wake_claimed" },
-        correction: { ...state.correction!, runId: run.id, wakeState: "requested" } } });
-    return { ...observed, outcome: "observed" };
-  }
+  const { assertNativeLeadWakePolicy } = await import("./n2-native-report.js");
+  await assertNativeLeadWakePolicy(ctx, mission, false);
+  const observed = await observeNativeCorrection(ctx, mission, input);
+  if (observed) return observed;
   const claimed = await n2CommandCas(ctx, mission, body, "user", input.actorUserId!, { ...mission.aggregate,
     n2: { ...state, native: { ...native, correctionOwnerAction: "wake_claimed" }, correction: { ...state.correction, wakeState: "unknown" } } });
   const wake = await ctx.issues.requestWakeup(mission.rootIssueId, mission.companyId, {
@@ -352,4 +347,20 @@ async function releaseNativeCorrection(ctx: PluginContext, mission: MissionRecor
       native: { ...current.native!, releaseState: wake.runId ? "released" : "claimed" },
       correction: { ...current.correction!, runId: current.correction?.runId ?? wake.runId, wakeState: wake.runId ? "requested" : "unknown" } } });
   return { ...claimed, outcome: wake.runId ? "requested" : "unknown", mission: saved };
+}
+
+async function observeNativeCorrection(ctx: PluginContext, mission: MissionRecord, input: { actorUserId: string | null; body: Record<string, unknown> }) {
+  const state = storedN2(mission); const native = requireNative(mission); const body = input.body;
+  const summary = await ctx.issues.summaries.getOrchestration({ companyId: mission.companyId, issueId: mission.rootIssueId, includeSubtree: false });
+  const active = summary.runs.filter(r => r.issueId === mission.rootIssueId && r.agentId === mission.aggregate.responsibilities.integrationLeadAgentId
+    && ["queued", "running"].includes(r.status));
+  if (active.length > 1) throw new MissionError(409, "native_correction_run_ambiguous", "Multiple lead runs cannot consume one correction reservation");
+  if (active[0]) {
+    const run = await readNativeRun(ctx, { companyId: mission.companyId, issueId: mission.rootIssueId, agentId: active[0].agentId, runId: active[0].id });
+    const observed = await n2CommandCas(ctx, mission, body, "user", input.actorUserId!, { ...mission.aggregate, phase: "correcting",
+      n2: { ...state, status: "correcting", native: { ...native, releaseState: "released", correctionOwnerAction: "wake_claimed" },
+        correction: { ...state.correction!, runId: run.id, wakeState: "requested" } } });
+    return { ...observed, outcome: "observed" };
+  }
+  return null;
 }

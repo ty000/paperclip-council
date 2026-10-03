@@ -133,7 +133,10 @@ export async function runN2NativeLifecycle(input: any) {
                 unblockAction: "Collect the selected specialist opinions and settle their terminal usage", scope: "task_wide" };
             }
             await save(); completed(); return { turnId };
-          } catch (error) { errors.push(String(error)); completed(); throw error; }
+          } catch (error) {
+            await measureNativeRunResponse(input, runId, trace);
+            errors.push(String(error)); completed(); throw error;
+          }
         },
         async *events() {
           await started;
@@ -157,18 +160,8 @@ export async function runN2NativeLifecycle(input: any) {
     command: "start-review", commandId: randomUUID(), expectedVersion: before.body.mission.version,
     submissionId: randomUUID(), reservationId: randomUUID(), transmissionReservationId: randomUUID(), ...(n3 ? { n3Slots: n3.slots } : {}) });
   assert.equal(started.status, 200, JSON.stringify(started.body));
-  const { heartbeatService } = await hostImport("server/src/services/heartbeat.ts");
-  const heartbeat = heartbeatService(db);
-  let mission: any; let admission: any;
-  for (let attempt = 0; attempt < 80; attempt++) {
-    await heartbeat.drainActiveRunExecutions();
-    mission = (await request("human", "GET", `${prepared.missionPath}?companyId=${prepared.companyId}`)).body.mission;
-    admission = (await request("human", "GET", `${prepared.admissionPath}?companyId=${prepared.companyId}&periodKey=${encodeURIComponent(prepared.nativePeriodKey)}`)).body.envelope;
-    if (!errors.length) await releaseReservedCorrection(input, prepared, mission, trace, heartbeat);
-    if (n5 && !errors.length) await n5.advance(mission);
-    if (errors.length || lifecycleComplete(mission, admission, Boolean(n5))) break;
-    await new Promise(resolve => setTimeout(resolve, 250));
-  }
+  const { heartbeat, mission: initialMission, admission: initialAdmission } = await awaitLifecycle(input, prepared, n5, trace, errors);
+  let mission = initialMission; const admission = initialAdmission;
   if (n5 && !errors.length) { await n5.afterFinish(); mission = (await n5.readMission()).body.mission; }
   const runs = (await db.select().from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.companyId, prepared.companyId)));
   const finalRuns = runs.filter((run: any) => executions.some(execution => execution.runId === run.id));
@@ -214,3 +207,29 @@ function lifecycleComplete(mission: any, admission: any, n5: boolean) {
     && (!n5 || mission.aggregate.n5?.publication?.settledAt && (!continuationMode || mission.aggregate.n5.publication.operation === "update"));
 }
 
+
+async function awaitLifecycle(input: any, prepared: any, n5: any, trace: any[], errors: string[]) {
+  const { heartbeatService } = await input.hostImport("server/src/services/heartbeat.ts");
+  const heartbeat = heartbeatService(input.db);
+  let mission: any; let admission: any;
+  for (let attempt = 0; attempt < 80; attempt++) {
+    await heartbeat.drainActiveRunExecutions();
+    mission = (await input.request("human", "GET", `${prepared.missionPath}?companyId=${prepared.companyId}`)).body.mission;
+    admission = (await input.request("human", "GET", `${prepared.admissionPath}?companyId=${prepared.companyId}&periodKey=${encodeURIComponent(prepared.nativePeriodKey)}`)).body.envelope;
+    if (!errors.length) await releaseReservedCorrection(input, prepared, mission, trace, heartbeat);
+    if (n5 && !errors.length) await n5.advance(mission);
+    if (errors.length || lifecycleComplete(mission, admission, Boolean(n5))) break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  return { heartbeat, mission, admission };
+}
+
+async function measureNativeRunResponse(input: any, runId: string, trace: any[]) {
+  const key = input.agentTokens.get("n2-prerequisite-reviewer").token;
+  const response = await fetch(`${input.baseUrl}/api/heartbeat-runs/${runId}`, { headers: { authorization: `Bearer ${key}` } });
+  const text = await response.text(); let fields: Record<string, number> = {};
+  if (response.headers.get("content-type")?.includes("application/json")) {
+    fields = Object.fromEntries(Object.entries(JSON.parse(text)).map(([key, value]) => [key, Buffer.byteLength(JSON.stringify(value))]));
+  }
+  trace.push({ event: "failed_run_public_response_shape", status: response.status, type: response.headers.get("content-type"), bytes: Buffer.byteLength(text), fields });
+}

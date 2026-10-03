@@ -144,7 +144,7 @@ export async function councilNativeRequest(
   });
   if (response.status === 401 || response.status === 403) nativeReadCredentials.delete(ctx);
   const parsed = await readBoundedResponse(response);
-  if (!parsed.validJson || parsed.truncated) throw new Error("Native response is not bounded valid JSON");
+  if (!parsed.validJson || parsed.truncated) throw new Error(`Native response is not bounded valid JSON (status=${response.status}, type=${response.headers.get("content-type")}, truncated=${parsed.truncated}, maximumBytes=${MAX_NATIVE_RESPONSE_BYTES})`);
   return { status: response.status, body: parsed.body };
 }
 
