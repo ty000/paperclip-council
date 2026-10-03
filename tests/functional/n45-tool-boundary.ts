@@ -33,7 +33,7 @@ export async function n45ToolBoundary(input: any, campaign: any) {
     const override = await execute({ operation: "command", body: { command: "inspect", issueId: campaign.rootIssueId } });
     assert(JSON.stringify(override).includes("mission_tool_identity_override"), JSON.stringify(override));
     const contextOverride = await execute({ operation: "command", body: { command: "inspect" } }, { ...runContext, agentId: campaign.agents.lead.id });
-    assert(!JSON.stringify(contextOverride).includes("mission_inactive"));
+    assert.equal(contextOverride.status, 403, JSON.stringify(contextOverride));
     return { nativeReview: { source: "real host authority capability guard with explicitly simulated review binding; no card resolution", refused: nativeReviewRefusal, launchReady: false }, fixture: "one directly inserted active native heartbeat; no provider or wake", binding, catalog, nominal, owner, override, contextOverride,
       chain: "PaperclipRunnerToolAuthority.call_api -> run JWT -> HTTP auth -> plugin gateway -> Council adapter -> existing handler" };
   } finally {

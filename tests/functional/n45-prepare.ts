@@ -6,7 +6,7 @@ import { canonicalPayloadHash } from "../../src/missions.js";
 import { n1DeliveryAdapterConfig } from "./n1-live.js";
 import { deliveryCriteria, deliveryWork, n45Instructions } from "./n45-instructions.js";
 
-export const runnerConfig = (profile: any) => ({ provider: "codex", model: profile.model, modelReasoningEffort: profile.effort, permissionMode: "never" });
+const runnerConfig = (profile: any) => ({ provider: "codex", model: profile.model, modelReasoningEffort: profile.effort, permissionMode: "never" });
 export async function prepareN45(input: any, profile: any) {
   const api = async (method: string, path: string, body?: any) => {
     const r = await input.request("human", method, path, body); assert(r.status >= 200 && r.status < 300, JSON.stringify({ path, status: r.status, body: r.body })); return r.body;
