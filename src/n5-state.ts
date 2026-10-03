@@ -40,17 +40,20 @@ export function inspectN5(mission: MissionRecord) {
   const ready = Boolean(o && p && currentAcceptance(mission, p) && fresh && o.matchesCandidate && o.state === "open" && !o.draft
     && p?.checks?.headSha === o.headSha && p.checks.state === "passed"
     && p?.reviews?.headSha === o.headSha && p.reviews.state === "approved");
-  const correcting = n5.continuation && mission.aggregate.n2?.status !== "accepted";
-  const n2 = mission.aggregate.n2;
-  const waitingForOwner = correcting && !n2?.correction?.runId;
-  const reviewing = correcting && (n2?.status === "review_handoff" || n2?.status === "reviewing");
   return { ...n5, ready, nativeReadbackFresh: fresh, checksSource: "attributed_actor_observation", reviewsSource: "attributed_actor_observation",
-    nextActor: waitingForOwner ? mission.ownerUserId : reviewing ? n5.plan.qaAgentId : correcting ? n5.plan.integrationLeadAgentId
-      : !p ? mission.ownerUserId : o && !o.matchesCandidate ? n5.plan.integrationLeadAgentId : n5.authority.publisherAgentId,
-    nextAction: waitingForOwner ? "Owner executes the persisted native resume action once; inspect an uncertain result before proceeding"
-      : reviewing ? "Complete the fresh independent N2/N3 review of the corrected candidate"
-      : correcting ? "Complete the admitted native correction and plan revision under the unchanged mandate"
-      : !p ? "Admit the authorized publisher after exact acceptance and settlement" : o && !o.matchesCandidate
-      ? "Owner may request the remaining bounded correction on this mission; independent N2/N3 acceptance precedes an update to this PR"
-      : ready ? "PR handoff observed; merge is separate" : "Resolve native PR readback and attributed checks/reviews; never repeat an uncertain publication effect" };
+    ...nextDeliveryAction(mission, n5, ready) };
+}
+
+function nextDeliveryAction(mission: MissionRecord, n5: N5State, ready: boolean) {
+  const n2 = mission.aggregate.n2; const p = n5.publication;
+  if (n5.continuation && n2?.status !== "accepted") {
+    if (!n2?.correction?.runId) return { nextActor: mission.ownerUserId, nextAction: "Use the original one-shot owner resume response; inspect native root/run after an attempted or uncertain resume, never repeat it" };
+    if (n2.status === "review_handoff" || n2.status === "reviewing") return { nextActor: n5.plan.qaAgentId, nextAction: "Complete the fresh independent N2/N3 review of the corrected candidate" };
+    return { nextActor: n5.plan.integrationLeadAgentId, nextAction: "Complete the admitted native correction and plan revision under the unchanged mandate" };
+  }
+  if (!p) return { nextActor: mission.ownerUserId, nextAction: "Admit the authorized publisher after exact acceptance and settlement" };
+  if (p.observation && !p.observation.matchesCandidate) return { nextActor: n5.plan.integrationLeadAgentId,
+    nextAction: "Owner may request the remaining bounded correction on this mission; independent N2/N3 acceptance precedes an update to this PR" };
+  return { nextActor: n5.authority.publisherAgentId,
+    nextAction: ready ? "PR handoff observed; merge is separate" : "Resolve native PR readback and attributed checks/reviews; never repeat an uncertain publication effect" };
 }

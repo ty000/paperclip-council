@@ -83,7 +83,7 @@ export async function runN2NativeLifecycle(input: any) {
               await call({ command: "confirm-review-handoff", commandId: randomUUID(), expectedVersion: inspection.version });
               inspection = await call({ command: "inspect" });
               const submission = inspection.n2.submission;
-              const approved = inspection.n2.review.round === 2 || continuationMode;
+              const approved = approvesCandidate(inspection.n2.review.round);
               assert.equal(execFileSync("git", ["show", `${submission.candidateCommit}:alpha.txt`], { cwd: prepared.repository, encoding: "utf8" }),
                 inspection.n2.review.round === 2 ? "alpha contribution corrected after independent review\n" : "alpha contribution\n");
               const decisionBody = {
@@ -107,7 +107,7 @@ export async function runN2NativeLifecycle(input: any) {
               result.reportedWorkDisposition = "needs_review";
               result.attentionRequests = [{ kind: "review", summary: "Council review of verified V1", ownerClass: "agent", targetAgentId: prepared.agents.reviewer.id }];
             } else {
-          if (n5) await n5.rebind(actor, call);
+          await n5?.rebind(actor, call);
           const git = (args: string[]) => execFileSync("git", args, { cwd: prepared.repository, encoding: "utf8" }).trim();
           git(["switch", "contribution-beta"]);
           git(["switch", "-c", "deterministic-correction"]);
@@ -222,3 +222,5 @@ function lifecycleComplete(mission: any, admission: any, n5: boolean) {
   return mission.aggregate.n2?.status === "accepted" && admission.reservations.every((entry: any) => entry.status === "settled")
     && (!n5 || mission.aggregate.n5?.publication?.settledAt && (!continuationMode || mission.aggregate.n5.publication.operation === "update"));
 }
+
+function approvesCandidate(round: number) { return round === 2 || continuationMode; }

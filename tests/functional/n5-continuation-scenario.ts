@@ -21,8 +21,9 @@ export function continuationScenario(input: any, prepared: any, readMission: any
       const action = result.body.nativeAction;
       const resumed = await request("human", action.method, action.path, action.body);
       assert.equal(resumed.status, 200, JSON.stringify(resumed.body));
+      const afterRoot = await request("human", "GET", `/api/issues/${prepared.rootIssueId}`);
       guards.push({ ownerResume: { command: body.commandId, reservationId: body.reservationId, action, status: resumed.status, nativeStatus: resumed.body.status,
-        workspaceBoundary: { profile: "shared_workspace/project_primary", before: { id: beforeRoot.body.executionWorkspaceId ?? null, status: beforeRoot.body.status }, after: { id: resumed.body.executionWorkspaceId ?? null, status: resumed.body.status }, reconstructionClaim: false },
+        workspaceBoundary: { profile: "shared_workspace/project_primary", before: { id: beforeRoot.body.executionWorkspaceId ?? null, rootStatus: beforeRoot.body.status, workspaceStatus: beforeRoot.body.currentExecutionWorkspace?.status ?? null }, after: { id: resumed.body.executionWorkspaceId ?? null, rootStatus: afterRoot.body.status, workspaceStatus: afterRoot.body.currentExecutionWorkspace?.status ?? null }, reconstructionClaim: false },
         historicalApplication: result.body.mission.aggregate.n5.continuation.previousApplication, replayPermission: replay.body.effectPermission } });
     },
     async rebind(actor: string, call: any) {

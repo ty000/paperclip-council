@@ -20,7 +20,7 @@ export async function prepareN3Scenario(input: any, prepared: any) {
     specialists.push({ ...created.body, actor, perspective, slotId: randomUUID() });
   }
   const slots = specialists.map(agent => ({ slotId: agent.slotId, perspective: agent.perspective, specialistAgentId: agent.id,
-    required: true, question: agent.perspective === "product" ? "Does the candidate meet the bounded user outcome?" : "Does alpha.txt contain the required independent correction marker?" }));
+    required: true, question: agent.perspective === "product" ? "Does the candidate meet the bounded user outcome?" : continuationMode ? "Does the bounded candidate meet the evidence available at this review?" : "Does alpha.txt contain the required independent correction marker?" }));
   const guards: any[] = [];
   const route = (issueId: string) => `/api/plugins/${input.pluginId}/api/issues/${issueId}/council/commands`;
   return {
@@ -40,7 +40,7 @@ export async function prepareN3Scenario(input: any, prepared: any) {
         consequence: "The required corrected candidate is absent", recommendedAction: "Correct alpha.txt once" };
       const opinion = { subject: n3.review.subject, slotId: agent.slotId, opinionId: randomUUID(),
         outcome: agent.perspective === "quality" && !prior && !continuationMode ? "changes_requested" : "support",
-        rationale: agent.perspective === "product" ? "The bounded integrated product outcome is present" : prior ? "V2 includes the correction marker" : "V1 lacks the requested correction marker",
+        rationale: agent.perspective === "product" ? "The bounded integrated product outcome is present" : prior ? "V2 includes the correction marker" : continuationMode ? "V1 satisfies the initial checks; the post-publication external finding is not yet available" : "V1 lacks the requested correction marker",
         findings: agent.perspective === "quality" && !prior && !continuationMode ? [finding] : [], unresolvedQuestions: [] };
       const stale = await call({ command: "n3-opinion", commandId: randomUUID(), expectedVersion: inspected.body.version,
         opinion: { ...opinion, subject: { ...opinion.subject, evidenceRevision: opinion.subject.evidenceRevision + 1 } } });
