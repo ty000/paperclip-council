@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 
-/** No thread/start or turn/start: inspect local account and execute the native projected sandbox directly. */
-export async function n45ProjectedPreflight(input: any, campaign: any, profile: any) {
+async function projectedTransport(input: any, campaign: any) {
   const { prepareGitHubExecutionEnvironment } = await input.hostImport("packages/adapter-utils/src/execution-target.ts");
   const { buildNativeProviderEnvironment } = await input.hostImport("server/src/services/native-runtime/native-session-executor.ts");
   const native = await input.hostImport("packages/paperclip-runner/src/live/runnerd-codex-transport.ts");
@@ -18,6 +17,12 @@ export async function n45ProjectedPreflight(input: any, campaign: any, profile: 
   const transport = new ProcessCodexAppServerTransport({ command: "codex", workingDirectory: campaign.repository,
     args: native.createRunnerdCodexAppServerArgs({ environment: env, codexHome }),
     environment: providerEnvironment, processGroup: true });
+  return { transport, codexHome };
+}
+
+/** No thread/start or turn/start: inspect local account and execute the native projected sandbox directly. */
+export async function n45ProjectedPreflight(input: any, campaign: any, profile: any) {
+  const { transport, codexHome } = await projectedTransport(input, campaign);
   try {
     const initialized = await transport.request("initialize", { clientInfo: { name: "council-provider-free-preflight", version: "1" }, capabilities: { experimentalApi: true } });
     await transport.notify("initialized", {});
