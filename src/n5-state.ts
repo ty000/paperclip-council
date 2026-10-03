@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { MissionRecord } from "./missions.js";
 import type { N2Submission } from "./n2-missions.js";
 
@@ -19,12 +20,18 @@ export type N5State = {
   };
 };
 
+function currentAcceptance(mission: MissionRecord, p: NonNullable<N5State["publication"]>) {
+  const n2 = mission.aggregate.n2;
+  return n2?.status === "accepted" && n2.activeSubmissionId === p.submission.submissionId
+    && p.submission.mandateHash === createHash("sha256").update(JSON.stringify(mission.aggregate.mandate)).digest("hex");
+}
+
 export function inspectN5(mission: MissionRecord) {
   const n5 = mission.aggregate.n5;
   if (!n5) return null;
   const p = n5.publication; const o = p?.observation;
   const fresh = Boolean(o && !p?.readbackUnavailable && Date.now() - Date.parse(o.lastResolvedAt) <= 300_000);
-  const ready = Boolean(o && fresh && o.matchesCandidate && o.state === "open" && !o.draft
+  const ready = Boolean(o && p && currentAcceptance(mission, p) && fresh && o.matchesCandidate && o.state === "open" && !o.draft
     && p?.checks?.headSha === o.headSha && p.checks.state === "passed"
     && p?.reviews?.headSha === o.headSha && p.reviews.state === "approved");
   return { ...n5, ready, nativeReadbackFresh: fresh, checksSource: "attributed_actor_observation", reviewsSource: "attributed_actor_observation",

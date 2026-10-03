@@ -93,10 +93,10 @@ export async function prepareN5Scenario(input: any, prepared: any) {
       const url = "https://github.com/ty000/paperclip-council/pull/4242";
       const product = await request(actor, "POST", `/api/issues/${issueId}/work-products`, { type: "pull_request", provider: "github", title: "Explicit fake N5 PR", url, createdByRunId: runId });
       assert.equal(product.status, 201, JSON.stringify(product.body));
-      const delivery = await request(actor, "PUT", `/api/issues/${issueId}/documents/delivery`, { format: "markdown", title: "N5 delivery binding", body: JSON.stringify({ intentId: p.intentId, url }) });
+      const delivery = await request(actor, "PUT", `/api/issues/${issueId}/documents/delivery`, { format: "markdown", title: "N5 delivery binding", body: JSON.stringify({ intentId: p.intentId, url, link: `<${url}>` }) });
       assert.equal(delivery.status, 201, JSON.stringify(delivery.body));
       const objects = await request(actor, "GET", `/api/issues/${issueId}/external-objects`);
-      assert.equal(objects.status, 200, JSON.stringify(objects.body)); const objectId = objects.body[0]?.object?.id; assert(objectId, JSON.stringify(objects.body));
+      assert.equal(objects.status, 200, JSON.stringify(objects.body)); const objectId = objects.body.find((entry: any) => entry.object?.providerKey === "github")?.object?.id; assert(objectId, JSON.stringify(objects.body));
       const refresh = async () => {
         const response = await request(actor, "POST", `/api/issues/${issueId}/external-objects/refresh`, { objectIds: [objectId] });
         assert.equal(response.status, 200, JSON.stringify(response.body));

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { AdmissionError } from "./admission.js";
 import { createContributionIssueEffect } from "./contribution-effects.js";
@@ -14,6 +14,7 @@ function accepted(m: MissionRecord) {
   const n2 = inspectN2State(m);
   if (n2?.status !== "accepted" || n2.application.state !== "observed" || !n2.usage.complete
       || !n2.submission || n2.application.submissionId !== n2.submission.submissionId) throw new MissionError(409, "n5_accepted_candidate_required", "Native acceptance and exact terminal accounting must precede publication");
+  if (n2.submission.mandateHash !== createHash("sha256").update(JSON.stringify(m.aggregate.mandate)).digest("hex")) throw new MissionError(409, "n5_mandate_changed", "Accepted submission belongs to a different mandate");
   const native = m.aggregate.n2?.native;
   if (native && !native.transmission.settledAt) throw new MissionError(409, "n5_source_usage_pending", "Native transmission accounting is required before publication");
   if (m.aggregate.n3?.rounds.some(round => !round.transmission.settledAt || round.specialists.some(item => !item.settledAt))) {
@@ -53,7 +54,7 @@ export async function startN5Publication(ctx: PluginContext, initial: MissionRec
     projectId: m.projectId, rootIssueId: m.rootIssueId, missionId: m.missionId, contributionId: intentId,
     assigneeAgentId: n5.authority.publisherAgentId, title: `Council delivery ${submission.submissionId}`,
     description: JSON.stringify({ missionId: m.missionId, intentId, plan: n5.plan, authority: n5.authority, submission,
-      instructions: "Use n5-inspect then n5-claim-publication before git/gh. Only effectPermission=execute allows one create. Verify local and remote candidate/ref before gh. Write native delivery document {intentId,url} and pull_request work product, refresh the external object, then n5-observe-delivery. Ambiguous effect: never create again. Finish with attributed checks/review limits." }) });
+      instructions: "Use n5-inspect then n5-claim-publication before git/gh. Only effectPermission=execute allows one create. Verify local and remote candidate/ref before gh. Write native delivery JSON {intentId,url,link} with link as Markdown autolink <URL> and pull_request work product, refresh the external object, then n5-observe-delivery. Ambiguous effect: never create again. Finish with attributed checks/review limits." }) });
   if (created.state !== "confirmed") return m;
   m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...m.aggregate.n5!.publication!, issueId: created.issue.id, creation: "confirmed" } });
   await reserveN2Run(ctx, m, { reservationId, effectId: intentId, kind: "initial" });

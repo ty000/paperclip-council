@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { expect, it, vi } from "vitest";
 import type { MissionRecord } from "../src/missions.js";
 import { correlateN5Readback } from "../src/n5-native.js";
@@ -8,9 +8,10 @@ import { inspectN5 } from "../src/n5-state.js";
 function fixture() {
   const companyId = randomUUID(); const issueId = randomUUID(); const runId = randomUUID(); const intentId = randomUUID();
   const document = { id: randomUUID(), issueId, latestRevisionId: randomUUID(), body: JSON.stringify({ intentId, url: "https://github.com/ty000/paperclip-council/pull/23" }) };
-  const mission = { companyId, aggregate: { n5: { plan: { integrationLeadAgentId: randomUUID() },
+  const submissionId = randomUUID();
+  const mission = { companyId, aggregate: { mandate: {}, n2: { status: "accepted", activeSubmissionId: submissionId }, n5: { plan: { integrationLeadAgentId: randomUUID() },
     authority: { repository: "ty000/paperclip-council", baseRef: "main", headRef: "codex/delivery", publisherAgentId: randomUUID() },
-    publication: { intentId, issueId, runId, claimedAt: new Date(Date.now() - 1000).toISOString(), submission: { candidateCommit: "a".repeat(40) } } } } } as MissionRecord;
+    publication: { intentId, issueId, runId, claimedAt: new Date(Date.now() - 1000).toISOString(), submission: { submissionId, candidateCommit: "a".repeat(40), mandateHash: createHash("sha256").update("{}").digest("hex") } } } } } as MissionRecord;
   const products = [{ id: randomUUID(), companyId, issueId, createdByRunId: runId, type: "pull_request", provider: "github", url: "https://github.com/ty000/paperclip-council/pull/23" }];
   const objects = [{ object: { id: randomUUID(), companyId, providerKey: "github", liveness: "fresh", lastResolvedAt: new Date().toISOString(),
     data: { owner: "ty000", repo: "paperclip-council", number: 23, headSha: "a".repeat(40), baseRef: "main", headRef: "codex/delivery", state: "open", draft: false } },
