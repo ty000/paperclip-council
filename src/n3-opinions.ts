@@ -221,11 +221,13 @@ function validateSynthesisVerdict(
   verdict: N3Synthesis["verdict"],
   dispositions: N3ObjectionDisposition[],
 ): void {
+  if (!["approved", "changes_requested", "waiting"].includes(verdict)) {
+    throw new N3OpinionError("invalid_n3_verdict", "The synthesis verdict must be approved, changes_requested or waiting");
+  }
   const hasUpheld = dispositions.some((item) => item.disposition === "upheld_with_correction");
   const hasEscalated = dispositions.some((item) => item.disposition === "escalated");
   if ((verdict === "approved" && (hasUpheld || hasEscalated))
-      || (verdict === "changes_requested" && (!hasUpheld || hasEscalated))
-      || (verdict === "waiting" && !hasEscalated)) {
+      || (verdict === "changes_requested" && hasEscalated)) {
     throw new N3OpinionError("inconsistent_n3_verdict", "The final verdict conflicts with the recorded objection dispositions");
   }
 }
@@ -316,6 +318,9 @@ export function recordN3Opinion(
   }
   if (round.opinions.some((opinion) => opinion.slotId === slotId || opinion.opinionId === input.opinionId)) {
     throw new N3OpinionError("duplicate_n3_opinion", "The slot or opinion identity is already recorded");
+  }
+  if (!["support", "changes_requested", "insufficient_evidence"].includes(input.outcome)) {
+    throw new N3OpinionError("invalid_n3_outcome", "The opinion outcome must be support, changes_requested or insufficient_evidence");
   }
   if (!Array.isArray(input.findings) || input.findings.length > 30) {
     throw new N3OpinionError("invalid_n3_opinion", "findings must contain at most 30 entries");

@@ -49,10 +49,18 @@ export async function prepareN3Scenario(input: any, prepared: any) {
         opinion: { ...opinion, slotId: specialists.find(other => other.id !== agent.id)!.slotId } });
       assert.equal(conflict.status, 409, JSON.stringify(conflict.body));
       assert.equal(conflict.body.code, "reviewer_conflict");
+      const invalidOutcome = await call({ command: "n3-opinion", commandId: randomUUID(), expectedVersion: inspected.body.version,
+        opinion: { ...opinion, outcome: "typo_changes_requested", findings: [finding] } });
+      assert.equal(invalidOutcome.status, 409, JSON.stringify(invalidOutcome.body));
+      assert.equal(invalidOutcome.body.code, "invalid_n3_outcome");
+      const unchanged = await call({ command: "n3-inspect" });
+      assert.equal(unchanged.status, 200, JSON.stringify(unchanged.body));
+      assert.equal(unchanged.body.version, inspected.body.version);
+      assert.deepEqual(unchanged.body.n3.review, n3.review);
       const recorded = await call({ command: "n3-opinion", commandId: randomUUID(), expectedVersion: inspected.body.version, opinion });
       assert.equal(recorded.status, 200, JSON.stringify(recorded.body));
       guards.push({ runId, subject: opinion.subject, stale: stale.body.code, conflict: conflict.body.code,
-        missingBefore: n3.missing, opinion: recorded.body.mission.aggregate.n3.rounds.at(-1).review.opinions.at(-1) });
+        invalidOutcome: invalidOutcome.body.code, rejectedOutcomeUnchangedVersion: unchanged.body.version, missingBefore: n3.missing, opinion: recorded.body.mission.aggregate.n3.rounds.at(-1).review.opinions.at(-1) });
       return true;
     },
     async synthesize(call: any, inspection: any, actor: string, decisionBody: any) {
@@ -66,8 +74,16 @@ export async function prepareN3Scenario(input: any, prepared: any) {
       const synthesis = { subject: review.subject, verdict: decisionBody.verdict, rationale: "Independent final reviewer preserves the distinct views and resolves every material objection",
         dispositions: review.opinions.flatMap((opinion: any) => opinion.findings.filter((finding: any) => finding.classification !== "deferrable_improvement")
           .map((finding: any) => ({ findingId: finding.findingId, disposition: "upheld_with_correction", reason: "One bounded alpha.txt correction is necessary", evidenceRefs: finding.evidenceRefs }))) };
+      const invalidVerdict = await request(actor, "POST", route(prepared.rootIssueId), { missionId: prepared.missionId,
+        command: "n3-synthesize", commandId: randomUUID(), expectedVersion: inspection.version,
+        synthesis: { ...synthesis, verdict: "typo_approved" } });
+      assert.equal(invalidVerdict.status, 409, JSON.stringify(invalidVerdict.body));
+      assert.equal(invalidVerdict.body.code, "invalid_n3_verdict");
+      const unchanged = await call({ command: "inspect" });
+      assert.equal(unchanged.version, inspection.version);
+      assert.deepEqual(unchanged.n3.review, review);
       await call({ command: "n3-synthesize", commandId: randomUUID(), expectedVersion: inspection.version, synthesis });
-      guards.push({ subject: review.subject, missingSynthesis: blocked.body.code, synthesis });
+      guards.push({ subject: review.subject, missingSynthesis: blocked.body.code, invalidVerdict: invalidVerdict.body.code, rejectedVerdictUnchangedVersion: unchanged.version, synthesis });
     },
   };
 }

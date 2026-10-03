@@ -190,30 +190,32 @@ export async function handleDecision(
   }
 }
 
+async function handleMissionAgentCommand(input: PluginApiRequestInput, context: PluginContext) {
+  const command = input.body && typeof input.body === "object" && !Array.isArray(input.body)
+    ? (input.body as Record<string, unknown>).command : null;
+  if (command === "n3-inspect" || command === "n3-opinion") {
+    try { return { status: 200, body: await handleN3Specialist(context, input) }; }
+    catch (error) {
+      if (error instanceof N3OpinionError) return { status: 409, body: { code: error.code, error: error.message } };
+      if (error instanceof MissionError || error instanceof AdmissionError) return { status: error.status, body: { code: error.code, error: error.message } };
+      throw error;
+    }
+  }
+  if (command === "inspect") {
+    const mission = await getMissionByRootIssue(context, input.companyId, input.params.issueId);
+    if (mission?.aggregate.n2) return handleN2AgentApi(input, context);
+  }
+  if (command === "confirm-review-handoff" || command === "prepare-resubmission" || command === "attest-transmission" || command === "attest-n3-transmission" || command === "n3-synthesize") {
+    return handleN2AgentApi(input, context);
+  }
+  return handleN1AgentApi(input, context);
+}
+
 export async function handlePluginRequest(input: PluginApiRequestInput, context: PluginContext = ctx) {
   if (input.routeKey === "decision") return handleDecision(input, context);
   if (input.routeKey.startsWith("council-decision")) return handleDecisionReceiptApi(input, context);
   if (input.routeKey === "admission-read" || input.routeKey === "admission-command") return handleN1AdmissionApi(input, context);
-  if (input.routeKey === "mission-agent-command") {
-    const command = input.body && typeof input.body === "object" && !Array.isArray(input.body)
-      ? (input.body as Record<string, unknown>).command : null;
-    if (command === "n3-inspect" || command === "n3-opinion") {
-      try { return { status: 200, body: await handleN3Specialist(context, input) }; }
-      catch (error) {
-        if (error instanceof N3OpinionError) return { status: 409, body: { code: error.code, error: error.message } };
-        if (error instanceof MissionError || error instanceof AdmissionError) return { status: error.status, body: { code: error.code, error: error.message } };
-        throw error;
-      }
-    }
-    if (command === "inspect") {
-      const mission = await getMissionByRootIssue(context, input.companyId, input.params.issueId);
-      if (mission?.aggregate.n2) return handleN2AgentApi(input, context);
-    }
-    if (command === "confirm-review-handoff" || command === "prepare-resubmission" || command === "attest-transmission" || command === "attest-n3-transmission" || command === "n3-synthesize") {
-      return handleN2AgentApi(input, context);
-    }
-    return handleN1AgentApi(input, context);
-  }
+  if (input.routeKey === "mission-agent-command") return handleMissionAgentCommand(input, context);
   if (input.routeKey.startsWith("roster")) return handleRosterApi(input, context);
   if (input.routeKey.startsWith("mission")) return handleMissionApi(input, context);
   if (input.routeKey !== "foundation-probe") {

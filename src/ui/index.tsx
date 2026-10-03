@@ -1,4 +1,4 @@
-import type { inspectN3 } from "../n3-runtime.js";
+import type { inspectN3 } from "../n3-state.js";
 import { CouncilDecisionReceipts } from "./decision-receipts.js";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import {

@@ -1,4 +1,4 @@
-import { inspectN3 } from "./n3-runtime.js";
+import { inspectN3 } from "./n3-state.js";
 import { createHash } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { AdmissionError } from "./admission.js";
@@ -78,7 +78,7 @@ export type MissionAggregate = {
   effectIntents: Array<Record<string, unknown>>;
   n1?: Record<string, unknown>;
   n2?: N2State;
-  n3?: import("./n3-runtime.js").N3State;
+  n3?: import("./n3-state.js").N3State;
 };
 
 export type PinnedRoster = {

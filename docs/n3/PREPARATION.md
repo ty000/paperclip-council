@@ -28,6 +28,9 @@ Original opinions, author/run attribution and dissent remain in each round.
 5. The lead attests the ready round and ends with native review attention. This
    produces the genuine card/outbox for the sole final reviewer. That reviewer
    records a synthesis disposing of every material objection before deciding.
+   Favorable specialist opinions do not prevent an independent correction or
+   waiting judgment, justified in the bounded rationale; waiting names its next
+   actor. Public outcome/verdict enums are validated before any persistence.
 6. N2 retains rejection/correction/approval receipts and one-correction bounds.
    V2 receives a fresh N3 round. Its final transmission is the source of its
    own native card. Waiting synthesis requires a named next actor and cannot

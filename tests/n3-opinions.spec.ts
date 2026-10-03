@@ -199,3 +199,52 @@ describe("N3 attributed specialist opinions", () => {
     });
   });
 });
+
+function allSupport() {
+  const product = addProductOpinion(round());
+  return recordN3Opinion(product, {
+    subject: product.subject, slotId: ids.securitySlot, authenticatedAgentId: ids.security,
+    authenticatedRunId: randomUUID(), opinionId: randomUUID(), outcome: "support",
+    rationale: "The specialist found no blocking defect within its perspective.", findings: [], unresolvedQuestions: [],
+  });
+}
+
+it.each(["changes_requested", "waiting"] as const)("lets the final reviewer independently choose %s after two favorable opinions", verdict => {
+  const state = allSupport();
+  const input = { subject: state.subject, authenticatedAgentId: ids.finalReviewer, authenticatedRunId: randomUUID(),
+    verdict, rationale: "Final reviewer independently discovered a missing integration acceptance check; verify it before approval.", dispositions: [] };
+  expect(synthesizeN3Review(state, input).synthesis).toMatchObject({ verdict, rationale: input.rationale, dispositions: [] });
+  expect(() => synthesizeN3Review(state, { ...input, rationale: " " })).toThrow(/rationale must be non-empty/);
+  expect(() => synthesizeN3Review(state, { ...input, rationale: "x".repeat(4_001) })).toThrow(/at most 4000/);
+  expect(state.synthesis).toBeNull();
+});
+
+it("rejects unknown verdicts without finalizing the round and accepts the subsequent correct submission", () => {
+  const state = allSupport();
+  const input = { subject: state.subject, authenticatedAgentId: ids.finalReviewer, authenticatedRunId: randomUUID(),
+    verdict: "typo_approved" as never, rationale: "Final review", dispositions: [] };
+  expectN3Code(() => synthesizeN3Review(state, input), "invalid_n3_verdict");
+  expect(state.status).toBe("ready_for_synthesis");
+  expect(state.synthesis).toBeNull();
+  expect(synthesizeN3Review(state, { ...input, verdict: "approved" }).synthesis?.verdict).toBe("approved");
+});
+
+it("rejects unknown outcomes even with material findings and leaves the slot available", () => {
+  const state = round();
+  const input = { subject: state.subject, slotId: ids.securitySlot, authenticatedAgentId: ids.security,
+    authenticatedRunId: randomUUID(), opinionId: randomUUID(), outcome: "typo_changes_requested" as never,
+    rationale: "A material issue was found", findings: [finding()], unresolvedQuestions: [] };
+  expectN3Code(() => recordN3Opinion(state, input), "invalid_n3_outcome");
+  expect(state.opinions).toEqual([]);
+  expect(recordN3Opinion(state, { ...input, outcome: "changes_requested" }).opinions[0]?.outcome).toBe("changes_requested");
+});
+
+it.each(["upheld_with_correction", "escalated"] as const)("still forbids approval over %s specialist objections", disposition => {
+  const product = addProductOpinion(round());
+  const objection = finding();
+  const state = recordN3Opinion(product, { subject: product.subject, slotId: ids.securitySlot, authenticatedAgentId: ids.security,
+    authenticatedRunId: randomUUID(), opinionId: randomUUID(), outcome: "changes_requested", rationale: "Material objection", findings: [objection], unresolvedQuestions: [] });
+  expectN3Code(() => synthesizeN3Review(state, { subject: state.subject, authenticatedAgentId: ids.finalReviewer,
+    authenticatedRunId: randomUUID(), verdict: "approved", rationale: "Approval attempted", dispositions: [{ findingId: objection.findingId, disposition,
+      reason: "The objection remains unresolved", evidenceRefs: [] }] }), "inconsistent_n3_verdict");
+});

@@ -1,4 +1,5 @@
-import { assertN3Decision, attestN3Transmission, bindN3Transmission, freshN3Round, inspectN3, n3Round, prepareN3Collection, reconcileN3, selectN3, synthesizeN3 } from "./n3-runtime.js";
+import { inspectN3, n3Round } from "./n3-state.js";
+import { assertN3Decision, attestN3Transmission, bindN3Transmission, freshN3Round, prepareN3Collection, reconcileN3, selectN3, synthesizeN3 } from "./n3-runtime.js";
 import type { N3OpinionSlot } from "./n3-opinions.js";
 import { randomUUID } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";

@@ -12,8 +12,11 @@ for this round. Specialists advise; favorable opinion count is never authority.
    `escalated`. Evidence resolution names its evidence; rejection does not edit
    the specialist's original record.
 5. Formulate `approved` only when no objection remains upheld or escalated;
-   formulate `changes_requested` for upheld corrections; use `waiting` for an
-   escalated factual or authority question.
+   formulate `changes_requested` for an upheld correction or a concrete defect
+   you independently discover. Use `waiting` for an unresolved factual or
+   authority question, including one absent from the specialist opinions.
+   Explain your independent finding and the required action in the bounded
+   `rationale`; favorable specialist opinions do not constrain your judgment.
 6. Keep the reasoning synthesis, persisted decision and confirmed native effect
    separate. N3 preparation does not itself authorize or prove application.
 

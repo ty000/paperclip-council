@@ -54,3 +54,16 @@ it("synthesis cannot consume an unaccounted round and N2 alone is unchanged", as
   delete mission.aggregate.n3;
   expect(() => assertN3Decision(mission, decision)).not.toThrow();
 });
+it("requires a next actor for the final reviewer's independent waiting decision before writing", async () => {
+  const { mission, round, reviewer, run } = fixture();
+  for (const slot of round.review.slots) round.review = recordN3Opinion(round.review, { subject: round.review.subject, slotId: slot.slotId,
+    authenticatedAgentId: slot.specialistAgentId, authenticatedRunId: randomUUID(), opinionId: randomUUID(), outcome: "support", rationale: "Evidence checked", findings: [], unresolvedQuestions: [] });
+  round.specialists.forEach(item => { item.settledAt = new Date().toISOString(); });
+  const execute = vi.fn();
+  await expect(synthesizeN3({ db: { execute } } as never, mission,
+    { actor: { actorType: "agent", agentId: reviewer, runId: run } } as never,
+    { synthesis: { subject: round.review.subject, verdict: "waiting", rationale: "Final reviewer needs an acceptance criterion clarified by the mission owner", dispositions: [] } },
+  )).rejects.toMatchObject({ code: "n3_next_actor_required" });
+  expect(execute).not.toHaveBeenCalled();
+  expect(round.review.synthesis).toBeNull();
+});

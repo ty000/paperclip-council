@@ -1,21 +1,15 @@
+import { inspectN3, n3Round, type N3Execution as Execution, type N3NativeRound, type N3State } from "./n3-state.js";
 import { randomUUID } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { createContributionIssueEffect } from "./contribution-effects.js";
 import { readNativeRun, settleNativeExactRunUsage } from "./g4-native.js";
 import { canonicalPayloadHash, getMission, MissionError, type MissionRecord } from "./missions.js";
 import { n2Cas, n2CommandCas, nativeN2Profile, reserveN2Run, runtimeReceipt, runtimeUuid, storedN2, type N2DecisionContext, type N2Submission } from "./n2-missions.js";
-import { recordN3Opinion, startN3ReviewRound, synthesizeN3Review, type N3CandidateSubject, type N3OpinionSlot, type N3ReviewRound } from "./n3-opinions.js";
+import { recordN3Opinion, startN3ReviewRound, synthesizeN3Review, type N3CandidateSubject, type N3OpinionSlot } from "./n3-opinions.js";
 
-type Execution = { reservationId: string; settlementCommandId: string; runId: string | null; wake: "pending" | "claimed"; settledAt?: string };
-type Specialist = Execution & { slotId: string; issueId: string | null; creation: "pending" | "claimed" };
-export type N3NativeRound = { review: N3ReviewRound; blockerIssueId?: string; blockerClaimed?: boolean; specialists: Specialist[]; transmission: Execution; released?: boolean; attestedAt?: string; nextActor?: string };
-export type N3State = { slots: N3OpinionSlot[]; rounds: N3NativeRound[] };
 const execution = (): Execution => ({ reservationId: randomUUID(), settlementCommandId: randomUUID(), runId: null, wake: "pending" });
 export const n3Subject = (submission: N2Submission): N3CandidateSubject => ({ submissionId: submission.submissionId, candidateCommit: submission.candidateCommit, bundleSha256: submission.sha256, evidenceRevision: submission.evidenceRevision, mandateHash: submission.mandateHash });
 
-export function n3Round(mission: MissionRecord): N3NativeRound | undefined {
-  return mission.aggregate.n3?.rounds.find(round => round.review.subject.submissionId === mission.aggregate.n2?.activeSubmissionId);
-}
 export function freshN3Round(mission: MissionRecord, submission: N2Submission, slots: N3OpinionSlot[]): N3NativeRound {
   const contributors = (mission.aggregate.n1 as { contributions?: Array<{ assigneeAgentId: string }> })?.contributions ?? [];
   const authors = [...new Set([mission.aggregate.responsibilities.integrationLeadAgentId, ...contributors.map(entry => entry.assigneeAgentId)])];
@@ -186,10 +180,4 @@ export function assertN3Decision(mission: MissionRecord, decision: N2DecisionCon
   const round = requireRound(mission); const synthesis = round.review.synthesis;
   if (!synthesis || synthesis.verdict !== decision.verdict || synthesis.finalReviewerRunId !== decision.runId || synthesis.finalReviewerAgentId !== decision.actorAgentId
       || !round.specialists.every(item => item.settledAt)) throw new MissionError(409, "n3_synthesis_required", "Matching final-reviewer synthesis and settled opinions required before any native decision effect");
-}
-export function inspectN3(mission: MissionRecord) {
-  const round = n3Round(mission); if (!round) return null;
-  const missing = round.review.slots.filter(slot => !round.review.opinions.some(opinion => opinion.slotId === slot.slotId)).map(slot => slot.slotId);
-  return { ...round, missing, usageUnknown: round.specialists.filter(item => !item.settledAt).map(item => item.slotId),
-    nextActor: round.nextActor ?? (missing.length ? "selected specialists" : round.specialists.some(item => !item.settledAt) ? "native terminal accounting" : "assigned final reviewer") };
 }
