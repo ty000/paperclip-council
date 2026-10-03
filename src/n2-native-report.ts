@@ -96,34 +96,59 @@ export function parseNativeReviewerReport(summary: unknown, record: NativeReview
   return report;
 }
 
-export async function readNativeReviewOutcome(ctx: PluginContext, m: MissionRecord) {
+export async function readNativeReviewIdentity(ctx: PluginContext, m: MissionRecord) {
   const state = storedN2(m); const round = state.rounds.at(-1)!;
   if (round.verdict || m.aggregate.control?.status === "blocked" && m.aggregate.control.reason === "correction_limit_exceeded") return null;
   const record = state.native?.reviewPackets?.find(r => r.packet.submission.submissionId === state.activeSubmissionId);
   if (!record?.publishedAt) return null;
   const p = record.packet;
-  if (canonicalPayloadHash(p) !== record.hash || canonicalPayloadHash(m.aggregate.mandate) !== canonicalPayloadHash(p.mandate)
-      || createHash("sha256").update(JSON.stringify(m.aggregate.mandate)).digest("hex") !== p.submission.mandateHash
-      || canonicalPayloadHash(state.submissions.find(s => s.submissionId === state.activeSubmissionId)) !== canonicalPayloadHash(p.submission)) fail("Frozen candidate or mandate changed");
   const cards = (await ctx.issues.listInteractions(m.rootIssueId, m.companyId)).filter(c => c.sourceRunId === p.sourceRunId
     && c.addresseeAgentId === p.reviewerAgentId && (c.payload as any)?.target?.key === "native_completion_review");
   if (!cards.length || cards.length === 1 && cards[0]!.status === "pending") return null;
   if (cards.length !== 1) fail("Exactly one native review card must match the frozen source");
   const card = cards[0]!;
   const target = (card.payload as any)?.target;
-  if (card.companyId !== p.companyId || card.issueId !== p.issueId || !["accepted", "rejected"].includes(card.status)
-      || card.resolvedByAgentId !== p.reviewerAgentId || !card.resolvedByRunId || !card.resolvedAt || typeof target.revisionId !== "string") fail("Attributed native review verdict required");
+  assertResolvedReviewCard(card, p);
   const run = await readNativeRun(ctx, { companyId: p.companyId, issueId: p.issueId, agentId: p.reviewerAgentId, runId: card.resolvedByRunId! });
   if (run.contextSnapshot.nativeReviewInteractionId !== card.id || run.contextSnapshot.nativeReviewDecisionId !== target.revisionId
-      || run.status !== "succeeded" || !run.startedAt || !run.finishedAt) fail("Exact native reviewer must finish successfully before Council validation");
+      ) fail("Native run is not attributed to the exact review card");
+  return { record, card, run, binding: { interactionId: card.id, decisionId: target.revisionId as string, sourceRunId: p.sourceRunId } };
+}
+
+export type NativeReviewIdentity = NonNullable<Awaited<ReturnType<typeof readNativeReviewIdentity>>>;
+
+/** Called only after exact terminal accounting; invalid business evidence never hides known usage. */
+export function validateNativeReviewOutcome(m: MissionRecord, identity: NativeReviewIdentity) {
+  const { record, card, run } = identity;
+  assertFrozenReviewPacket(m, record);
+  if (run.status !== "succeeded" || !run.startedAt || !run.finishedAt) fail("Exact native reviewer must finish successfully before Council validation");
   const report = parseNativeReviewerReport(run.resultJson?.nativeResult?.summary, record);
   if ((report.verdict === "approved") !== (card.status === "accepted")) fail("Terminal reviewer report conflicts with its native verdict");
+  const synthesis = synthesizeFrozenOpinions(m, record.packet, report, run.id);
+  return { ...identity, report, synthesis };
+}
+
+function assertFrozenReviewPacket(m: MissionRecord, record: NativeReviewPacketRecord) {
+  const p = record.packet; const state = storedN2(m);
+  if (canonicalPayloadHash(p) !== record.hash || canonicalPayloadHash(m.aggregate.mandate) !== canonicalPayloadHash(p.mandate)
+      || createHash("sha256").update(JSON.stringify(m.aggregate.mandate)).digest("hex") !== p.submission.mandateHash
+      || canonicalPayloadHash(state.submissions.find(s => s.submissionId === state.activeSubmissionId)) !== canonicalPayloadHash(p.submission)) fail("Frozen candidate or mandate changed");
+ }
+
+function assertResolvedReviewCard(card: Awaited<ReturnType<PluginContext["issues"]["listInteractions"]>>[number], p: NativeReviewPacket) {
+  const target = (card.payload as { target?: { revisionId?: string } }).target;
+  if (card.companyId !== p.companyId || card.issueId !== p.issueId || !["accepted", "rejected"].includes(card.status)
+      || card.resolvedByAgentId !== p.reviewerAgentId || !card.resolvedByRunId || !card.resolvedAt || typeof target?.revisionId !== "string") fail("Attributed native review verdict required");
+ }
+
+function synthesizeFrozenOpinions(m: MissionRecord, p: NativeReviewPacket, report: NativeReviewerReport, runId: string) {
   const current = n3Round(m);
-  let synthesis: N3ReviewRound | null = null;
-  if (p.opinions) {
-    if (!current || canonicalPayloadHash({ ...current.review, synthesis: null, status: p.opinions.status }) !== canonicalPayloadHash(p.opinions) || !current.specialists.every(s => s.settledAt)
-        || !current.transmission.settledAt) fail("Frozen N3 opinions or terminal settlements differ");
-    synthesis = synthesizeN3Review(p.opinions, { ...report, authenticatedAgentId: p.reviewerAgentId, authenticatedRunId: run.id });
-  } else if (report.dispositions.length || current) fail("Unexpected specialist synthesis");
-  return { record, card, run, report, synthesis, binding: { interactionId: card.id, decisionId: target.revisionId as string, sourceRunId: p.sourceRunId } };
+  if (!p.opinions) {
+    if (report.dispositions.length || current) fail("Unexpected specialist synthesis");
+    return null;
+  }
+  if (!current) return fail("Frozen N3 round missing");
+  const sameInput = canonicalPayloadHash({ ...current.review, synthesis: null, status: p.opinions.status }) === canonicalPayloadHash(p.opinions);
+  if (!sameInput || !current.specialists.every(s => s.settledAt) || !current.transmission.settledAt) fail("Frozen N3 opinions or terminal settlements differ");
+  return synthesizeN3Review(p.opinions, { ...report, authenticatedAgentId: p.reviewerAgentId, authenticatedRunId: runId });
 }

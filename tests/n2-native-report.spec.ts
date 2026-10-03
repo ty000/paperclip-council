@@ -1,11 +1,20 @@
 import { createHash, randomUUID } from "node:crypto";
 import { beforeEach, expect, it, vi } from "vitest";
-vi.mock("../src/g4-native.js", async original => ({ ...await original(), readNativeRun: vi.fn() }));
-import { readNativeRun } from "../src/g4-native.js";
-import { nativeReviewPacketText, parseNativeReviewerReport, readNativeReviewOutcome, replaceNativeReviewPacket,
+vi.mock("../src/g4-native.js", async original => ({ ...await original(), readNativeRun: vi.fn(), settleNativeExactRunUsage: vi.fn() }));
+vi.mock("../src/n2-missions.js", async original => ({ ...await original(), n2Cas: vi.fn(), nativeN2Profile: vi.fn() }));
+vi.mock("../src/missions.js", async original => ({ ...await original(), getMission: vi.fn() }));
+import { n2Cas, nativeN2Profile } from "../src/n2-missions.js";
+import { getMission } from "../src/missions.js";
+import { reconcileNativeVerdict } from "../src/n2-native-runtime.js";
+import { readNativeRun, settleNativeExactRunUsage } from "../src/g4-native.js";
+import { nativeReviewPacketText, parseNativeReviewerReport, readNativeReviewIdentity, validateNativeReviewOutcome, replaceNativeReviewPacket,
   type NativeReviewPacketRecord } from "../src/n2-native-report.js";
 import { canonicalPayloadHash, type MissionRecord } from "../src/missions.js";
 
+async function readNativeReviewOutcome(ctx: Parameters<typeof readNativeReviewIdentity>[0], m: MissionRecord) {
+  const identity = await readNativeReviewIdentity(ctx, m);
+  return identity ? validateNativeReviewOutcome(m, identity) : null;
+}
 function fixture() {
   const mandate = { objective: "Review exact candidate" };
   const submission = { submissionId: randomUUID(), ordinal: 1, predecessorSubmissionId: null, attachmentId: randomUUID(), byteSize: 42,
@@ -66,6 +75,35 @@ it("does not turn native rejection into an approved Council report", async () =>
 it("preserves pending cards and changed mandate as unaccepted", async () => {
   const f = fixture(); f.card.status = "pending";
   expect(await readNativeReviewOutcome(f.ctx as never, f.mission)).toBeNull();
-  f.mission.aggregate.mandate.objective = "Changed after handoff";
+  f.card.status = "accepted"; f.mission.aggregate.mandate.objective = "Changed after handoff";
   await expect(readNativeReviewOutcome(f.ctx as never, f.mission)).rejects.toThrow(/changed/);
+});
+
+function accountingFixture() {
+  const f = fixture(); const state = f.mission.aggregate.n2!;
+  state.status = "review_handoff"; f.mission.aggregate.phase = "review_handoff";
+  state.rounds[0] = { round: 1, submissionId: state.activeSubmissionId, reviewerAgentId: "reviewer", verdict: null,
+    handoff: { state: "awaiting_native", reservationId: "review-reservation", reviewerRunId: null, baselineRunIds: [], baselineTokenTotal: 0, reason: null, observedAt: null } };
+  state.native!.reviewCards = []; state.native!.transmission = { runId: "source", reservationId: "source-reservation", settlementCommandId: "source-command", settledAt: new Date().toISOString() };
+  vi.mocked(nativeN2Profile).mockResolvedValue({ profile: { periodKey: "same-period" }, envelope: { reservations: [], version: 1 } } as never);
+  vi.mocked(getMission).mockImplementation(async () => f.mission);
+  vi.mocked(n2Cas).mockImplementation(async (_ctx, _m, aggregate) => { f.mission.aggregate = aggregate; return f.mission; });
+  return f;
+}
+it("settles known exact reviewer usage before rejecting a malformed terminal report", async () => {
+  const f = accountingFixture(); f.run.resultJson.nativeResult.summary = "not JSON";
+  await expect(reconcileNativeVerdict(f.ctx as never, f.mission)).rejects.toThrow(/not JSON/);
+  expect(settleNativeExactRunUsage).toHaveBeenCalledWith(f.ctx, expect.objectContaining({ runId: "review-run", agentId: "reviewer", reservationId: "review-reservation", periodKey: "same-period" }));
+  expect(f.mission.aggregate.n2!.rounds[0].handoff.usageSettledAt).toBeTruthy();
+  expect(f.mission.aggregate.n2!.status).toBe("review_handoff"); expect(f.mission.aggregate.n2!.rounds[0].verdict).toBeNull();
+  expect(f.mission.aggregate.n2!.native!.releaseState).toBeUndefined(); expect(f.mission.aggregate.n5).toBeUndefined();
+});
+it("does not settle an ambiguous reviewer identity or release an unknown cost", async () => {
+  const f = accountingFixture(); f.card.resolvedByAgentId = "other";
+  await expect(reconcileNativeVerdict(f.ctx as never, f.mission)).rejects.toThrow(/Attributed/);
+  expect(settleNativeExactRunUsage).not.toHaveBeenCalled();
+  f.card.resolvedByAgentId = "reviewer";
+  vi.mocked(settleNativeExactRunUsage).mockRejectedValue(new Error("g4_usage_unavailable"));
+  await expect(reconcileNativeVerdict(f.ctx as never, f.mission)).rejects.toThrow("g4_usage_unavailable");
+  expect(n2Cas).not.toHaveBeenCalled(); expect(f.mission.aggregate.n2!.status).toBe("review_handoff");
 });

@@ -335,14 +335,19 @@ function decisionReceiptMetadataMatches(mission: MissionRecord, input: N2Decisio
     && receipt.runId === input.runId;
 }
 
-function decisionReceiptSubjectMatches(mission: MissionRecord, submission: N2Submission, input: N2DecisionInput): boolean {
-  if (mission.aggregate.n2?.native?.reviewProtocol === "native-verdict-readback-v1") {
-    const packet = mission.aggregate.n2.native.reviewPackets?.find(p => p.operationId === input.operationId && p.packet.submission.submissionId === submission.submissionId);
+function nativeReceiptSubjectMatches(mission: MissionRecord, submission: N2Submission, input: N2DecisionInput): boolean {
+    const packet = mission.aggregate.n2!.native!.reviewPackets?.find(p => p.operationId === input.operationId && p.packet.submission.submissionId === submission.submissionId);
     const observation = packet?.observation; const body = input.receipt.requestBody;
-    return Boolean(packet && observation && observation.runId === input.runId && observation.report.verdict === input.verdict
+    if (!packet || !observation) return false;
+    return Boolean(observation.runId === input.runId && observation.report.verdict === input.verdict
       && body.method === "GET" && body.provenance === "native-review-terminal-readback-v1" && body.packetHash === packet.hash
       && body.reportHash === canonicalPayloadHash(observation.report)
       && observation.report.subject.submissionId === submission.submissionId && observation.report.subject.candidateCommit === submission.candidateCommit);
+}
+
+function decisionReceiptSubjectMatches(mission: MissionRecord, submission: N2Submission, input: N2DecisionInput): boolean {
+  if (mission.aggregate.n2?.native?.reviewProtocol === "native-verdict-readback-v1") {
+    return nativeReceiptSubjectMatches(mission, submission, input);
   }
   const receipt = input.receipt;
   const requestStatus = input.verdict === "changes_requested" ? "in_progress" : "done";

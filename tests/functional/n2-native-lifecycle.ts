@@ -216,9 +216,10 @@ async function awaitLifecycle(input: any, prepared: any, n5: any, trace: any[], 
     await heartbeat.drainActiveRunExecutions();
     mission = (await input.request("human", "GET", `${prepared.missionPath}?companyId=${prepared.companyId}`)).body.mission;
     admission = (await input.request("human", "GET", `${prepared.admissionPath}?companyId=${prepared.companyId}&periodKey=${encodeURIComponent(prepared.nativePeriodKey)}`)).body.envelope;
-    if (!errors.length) await releaseReservedCorrection(input, prepared, mission, trace, heartbeat);
-    if (n5 && !errors.length) await n5.advance(mission);
-    if (errors.length || lifecycleComplete(mission, admission, Boolean(n5))) break;
+    if (errors.length) break;
+    await releaseReservedCorrection(input, prepared, mission, trace, heartbeat);
+    if (n5) await n5.advance(mission);
+    if (lifecycleComplete(mission, admission, Boolean(n5))) break;
     await new Promise(resolve => setTimeout(resolve, 250));
   }
   return { heartbeat, mission, admission };

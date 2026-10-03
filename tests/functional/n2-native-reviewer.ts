@@ -15,13 +15,7 @@ export async function nativeReviewerTurn(input: any, prepared: any, execution: a
   const packet = JSON.parse(packets.at(-1)![1]);
   assert.equal(packet.reviewerAgentId, execution.binding.agentId); assert.equal(packet.issueId, execution.binding.issueId);
   const approved = packet.submission.ordinal === 2 || approveFirst;
-  const s = packet.submission;
-  const report = { schema: "council-native-review-v1", packetHash: packet.packetHash,
-    subject: { submissionId: s.submissionId, candidateCommit: s.candidateCommit, bundleSha256: s.sha256, evidenceRevision: s.evidenceRevision, mandateHash: s.mandateHash },
-    verdict: approved ? "approved" : "changes_requested",
-    rationale: approved ? "The exact candidate satisfies the bounded correction and reviewed opinions" : "alpha.txt lacks the required independent correction marker",
-    dispositions: packet.opinions?.opinions.flatMap((opinion: any) => opinion.findings.filter((f: any) => f.classification !== "deferrable_improvement")
-      .map((f: any) => ({ findingId: f.findingId, disposition: "upheld_with_correction", reason: "The required marker is absent; one bounded correction is necessary", evidenceRefs: f.evidenceRefs }))) ?? [] };
+  const report = reviewerReport(packet, approved);
   result.summary = JSON.stringify(report);
   const verdict = await authority.execute({ tool: "resolve_review", callId: randomUUID(), arguments: { decision: approved ? "accept" : "reject", ...(approved ? {} : { reason: report.rationale }) } });
   assert.equal(verdict.status, approved ? "accepted" : "rejected");
@@ -61,3 +55,13 @@ export async function releaseReservedCorrection(input: any, prepared: any, missi
   assert.equal(released.status, 200, JSON.stringify(released.body));
   trace.push({ event: "owner_releases_reserved_correction", reservationId: mission.aggregate.n2.correction.reservationId, nativeRecoveryBeforeCommand: true, outcome: released.body.outcome });
 }
+
+function reviewerReport(packet: any, approved: boolean) {
+  const s = packet.submission;
+  return { schema: "council-native-review-v1", packetHash: packet.packetHash,
+    subject: { submissionId: s.submissionId, candidateCommit: s.candidateCommit, bundleSha256: s.sha256, evidenceRevision: s.evidenceRevision, mandateHash: s.mandateHash },
+    verdict: approved ? "approved" : "changes_requested",
+    rationale: approved ? "The exact candidate satisfies the bounded correction and reviewed opinions" : "alpha.txt lacks the required independent correction marker",
+    dispositions: packet.opinions?.opinions.flatMap((opinion: any) => opinion.findings.filter((f: any) => f.classification !== "deferrable_improvement")
+      .map((f: any) => ({ findingId: f.findingId, disposition: "upheld_with_correction", reason: "The required marker is absent; one bounded correction is necessary", evidenceRefs: f.evidenceRefs }))) ?? [] };
+ }
