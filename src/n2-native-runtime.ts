@@ -84,8 +84,8 @@ export async function executeNativeN2Board(ctx: PluginContext, mission: MissionR
   const reservationId = runtimeUuid(body.reservationId, "reservationId");
   const transmissionReservationId = runtimeUuid(body.transmissionReservationId, "transmissionReservationId");
   const state = startN2Review(mission, { baselineRunIds: baseline.runIds, baselineTokenTotal: baseline.tokenTotal, submissionId, reservationId });
-  await reserveN2Run(ctx, mission, { reservationId: transmissionReservationId, effectId: transmissionReservationId, kind: "initial" });
   const n3 = body.n3Slots ? await selectN3(ctx, mission, state.submissions[0]!, body.n3Slots as N3OpinionSlot[]) : undefined;
+  await reserveN2Run(ctx, mission, { reservationId: transmissionReservationId, effectId: transmissionReservationId, kind: "initial" });
   if (!n3) await reserveN2Run(ctx, mission, { reservationId, effectId: submissionId, kind: "initial" });
   state.native = { profile: "paperclip_runner-experimental", transmission: { reservationId: transmissionReservationId, runId: null,
     settlementCommandId: randomUUID() }, reviewCards: [], correctionSettlementCommandId: randomUUID() };

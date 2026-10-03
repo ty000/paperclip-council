@@ -136,6 +136,8 @@ export async function runN2NativeLifecycle(input: any) {
             }
             if (n3 && !reviewer && !bridge) {
               result.reportedWorkDisposition = "blocked"; result.attentionRequests = [];
+              result.blocker = { reasonCode: "council_n3_opinions_pending", owner: { kind: "system", name: "Council native terminal accounting" },
+                unblockAction: "Collect the selected specialist opinions and settle their terminal usage", scope: "task_wide" };
             }
             await save(); completed(); return { turnId };
           } catch (error) { errors.push(String(error)); completed(); throw error; }
