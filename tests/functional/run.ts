@@ -11,6 +11,7 @@ import { prepareCandidatePackage } from "./candidate-package.js";
 import { nativeRunEvidence, runLiveN1 } from "./n1-live.js";
 import { runLiveN2 } from "./n2-live.js";
 import { prepareN2Prerequisite } from "./n2-prerequisite.js";
+import { runN2NativeLifecycle } from "./n2-native-lifecycle.js";
 import { runSyntheticN2 } from "./n2-synthetic.js";
 import { createFunctionalRuntimeCleanup } from "./runtime-cleanup.js";
 // @ts-expect-error The qualification evidence contract is intentionally plain ESM.
@@ -39,11 +40,13 @@ const candidateBranch = execFileSync("git", ["branch", "--show-current"], {
 const liveN1Authorized = process.env.COUNCIL_N1_LIVE_AUTHORIZED === "1";
 const liveN2Authorized = process.env.COUNCIL_N2_LIVE_AUTHORIZED === "1";
 const isolatedLiveN2Authorized = process.env.COUNCIL_N2_ISOLATED_LIVE_AUTHORIZED === "1";
+const n2NativeLifecycleMode = process.env.COUNCIL_N2_NATIVE_LIFECYCLE === "1";
 const n2PrerequisiteMode = process.env.COUNCIL_N2_PREREQUISITE === "1";
 assert([liveN1Authorized, liveN2Authorized, isolatedLiveN2Authorized].filter(Boolean).length <= 1,
   "Only one native campaign can be authorized at a time");
 assert(!(n2PrerequisiteMode && (liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized)),
   "The provider-free N2 prerequisite cannot run inside a LIVE campaign");
+assert(!(n2NativeLifecycleMode && (n2PrerequisiteMode || liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized)), "Native deterministic qualification excludes every LIVE mode");
 const liveNativeAuthorized = liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized;
 const liveN2Campaign = liveN2Authorized || isolatedLiveN2Authorized;
 const liveEnvironmentPrefix = isolatedLiveN2Authorized
@@ -68,7 +71,10 @@ if (!hostRootInput) {
   throw new Error("PAPERCLIP_TEST_HOST_ROOT must point to the Paperclip checkout under test");
 }
 const root = resolve(hostRootInput);
-const expectedHostCommit = "61b3fd57a695614dc4a37e2303f426a34a9795cf";
+const expectedHostCommit = n2NativeLifecycleMode
+  ? process.env.COUNCIL_N2_NATIVE_HOST_COMMIT
+  : "61b3fd57a695614dc4a37e2303f426a34a9795cf";
+assert(expectedHostCommit && /^[a-f0-9]{40}$/.test(expectedHostCommit), "Explicit exact native lifecycle host SHA is required");
 const hostCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
 assert.equal(hostCommit, expectedHostCommit, `functional host must be Paperclip ${expectedHostCommit}`);
 const hostStatus = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], {
@@ -121,7 +127,7 @@ const requireServer = createRequire(resolve(root, "server/package.json"));
 const { eq, inArray, sql } = requireServer("drizzle-orm");
 const evidence: Record<string, any> = {
   schemaVersion: 1,
-  proofId: n2PrerequisiteMode
+  proofId: n2NativeLifecycleMode ? "paperclip-council-n2-native-deterministic-lifecycle-v1" : n2PrerequisiteMode
     ? "paperclip-council-n2-native-stage-prerequisite-v1"
     : isolatedLiveN2Authorized
     ? "paperclip-council-n2-isolated-observable-native-qualification-v1"
@@ -651,7 +657,11 @@ try {
   assert(workerManager.isRunning(pluginId), "installed package worker must load after restart");
   evidence.results.installation = "PASS";
 
-  if (n2PrerequisiteMode) {
+  if (n2NativeLifecycleMode) {
+    await runN2NativeLifecycle({ request, pluginId, baseUrl, cookie, runtime, ownerUserId: userId,
+      hostImport, evidence, save, agentTokens, db, tables, eq,
+      createFixtureRun: createN2PrerequisiteFixtureRun, finishFixtureRuns: finishN2PrerequisiteFixtureRuns });
+  } else if (n2PrerequisiteMode) {
     const prerequisite = await prepareN2Prerequisite({
       request,
       pluginId,

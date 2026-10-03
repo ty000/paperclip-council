@@ -350,6 +350,7 @@ export async function runLiveN2(input: {
   };
   runEvidence: typeof nativeRunEvidence;
   persistEvidence: () => Promise<void>;
+  onRunCaptured?: (runId: string) => void;
 }) {
   const { companyId, missionId, rootIssueId, agents } = input.n1;
   assertProviderFreeN2HandoffReady(input.n1);
@@ -430,6 +431,7 @@ export async function runLiveN2(input: {
   const reviewRun1 = await waitForNewRun(agents.reviewer.id, reviewerRunIds, input.listRuns);
   reviewerRunIds.add(reviewRun1.id);
   await setWakeOnDemand(input.request, agents.reviewer.id, false);
+  input.onRunCaptured?.(reviewRun1.id);
   const terminalReview1 = await waitForTerminalRun(reviewRun1.id, input.getRun);
   await preserveN2RunBeforeBusinessAssertion({
     evidence: progressiveEvidence,
@@ -461,6 +463,7 @@ export async function runLiveN2(input: {
   const correctionRunId = correctionStart.body.mission.aggregate.n2.correction.runId as string;
   assert.match(correctionRunId, /^[0-9a-f-]{36}$/i);
   await setWakeOnDemand(input.request, agents.lead.id, false);
+  input.onRunCaptured?.(correctionRunId);
   const correctionRun = await waitForTerminalRun(correctionRunId, input.getRun);
   await preserveN2RunBeforeBusinessAssertion({
     evidence: progressiveEvidence,
@@ -510,6 +513,7 @@ export async function runLiveN2(input: {
   const reviewRun2 = await waitForNewRun(agents.reviewer.id, reviewerRunIds, input.listRuns);
   reviewerRunIds.add(reviewRun2.id);
   await setWakeOnDemand(input.request, agents.reviewer.id, false);
+  input.onRunCaptured?.(reviewRun2.id);
   const terminalReview2 = await waitForTerminalRun(reviewRun2.id, input.getRun);
   await preserveN2RunBeforeBusinessAssertion({
     evidence: progressiveEvidence,

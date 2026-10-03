@@ -15,3 +15,6 @@ artifacts/ui-page.png
 .git-local/
 .runtime/
 .paperclip/qualification/
+
+artifacts/n2-native-lifecycle-*.json
+artifacts/n2-native-lifecycle-*.log
