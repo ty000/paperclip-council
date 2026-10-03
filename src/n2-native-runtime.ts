@@ -341,12 +341,7 @@ async function releaseNativeCorrection(ctx: PluginContext, mission: MissionRecor
   const wake = await ctx.issues.requestWakeup(mission.rootIssueId, mission.companyId, {
     idempotencyKey: `council:n2:correction:${state.correction.reservationId}`, reason: "council_n2_settled_correction", actorUserId: input.actorUserId!,
   });
-  const after = await fresh(ctx, mission); const current = storedN2(after);
-  const saved = await n2Cas(ctx, after, { ...after.aggregate, phase: wake.runId ? "correcting" : after.aggregate.phase,
-    n2: { ...current, status: wake.runId ? "correcting" : current.status,
-      native: { ...current.native!, releaseState: wake.runId ? "released" : "claimed" },
-      correction: { ...current.correction!, runId: current.correction?.runId ?? wake.runId, wakeState: wake.runId ? "requested" : "unknown" } } });
-  return { ...claimed, outcome: wake.runId ? "requested" : "unknown", mission: saved };
+  return { ...claimed, outcome: wake.runId ? "requested" : "unknown", mission: await recordNativeCorrectionWake(ctx, mission, wake.runId) };
 }
 
 async function observeNativeCorrection(ctx: PluginContext, mission: MissionRecord, input: { actorUserId: string | null; body: Record<string, unknown> }) {
@@ -363,4 +358,13 @@ async function observeNativeCorrection(ctx: PluginContext, mission: MissionRecor
     return { ...observed, outcome: "observed" };
   }
   return null;
+}
+
+async function recordNativeCorrectionWake(ctx: PluginContext, mission: MissionRecord, runId: string | null) {
+  const after = await fresh(ctx, mission); const current = storedN2(after);
+  const started = Boolean(runId && current.status === "correction_requested");
+  return n2Cas(ctx, after, { ...after.aggregate, phase: started ? "correcting" : after.aggregate.phase,
+    n2: { ...current, status: started ? "correcting" : current.status,
+      native: { ...current.native!, releaseState: runId ? "released" : "claimed" },
+      correction: { ...current.correction!, runId: current.correction?.runId ?? runId, wakeState: runId ? "requested" : "unknown" } } });
 }

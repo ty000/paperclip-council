@@ -36,3 +36,18 @@ it("invalidates a rejected credential without replaying the failed HTTP request"
   await councilNativeRequest(ctx, "company-1", path);
   expect(resolve).toHaveBeenCalledTimes(2);
 });
+it("reads the measured 100 KiB native run shape while retaining a finite telemetry bound", async () => {
+  const { ctx, fetch } = fixture();
+  const body = { id: "run1", contextSnapshot: { description: "x".repeat(101_848) } };
+  fetch.mockImplementationOnce(async () => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }));
+  expect((await councilNativeRequest(ctx, "company-1", path)).body).toEqual(body);
+  fetch.mockImplementationOnce(async () => new Response(JSON.stringify({ oversized: "x".repeat(512 * 1024) }), { status: 200 }));
+  await expect(councilNativeRequest(ctx, "company-1", path)).rejects.toThrow(/truncated=true, maximumBytes=524288/);
+});
+it("does not widen write-response bounds or accept malformed readback JSON", async () => {
+  const { ctx, fetch } = fixture();
+  fetch.mockImplementationOnce(async () => new Response(JSON.stringify({ oversized: "x".repeat(65_536) }), { status: 200 }));
+  await expect(councilNativeRequest(ctx, "company-1", "/api/issues/issue1", { method: "POST" })).rejects.toThrow(/truncated=true, maximumBytes=65536/);
+  fetch.mockImplementationOnce(async () => new Response("not JSON", { status: 502, headers: { "content-type": "text/plain" } }));
+  await expect(councilNativeRequest(ctx, "company-1", path)).rejects.toThrow(/status=502, type=text\/plain, truncated=false/);
+});
