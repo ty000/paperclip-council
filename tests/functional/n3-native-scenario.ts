@@ -1,3 +1,4 @@
+import { continuationMode } from "./n5-continuation-scenario.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 
@@ -38,9 +39,9 @@ export async function prepareN3Scenario(input: any, prepared: any) {
         evidenceRefs: [`git:${n3.review.subject.candidateCommit}:alpha.txt`], evidenceLimits: ["deterministic model content; provider quality not qualified"],
         consequence: "The required corrected candidate is absent", recommendedAction: "Correct alpha.txt once" };
       const opinion = { subject: n3.review.subject, slotId: agent.slotId, opinionId: randomUUID(),
-        outcome: agent.perspective === "quality" && !prior ? "changes_requested" : "support",
+        outcome: agent.perspective === "quality" && !prior && !continuationMode ? "changes_requested" : "support",
         rationale: agent.perspective === "product" ? "The bounded integrated product outcome is present" : prior ? "V2 includes the correction marker" : "V1 lacks the requested correction marker",
-        findings: agent.perspective === "quality" && !prior ? [finding] : [], unresolvedQuestions: [] };
+        findings: agent.perspective === "quality" && !prior && !continuationMode ? [finding] : [], unresolvedQuestions: [] };
       const stale = await call({ command: "n3-opinion", commandId: randomUUID(), expectedVersion: inspected.body.version,
         opinion: { ...opinion, subject: { ...opinion.subject, evidenceRevision: opinion.subject.evidenceRevision + 1 } } });
       assert.equal(stale.status, 409, JSON.stringify(stale.body));

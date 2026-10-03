@@ -179,7 +179,7 @@ export async function executeNativeN2Agent(ctx: PluginContext, initial: MissionR
     const current = storedN2(mission);
     const submission = current.correction!.preparedSubmission!;
     const reservationId = runtimeUuid(body.reviewReservationId, "reviewReservationId");
-    if (!mission.aggregate.n3) await reserveN2Run(ctx, mission, { reservationId, effectId: submission.submissionId, kind: "initial" });
+    if (!mission.aggregate.n3) await reserveN2Run(ctx, mission, { reservationId, effectId: submission.submissionId, kind: mission.aggregate.n5?.continuation ? "correction" : "initial" });
     const baseline = await readNativeSequentialUsageBaseline(ctx, { companyId: mission.companyId, issueId: mission.rootIssueId });
     // V2 is verified before this individual reviewer reservation; native finish
     // now produces its card and outbox without waiting on aggregate issue usage.

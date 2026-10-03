@@ -127,7 +127,7 @@ const requireServer = createRequire(resolve(root, "server/package.json"));
 const { eq, inArray, sql } = requireServer("drizzle-orm");
 const evidence: Record<string, any> = {
   schemaVersion: 1,
-  proofId: n2NativeLifecycleMode ? `paperclip-council-${process.env.COUNCIL_N5_NATIVE_LIFECYCLE === "1" ? "n5" : process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1" ? "n3" : "n2"}-native-deterministic-lifecycle-v1` : n2PrerequisiteMode
+  proofId: n2NativeLifecycleMode ? `paperclip-council-${process.env.COUNCIL_N5_CONTINUATION === "1" ? "n5-continuation" : process.env.COUNCIL_N5_NATIVE_LIFECYCLE === "1" ? "n5" : process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1" ? "n3" : "n2"}-native-deterministic-lifecycle-v1` : n2PrerequisiteMode
     ? "paperclip-council-n2-native-stage-prerequisite-v1"
     : isolatedLiveN2Authorized
     ? "paperclip-council-n2-isolated-observable-native-qualification-v1"
@@ -142,7 +142,7 @@ const evidence: Record<string, any> = {
   branch: execFileSync("git", ["branch", "--show-current"], { cwd: root, encoding: "utf8" }).trim(),
   node: process.version,
   command: n2NativeLifecycleMode
-    ? `${process.env.COUNCIL_N5_NATIVE_LIFECYCLE === "1" ? "COUNCIL_N5_NATIVE_LIFECYCLE=1 " : ""}${process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1" ? "COUNCIL_N3_NATIVE_LIFECYCLE=1 " : ""}PAPERCLIP_TEST_HOST_ROOT=<clean-host> COUNCIL_N2_NATIVE_HOST_COMMIT=<exact-host-sha> pnpm qualification:native:n2`
+    ? `${process.env.COUNCIL_N5_CONTINUATION === "1" ? "COUNCIL_N5_CONTINUATION=1 COUNCIL_N5_NATIVE_LIFECYCLE=1 " : process.env.COUNCIL_N5_NATIVE_LIFECYCLE === "1" ? "COUNCIL_N5_NATIVE_LIFECYCLE=1 " : ""}${process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1" ? "COUNCIL_N3_NATIVE_LIFECYCLE=1 " : ""}PAPERCLIP_TEST_HOST_ROOT=<clean-host> COUNCIL_N2_NATIVE_HOST_COMMIT=<exact-host-sha> pnpm qualification:native:n2`
     : liveN2Authorized
     ? "COUNCIL_N2_LIVE_AUTHORIZED=1 COUNCIL_N2_LIVE_MODEL=gpt-5.6-sol COUNCIL_N2_LIVE_EFFORT=high COUNCIL_N2_LIVE_RUN_UNITS=<positive> COUNCIL_N2_LIVE_PERIOD_UNITS=<exactly-6x-run> pnpm qualification:live:n2"
     : isolatedLiveN2Authorized
