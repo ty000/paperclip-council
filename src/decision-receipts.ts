@@ -459,3 +459,29 @@ export function registerDecisionReceiptBridge(ctx: PluginContext) {
     });
   });
 }
+
+/** Persists a verified GET observation; never emits or retries the reviewer's native effect. */
+export async function recordCouncilNativeReadback(ctx: PluginContext, input: CouncilDecisionInput, evidence: {
+  packetHash: string; reportHash: string; card: unknown;
+}): Promise<DecisionReceipt> {
+  if (!input.nativeReview || !isUsableNativeResponse(evidence.card, input)) {
+    throw new DecisionReceiptError(409, "native_readback_invalid", "Exact attributed native review observation required");
+  }
+  const targetUrl = `/api/issues/${input.issueId}/interactions`;
+  const requestBody = { method: "GET", provenance: "native-review-terminal-readback-v1", packetHash: evidence.packetHash,
+    reportHash: evidence.reportHash, nativeReview: input.nativeReview, runId: input.runId };
+  const hash = contentHash(input, targetUrl, requestBody);
+  const attemptId = randomUUID();
+  await ctx.db.execute(`INSERT INTO ${table(ctx)}
+    (company_id, issue_id, operation_id, content_sha256, verdict, target_url, request_body,
+      actor_agent_id, run_id, attempt_id, state, block_reason)
+    VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,'indeterminate','readback_record_pending')
+    ON CONFLICT (company_id, issue_id, operation_id) DO NOTHING`,
+    [input.companyId, input.issueId, input.operationId, hash, input.verdict, targetUrl, JSON.stringify(requestBody), input.actorAgentId, input.runId, attemptId]);
+  const row = await getCompanyOperationRow(ctx, input.companyId, input.operationId);
+  if (!row || row.content_sha256 !== hash || row.run_id !== input.runId || row.verdict !== input.verdict) {
+    throw new DecisionReceiptError(409, "operation_content_conflict", "Native readback operation is bound to different evidence");
+  }
+  if (row.native_observed_at) return parseReceipt(row);
+  return recordNativeObservation(ctx, input, row.attempt_id, { status: 200, body: evidence.card, usable: true, blockReason: null });
+}

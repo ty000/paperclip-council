@@ -592,6 +592,12 @@ function n2Blockage(state: N2State, round: N2ReviewRound | null) {
 }
 
 function n2NextAction(state: N2State, round: N2ReviewRound | null) {
+  if (state.native?.correctionOwnerAction === "restore_wake_policy" && state.status === "correction_requested") {
+    return { actorKind: "operator" as const, actorId: null, label: "Correction reserved after native verdict and exact costs: restore demand wakes on the dedicated lead (timer stays disabled), then release-native-correction once." };
+  }
+  if (state.native?.reviewProtocol && (state.status === "review_handoff" || state.status === "reviewing")) {
+    return { actorKind: "operator" as const, actorId: null, label: "Native reviewer reads the frozen packet, resolves the card and finishes its JSON summary. Reconcile native verdict, packet and all costs before Council acceptance; missing evidence stays blocked." };
+  }
   if (round?.handoff.state === "unknown") {
     return { actorKind: "operator" as const, actorId: null, label: "Reconcile the uncertain native handoff; do not retry or confirm from local state." };
   }
