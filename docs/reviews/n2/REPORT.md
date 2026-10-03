@@ -1,5 +1,42 @@
 # N2 — ordinary correction and confirmed acceptance
 
+## Current checkpoint — 2026-10-03
+
+**Complete native N2 lifecycle validated with deterministic model execution** on
+Council source `fa8af3861c2f1b6e74a794289a9d3c1fa3e3734b` and the separate local
+Paperclip core candidate `e5b4b1de306e0d898390fef02bdf8abffa43e814`. The installed
+plugin traversed reviewer → changes requested → correction → distinct V2 →
+acceptance through real API authorization, heartbeat finalization, costs, events,
+locks and recovery. Exactly three runs succeeded, three native cost rows recorded
+372 simulated tokens in total, all three reservations settled with zero remaining
+exposure, no additional run appeared, and the owned runtime was removed.
+
+Evidence: `artifacts/n2-native-lifecycle-fa8af3861c2f1b6e74a794289a9d3c1fa3e3734b.json`,
+SHA-256 `8f90b60f9a1b47c8a6c0241aac9eabc70dba18c7a496c0aebbdeefca6fe0cdd5`.
+`artifacts/n2-native-lifecycle-gates-fa8af38.json` records the bounded checks:
+Council 233 tests/typecheck/build PASS, 181 targeted core tests PASS, and both
+Fallow diff gates PASS. Core server typecheck remains non-green with diagnostics
+byte-identical to the base; full core monorepo checks are not claimed.
+
+The core change makes release and maintenance recovery respect
+`wakeOnDemand=false`; it is a **local dependency not yet adopted, published,
+merged or deployed**. N2 approval now uses its immutable verified submission and
+rechecks its attachment binding; non-N2 legacy manifest checks remain intact.
+The protocol remains operator-assisted: enable an admitted dispatch, observe its
+exact run, then disable wakes. The deterministic model rendezvous covers that
+state, not the timing race for an arbitrarily fast model. No provider was called,
+no new LIVE campaign was executed, and no autonomous orchestration is claimed.
+
+This checkpoint is a documentation-only update after `fa8af38`: executable code
+is unchanged, and the proof remains bound to that source SHA without another
+run. **All older status statements and proposed LIVE commands below are
+historical. In particular, proposals using host `61b3fd57` are not ready to
+relaunch:** that host lacks the required recovery fix. The original host pin and
+historical campaign artifacts remain unchanged; adopting and qualifying the core
+dependency and obtaining a new explicit LIVE authorization remain separate steps.
+
+---
+
 Updated: 2026-10-03 (Europe/Paris). Status: **provider-free synthetic N2 integration validated through accepted restart readback; the latest isolated LIVE campaign reached a prepared `changes_requested` verdict but exposed a terminal-run ordering defect and is not N2-qualified**.
 
 ## Exact base and scope
