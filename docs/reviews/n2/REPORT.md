@@ -9,8 +9,9 @@ bas sont historiques : ils ne lancent pas le nouveau profil expérimental.**
 Aucun nouveau launcher provider, déploiement ni migration d'agents installés n'est
 livré ou autorisé par ce checkpoint.
 
-Source exécutable : `99cc01dd74af193c4d9e020718a93a9db8971a20` ; le commit
-suivant ne met à jour que README/rapport/manifeste. Le package de ce SHA a été
+Source exécutable : `99cc01dd74af193c4d9e020718a93a9db8971a20` ; les mises à jour
+suivantes portent uniquement sur la documentation et la déclaration statique du
+host externe, sans modifier ce code exécutable. Le package de ce SHA a été
 construit, installé et chargé dans une instance éphémère authentifiée. La vraie
 mission N1 legacy `ready_for_review` sert de départ, puis quatre exécutions réelles :
 
@@ -140,6 +141,15 @@ claim, gates, finalizer, HTTP/auth, événements, cost rows et recovery sont ré
 Les trois runs de préparation N1 restent des fixtures explicites, jamais comptés
 parmi les quatre exécutions N2. Il n'y a ni provider, ni core patch, ni daemon
 simulé, ni migration d'agent installé. Le runtime éphémère a été supprimé.
+
+La CI générale n'installe pas le checkout Paperclip optionnel. `.fallowrc.json`
+déclare dans `ignoreUnresolvedImports` les 17 specifiers exacts de ce host externe
+utilisés par les deux tests natifs (18 signalements CI). Cette option Fallow 3.23.0
+ne supprime que `unresolved-import` pour ces chaînes exactes : les fichiers, leurs
+autres imports et les autres findings restent analysés. Aucun glob de suppression,
+aucune exclusion de test, aucun changement de résolution runtime ou de mock. Les
+imports sont réellement résolus dans la qualification native au host épinglé ;
+la présence du host local ne doit plus masquer une dépendance de l'audit CI.
 
 Le probe de causalité est rejouable par
 `node node_modules/vitest/vitest.mjs run --config scripts/qualification/n2-native-dependency.config.mjs`.

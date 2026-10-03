@@ -27,7 +27,7 @@
       "location": "artifacts/n2-native-lifecycle-gates-99cc01dd74af193c4d9e020718a93a9db8971a20.json",
       "sha256": "449d96b1a0992facd99327abf5dfc3739ca8538e0b638434b477d2835b2d7322",
       "replayable": true,
-      "notes": "Canonical typecheck/246tests/build PASS; Fallow3.23.0 diff-gate base035f69ac86b8955ede299ffb9e8c326c3d3abd38 PASS; linked artifact hashes. Final follow-up only changes documentation."
+      "notes": "Canonical typecheck/246tests/build PASS; Fallow3.23.0 diff-gate base035f69ac86b8955ede299ffb9e8c326c3d3abd38 PASS; linked artifact hashes. Follow-up changes documentation and exact static external-host declarations only; executable source and model substitution are unchanged."
     },
     {
       "id": "n2-test-suite",

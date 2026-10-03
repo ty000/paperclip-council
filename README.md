@@ -378,6 +378,11 @@ recovery. Three N1 preparation rows remain labelled fixtures; N2 executes a real
 native transmission, reviewer1, correction and reviewer2. Each run has its own
 reservation and public per-run usage readback. Unknown usage retains its exposure.
 
+General CI does not install the optional Paperclip host. Fallow's
+`ignoreUnresolvedImports` lists only the 17 exact external host specifiers used by
+the native tests; their files, other imports and other findings remain audited.
+The native qualification resolves those imports against the pinned host at runtime.
+
 The launcher checks final exact-candidate acceptance, four successful runs/costs,
 settled reservations, replay without a fifth execution, and owned runtime cleanup.
 The dependency-cancelled predispatch row remains visible in the evidence. Neither
