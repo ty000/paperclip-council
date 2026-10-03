@@ -24,3 +24,6 @@ artifacts/n2-native-dependency-*.log
 
 artifacts/n3-native-lifecycle-*.json
 artifacts/n3-native-lifecycle-*.log
+
+artifacts/n5-native-lifecycle-*.json
+artifacts/n5-native-lifecycle-*.log

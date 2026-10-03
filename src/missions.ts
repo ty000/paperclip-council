@@ -1,3 +1,4 @@
+import { inspectN5 } from "./n5-state.js";
 import { inspectN3 } from "./n3-state.js";
 import { createHash } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
@@ -79,6 +80,7 @@ export type MissionAggregate = {
   n1?: Record<string, unknown>;
   n2?: N2State;
   n3?: import("./n3-state.js").N3State;
+  n5?: import("./n5-state.js").N5State;
 };
 
 export type PinnedRoster = {
@@ -621,6 +623,7 @@ export function inspectMission(mission: MissionRecord) {
     n1,
     n2,
     n3: inspectN3(mission),
+    n5: inspectN5(mission),
   };
 }
 

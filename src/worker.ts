@@ -1,3 +1,4 @@
+import { handleN5Agent, handleN5Board } from "./n5-runtime.js";
 import { handleN3Specialist } from "./n3-runtime.js";
 import { N3OpinionError } from "./n3-opinions.js";
 import {
@@ -193,6 +194,7 @@ export async function handleDecision(
 async function handleMissionAgentCommand(input: PluginApiRequestInput, context: PluginContext) {
   const command = input.body && typeof input.body === "object" && !Array.isArray(input.body)
     ? (input.body as Record<string, unknown>).command : null;
+  if (typeof command === "string" && command.startsWith("n5-")) return handleN5Agent(context, input);
   if (command === "n3-inspect" || command === "n3-opinion") {
     try { return { status: 200, body: await handleN3Specialist(context, input) }; }
     catch (error) {
@@ -217,6 +219,7 @@ export async function handlePluginRequest(input: PluginApiRequestInput, context:
   if (input.routeKey === "admission-read" || input.routeKey === "admission-command") return handleN1AdmissionApi(input, context);
   if (input.routeKey === "mission-agent-command") return handleMissionAgentCommand(input, context);
   if (input.routeKey.startsWith("roster")) return handleRosterApi(input, context);
+  if (input.routeKey === "mission-command" && ["configure-delivery", "reconcile-delivery"].includes(String((input.body as { command?: string })?.command))) return handleN5Board(context, input);
   if (input.routeKey.startsWith("mission")) return handleMissionApi(input, context);
   if (input.routeKey !== "foundation-probe") {
     return { status: 404, body: { error: "Unknown route" } };
