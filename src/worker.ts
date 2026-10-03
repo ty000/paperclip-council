@@ -199,7 +199,7 @@ export async function handlePluginRequest(input: PluginApiRequestInput, context:
       const mission = await getMissionByRootIssue(context, input.companyId, input.params.issueId);
       if (mission?.aggregate.n2) return handleN2AgentApi(input, context);
     }
-    if (command === "confirm-review-handoff" || command === "prepare-resubmission") {
+    if (command === "confirm-review-handoff" || command === "prepare-resubmission" || command === "attest-transmission") {
       return handleN2AgentApi(input, context);
     }
     return handleN1AgentApi(input, context);

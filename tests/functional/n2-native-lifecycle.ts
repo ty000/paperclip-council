@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { prepareN2Prerequisite } from "./n2-prerequisite.js";
+import { nativeRunEvidence } from "./n1-live.js";
 import { nativeModel } from "./n2-native-model.js";
 
 export async function runN2NativeLifecycle(input: any) {
@@ -149,8 +150,8 @@ export async function runN2NativeLifecycle(input: any) {
   const runs = (await db.select().from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.companyId, prepared.companyId))).filter((run: any) => run.contextSnapshot?.issueId === prepared.rootIssueId);
   const finalRuns = runs.filter((run: any) => executions.some(execution => execution.runId === run.id));
   const costs = await db.select().from(tables.costEvents).where(eq(tables.costEvents.issueId, prepared.rootIssueId));
-  evidence.nativeLifecycle.finalRuns = finalRuns;
-  evidence.nativeLifecycle.allRootRuns = runs;
+  evidence.nativeLifecycle.finalRuns = finalRuns.map((run: any) => ({ ...nativeRunEvidence(run), runtimeMode: run.runtimeMode }));
+  evidence.nativeLifecycle.allRootRuns = runs.map((run: any) => ({ ...nativeRunEvidence(run), runtimeMode: run.runtimeMode, errorCode: run.errorCode }));
   evidence.nativeLifecycle.costs = costs;
   evidence.nativeLifecycle.finalMission = mission;
   evidence.nativeLifecycle.finalAdmission = admission;
