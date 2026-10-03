@@ -401,3 +401,71 @@ it("checks public release of a reviewer wait after a real native transmission", 
     await api.close();
   }
 }, 60000);
+
+it("keeps native rejection correction behind an owner-held lead wake policy", async () => {
+  const companyId = CONTROL_PLANE_CONFORMANCE_OPEN.identity.companyId;
+  const leadId = randomUUID(); const reviewerId = randomUUID(); const issueId = randomUUID();
+  await db.insert(agents).values([leadId, reviewerId].map((id, index) => ({ id, companyId,
+    name: index ? "Readback independent reviewer" : "Dedicated readback lead", status: "idle",
+    adapterType: "paperclip_runner", adapterConfig: { provider: "codex", model: "deterministic-test" },
+    runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: true, maxConcurrentRuns: 1 } } })));
+  await db.insert(issues).values({ id: issueId, companyId, title: "Native verdict then Council readback boundary", status: "in_progress",
+    assigneeAgentId: leadId, responsibleUserId: "reviewer-24", workMode: "standard" });
+  const trace: any[] = []; const executions: any[] = [];
+  let api: Awaited<ReturnType<typeof startProbeApi>>;
+  const { costEvents } = await import("../../.paperclip/qualification/paperclip/packages/db/src/index.ts");
+  const snapshot = async (event: string) => {
+    const runs = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.nativeIssueId, issueId));
+    const costs = await db.select().from(costEvents).where(eq(costEvents.issueId, issueId));
+    const [issue] = await db.select().from(issues).where(eq(issues.id, issueId));
+    const cards = await db.select().from(issueThreadInteractions).where(eq(issueThreadInteractions.issueId, issueId));
+    const wakes = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, leadId));
+    trace.push({ event, runs, costs, issue, cards, wakes }); return { runs, costs, issue, cards, wakes };
+  };
+  injectedModel.factory = deterministicModel(trace, async (execution, result) => {
+    executions.push(execution.binding);
+    expect(executions.length).toBeLessThanOrEqual(3);
+    if (execution.binding.agentId === reviewerId) {
+      const [run] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, execution.binding.runId));
+      const authority = new PaperclipRunnerToolAuthority(db, { ...execution.binding, apiUrl: api.apiUrl,
+        nativeReview: { nativeReviewInteractionId: run.contextSnapshot.nativeReviewInteractionId, nativeReviewDecisionId: run.contextSnapshot.nativeReviewDecisionId } });
+      await expect(authority.execute({ tool: "call_api", callId: randomUUID(), arguments: { operationId: "GET /api/plugins/tools" } })).rejects.toThrow("may only inspect");
+      await authority.execute({ tool: "get_task_context", callId: randomUUID(), arguments: {} });
+      await expect(authority.execute({ tool: "resolve_review", callId: randomUUID(), arguments: { decision: "reject", reason: "The candidate still lacks the required correction marker" } })).resolves.toMatchObject({ status: "rejected" });
+      result.summary = JSON.stringify({ schema: "council-native-review-feasibility-v1", verdict: "changes_requested", rationale: "Required correction marker missing" });
+      const rejected = await snapshot("native_reject_before_reviewer_finish");
+      expect(rejected.issue.status).toBe("todo"); expect(rejected.runs).toHaveLength(2); expect(rejected.costs).toHaveLength(1);
+      expect(rejected.cards[0]).toMatchObject({ status: "rejected", resolvedByAgentId: reviewerId, resolvedByRunId: execution.binding.runId });
+    } else if (executions.length === 1) {
+      const held = await api.request("PATCH", `/agents/${leadId}`, { runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: false, maxConcurrentRuns: 1 } } });
+      expect(held.runtimeConfig.heartbeat).toMatchObject({ enabled: false, wakeOnDemand: false });
+      const existing = await snapshot("owner_hold_before_source_finish");
+      expect(existing.runs).toHaveLength(1); expect(existing.runs[0].status).toBe("running");
+      result.reportedWorkDisposition = "needs_review";
+      result.attentionRequests = [{ kind: "review", summary: "Independent review before Council readback", ownerClass: "agent", targetAgentId: reviewerId }];
+    }
+  });
+  api = await startProbeApi(trace);
+  const { heartbeatService } = await import("../../.paperclip/qualification/paperclip/server/src/services/heartbeat.ts");
+  const heartbeat = heartbeatService(db);
+  try {
+    await api.request("POST", `/agents/${leadId}/wakeup`, { source: "on_demand", reason: "council_n2_transmission", payload: { issueId }, idempotencyKey: `native-readback:${issueId}:source` });
+    await heartbeat.drainActiveRunExecutions();
+    await heartbeat.dispatchPendingNativeStatusWakeups({ companyId }); await heartbeat.resumeQueuedRuns(); await heartbeat.drainActiveRunExecutions();
+    await heartbeat.reconcileStrandedAssignedIssues(); await heartbeat.drainActiveRunExecutions();
+    const held = await snapshot("reviewer_terminal_cost_recorded_lead_still_held");
+    expect(held.runs).toHaveLength(2); expect(held.runs.every((run: any) => run.status === "succeeded")).toBe(true); expect(held.costs).toHaveLength(2);
+    expect(held.wakes).toEqual(expect.arrayContaining([expect.objectContaining({ reason: "heartbeat.wakeOnDemand.disabled", runId: null })]));
+    // This probe proves the public wake primitive only. Integrated Council qualification
+    // must additionally reserve correction G4 before authorizing these owner actions.
+    await api.request("PATCH", `/agents/${leadId}`, { runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: true, maxConcurrentRuns: 1 } } });
+    await api.request("POST", `/agents/${leadId}/wakeup`, { source: "on_demand", reason: "council_n2_settled_correction", payload: { issueId }, idempotencyKey: `native-readback:${issueId}:correction` });
+    await heartbeat.drainActiveRunExecutions();
+    const released = await snapshot("one_owner_correction_wake_after_terminal_costs");
+    expect(executions).toHaveLength(3); expect(released.runs).toHaveLength(3); expect(released.costs).toHaveLength(3);
+  } finally {
+    injectedModel.factory = undefined;
+    writeProof("owner-held-native-review", { boundary: "Identity/issue fixtures; real native source/reviewer/correction lifecycle, owner HTTP hold/release and reviewer tools; deterministic model/usage only. Council G4 reservation still requires integrated qualification.", trace });
+    await api.close();
+  }
+}, 60000);

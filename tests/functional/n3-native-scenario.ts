@@ -64,27 +64,5 @@ export async function prepareN3Scenario(input: any, prepared: any) {
         invalidOutcome: invalidOutcome.body.code, rejectedOutcomeUnchangedVersion: unchanged.body.version, missingBefore: n3.missing, opinion: recorded.body.mission.aggregate.n3.rounds.at(-1).review.opinions.at(-1) });
       return true;
     },
-    async synthesize(call: any, inspection: any, actor: string, decisionBody: any) {
-      const endpoint = `/api/plugins/${input.pluginId}/api/issues/${prepared.rootIssueId}/decision`;
-      const blocked = await request(actor, "POST", endpoint, decisionBody);
-      assert.equal(blocked.status, 409, JSON.stringify(blocked.body));
-      assert.equal(blocked.body.code, "n3_synthesis_required");
-      const review = inspection.n3.review;
-      assert.equal(inspection.n3.missing.length, 0);
-      assert.equal(inspection.n3.usageUnknown.length, 0);
-      const synthesis = { subject: review.subject, verdict: decisionBody.verdict, rationale: "Independent final reviewer preserves the distinct views and resolves every material objection",
-        dispositions: review.opinions.flatMap((opinion: any) => opinion.findings.filter((finding: any) => finding.classification !== "deferrable_improvement")
-          .map((finding: any) => ({ findingId: finding.findingId, disposition: "upheld_with_correction", reason: "One bounded alpha.txt correction is necessary", evidenceRefs: finding.evidenceRefs }))) };
-      const invalidVerdict = await request(actor, "POST", route(prepared.rootIssueId), { missionId: prepared.missionId,
-        command: "n3-synthesize", commandId: randomUUID(), expectedVersion: inspection.version,
-        synthesis: { ...synthesis, verdict: "typo_approved" } });
-      assert.equal(invalidVerdict.status, 409, JSON.stringify(invalidVerdict.body));
-      assert.equal(invalidVerdict.body.code, "invalid_n3_verdict");
-      const unchanged = await call({ command: "inspect" });
-      assert.equal(unchanged.version, inspection.version);
-      assert.deepEqual(unchanged.n3.review, review);
-      await call({ command: "n3-synthesize", commandId: randomUUID(), expectedVersion: inspection.version, synthesis });
-      guards.push({ subject: review.subject, missingSynthesis: blocked.body.code, invalidVerdict: invalidVerdict.body.code, rejectedVerdictUnchangedVersion: unchanged.version, synthesis });
-    },
   };
 }

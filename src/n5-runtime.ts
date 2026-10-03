@@ -40,6 +40,10 @@ export async function startN5Publication(ctx: PluginContext, initial: MissionRec
   if (n5.publication && !updating) return m;
   const submission = acceptedN5Submission(m);
   await assertCurrentN5Plan(ctx, m);
+  if (m.aggregate.n2?.native?.reviewProtocol && n5.authority.publisherAgentId === m.aggregate.responsibilities.integrationLeadAgentId) {
+    const { assertNativeLeadWakePolicy } = await import("./n2-native-report.js");
+    await assertNativeLeadWakePolicy(ctx, m, false);
+  }
   const intentId = randomUUID(); const reservationId = randomUUID();
   // This CAS is the unique creation claim; any uncertain child creation stays retained.
   m = await save(ctx, m, { ...n5, ...(updating ? { continuation: { ...continuation!, updateAdmitted: true } } : {}),

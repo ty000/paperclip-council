@@ -72,7 +72,7 @@ export function buildCouncilDecisionRequest(config: CouncilConfig, input: Counci
   } as const;
 }
 
-async function readBoundedResponse(response: Response): Promise<{
+async function readBoundedResponse(response: Response, maximumBytes = MAX_NATIVE_RESPONSE_BYTES): Promise<{
   body: unknown;
   validJson: boolean;
   truncated: boolean;
@@ -85,10 +85,10 @@ async function readBoundedResponse(response: Response): Promise<{
     const next = await reader.read();
     if (next.done) break;
     length += next.value.byteLength;
-    if (length > MAX_NATIVE_RESPONSE_BYTES) {
+    if (length > maximumBytes) {
       await reader.cancel();
       return {
-        body: { truncated: true, maximumBytes: MAX_NATIVE_RESPONSE_BYTES },
+        body: { truncated: true, maximumBytes },
         validJson: false,
         truncated: true,
       };
@@ -143,8 +143,12 @@ export async function councilNativeRequest(
     signal: AbortSignal.timeout(15_000), redirect: "error",
   });
   if (response.status === 401 || response.status === 403) nativeReadCredentials.delete(ctx);
-  const parsed = await readBoundedResponse(response);
-  if (!parsed.validJson || parsed.truncated) throw new Error("Native response is not bounded valid JSON");
+  // Public heartbeat telemetry includes contextSnapshot and runnerProfileJson:
+  // the native correction response measured 101,848 bytes on the pinned host.
+  // Keep a finite read-only allowance; decision effects retain the 64 KiB bound.
+  const maximumBytes = (!options.method || options.method === "GET") && path.startsWith("/api/heartbeat-runs/") ? 512 * 1024 : MAX_NATIVE_RESPONSE_BYTES;
+  const parsed = await readBoundedResponse(response, maximumBytes);
+  if (!parsed.validJson || parsed.truncated) throw new Error(`Native response is not bounded valid JSON (status=${response.status}, type=${response.headers.get("content-type")}, truncated=${parsed.truncated}, maximumBytes=${maximumBytes})`);
   return { status: response.status, body: parsed.body };
 }
 

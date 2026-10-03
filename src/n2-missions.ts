@@ -335,7 +335,20 @@ function decisionReceiptMetadataMatches(mission: MissionRecord, input: N2Decisio
     && receipt.runId === input.runId;
 }
 
-function decisionReceiptSubjectMatches(submission: N2Submission, input: N2DecisionInput): boolean {
+function nativeReceiptSubjectMatches(mission: MissionRecord, submission: N2Submission, input: N2DecisionInput): boolean {
+    const packet = mission.aggregate.n2!.native!.reviewPackets?.find(p => p.operationId === input.operationId && p.packet.submission.submissionId === submission.submissionId);
+    const observation = packet?.observation; const body = input.receipt.requestBody;
+    if (!packet || !observation) return false;
+    return Boolean(observation.runId === input.runId && observation.report.verdict === input.verdict
+      && body.method === "GET" && body.provenance === "native-review-terminal-readback-v1" && body.packetHash === packet.hash
+      && body.reportHash === canonicalPayloadHash(observation.report)
+      && observation.report.subject.submissionId === submission.submissionId && observation.report.subject.candidateCommit === submission.candidateCommit);
+}
+
+function decisionReceiptSubjectMatches(mission: MissionRecord, submission: N2Submission, input: N2DecisionInput): boolean {
+  if (mission.aggregate.n2?.native?.reviewProtocol === "native-verdict-readback-v1") {
+    return nativeReceiptSubjectMatches(mission, submission, input);
+  }
   const receipt = input.receipt;
   const requestStatus = input.verdict === "changes_requested" ? "in_progress" : "done";
   const lines = typeof receipt.requestBody.comment === "string"
@@ -353,7 +366,7 @@ function validateDecisionReceipt(mission: MissionRecord, submission: N2Submissio
   if (!decisionReceiptMetadataMatches(mission, input)) {
     throw new MissionError(409, "decision_receipt_mismatch", "Decision receipt is not bound to this mission, actor, run, operation, and verdict");
   }
-  if (!decisionReceiptSubjectMatches(submission, input)) {
+  if (!decisionReceiptSubjectMatches(mission, submission, input)) {
     throw new MissionError(409, "decision_receipt_subject_mismatch", "Decision receipt content is not bound to the active submission and candidate");
   }
 }
@@ -591,7 +604,19 @@ function n2Blockage(state: N2State, round: N2ReviewRound | null) {
   return null;
 }
 
+function nativeN2NextAction(state: N2State) {
+  if (state.native?.correctionOwnerAction === "restore_wake_policy" && state.status === "correction_requested") {
+    return { actorKind: "operator" as const, actorId: null, label: "Correction reserved after native verdict and exact costs: restore demand wakes on the dedicated lead (timer stays disabled), then release-native-correction once." };
+  }
+  if (state.native?.reviewProtocol && (state.status === "review_handoff" || state.status === "reviewing")) {
+    return { actorKind: "operator" as const, actorId: null, label: "Native reviewer reads the frozen packet, resolves the card and finishes its JSON summary. Reconcile native verdict, packet and all costs before Council acceptance; missing evidence stays blocked." };
+  }
+  return null;
+}
+
 function n2NextAction(state: N2State, round: N2ReviewRound | null) {
+  const nativeAction = nativeN2NextAction(state);
+  if (nativeAction) return nativeAction;
   if (round?.handoff.state === "unknown") {
     return { actorKind: "operator" as const, actorId: null, label: "Reconcile the uncertain native handoff; do not retry or confirm from local state." };
   }
