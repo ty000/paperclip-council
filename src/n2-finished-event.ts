@@ -20,6 +20,7 @@ type FinishedRunPayload = {
 };
 
 export type N2FinishedEventResult =
+  | { outcome: "reconciled" }
   | { outcome: "ignored"; reason: string }
   | { outcome: "prepared"; reason: "usage_not_ready"; attempts: number }
   | { outcome: "prepared"; reason: "receipt_pending"; operationId: string }
@@ -63,6 +64,22 @@ export async function handleN2RunFinished(
 
   let mission = await getMissionByRootIssue(ctx, event.companyId, run.issueId);
   if (!mission?.aggregate.n2) return { outcome: "ignored", reason: "n2_mission_unavailable" };
+  if (mission.aggregate.n2.native) {
+    const { reconcileNativeN2 } = await import("./n2-native-runtime.js");
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        await reconcileNativeN2(ctx, mission);
+        return { outcome: "reconciled" };
+      } catch (error) {
+        const retryable = error instanceof AdmissionError && ["g4_usage_unavailable", "g4_run_not_terminal", "version_conflict"].includes(error.code)
+          || error instanceof MissionError && error.code === "version_conflict";
+        if (!retryable) throw error;
+        if (attempt === attempts) return { outcome: "prepared", reason: "usage_not_ready", attempts };
+        await pause(delayMs);
+        mission = (await getMissionByRootIssue(ctx, event.companyId, run.issueId))!;
+      }
+    }
+  }
   let prepared = findPreparedN2Decision(mission, { runId: run.runId, actorAgentId: run.agentId });
   if (!prepared) return { outcome: "ignored", reason: "prepared_decision_unavailable" };
 

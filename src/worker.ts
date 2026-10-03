@@ -99,6 +99,10 @@ export async function handleDecision(
   const mission = await getMissionByRootIssue(context, input.companyId, issueId);
   if (mission?.aggregate.n2) {
     try {
+      if (mission.aggregate.n2.native) {
+        const { decideNativeN2 } = await import("./n2-native-runtime.js");
+        return await decideNativeN2(context, mission, input, decisionInput);
+      }
       const issue = await context.issues.get(issueId, input.companyId);
       if (!issue) return { status: 404, body: { error: "Issue not found" } };
       if (issue.companyId !== input.companyId || issue.status !== "in_review" || issue.assigneeAgentId !== config.councilAgentId) {

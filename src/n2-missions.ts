@@ -64,6 +64,7 @@ export type N2ReviewRound = {
 };
 
 export type N2State = {
+  native?: import("./n2-native-runtime.js").N2NativeRuntime;
   schemaVersion: 1;
   correctionLimit: 1;
   correctionsUsed: 0 | 1;
@@ -540,7 +541,7 @@ export function startN2ResubmittedReview(
 ): N2State {
   const correction = state.correction;
   const submission = correction?.preparedSubmission;
-  if (state.status !== "resubmission_prepared" || !correction?.runId || !correction.usageSettledAt || !submission) {
+  if (state.status !== "resubmission_prepared" || !correction?.runId || (!state.native && !correction.usageSettledAt) || !submission) {
     throw new MissionError(409, "resubmission_handoff_unavailable", "A verified V2 and settled correction run are required before second review");
   }
   if (!Number.isSafeInteger(input.baselineTokenTotal) || input.baselineTokenTotal < 0
@@ -679,7 +680,7 @@ function runtimeString(value: unknown, label: string, max = 1_000): string {
   return value;
 }
 
-function runtimeUuid(value: unknown, label: string): string {
+export function runtimeUuid(value: unknown, label: string): string {
   const result = runtimeString(value, label, 64);
   if (!UUID.test(result)) throw new MissionError(400, "malformed_request", `${label} must be a UUID`);
   return result;
@@ -697,7 +698,7 @@ function missionTable(ctx: PluginContext): string {
   return `${ctx.db.namespace}.missions`;
 }
 
-function storedN2(mission: MissionRecord): N2State {
+export function storedN2(mission: MissionRecord): N2State {
   const state = mission.aggregate.n2;
   if (!state || typeof state !== "object" || Array.isArray(state)) {
     throw new MissionError(409, "n2_not_started", "N2 review state is not recorded");
@@ -705,7 +706,7 @@ function storedN2(mission: MissionRecord): N2State {
   return state;
 }
 
-async function n2Cas(
+export async function n2Cas(
   ctx: PluginContext,
   mission: MissionRecord,
   aggregate: MissionAggregate,
@@ -723,7 +724,7 @@ async function n2Cas(
   return after;
 }
 
-function runtimeReceipt(
+export function runtimeReceipt(
   mission: MissionRecord,
   commandId: string,
   actorId: string,
@@ -737,7 +738,7 @@ function runtimeReceipt(
   return prior;
 }
 
-async function n2CommandCas(
+export async function n2CommandCas(
   ctx: PluginContext,
   mission: MissionRecord,
   body: Record<string, unknown>,
@@ -797,7 +798,7 @@ function executionPrincipals(issue: unknown) {
   };
 }
 
-async function nativeN2Profile(ctx: PluginContext, mission: MissionRecord) {
+export async function nativeN2Profile(ctx: PluginContext, mission: MissionRecord) {
   const profile = await readNativeG4Profile(ctx, mission.companyId);
   if (!profile || profile.maxCorrections !== 1) {
     throw new MissionError(409, "n2_correction_profile_required", "Native N2 requires maxCorrections=1 in the configured operating profile");
@@ -808,7 +809,7 @@ async function nativeN2Profile(ctx: PluginContext, mission: MissionRecord) {
   return { profile, envelope };
 }
 
-async function reserveN2Run(
+export async function reserveN2Run(
   ctx: PluginContext,
   mission: MissionRecord,
   input: { reservationId: string; effectId: string; kind: "initial" | "correction" },
@@ -861,6 +862,10 @@ export async function executeN2BoardCommand(ctx: PluginContext, input: {
   const mission = await getMission(ctx, input.companyId, input.missionId);
   if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
   await requireMissionOwner(ctx, mission, input.actorUserId);
+  if ((await ctx.config.get(input.companyId)).n2RuntimeProfile === "paperclip_runner-experimental") {
+    const { executeNativeN2Board } = await import("./n2-native-runtime.js");
+    return executeNativeN2Board(ctx, mission, input);
+  }
   if (input.body.command === "settle-n2-usage") {
     const commandId = runtimeUuid(input.body.commandId, "commandId");
     const payloadHash = canonicalPayloadHash(input.body);
@@ -1244,7 +1249,7 @@ async function inspectN2Agent(
   };
 }
 
-async function prepareResubmissionCommand(
+export async function prepareResubmissionCommand(
   ctx: PluginContext,
   mission: MissionRecord,
   input: PluginApiRequestInput,
@@ -1316,6 +1321,10 @@ export async function handleN2AgentApi(input: PluginApiRequestInput, ctx: Plugin
     const mission = await getMission(ctx, input.companyId, missionId);
     if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
     if (input.params.issueId !== mission.rootIssueId) throw new MissionError(404, "mission_issue_not_found", "N2 commands address the mission root issue");
+    if (mission.aggregate.n2?.native) {
+      const { executeNativeN2Agent } = await import("./n2-native-runtime.js");
+      return { status: 200, body: await executeNativeN2Agent(ctx, mission, input, body) };
+    }
     if (body.command === "inspect") {
       return { status: 200, body: await inspectN2Agent(ctx, mission, input) };
     }
@@ -1454,7 +1463,7 @@ export async function prepareN2Decision(
   let correctionAdmission: Record<string, unknown> = {};
   if (decision.verdict === "changes_requested") {
     const reservationId = runtimeUuid(correctionReservationId, "correctionReservationId");
-    await reserveN2Run(ctx, mission, { reservationId, effectId: decision.operationId, kind: "correction" });
+    if (!state.native) await reserveN2Run(ctx, mission, { reservationId, effectId: decision.operationId, kind: "correction" });
     correctionAdmission = { reservationId };
   }
   return n2Cas(ctx, mission, {

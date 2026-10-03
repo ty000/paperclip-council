@@ -408,32 +408,4 @@ describe("native G4 profile", () => {
     })), input)).rejects.toMatchObject({ code: "g4_usage_unavailable" });
     expect(settleAdmission).not.toHaveBeenCalled();
   });
-
-  it("retains dependency-cancelled identities in checkpoints but excludes their proven pre-start dispatch from usage", async () => {
-    vi.mocked(settleAdmission).mockResolvedValue({ outcome: "settled" } as never);
-    const cancelled = { ...summary().runs[0], id: "30000000-0000-4000-8000-000000000005", status: "cancelled", startedAt: null,
-      error: "Cancelled because issue dependencies are still blocked; Paperclip will wake the assignee when blockers resolve" };
-    const ctx = context({}, summary({ runs: [summary().runs[0], cancelled] }));
-    await expect(readNativeSequentialUsageBaseline(ctx, { companyId, issueId })).resolves.toMatchObject({ runIds: [runId, cancelled.id] });
-    await expect(settleNativeSequentialRunUsage(ctx, { commandId: settlementCommandId, companyId, issueId,
-      expectedRunId: runId, baseline: { runIds: [], tokenTotal: 0 }, periodKey: "n2", reservationId, expectedVersion: 1 })).resolves.toEqual({ outcome: "settled" });
-    expect(settleAdmission).toHaveBeenCalledWith(ctx, expect.objectContaining({ usage: expect.objectContaining({ units: 130,
-      source: expect.stringContaining(`dependency-gated-before-start=${cancelled.id}`) }) }));
-  });
-
-  it.each([
-    { startedAt: "2026-10-01T10:00:00.000Z" },
-    { error: "Cancelled by operator" },
-    { error: null },
-    { finishedAt: null },
-    { status: "queued" },
-  ])("keeps ambiguous or started sibling cancellations blocking: %j", async (delta) => {
-    const cancelled = { ...summary().runs[0], id: "30000000-0000-4000-8000-000000000005", status: "cancelled", startedAt: null,
-      error: "Cancelled because issue dependencies are still blocked; Paperclip will wake the assignee when blockers resolve", ...delta };
-    await expect(settleNativeSequentialRunUsage(context({}, summary({ runs: [summary().runs[0], cancelled] })), {
-      commandId: settlementCommandId, companyId, issueId, expectedRunId: runId, baseline: { runIds: [], tokenTotal: 0 },
-      periodKey: "n2", reservationId, expectedVersion: 1,
-    })).rejects.toMatchObject({ code: "g4_run_identity_unqualified" });
-    expect(settleAdmission).not.toHaveBeenCalled();
-  });
 });

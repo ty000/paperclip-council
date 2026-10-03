@@ -12,6 +12,12 @@ export type CouncilConfig = {
 
 export type CouncilVerdict = "changes_requested" | "approved";
 
+export type NativeReviewBinding = {
+  interactionId: string;
+  decisionId: string;
+  sourceRunId: string;
+};
+
 type CouncilDecisionCommon = {
   companyId: string;
   issueId: string;
@@ -19,6 +25,7 @@ type CouncilDecisionCommon = {
   runId: string;
   justification: string;
   resultReference: string;
+  nativeReview?: NativeReviewBinding;
 };
 
 export type CouncilDecisionPayload = {

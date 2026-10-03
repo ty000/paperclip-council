@@ -23,6 +23,8 @@ const manifest: PaperclipPluginManifestV1 = {
     "issues.update",
     "issues.checkout",
     "issues.wakeup",
+    "issue.relations.read",
+    "issue.relations.write",
     "issues.orchestration.read",
     "events.subscribe",
     "issue.documents.read",
@@ -60,6 +62,10 @@ const manifest: PaperclipPluginManifestV1 = {
         format: "secret-ref",
         title: "Council agent API key",
         description: "Reference to the Paperclip company secret containing the dedicated council agent token.",
+      },
+      n2RuntimeProfile: {
+        type: "string", enum: ["paperclip_runner-experimental"],
+        description: "Experimental native N2 with an individually admitted transmission run. Requires paperclip_runner lead/reviewer and native runner rollout.",
       },
       n1FixtureMode: {
         type: "string",

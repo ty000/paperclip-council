@@ -204,6 +204,14 @@ function isUsableNativeResponse(
 ): boolean {
   if (!body || typeof body !== "object" || Array.isArray(body)) return false;
   const record = body as Record<string, unknown>;
+  if (input.nativeReview) {
+    const payload = record.payload as { target?: { key?: unknown; revisionId?: unknown } } | null;
+    return record.id === input.nativeReview.interactionId && record.companyId === input.companyId
+      && record.issueId === input.issueId && record.sourceRunId === input.nativeReview.sourceRunId
+      && record.resolvedByRunId === input.runId && record.resolvedByAgentId === input.actorAgentId
+      && record.status === (input.verdict === "approved" ? "accepted" : "rejected")
+      && payload?.target?.key === "native_completion_review" && payload.target.revisionId === input.nativeReview.decisionId;
+  }
   const executionState = record.executionState;
   return record.id === input.issueId
     && record.companyId === input.companyId

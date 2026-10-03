@@ -24,7 +24,7 @@ let runtimePath;
 try {
   await withOwnedQualificationRuntime(async (runtime) => {
     runtimePath = runtime;
-    await runProcessGroup("corepack", ["pnpm", "test:functional"], {
+    await runProcessGroup("corepack", ["pnpm", "exec", "vitest", "run", "--config", "scripts/qualification/n2-native-lifecycle.config.mjs"], {
       cwd: repositoryRoot, timeoutMs: 15 * 60_000,
       env: { ...process.env, COUNCIL_N2_NATIVE_LIFECYCLE: "1", COUNCIL_PACKAGE_EXPECTED_COMMIT: candidate,
         PAPERCLIP_QUALIFICATION_RUNTIME: runtime, COUNCIL_PACKAGE_EVIDENCE_PATH: path },
@@ -38,7 +38,7 @@ try {
 const evidence = JSON.parse(readFileSync(path, "utf8"));
 if (evidence.outcome !== "N2 NATIVE LIFECYCLE WITH DETERMINISTIC MODEL VALIDATED"
     || evidence.head !== hostCommit || evidence.candidate?.commit !== candidate
-    || evidence.nativeLifecycle?.finalRuns?.length !== 3 || evidence.nativeLifecycle?.costs?.length !== 3
+    || evidence.nativeLifecycle?.finalRuns?.length !== 4 || evidence.nativeLifecycle?.costs?.length !== 4
     || !evidence.launcherCleanup.ownedRuntimeRemoved) {
   throw new Error(`Native deterministic lifecycle did not qualify: ${path}`);
 }
