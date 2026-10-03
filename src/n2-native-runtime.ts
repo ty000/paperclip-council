@@ -82,7 +82,7 @@ export async function executeNativeN2Board(ctx: PluginContext, mission: MissionR
   const reservationId = runtimeUuid(body.reservationId, "reservationId");
   const transmissionReservationId = runtimeUuid(body.transmissionReservationId, "transmissionReservationId");
   const state = startN2Review(mission, { baselineRunIds: baseline.runIds, baselineTokenTotal: baseline.tokenTotal, submissionId, reservationId });
-  await reserveN2Run(ctx, mission, { reservationId: transmissionReservationId, effectId: `transmission:${submissionId}`, kind: "initial" });
+  await reserveN2Run(ctx, mission, { reservationId: transmissionReservationId, effectId: transmissionReservationId, kind: "initial" });
   await reserveN2Run(ctx, mission, { reservationId, effectId: submissionId, kind: "initial" });
   state.native = { profile: "paperclip_runner-experimental", transmission: { reservationId: transmissionReservationId, runId: null,
     settlementCommandId: randomUUID() }, reviewCards: [], correctionSettlementCommandId: randomUUID() };
@@ -126,7 +126,6 @@ async function reviewBinding(ctx: PluginContext, mission: MissionRecord, input: 
 
 export async function executeNativeN2Agent(ctx: PluginContext, initial: MissionRecord, input: PluginApiRequestInput, body: Record<string, unknown>) {
   let mission = initial;
-  const state = storedN2(mission);
   const lead = mission.aggregate.responsibilities.integrationLeadAgentId;
   if (input.actor.agentId === lead) mission = await bindLead(ctx, mission, input);
   if (body.command === "inspect") {
