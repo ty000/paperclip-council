@@ -365,3 +365,38 @@ idempotent reconciliation run or an update to its manifest after the trigger is
 ready. A green PR does not activate this gate on a Paperclip instance.
 
 Licensed under the MIT License; see [LICENSE](./LICENSE).
+
+### Native N2 lifecycle with a deterministic model
+
+`pnpm qualification:native:n2` runs the installed Council package against a clean,
+explicit host selected by `PAPERCLIP_TEST_HOST_ROOT` and its exact
+`COUNCIL_N2_NATIVE_HOST_COMMIT`. It never invokes a provider. The fixture replaces
+only adapter execution; Paperclip owns API authorization, run finalization, cost
+rows, events, issue locks and recovery. Three N1 preparation rows remain explicitly
+labelled fixtures in a separate zero-usage period. N2 uses three real scheduled
+runs with deterministic, positive usage returned through the adapter contract.
+The launcher rejects an existing candidate artifact and validates final acceptance,
+three runs/costs, exact candidate/host identities and owned runtime cleanup.
+
+This is an operator-assisted contract. The operator reserves before each launch,
+enables wakes for that launch, observes its exact run and disables wakes again.
+The lead remains disabled while the reviewer verdict is applied. After terminal
+usage is known and settled, the operator admits the next stage. The deterministic
+model rendezvous reproduces the disabled-wake state before finishing; it does not
+prove that the enable/observe/disable window is safe for arbitrarily fast models.
+No autonomous scheduler or atomic dispatch-and-disable API is claimed.
+
+The compatible host must respect `wakeOnDemand=false` in run-release and
+maintenance recovery. The historical qualification pin `61b3fd57` lacks the
+release guarantee; the separate core candidate must be reviewed and published
+before any deployment claim. This command does not repin the normal host or
+change a durable instance.
+
+For N2, the approval authority is the immutable verified submission: its stored
+company/issue, exact base and candidate, verified bundle digest/size, attributed
+contributions and corrected paths, mandate, designated reviewer and bound run.
+Approval rechecks the native attachment metadata against that submission. A
+legacy `delivery-manifest` is not a second source of N2 candidate identity. The
+non-N2 approval path still requires that manifest and its work-product checks.
+Unknown usage, an extra run, a changed candidate, an uncertain effect or missing
+attachment still prevents dependent work; the admission rules are unchanged.

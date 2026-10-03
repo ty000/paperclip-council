@@ -141,7 +141,9 @@ const evidence: Record<string, any> = {
   hostTrackedFilesClean: hostStatus === "",
   branch: execFileSync("git", ["branch", "--show-current"], { cwd: root, encoding: "utf8" }).trim(),
   node: process.version,
-  command: liveN2Authorized
+  command: n2NativeLifecycleMode
+    ? "PAPERCLIP_TEST_HOST_ROOT=<clean-host> COUNCIL_N2_NATIVE_HOST_COMMIT=<exact-host-sha> pnpm qualification:native:n2"
+    : liveN2Authorized
     ? "COUNCIL_N2_LIVE_AUTHORIZED=1 COUNCIL_N2_LIVE_MODEL=gpt-5.6-sol COUNCIL_N2_LIVE_EFFORT=high COUNCIL_N2_LIVE_RUN_UNITS=<positive> COUNCIL_N2_LIVE_PERIOD_UNITS=<exactly-6x-run> pnpm qualification:live:n2"
     : isolatedLiveN2Authorized
     ? "COUNCIL_N2_ISOLATED_LIVE_AUTHORIZED=1 COUNCIL_N2_ISOLATED_LIVE_CANDIDATE_SHA=<exact-head> COUNCIL_N2_ISOLATED_LIVE_MODEL=gpt-5.6-sol COUNCIL_N2_ISOLATED_LIVE_EFFORT=high COUNCIL_N2_ISOLATED_LIVE_RUN_UNITS=<positive> COUNCIL_N2_ISOLATED_LIVE_PERIOD_UNITS=<exactly-3x-run> pnpm qualification:live:n2:isolated"
