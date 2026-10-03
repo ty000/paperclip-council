@@ -109,6 +109,21 @@ async function readBoundedResponse(response: Response): Promise<{
   }
 }
 
+// Native accounting performs several authenticated reads per run. The host limits
+// secret resolution to 30/minute. Cache only the read credential briefly, never
+// run state or authorization responses; verdict emission still resolves freshly.
+const nativeReadCredentials = new WeakMap<PluginContext, { key: string; expires: number; value: Promise<string> }>();
+async function nativeReadCredential(ctx: PluginContext, companyId: string, config: CouncilConfig) {
+  const key = JSON.stringify([companyId, config.apiBaseUrl, config.councilAgentId, config.councilApiKey]);
+  const prior = nativeReadCredentials.get(ctx);
+  if (prior?.key === key && prior.expires > Date.now()) return prior.value;
+  const entry = { key, expires: Date.now() + 5_000,
+    value: ctx.secrets.resolve(config.councilApiKey, { companyId, configPath: "councilApiKey" }) };
+  nativeReadCredentials.set(ctx, entry);
+  try { return await entry.value; }
+  catch (error) { if (nativeReadCredentials.get(ctx) === entry) nativeReadCredentials.delete(ctx); throw error; }
+}
+
 /** Public telemetry and native interactions use the configured Council identity. */
 export async function councilNativeRequest(
   ctx: PluginContext,
@@ -118,7 +133,8 @@ export async function councilNativeRequest(
 ): Promise<{ status: number; body: unknown }> {
   const config = parseCouncilConfig(await ctx.config.get(companyId));
   if (!/^\/api\/(heartbeat-runs|issues)\/[a-zA-Z0-9/-]+$/.test(path)) throw new Error("Invalid Council native resource path");
-  const apiKey = await ctx.secrets.resolve(config.councilApiKey, { companyId, configPath: "councilApiKey" });
+  const apiKey = !options.method || options.method === "GET" ? await nativeReadCredential(ctx, companyId, config)
+    : await ctx.secrets.resolve(config.councilApiKey, { companyId, configPath: "councilApiKey" });
   const response = await fetch(`${config.apiBaseUrl}${path}`, {
     method: options.method ?? "GET",
     headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json",
@@ -126,6 +142,7 @@ export async function councilNativeRequest(
     ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
     signal: AbortSignal.timeout(15_000), redirect: "error",
   });
+  if (response.status === 401 || response.status === 403) nativeReadCredentials.delete(ctx);
   const parsed = await readBoundedResponse(response);
   if (!parsed.validJson || parsed.truncated) throw new Error("Native response is not bounded valid JSON");
   return { status: response.status, body: parsed.body };
