@@ -14,6 +14,12 @@ export async function n45ToolBoundary(input: any, campaign: any) {
   const call = async (operationId: string, body?: any) => authority.execute({ tool: "call_api", callId: randomUUID(), arguments: { operationId, ...(body ? { body } : {}) } });
   const runContext = { companyId: binding.companyId, agentId: binding.agentId, runId: binding.runId, projectId: binding.projectId };
   try {
+    const reviewAuthority = new PaperclipRunnerToolAuthority(input.db, { ...binding, apiUrl: input.baseUrl, apiToolsEnabled: true,
+      nativeReview: { nativeReviewInteractionId: "fixture-capability-guard", nativeReviewDecisionId: "fixture-capability-guard" } });
+    let nativeReviewRefusal = "";
+    try { await reviewAuthority.execute({ tool: "call_api", callId: randomUUID(), arguments: { operationId: "GET /api/plugins/tools" } }); }
+    catch (error) { nativeReviewRefusal = error instanceof Error ? error.message : String(error); }
+    assert.match(nativeReviewRefusal, /may only inspect the assigned task and resolve its review/);
     const catalog = await call("GET /api/plugins/tools");
     assert(JSON.stringify(catalog).includes("mission-command"), "native runner catalogue must expose Council tool");
     const execute = (parameters: any, context = runContext) => call("POST /api/plugins/tools/execute", { tool: "private.paperclip-council:mission-command", parameters, runContext: context });
@@ -27,7 +33,7 @@ export async function n45ToolBoundary(input: any, campaign: any) {
     assert(JSON.stringify(override).includes("mission_tool_identity_override"), JSON.stringify(override));
     const contextOverride = await execute({ operation: "command", body: { command: "inspect" } }, { ...runContext, agentId: campaign.agents.lead.id });
     assert(!JSON.stringify(contextOverride).includes("mission_inactive"));
-    return { fixture: "one directly inserted active native heartbeat; no provider or wake", binding, catalog, nominal, owner, override, contextOverride,
+    return { nativeReview: { source: "real host authority capability guard with explicitly simulated review binding; no card resolution", refused: nativeReviewRefusal, launchReady: false }, fixture: "one directly inserted active native heartbeat; no provider or wake", binding, catalog, nominal, owner, override, contextOverride,
       chain: "PaperclipRunnerToolAuthority.call_api -> run JWT -> HTTP auth -> plugin gateway -> Council adapter -> existing handler" };
   } finally {
     await input.db.update(input.tables.heartbeatRuns).set({ status: "cancelled", finishedAt: new Date() }).where(input.eq(input.tables.heartbeatRuns.id, binding.runId));
