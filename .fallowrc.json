@@ -18,6 +18,7 @@
     "../../.paperclip/qualification/paperclip/server/src/middleware/error-handler.ts",
     "../../.paperclip/qualification/paperclip/server/src/routes/agents.ts",
     "../../.paperclip/qualification/paperclip/server/src/routes/issues.ts",
+    "../../.paperclip/qualification/paperclip/server/src/services/github-external-object-provider.ts",
     "../../.paperclip/qualification/paperclip/server/src/services/heartbeat.ts",
     "../../.paperclip/qualification/paperclip/server/src/services/native-runtime/native-review-participant.ts",
     "../../.paperclip/qualification/paperclip/server/src/services/native-runtime/native-run-finalizer.ts",
