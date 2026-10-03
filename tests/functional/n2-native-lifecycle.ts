@@ -131,7 +131,7 @@ export async function runN2NativeLifecycle(input: any) {
     const changed = await request("human", "PATCH", `/api/agents/${agent.id}`, { runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: true, maxConcurrentRuns: 1 } } });
     assert.equal(changed.status, 200, JSON.stringify(changed.body));
   }
-  const before = await request("human", "GET", prepared.missionPath);
+  const before = await request("human", "GET", `${prepared.missionPath}?companyId=${prepared.companyId}`);
   const started = await request("human", "POST", `${prepared.missionPath}/commands`, { companyId: prepared.companyId,
     command: "start-review", commandId: randomUUID(), expectedVersion: before.body.mission.version,
     submissionId: randomUUID(), reservationId: randomUUID(), transmissionReservationId: randomUUID() });
@@ -141,7 +141,7 @@ export async function runN2NativeLifecycle(input: any) {
   let mission: any; let admission: any;
   for (let attempt = 0; attempt < 80; attempt++) {
     await heartbeat.drainActiveRunExecutions();
-    mission = (await request("human", "GET", prepared.missionPath)).body.mission;
+    mission = (await request("human", "GET", `${prepared.missionPath}?companyId=${prepared.companyId}`)).body.mission;
     admission = (await request("human", "GET", `${prepared.admissionPath}?companyId=${prepared.companyId}&periodKey=${encodeURIComponent(prepared.nativePeriodKey)}`)).body.envelope;
     if (errors.length || mission.aggregate.n2?.status === "accepted" && admission.reservations.every((entry: any) => entry.status === "settled")) break;
     await new Promise(resolve => setTimeout(resolve, 250));
@@ -156,7 +156,7 @@ export async function runN2NativeLifecycle(input: any) {
   evidence.nativeLifecycle.finalAdmission = admission;
   await save();
   assert.deepEqual(errors, []);
-  assert.equal(executions.length, 4);
+  assert.equal(executions.length, 4, JSON.stringify({ errors, runs: finalRuns.map((r: any) => ({ id: r.id, status: r.status, error: r.error })), mission: mission.aggregate.n2 }));
   assert(finalRuns.every((run: any) => run.status === "succeeded" && run.runtimeMode === "native"));
   assert.equal(costs.length, 4);
   assert.equal(mission.aggregate.n2.status, "accepted");
