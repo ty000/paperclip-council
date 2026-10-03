@@ -20,3 +20,14 @@ for this round. Specialists advise; favorable opinion count is never authority.
 A changed submission starts a fresh candidate-bound round. Do not automatically
 carry opinions or acceptance forward. Do not launch appeals or other councils;
 an unresolved question names its next human/native actor.
+
+## Installed native contract
+
+The native card is sourced from the final transmission after specialist usage
+settlement. Confirm its N2 handoff, inspect the root, then POST `n3-synthesize`
+with missionId, fresh commandId, expectedVersion and `synthesis` (exact subject,
+verdict, rationale, exhaustive material-objection dispositions). A `waiting`
+verdict also requires `nextActor`; preserve the card and report the blocker.
+Only an approved/changes_requested synthesis from this authenticated reviewer
+run permits the matching existing decision command. Finish after the native
+decision. Never create another Council or bypass a stale/missing opinion.

@@ -1,3 +1,4 @@
+import { prepareN3Scenario } from "./n3-native-scenario.js";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -14,6 +15,8 @@ export async function runN2NativeLifecycle(input: any) {
     registerActor: (actor: string, identity: any) => agentTokens.set(actor, { ...identity, runId: "", agentId: identity.id }),
     liveN2Profile: { model: "deterministic-test", effort: "high", runReservationUnits: 2_000_000, periodAllowanceUnits: 10_000_000 },
   });
+  const n3 = process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1" ? await prepareN3Scenario(input, prepared) : null;
+  const limit = n3 ? 10 : 4;
   const config = await request("human", "GET", `/api/plugins/${input.pluginId}/config?companyId=${prepared.companyId}`);
   assert.equal(config.status, 200, JSON.stringify(config.body));
   const configured = await request("human", "POST", `/api/plugins/${input.pluginId}/config`, { companyId: prepared.companyId,
@@ -30,9 +33,10 @@ export async function runN2NativeLifecycle(input: any) {
   assert.equal(root.status, 200, JSON.stringify(root.body));
   const executions: any[] = []; const trace: any[] = []; const errors: string[] = [];
   evidence.nativeLifecycle = { executions, trace, modelErrors: errors, simulatedUsage: true, profile: "paperclip_runner-experimental",
-    fixtureBoundary: "Only N1 legacy prerequisite rows are fixtures. Transmission, two reviewers and correction use real native admission, HTTP, plugin, finalizer, costs and events.",
+    fixtureBoundary: "Only N1 legacy prerequisite rows are fixtures. All native lifecycle runs use real admission, HTTP, plugin, finalizer, costs and events; model content and usage are deterministic.",
     prerequisite: prepared };
   evidence.configuration.models = "NativeSessionBackend factory only; no provider, scheduler mock, handoff rendezvous or wake toggles during the cycle";
+  if (n3) evidence.nativeLifecycle.n3 = { slots: n3.slots, guards: n3.guards };
   nativeModel.factory = execution => {
     const runId = execution.binding.runId;
     const identity = { ...execution.binding, sessionId: execution.session.normalizedSessionId };
@@ -48,9 +52,10 @@ export async function runN2NativeLifecycle(input: any) {
             const contract = JSON.parse(delivery.message.text).completionContract;
             result.completionClaim.contractRevision = contract.revision;
             result.completionClaim.criteria = contract.criteria.map((c: any) => ({ ...result.completionClaim.criteria[0], criterionId: c.id }));
+            assert(executions.length < limit, "Unexpected extra model execution");
+            executions.push({ runId, agentId: execution.binding.agentId, issueId: execution.binding.issueId });
+            if (n3 && await n3.specialist(execution)) { await save(); completed(); return { turnId }; }
             assert.equal(execution.binding.issueId, prepared.rootIssueId);
-            assert(executions.length < 4, "Unexpected fifth model execution");
-            executions.push({ runId, agentId: execution.binding.agentId, issueId: prepared.rootIssueId });
             const reviewer = execution.binding.agentId === prepared.agents.reviewer.id;
             assert(reviewer || execution.binding.agentId === prepared.agents.lead.id);
             const actor = reviewer ? "n2-prerequisite-reviewer" : "n2-prerequisite-lead";
@@ -61,7 +66,8 @@ export async function runN2NativeLifecycle(input: any) {
               assert.equal(response.status, 200, JSON.stringify(response.body)); return response.body;
             };
             let inspection = await call({ command: "inspect" });
-            if (!reviewer && inspection.native.transmission.attestedAt) {
+            const bridge = inspection.n3?.transmission.runId === runId;
+            if (!reviewer && !bridge && inspection.native.transmission.attestedAt) {
               const predecessor = inspection.n2.review;
               const nativeCosts = await db.select().from(tables.costEvents).where(eq(tables.costEvents.issueId, prepared.rootIssueId));
               const predecessorRun = (await db.select().from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.id, predecessor.handoff.reviewerRunId)))[0];
@@ -78,16 +84,22 @@ export async function runN2NativeLifecycle(input: any) {
               const approved = inspection.n2.review.round === 2;
               assert.equal(execFileSync("git", ["show", `${submission.candidateCommit}:alpha.txt`], { cwd: prepared.repository, encoding: "utf8" }),
                 approved ? "alpha contribution corrected after independent review\n" : "alpha contribution\n");
-              const decision = await request(actor, "POST", `/api/plugins/${input.pluginId}/api/issues/${prepared.rootIssueId}/decision`, {
+              const decisionBody = {
                 operationId: randomUUID(), verdict: approved ? "approved" : "changes_requested",
                 ...(approved ? { approvedCommit: submission.candidateCommit } : { correctionReservationId: randomUUID() }),
                 resultReference: `council:n2:submission:${submission.submissionId}`,
                 justification: approved ? "V2 contains the requested bounded correction" : "alpha.txt needs the independent correction marker",
-              });
+              };
+              if (n3) await n3.synthesize(call, inspection, actor, decisionBody);
+              const decision = await request(actor, "POST", `/api/plugins/${input.pluginId}/api/issues/${prepared.rootIssueId}/decision`, decisionBody);
               assert.equal(decision.status, 200, JSON.stringify(decision.body));
               const [stillRunning] = await db.select().from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.id, runId));
               assert.equal(stillRunning.status, "running");
               trace.push({ event: "native_verdict_while_reviewer_running", runId, approved, decision: decision.body });
+            } else if (bridge) {
+              await call({ command: "attest-n3-transmission", commandId: randomUUID(), expectedVersion: inspection.version });
+              result.reportedWorkDisposition = "needs_review";
+              result.attentionRequests = [{ kind: "review", summary: "Council synthesis of settled specialist opinions", ownerClass: "agent", targetAgentId: prepared.agents.reviewer.id }];
             } else if (!inspection.native.transmission.attestedAt) {
               await call({ command: "attest-transmission", commandId: randomUUID(), expectedVersion: inspection.version });
               result.reportedWorkDisposition = "needs_review";
@@ -122,6 +134,9 @@ export async function runN2NativeLifecycle(input: any) {
               result.reportedWorkDisposition = "needs_review";
               result.attentionRequests = [{ kind: "review", summary: "Council review of verified V2", ownerClass: "agent", targetAgentId: prepared.agents.reviewer.id }];
             }
+            if (n3 && !reviewer && !bridge) {
+              result.reportedWorkDisposition = "blocked"; result.attentionRequests = [];
+            }
             await save(); completed(); return { turnId };
           } catch (error) { errors.push(String(error)); completed(); throw error; }
         },
@@ -138,14 +153,14 @@ export async function runN2NativeLifecycle(input: any) {
       }; },
     };
   };
-  for (const agent of [prepared.agents.lead, prepared.agents.reviewer]) {
+  for (const agent of [prepared.agents.lead, prepared.agents.reviewer, ...(n3?.agents ?? [])]) {
     const changed = await request("human", "PATCH", `/api/agents/${agent.id}`, { runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: true, maxConcurrentRuns: 1 } } });
     assert.equal(changed.status, 200, JSON.stringify(changed.body));
   }
   const before = await request("human", "GET", `${prepared.missionPath}?companyId=${prepared.companyId}`);
   const started = await request("human", "POST", `${prepared.missionPath}/commands`, { companyId: prepared.companyId,
     command: "start-review", commandId: randomUUID(), expectedVersion: before.body.mission.version,
-    submissionId: randomUUID(), reservationId: randomUUID(), transmissionReservationId: randomUUID() });
+    submissionId: randomUUID(), reservationId: randomUUID(), transmissionReservationId: randomUUID(), ...(n3 ? { n3Slots: n3.slots } : {}) });
   assert.equal(started.status, 200, JSON.stringify(started.body));
   const { heartbeatService } = await hostImport("server/src/services/heartbeat.ts");
   const heartbeat = heartbeatService(db);
@@ -157,9 +172,9 @@ export async function runN2NativeLifecycle(input: any) {
     if (errors.length || mission.aggregate.n2?.status === "accepted" && admission.reservations.every((entry: any) => entry.status === "settled")) break;
     await new Promise(resolve => setTimeout(resolve, 250));
   }
-  const runs = (await db.select().from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.companyId, prepared.companyId))).filter((run: any) => run.contextSnapshot?.issueId === prepared.rootIssueId);
+  const runs = (await db.select().from(tables.heartbeatRuns).where(eq(tables.heartbeatRuns.companyId, prepared.companyId)));
   const finalRuns = runs.filter((run: any) => executions.some(execution => execution.runId === run.id));
-  const costs = await db.select().from(tables.costEvents).where(eq(tables.costEvents.issueId, prepared.rootIssueId));
+  const costs = (await db.select().from(tables.costEvents).where(eq(tables.costEvents.companyId, prepared.companyId))).filter((cost: any) => executions.some(entry => entry.runId === cost.heartbeatRunId));
   evidence.nativeLifecycle.finalRuns = finalRuns.map((run: any) => ({ ...nativeRunEvidence(run), runtimeMode: run.runtimeMode }));
   evidence.nativeLifecycle.allRootRuns = runs.map((run: any) => ({ ...nativeRunEvidence(run), runtimeMode: run.runtimeMode, errorCode: run.errorCode }));
   evidence.nativeLifecycle.costs = costs;
@@ -167,17 +182,17 @@ export async function runN2NativeLifecycle(input: any) {
   evidence.nativeLifecycle.finalAdmission = admission;
   await save();
   assert.deepEqual(errors, []);
-  assert.equal(executions.length, 4, JSON.stringify({ errors, runs: finalRuns.map((r: any) => ({ id: r.id, status: r.status, error: r.error })), mission: mission.aggregate.n2 }));
+  assert.equal(executions.length, limit, JSON.stringify({ errors, runs: finalRuns.map((r: any) => ({ id: r.id, status: r.status, error: r.error })), mission: mission.aggregate.n2 }));
   assert(finalRuns.every((run: any) => run.status === "succeeded" && run.runtimeMode === "native"));
-  assert.equal(costs.length, 4);
+  assert.equal(costs.length, limit);
   assert.equal(mission.aggregate.n2.status, "accepted");
   assert(admission.reservations.every((entry: any) => entry.status === "settled"));
   assert.equal(admission.exposure.units, 0);
   const recovery = await request("human", "POST", `${prepared.missionPath}/commands`, { companyId: prepared.companyId, command: "reconcile-native-n2" });
   assert.equal(recovery.status, 200, JSON.stringify(recovery.body));
   await heartbeat.reconcileStrandedAssignedIssues(); await heartbeat.drainActiveRunExecutions();
-  assert.equal(executions.length, 4, "Replay must not dispatch another model run");
+  assert.equal(executions.length, limit, "Replay must not dispatch another model run");
   evidence.nativeLifecycle.recovery = { status: recovery.status, executionsAfter: executions.length };
-  evidence.outcome = "N2 NATIVE LIFECYCLE WITH DETERMINISTIC MODEL VALIDATED";
+  evidence.outcome = `${n3 ? "N3" : "N2"} NATIVE LIFECYCLE WITH DETERMINISTIC MODEL VALIDATED`;
   await save();
 }

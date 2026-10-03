@@ -1,3 +1,5 @@
+import { assertN3Decision, attestN3Transmission, bindN3Transmission, freshN3Round, inspectN3, n3Round, prepareN3Collection, reconcileN3, selectN3, synthesizeN3 } from "./n3-runtime.js";
+import type { N3OpinionSlot } from "./n3-opinions.js";
 import { randomUUID } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import type { CouncilDecisionInput, NativeReviewBinding } from "./contracts.js";
@@ -83,11 +85,12 @@ export async function executeNativeN2Board(ctx: PluginContext, mission: MissionR
   const transmissionReservationId = runtimeUuid(body.transmissionReservationId, "transmissionReservationId");
   const state = startN2Review(mission, { baselineRunIds: baseline.runIds, baselineTokenTotal: baseline.tokenTotal, submissionId, reservationId });
   await reserveN2Run(ctx, mission, { reservationId: transmissionReservationId, effectId: transmissionReservationId, kind: "initial" });
-  await reserveN2Run(ctx, mission, { reservationId, effectId: submissionId, kind: "initial" });
+  const n3 = body.n3Slots ? await selectN3(ctx, mission, state.submissions[0]!, body.n3Slots as N3OpinionSlot[]) : undefined;
+  if (!n3) await reserveN2Run(ctx, mission, { reservationId, effectId: submissionId, kind: "initial" });
   state.native = { profile: "paperclip_runner-experimental", transmission: { reservationId: transmissionReservationId, runId: null,
     settlementCommandId: randomUUID() }, reviewCards: [], correctionSettlementCommandId: randomUUID() };
   const claim = await n2CommandCas(ctx, mission, body, "user", input.actorUserId!, {
-    ...mission.aggregate, phase: "review_handoff", control: { status: "active" }, n2: state,
+    ...mission.aggregate, phase: "review_handoff", control: { status: "active" }, n2: state, ...(n3 ? { n3 } : {}),
     journal: [...mission.aggregate.journal, { action: "n2_native_transmission_admitted", commandId, submissionId, transmissionReservationId, reviewerReservationId: reservationId }],
   });
   // The durable command owns this single wake. Ambiguous responses are retained;
@@ -109,12 +112,14 @@ async function reviewBinding(ctx: PluginContext, mission: MissionRecord, input: 
   const state = storedN2(mission);
   const native = requireNative(mission);
   const round = state.rounds.at(-1)!;
-  const sourceRunId = round.round === 1 ? native.transmission.runId : state.correction?.runId;
+  const n3 = n3Round(mission);
+  const sourceRunId = n3 ? n3.transmission.runId : round.round === 1 ? native.transmission.runId : state.correction?.runId;
   const interactionId = run.contextSnapshot.nativeReviewInteractionId;
   const decisionId = run.contextSnapshot.nativeReviewDecisionId;
   const card = (await ctx.issues.listInteractions(mission.rootIssueId, mission.companyId)).find(entry => entry.id === interactionId);
   const target = (card?.payload as { target?: { key?: string; revisionId?: string } } | undefined)?.target;
   if (run.status !== "running" || !run.startedAt || run.finishedAt || !sourceRunId || !native.transmission.attestedAt
+      || n3 && !n3.attestedAt
       || !card || card.status !== "pending" || card.sourceRunId !== sourceRunId || card.addresseeAgentId !== who.agentId
       || target?.key !== "native_completion_review" || target.revisionId !== decisionId
       || typeof interactionId !== "string" || typeof decisionId !== "string"
@@ -127,11 +132,18 @@ async function reviewBinding(ctx: PluginContext, mission: MissionRecord, input: 
 export async function executeNativeN2Agent(ctx: PluginContext, initial: MissionRecord, input: PluginApiRequestInput, body: Record<string, unknown>) {
   let mission = initial;
   const lead = mission.aggregate.responsibilities.integrationLeadAgentId;
-  if (input.actor.agentId === lead) mission = await bindLead(ctx, mission, input);
+  if (input.actor.agentId === lead) mission = await bindN3Transmission(ctx, mission, input) ?? await bindLead(ctx, mission, input);
   if (body.command === "inspect") {
     if (input.actor.agentId !== lead) await reviewBinding(ctx, mission, input);
     return { missionId: mission.missionId, version: mission.version, phase: mission.aggregate.phase,
-      n2: inspectN2State(mission), native: requireNative(mission), reviewerAgentId: mission.aggregate.responsibilities.finalReviewerAgentId };
+      n2: inspectN2State(mission), n3: inspectN3(mission), native: requireNative(mission), reviewerAgentId: mission.aggregate.responsibilities.finalReviewerAgentId };
+  }
+  if (body.command === "n3-synthesize") {
+    await reviewBinding(ctx, mission, input);
+    return synthesizeN3(ctx, mission, input, body);
+  }
+  if (body.command === "attest-n3-transmission") {
+    return attestN3Transmission(ctx, mission, input, body);
   }
   if (body.command === "attest-transmission") {
     identity(mission, input, lead);
@@ -143,10 +155,11 @@ export async function executeNativeN2Agent(ctx: PluginContext, initial: MissionR
     await verifyIntegratedCandidate(ctx, { companyId: mission.companyId, issueId: mission.rootIssueId,
       attachmentId: submission.attachmentId, expectedSha256: submission.sha256, baseCommit: submission.baseCommit,
       candidateCommit: submission.candidateCommit, contributions: contributions as [typeof contributions[number], typeof contributions[number]] });
-    return n2CommandCas(ctx, mission, body, "agent", lead, { ...mission.aggregate,
+    const attested = await n2CommandCas(ctx, mission, body, "agent", lead, { ...mission.aggregate,
       n2: { ...current, native: { ...native, transmission: { ...native.transmission, attestedAt: new Date().toISOString() } } },
       journal: [...mission.aggregate.journal, { action: "n2_transmission_candidate_verified", runId: input.actor.runId, submissionId: submission.submissionId, candidateCommit: submission.candidateCommit }],
     });
+    return mission.aggregate.n3 ? { ...attested, mission: await prepareN3Collection(ctx, attested.mission) } : attested;
   }
   if (body.command === "confirm-review-handoff") {
     const binding = await reviewBinding(ctx, mission, input);
@@ -165,17 +178,21 @@ export async function executeNativeN2Agent(ctx: PluginContext, initial: MissionR
     const current = storedN2(mission);
     const submission = current.correction!.preparedSubmission!;
     const reservationId = runtimeUuid(body.reviewReservationId, "reviewReservationId");
-    await reserveN2Run(ctx, mission, { reservationId, effectId: submission.submissionId, kind: "initial" });
+    if (!mission.aggregate.n3) await reserveN2Run(ctx, mission, { reservationId, effectId: submission.submissionId, kind: "initial" });
     const baseline = await readNativeSequentialUsageBaseline(ctx, { companyId: mission.companyId, issueId: mission.rootIssueId });
     // V2 is verified before this individual reviewer reservation; native finish
     // now produces its card and outbox without waiting on aggregate issue usage.
     const next = startN2ResubmittedReview(current, mission, { baselineRunIds: baseline.runIds, baselineTokenTotal: baseline.tokenTotal, reservationId });
-    return { ...prepared, mission: await n2Cas(ctx, mission, { ...mission.aggregate, phase: "review_handoff", n2: next }) };
+    const n3 = mission.aggregate.n3;
+    mission = await n2Cas(ctx, mission, { ...mission.aggregate, phase: "review_handoff", n2: next,
+      ...(n3 ? { n3: { ...n3, rounds: [...n3.rounds, freshN3Round(mission, submission, n3.slots)] } } : {}) });
+    return { ...prepared, mission: n3 ? await prepareN3Collection(ctx, mission) : mission };
   }
   throw new MissionError(400, "native_n2_command", `Unknown native N2 agent command: ${String(body.command)}`);
 }
 
 export async function decideNativeN2(ctx: PluginContext, mission: MissionRecord, input: PluginApiRequestInput, decision: CouncilDecisionInput) {
+  assertN3Decision(mission, decision);
   const binding = await reviewBinding(ctx, mission, input);
   const prepared = await prepareN2Decision(ctx, mission, decision,
     typeof (input.body as Record<string, unknown>).correctionReservationId === "string" ? (input.body as Record<string, unknown>).correctionReservationId as string : undefined);
@@ -234,6 +251,8 @@ export async function reconcileNativeN2(ctx: PluginContext, initial: MissionReco
       ? { ...entry, handoff: { ...entry.handoff, usageSettledAt: new Date().toISOString() } } : entry) } });
   }
   state = storedN2(mission); native = requireNative(mission);
+  if (mission.aggregate.n3) await reconcileN3(ctx, mission);
+  mission = await fresh(ctx, mission); state = storedN2(mission); native = requireNative(mission);
   if (state.status !== "correction_requested" || !state.rounds[0]?.handoff.usageSettledAt || !native.transmission.settledAt || native.releaseState) return;
   const correction = state.correction!;
   await reserveN2Run(ctx, mission, { reservationId: correction.reservationId!, effectId: correction.requestedByOperationId, kind: "correction" });

@@ -24,3 +24,13 @@ prepared perspectives are supported, but they are not a mandatory committee.
 Stop on an identity/revision mismatch, decisive missing evidence, exhausted or
 unknown allowance/exposure, unsupported route or owner-reserved decision. Name
 the preserved state and next actor; never spawn a recursive council.
+
+## Installed native contract
+
+Your child issue description names the mission, selected slot and exact subject.
+POST `n3-inspect` with `missionId` to the child issue's Council commands route.
+POST `n3-opinion` with a fresh `commandId`, inspected `expectedVersion` and
+`opinion` containing subject, slotId, opinionId, outcome, rationale, findings and
+unresolvedQuestions. The plugin derives actor/run attribution from authenticated
+host context. Never supply another candidate's evidence. Finish the child only
+after the opinion is accepted. You cannot synthesize or apply the root verdict.
