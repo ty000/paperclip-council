@@ -15,6 +15,11 @@ export const fakeN5GitHub = { headSha: "", calls: [] as string[], createCount: 0
 export async function prepareN5Scenario(input: any, prepared: any) {
   const { request, agentTokens } = input;
   const actor = "n5-publisher"; const guards: any[] = [];
+  const settings = await request("human", "GET", "/api/instance/settings/experimental");
+  assert.equal(settings.status, 200, JSON.stringify(settings.body));
+  const enabled = await request("human", "PATCH", "/api/instance/settings/experimental", { ...settings.body, enableExternalObjects: true });
+  assert.equal(enabled.status, 200, JSON.stringify(enabled.body));
+  guards.push({ ephemeralInstanceExternalObjectsEnabled: enabled.body.enableExternalObjects });
   const created = await request("human", "POST", `/api/companies/${prepared.companyId}/agents`, { name: "N5 authorized publisher", role: "engineer",
     adapterType: "paperclip_runner", adapterConfig: { provider: "codex", model: "deterministic-test" },
     runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: false, maxConcurrentRuns: 1 } }, budgetMonthlyCents: 0 });

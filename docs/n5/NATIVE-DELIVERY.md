@@ -4,7 +4,7 @@ This slice connects the merged N1–N3 mission to an authorized publisher. It is
 
 ## Ownership and native boundary
 
-Council owns the mission aggregate, mandate binding, authority, one-shot intent and attributed observations. The pinned Paperclip host `61b3fd57a695614dc4a37e2303f426a34a9795cf` owns revisioned documents, child issues/workspace inheritance, run identities, costs, work products, external-object detection/refresh and GitHub snapshots. No host writes, migration, new table, scheduler or generic GitHub service are introduced. Git/gh in the publisher's existing adapter is the publication effect boundary. Network, credentials, repository access, gh availability and actual model behavior require a fresh real-runtime preflight before LIVE.
+Council owns the mission aggregate, mandate binding, authority, one-shot intent and attributed observations. The pinned Paperclip host `61b3fd57a695614dc4a37e2303f426a34a9795cf` owns revisioned documents, child issues/workspace inheritance, run identities, costs, work products, external-object detection/refresh and GitHub snapshots. The host experimental setting `enableExternalObjects` must be enabled on the selected instance; the qualification changes it only in its isolated temporary instance. Its default is false, in which case native external-object lists are empty. No host writes, migration, new table, scheduler or generic GitHub service are introduced. Git/gh in the publisher's existing adapter is the publication effect boundary. Network, credentials, repository access, gh availability and actual model behavior require a fresh real-runtime preflight before LIVE.
 
 ## Native plan and initial authority
 

@@ -202,10 +202,14 @@ export async function runN2NativeLifecycle(input: any) {
 }
 
 async function prepareScenarios(input: any, prepared: any) {
-  const n3 = process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1" ? await prepareN3Scenario(input, prepared) : null;
-  const n5 = process.env.COUNCIL_N5_NATIVE_LIFECYCLE === "1" ? await prepareN5Scenario(input, prepared) : null;
-  return { n3, n5, limit: (n3 ? 10 : 4) + (n5 ? 1 : 0), label: n5 ? "N5" : n3 ? "N3" : "N2",
-    additionalAgents: [...(n3?.agents ?? []), ...(n5 ? [n5.agent] : [])] };
+  let n3: any = null; let n5: any = null; let limit = 4; let label = "N2"; const additionalAgents: any[] = [];
+  if (process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1") {
+    n3 = await prepareN3Scenario(input, prepared); limit = 10; label = "N3"; additionalAgents.push(...n3.agents);
+  }
+  if (process.env.COUNCIL_N5_NATIVE_LIFECYCLE === "1") {
+    n5 = await prepareN5Scenario(input, prepared); limit++; label = "N5"; additionalAgents.push(n5.agent);
+  }
+  return { n3, n5, limit, label, additionalAgents };
 }
 async function executeExtraRole(n5: any, n3: any, execution: any) {
   if (n5 && await n5.publisher(execution)) return true;

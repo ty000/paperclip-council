@@ -64,3 +64,17 @@ it("does not infer authority or acceptance", async () => {
   await expect(startN5Publication({ issues: { create } } as never, m)).rejects.toMatchObject({ code: "n5_accepted_candidate_required" });
   expect(create).not.toHaveBeenCalled();
 });
+
+it.each(["n2-transmission", "n3-transmission", "n3-specialist"])("retains G4 exposure for unsettled %s even after final reviewer settlement", async kind => {
+  const f = fixture(); const m = f.mission; const submission = { ...m.aggregate.n5!.publication!.submission, submissionId: randomUUID() };
+  delete m.aggregate.n5!.publication;
+  m.aggregate.responsibilities = { integrationLeadAgentId: randomUUID(), finalReviewerAgentId: randomUUID(), requiredPerspectives: [] };
+  m.aggregate.compositions = { council: { members: [{ agentId: m.aggregate.responsibilities.finalReviewerAgentId }] } } as never;
+  m.aggregate.n2 = { status: "accepted", activeSubmissionId: submission.submissionId, submissions: [submission], rounds: [{ handoff: { reviewerRunId: randomUUID(), usageSettledAt: new Date().toISOString() } }],
+    application: { state: "observed", submissionId: submission.submissionId }, native: { transmission: { settledAt: kind === "n2-transmission" ? undefined : new Date().toISOString() } } } as never;
+  if (kind !== "n2-transmission") m.aggregate.n3 = { rounds: [{ transmission: { settledAt: kind === "n3-transmission" ? undefined : new Date().toISOString() },
+    specialists: [{ settledAt: kind === "n3-specialist" ? undefined : new Date().toISOString() }] }] } as never;
+  const create = vi.fn();
+  await expect(startN5Publication({ issues: { create } } as never, m)).rejects.toMatchObject({ code: "n5_source_usage_pending" });
+  expect(create).not.toHaveBeenCalled();
+});
