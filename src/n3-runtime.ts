@@ -80,7 +80,7 @@ async function startSpecialist(ctx: PluginContext, initial: MissionRecord, index
     mission = await saveRound(ctx, mission, { ...round, specialists: round.specialists.map((entry, i) => i === index ? item : entry) });
   }
   if (item.wake === "claimed") return mission;
-  await reserveN2Run(ctx, mission, { reservationId: item.reservationId, effectId: item.reservationId, kind: "initial" });
+  await reserveN2Run(ctx, mission, { reservationId: item.reservationId, effectId: item.reservationId, kind: mission.aggregate.n5?.continuation && storedN2(mission).rounds.at(-1)!.round === 2 ? "correction" : "initial" });
   item = { ...item, wake: "claimed" }; round = requireRound(mission);
   mission = await saveRound(ctx, mission, { ...round, specialists: round.specialists.map((entry, i) => i === index ? item : entry) });
   await ctx.issues.update(item.issueId!, { status: "todo" }, mission.companyId);
@@ -91,9 +91,9 @@ async function startSpecialist(ctx: PluginContext, initial: MissionRecord, index
 async function releaseTransmission(ctx: PluginContext, mission: MissionRecord) {
   let round = requireRound(mission);
   if (round.transmission.wake === "claimed") return mission;
-  await reserveN2Run(ctx, mission, { reservationId: round.transmission.reservationId, effectId: round.transmission.reservationId, kind: "initial" });
+  await reserveN2Run(ctx, mission, { reservationId: round.transmission.reservationId, effectId: round.transmission.reservationId, kind: mission.aggregate.n5?.continuation && storedN2(mission).rounds.at(-1)!.round === 2 ? "correction" : "initial" });
   const review = storedN2(mission).rounds.at(-1)!;
-  await reserveN2Run(ctx, mission, { reservationId: review.handoff.reservationId!, effectId: review.submissionId, kind: "initial" });
+  await reserveN2Run(ctx, mission, { reservationId: review.handoff.reservationId!, effectId: review.submissionId, kind: mission.aggregate.n5?.continuation && storedN2(mission).rounds.at(-1)!.round === 2 ? "correction" : "initial" });
   mission = await saveRound(ctx, mission, { ...round, transmission: { ...round.transmission, wake: "claimed" } });
   await ctx.issues.relations.removeBlockers(mission.rootIssueId, [round.blockerIssueId!], mission.companyId);
   await ctx.issues.update(round.blockerIssueId!, { status: "done" }, mission.companyId);

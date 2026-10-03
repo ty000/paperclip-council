@@ -44,7 +44,7 @@ export function correlateN5Readback(mission: MissionRecord, document: ObjectReco
   let report: ObjectRecord;
   try { report = JSON.parse(document.body); } catch { throw new MissionError(409, "n5_delivery_document", "Native delivery document must contain its intent and canonical PR URL"); }
   const url = typeof report?.url === "string" ? report.url : "";
-  if (p.observation && p.observation.url !== url) throw new MissionError(409, "n5_pr_identity_changed", "A confirmed publication cannot be rebound to another PR");
+  if (p.targetUrl && p.targetUrl !== url || p.observation && p.observation.url !== url) throw new MissionError(409, "n5_pr_identity_changed", "A confirmed publication cannot be rebound to another PR");
   const match = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/pull\/([1-9][0-9]*)$/.exec(url);
   if (!match || match[1] !== authority.repository || report.intentId !== p.intentId || document.issueId !== p.issueId
       || !document.latestRevisionId || !p.claimedAt) throw new MissionError(409, "n5_delivery_binding", "Delivery document, intent and canonical repository PR must match");

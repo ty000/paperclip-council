@@ -1,9 +1,10 @@
+import { continuationMode, continuationScenario } from "./n5-continuation-scenario.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { canonicalPayloadHash } from "../../src/missions.js";
 
 /** Only the external GitHub boundary is simulated; host detection/refresh/storage/HTTP remain real. */
-export const fakeN5GitHub = { headSha: "", calls: [] as string[], createCount: 0,
+export const fakeN5GitHub = { headSha: "", calls: [] as string[], createCount: 0, updateCount: 0,
   async fetch(url: string) {
     this.calls.push(url);
     assert.match(url, /^https:\/\/api\.github\.com\/repos\/ty000\/paperclip-council\/pulls\/4242$/);
@@ -44,8 +45,10 @@ export async function prepareN5Scenario(input: any, prepared: any) {
   const configured = await request("human", "POST", `${prepared.missionPath}/commands`, { ...configure, commandId: randomUUID(), planRevisionId: doc.latestRevisionId });
   assert.equal(configured.status, 200, JSON.stringify(configured.body));
   guards.push({ stalePlan: stale.body.code, documentId: doc.id, planRevisionId: doc.latestRevisionId, configuredVersion: configured.body.mission.version });
-  return { agent, guards, readMission,
+  const continuation = continuationScenario(input, prepared, readMission, guards, fakeN5GitHub);
+  return { agent, guards, readMission, advance: continuation.advance, rebind: continuation.rebind,
     async afterFinish() {
+      if (continuationMode) return continuation.afterFinish();
       const current = (await readMission()).body.mission;
       const p = current.aggregate.n5.publication;
       assert(p.settledAt, "Publisher must finish before late observations");
@@ -96,7 +99,7 @@ export async function prepareN5Scenario(input: any, prepared: any) {
       assert.equal(duplicate.body.code, "n5_effect_already_claimed");
       const durable = (await readMission()).body.mission.aggregate.n5.publication;
       assert.equal(durable.state, "unknown"); assert.equal(durable.runId, runId);
-      fakeN5GitHub.createCount++; // Explicit external-effect fixture, after the installed one-shot claim.
+      if (p.operation === "update") fakeN5GitHub.updateCount++; else fakeN5GitHub.createCount++; // Explicit external-effect fixture, after the installed one-shot claim.
       assert.equal(fakeN5GitHub.createCount, 1); fakeN5GitHub.headSha = p.submission.candidateCommit;
       const url = "https://github.com/ty000/paperclip-council/pull/4242";
       const product = await request(actor, "POST", `/api/issues/${issueId}/work-products`, { type: "pull_request", provider: "github", title: "Explicit fake N5 PR", url, createdByRunId: runId });
@@ -112,6 +115,11 @@ export async function prepareN5Scenario(input: any, prepared: any) {
       await refresh();
       inspected = await call({ command: "n5-inspect" });
       const observed = await call({ command: "n5-observe-delivery", commandId: randomUUID(), expectedVersion: inspected.body.version });
+      if (p.operation === "update") {
+        assert.equal(observed.status, 409, "Prior snapshot cannot prove newly updated head");
+        guards.push({ updatePublished: { intentId: p.intentId, targetUrl: p.targetUrl, runId, issueId, oldSnapshotRejected: observed.body.code, replayPermission: replay.body.effectPermission } });
+        return true;
+      }
       assert.equal(observed.status, 200, JSON.stringify(observed.body));
       inspected = await call({ command: "n5-inspect" }); assert.equal(inspected.body.delivery.ready, false, "Missing checks/reviews cannot be ready");
       const checks = { headSha: fakeN5GitHub.headSha, state: "passed", evidenceRefs: ["deterministic-github-fixture:checks"] };

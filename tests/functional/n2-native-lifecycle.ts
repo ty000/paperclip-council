@@ -1,3 +1,4 @@
+import { continuationMode } from "./n5-continuation-scenario.js";
 import { prepareN5Scenario } from "./n5-native-scenario.js";
 import { prepareN3Scenario } from "./n3-native-scenario.js";
 import assert from "node:assert/strict";
@@ -82,9 +83,9 @@ export async function runN2NativeLifecycle(input: any) {
               await call({ command: "confirm-review-handoff", commandId: randomUUID(), expectedVersion: inspection.version });
               inspection = await call({ command: "inspect" });
               const submission = inspection.n2.submission;
-              const approved = inspection.n2.review.round === 2;
+              const approved = approvesCandidate(inspection.n2.review.round);
               assert.equal(execFileSync("git", ["show", `${submission.candidateCommit}:alpha.txt`], { cwd: prepared.repository, encoding: "utf8" }),
-                approved ? "alpha contribution corrected after independent review\n" : "alpha contribution\n");
+                inspection.n2.review.round === 2 ? "alpha contribution corrected after independent review\n" : "alpha contribution\n");
               const decisionBody = {
                 operationId: randomUUID(), verdict: approved ? "approved" : "changes_requested",
                 ...(approved ? { approvedCommit: submission.candidateCommit } : { correctionReservationId: randomUUID() }),
@@ -106,6 +107,7 @@ export async function runN2NativeLifecycle(input: any) {
               result.reportedWorkDisposition = "needs_review";
               result.attentionRequests = [{ kind: "review", summary: "Council review of verified V1", ownerClass: "agent", targetAgentId: prepared.agents.reviewer.id }];
             } else {
+          await n5?.rebind(actor, call);
           const git = (args: string[]) => execFileSync("git", args, { cwd: prepared.repository, encoding: "utf8" }).trim();
           git(["switch", "contribution-beta"]);
           git(["switch", "-c", "deterministic-correction"]);
@@ -172,6 +174,7 @@ export async function runN2NativeLifecycle(input: any) {
     await heartbeat.drainActiveRunExecutions();
     mission = (await request("human", "GET", `${prepared.missionPath}?companyId=${prepared.companyId}`)).body.mission;
     admission = (await request("human", "GET", `${prepared.admissionPath}?companyId=${prepared.companyId}&periodKey=${encodeURIComponent(prepared.nativePeriodKey)}`)).body.envelope;
+    if (n5 && !errors.length) await n5.advance(mission);
     if (errors.length || lifecycleComplete(mission, admission, Boolean(n5))) break;
     await new Promise(resolve => setTimeout(resolve, 250));
   }
@@ -207,7 +210,7 @@ async function prepareScenarios(input: any, prepared: any) {
     n3 = await prepareN3Scenario(input, prepared); limit = 10; label = "N3"; additionalAgents.push(...n3.agents);
   }
   if (process.env.COUNCIL_N5_NATIVE_LIFECYCLE === "1") {
-    n5 = await prepareN5Scenario(input, prepared); limit++; label = "N5"; additionalAgents.push(n5.agent);
+    n5 = await prepareN5Scenario(input, prepared); limit += continuationMode ? 2 : 1; label = continuationMode ? "N5 CONTINUATION" : "N5"; additionalAgents.push(n5.agent);
   }
   return { n3, n5, limit, label, additionalAgents };
 }
@@ -217,5 +220,7 @@ async function executeExtraRole(n5: any, n3: any, execution: any) {
 }
 function lifecycleComplete(mission: any, admission: any, n5: boolean) {
   return mission.aggregate.n2?.status === "accepted" && admission.reservations.every((entry: any) => entry.status === "settled")
-    && (!n5 || mission.aggregate.n5?.publication?.settledAt);
+    && (!n5 || mission.aggregate.n5?.publication?.settledAt && (!continuationMode || mission.aggregate.n5.publication.operation === "update"));
 }
+
+function approvesCandidate(round: number) { return round === 2 || continuationMode; }

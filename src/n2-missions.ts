@@ -804,6 +804,7 @@ export async function nativeN2Profile(ctx: PluginContext, mission: MissionRecord
   if (!profile || profile.maxCorrections !== 1) {
     throw new MissionError(409, "n2_correction_profile_required", "Native N2 requires maxCorrections=1 in the configured operating profile");
   }
+  if (mission.aggregate.n5?.continuation && mission.aggregate.n5.continuation.periodKey !== profile.periodKey) throw new MissionError(409, "n5_continuation_period_changed", "Post-acceptance correction must retain its original budget period");
   const envelope = await readAdmission(ctx, { companyId: mission.companyId, periodKey: profile.periodKey });
   if (!envelope) throw new MissionError(422, "g4_not_configured", "No task/period admission envelope is configured");
   assertNativeEnvelope(envelope, profile);

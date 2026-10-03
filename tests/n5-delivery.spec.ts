@@ -89,3 +89,31 @@ it.each(["n2-transmission", "n3-transmission", "n3-specialist"])("retains G4 exp
   await expect(startN5Publication({ issues: { create } } as never, m)).rejects.toMatchObject({ code: "n5_source_usage_pending" });
   expect(create).not.toHaveBeenCalled();
 });
+
+it("pins the prior PR URL before the first update readback", () => {
+  const f = fixture(); f.mission.aggregate.n5!.publication!.targetUrl = "https://github.com/ty000/paperclip-council/pull/22";
+  expect(() => correlateN5Readback(f.mission, f.document, f.products, f.objects)).toThrow(/another PR/);
+});
+
+function acceptedFixture() {
+  const m = fixture().mission; const p = m.aggregate.n5!.publication!;
+  m.aggregate.journal = [];
+  m.aggregate.responsibilities = { integrationLeadAgentId: randomUUID(), finalReviewerAgentId: randomUUID(), requiredPerspectives: [] };
+  m.aggregate.compositions = { council: { members: [{ agentId: m.aggregate.responsibilities.finalReviewerAgentId }] } } as never;
+  m.aggregate.n2 = { status: "accepted", correctionLimit: 1, correctionsUsed: 0, activeSubmissionId: p.submission.submissionId,
+    submissions: [p.submission], rounds: [{ round: 1, handoff: { reviewerRunId: randomUUID(), usageSettledAt: new Date().toISOString() }, verdict: { verdict: "approved" } }],
+    application: { state: "observed", submissionId: p.submission.submissionId }, native: { transmission: { settledAt: new Date().toISOString() } } } as never;
+  p.state = "opened"; p.settledAt = new Date().toISOString(); p.observation = { state: "open", url: "https://github.com/ty000/paperclip-council/pull/23" } as never;
+  return m;
+}
+it("consumes the sole correction while retaining historical independent acceptance and PR", async () => {
+  const { prepareN5Continuation } = await import("../src/n5-continuation.js");
+  const m = acceptedFixture(); const before = structuredClone(m.aggregate);
+  const next = prepareN5Continuation(m, { requestId: randomUUID(), reservationId: randomUUID(), reason: "Post-publication defect", criteria: ["Fix bounded defect"], actorId: randomUUID(), periodKey: "same-period" });
+  expect(next.n2.correctionsUsed).toBe(1); expect(next.n2.status).toBe("correction_requested");
+  expect(next.n2.rounds).toEqual(before.n2!.rounds); expect(next.n5.continuation.previousApplication).toEqual(before.n2!.application);
+  expect(next.n5.continuation.previousPublication).toEqual(before.n5!.publication); expect(next.n5.authority).toEqual(before.n5!.authority);
+  expect(m.aggregate).toEqual(before);
+  m.aggregate.n2!.correctionsUsed = 1;
+  expect(() => prepareN5Continuation(m, { requestId: randomUUID(), reservationId: randomUUID(), reason: "More", criteria: ["More"], actorId: randomUUID(), periodKey: "same-period" })).toThrow(/already consumed/);
+});

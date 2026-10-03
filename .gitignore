@@ -27,3 +27,6 @@ artifacts/n3-native-lifecycle-*.log
 
 artifacts/n5-native-lifecycle-*.json
 artifacts/n5-native-lifecycle-*.log
+
+artifacts/n5-continuation-native-lifecycle-*.json
+artifacts/n5-continuation-native-lifecycle-*.log

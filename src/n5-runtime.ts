@@ -1,27 +1,17 @@
-import { createHash, randomUUID } from "node:crypto";
+import { requestN5Correction, rebindN5Plan } from "./n5-continuation.js";
+import { acceptedN5Submission } from "./n5-preflight.js";
+import { randomUUID } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { AdmissionError } from "./admission.js";
 import { createContributionIssueEffect } from "./contribution-effects.js";
 import { readNativeRun, settleNativeExactRunUsage } from "./g4-native.js";
 import { canonicalPayloadHash, getMission, MissionError, type MissionRecord } from "./missions.js";
-import { inspectN2State, n2Cas, n2CommandCas, nativeN2Profile, reserveN2Run, runtimeReceipt, runtimeUuid } from "./n2-missions.js";
+import { n2Cas, n2CommandCas, nativeN2Profile, reserveN2Run, runtimeReceipt, runtimeUuid } from "./n2-missions.js";
 import { assertCurrentN5Plan, observeN5Native, readN5Plan } from "./n5-native.js";
 import { inspectN5, type N5State } from "./n5-state.js";
 
 const fresh = async (ctx: PluginContext, m: MissionRecord) => (await getMission(ctx, m.companyId, m.missionId))!;
 const save = (ctx: PluginContext, m: MissionRecord, n5: N5State) => n2Cas(ctx, m, { ...m.aggregate, n5 });
-function accepted(m: MissionRecord) {
-  const n2 = inspectN2State(m);
-  if (n2?.status !== "accepted" || n2.application.state !== "observed" || !n2.usage.complete
-      || !n2.submission || n2.application.submissionId !== n2.submission.submissionId) throw new MissionError(409, "n5_accepted_candidate_required", "Native acceptance and exact terminal accounting must precede publication");
-  if (n2.submission.mandateHash !== createHash("sha256").update(JSON.stringify(m.aggregate.mandate)).digest("hex")) throw new MissionError(409, "n5_mandate_changed", "Accepted submission belongs to a different mandate");
-  const native = m.aggregate.n2?.native;
-  if (native && !native.transmission.settledAt) throw new MissionError(409, "n5_source_usage_pending", "Native transmission accounting is required before publication");
-  if (m.aggregate.n3?.rounds.some(round => !round.transmission.settledAt || round.specialists.some(item => !item.settledAt))) {
-    throw new MissionError(409, "n5_source_usage_pending", "Every N3 specialist and transmission must be settled before publication");
-  }
-  return n2.submission;
-}
 function text(value: unknown, label: string) {
   if (typeof value !== "string" || !value.trim() || value !== value.trim() || value.length > 200) throw new MissionError(422, "n5_invalid_input", `${label} must be a bounded string`);
   return value;
@@ -43,21 +33,26 @@ async function authorize(ctx: PluginContext, m: MissionRecord, body: Record<stri
 /** Persisted authority may admit exactly one publisher after acceptance; no per-delivery human gate. */
 export async function startN5Publication(ctx: PluginContext, initial: MissionRecord) {
   let m = initial; const n5 = m.aggregate.n5;
-  if (!n5 || n5.publication) return m;
-  const submission = accepted(m);
+  if (!n5) return m;
+  const continuation = n5.continuation;
+  const updating = Boolean(continuation && !continuation.updateAdmitted && n5.publication?.settledAt
+    && m.aggregate.n2?.status === "accepted" && m.aggregate.n2.activeSubmissionId !== continuation.previousPublication.submission.submissionId);
+  if (n5.publication && !updating) return m;
+  const submission = acceptedN5Submission(m);
   await assertCurrentN5Plan(ctx, m);
   const intentId = randomUUID(); const reservationId = randomUUID();
   // This CAS is the unique creation claim; any uncertain child creation stays retained.
-  m = await save(ctx, m, { ...n5, publication: { intentId, submission, issueId: null, runId: null, reservationId,
+  m = await save(ctx, m, { ...n5, ...(updating ? { continuation: { ...continuation!, updateAdmitted: true } } : {}),
+    publication: { operation: updating ? "update" : "create", targetUrl: updating ? continuation!.previousPublication.observation!.url : undefined, intentId, submission, issueId: null, runId: null, reservationId,
     settlementCommandId: randomUUID(), createdAt: new Date().toISOString(), creation: "claimed", wake: "pending", state: "pending" } });
   const created = await createContributionIssueEffect(ctx, { state: "creation_claimed", intentId, companyId: m.companyId,
     projectId: m.projectId, rootIssueId: m.rootIssueId, missionId: m.missionId, contributionId: intentId,
     assigneeAgentId: n5.authority.publisherAgentId, title: `Council delivery ${submission.submissionId}`,
-    description: JSON.stringify({ missionId: m.missionId, intentId, plan: n5.plan, authority: n5.authority, submission,
-      instructions: "Use n5-inspect then n5-claim-publication before git/gh. Only effectPermission=execute allows one create. Verify local and remote candidate/ref before gh. Write native delivery JSON {intentId,url,link} with link as Markdown autolink <URL> and pull_request work product, refresh the external object, then n5-observe-delivery. Ambiguous effect: never create again. Finish with attributed checks/review limits." }) });
+    description: JSON.stringify({ missionId: m.missionId, intentId, operation: updating ? "update" : "create", targetUrl: m.aggregate.n5!.publication!.targetUrl, plan: n5.plan, authority: n5.authority, submission,
+      instructions: "Use n5-inspect then n5-claim-publication before git/gh. Only effectPermission=execute allows one effect of the specified operation. For update, push only the newly accepted head to the unchanged authorized branch and update the SAME targetUrl PR; never create another PR. Verify local and remote candidate/ref before gh. Write native delivery JSON {intentId,url,link} with link as Markdown autolink <URL> and pull_request work product, refresh the external object, then n5-observe-delivery. Ambiguous effect: never create again. Finish with attributed checks/review limits." }) });
   if (created.state !== "confirmed") return m;
   m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...m.aggregate.n5!.publication!, issueId: created.issue.id, creation: "confirmed" } });
-  await reserveN2Run(ctx, m, { reservationId, effectId: intentId, kind: "initial" });
+  await reserveN2Run(ctx, m, { reservationId, effectId: intentId, kind: updating ? "correction" : "initial" });
   m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...m.aggregate.n5!.publication!, wake: "claimed" } });
   await ctx.issues.update(created.issue.id, { status: "todo" }, m.companyId);
   const wake = await ctx.issues.requestWakeup(created.issue.id, m.companyId, { idempotencyKey: `council:n5:${intentId}`, reason: "council_n5_authorized_delivery" });
@@ -69,7 +64,8 @@ export async function startN5Publication(ctx: PluginContext, initial: MissionRec
 export async function reconcileN5(ctx: PluginContext, initial: MissionRecord) {
   let m = initial;
   if (!m.aggregate.n5) return m;
-  if (!m.aggregate.n5.publication) return startN5Publication(ctx, m);
+  if (!m.aggregate.n5.publication || m.aggregate.n5.continuation && !m.aggregate.n5.continuation.updateAdmitted
+      && m.aggregate.n2?.status === "accepted" && m.aggregate.n2.activeSubmissionId !== m.aggregate.n5.publication.submission.submissionId) return startN5Publication(ctx, m);
   let p = m.aggregate.n5.publication;
   if (!p.runId || !p.issueId) return m;
   if (!p.settledAt) {
@@ -96,7 +92,8 @@ async function executeN5Board(ctx: PluginContext, input: { companyId: string; mi
     return { outcome: "reconciled", mission: updated };
   }
   const prior = runtimeReceipt(m, runtimeUuid(input.body.commandId, "commandId"), input.actorUserId, canonicalPayloadHash(input.body));
-  if (prior) return { outcome: "replayed", mission: m, receipt: prior };
+  if (prior) return { outcome: "replayed", effectPermission: "none", mission: m, receipt: prior };
+  if (input.body.command === "request-delivery-correction") return requestN5Correction(ctx, m, input.body, input.actorUserId);
   return authorize(ctx, m, input.body, input.actorUserId);
 }
 
@@ -120,6 +117,11 @@ export async function handleN5Agent(ctx: PluginContext, input: PluginApiRequestI
     const body = input.body as Record<string, unknown>;
     let m = await getMission(ctx, input.companyId, runtimeUuid(body.missionId, "missionId"));
     if (!m) throw new MissionError(404, "mission_not_found", "Mission not found");
+    if (body.command === "n5-rebind-plan") {
+      const prior = runtimeReceipt(m, runtimeUuid(body.commandId, "commandId"), input.actor.agentId!, canonicalPayloadHash(body));
+      if (prior) return { status: 200, body: { outcome: "replayed", effectPermission: "none", mission: m, receipt: prior } };
+      return { status: 200, body: await rebindN5Plan(ctx, m, input, body) };
+    }
     m = await bindPublisher(ctx, m, input);
     if (body.command === "n5-inspect") return { status: 200, body: { version: m.version, delivery: inspectN5(m) } };
     const prior = runtimeReceipt(m, runtimeUuid(body.commandId, "commandId"), input.actor.agentId!, canonicalPayloadHash(body));
@@ -127,7 +129,7 @@ export async function handleN5Agent(ctx: PluginContext, input: PluginApiRequestI
     const n5 = m.aggregate.n5!; let p = n5.publication!;
     if (body.command === "n5-claim-publication") {
       if (p.claimedAt) throw new MissionError(409, "n5_effect_already_claimed", "One publication intent is already consumed; correlate readback without another effect");
-      const candidate = accepted(m); await assertCurrentN5Plan(ctx, m);
+      const candidate = acceptedN5Submission(m); await assertCurrentN5Plan(ctx, m);
       if (canonicalPayloadHash(candidate) !== canonicalPayloadHash(p.submission)) throw new MissionError(409, "n5_candidate_changed", "Accepted candidate changed");
       p = { ...p, state: "unknown", claimedAt: new Date().toISOString(), claimCommandId: String(body.commandId) };
     } else if (body.command === "n5-observe-delivery") {
