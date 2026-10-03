@@ -1426,6 +1426,17 @@ export async function prepareN2Decision(
       || (decision.verdict === "approved" && decision.approvedCommit !== submission.candidateCommit)) {
     throw new MissionError(409, "n2_decision_target_mismatch", "Decision does not target the active N2 submission and confirmed reviewer run");
   }
+  if (decision.verdict === "approved") {
+    // N2 already verified the bundle bytes, base, candidate and attributed paths
+    // when creating this immutable submission. Recheck its native attachment
+    // binding, rather than requiring an unrelated legacy delivery manifest.
+    const attachments = await ctx.issues.listAttachments(mission.rootIssueId, mission.companyId);
+    const attachment = attachments.find((entry) => entry.id === submission.attachmentId);
+    if (!attachment || attachment.companyId !== mission.companyId || attachment.issueId !== mission.rootIssueId
+        || attachment.sha256 !== submission.sha256 || attachment.byteSize !== submission.byteSize) {
+      throw new MissionError(409, "n2_approval_attachment_mismatch", "Approval attachment no longer matches the verified immutable N2 submission");
+    }
+  }
   const prior = n2Effect(mission.aggregate, (entry) => entry.kind === "n2_decision" && entry.operationId === decision.operationId);
   const payload = n2DecisionPayload(decision);
   const decisionHash = canonicalPayloadHash(payload);

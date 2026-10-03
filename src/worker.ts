@@ -104,14 +104,6 @@ export async function handleDecision(
       if (issue.companyId !== input.companyId || issue.status !== "in_review" || issue.assigneeAgentId !== config.councilAgentId) {
         return { status: 409, body: { error: "Issue is not pending this council" } };
       }
-      if (decision.verdict === "approved") {
-        try {
-          await verifyApprovalCandidate(context, issue, input.companyId, decision.approvedCommit);
-        } catch (error) {
-          if (!(error instanceof ApprovalPreflightError)) throw error;
-          return { status: error.status, body: { error: error.message } };
-        }
-      }
       const n2DecisionInput = {
         operationId: decision.operationId,
         verdict: decision.verdict,

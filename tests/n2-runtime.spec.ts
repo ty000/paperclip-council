@@ -293,6 +293,35 @@ describe("N2 persisted native journey", () => {
     expect(h.update).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["verified attachment", {}, 202],
+    ["wrong company", { companyId: randomUUID() }, 409],
+    ["wrong issue", { issueId: randomUUID() }, 409],
+    ["different digest", { sha256: "f".repeat(64) }, 409],
+    ["different size", { byteSize: 999 }, 409],
+    ["missing attachment", { id: randomUUID() }, 409],
+  ] as const)("approves N2 from its immutable submission without a legacy manifest: %s", async (_label, changed, expectedStatus) => {
+    const h = harness();
+    vi.mocked(readNativeSequentialUsageBaseline).mockImplementation(async () => h.baseline());
+    const submissionId = randomUUID();
+    await executeN2BoardCommand(h.ctx, {
+      companyId: id.company, missionId: id.mission, actorUserId: id.owner,
+      body: { command: "start-review", commandId: randomUUID(), expectedVersion: h.version(), submissionId, reservationId: randomUUID() },
+    });
+    h.setIssue({ id: id.root, companyId: id.company, projectId: id.project, status: "in_review", assigneeAgentId: id.reviewer,
+      executionState: { currentParticipant: { type: "agent", agentId: id.reviewer }, returnAssignee: { type: "agent", agentId: id.lead } } });
+    h.setBaseline({ runIds: [id.leadRun, id.reviewerRun1].sort(), tokenTotal: 100 });
+    const confirmed = await handleN2AgentApi(agentRequest({ command: "confirm-review-handoff", commandId: randomUUID(), expectedVersion: h.version() }, id.reviewer, id.reviewerRun1), h.ctx);
+    expect(confirmed.status).toBe(200);
+    h.ctx.issues.listAttachments = vi.fn().mockResolvedValue([{ id: id.attachment1, companyId: id.company,
+      issueId: id.root, sha256: "d".repeat(64), byteSize: 120, ...changed }]);
+    const response = await handleDecision({ ...agentRequest({}, id.reviewer, id.reviewerRun1), routeKey: "decision",
+      body: { operationId: randomUUID(), verdict: "approved", approvedCommit: "c".repeat(40),
+        resultReference: n2SubmissionResultReference(submissionId), justification: "Verified exact N2 candidate" } }, h.ctx);
+    expect(response.status).toBe(expectedStatus);
+    if (expectedStatus === 409) expect(response.body.code).toBe("n2_approval_attachment_mismatch");
+  });
+
   it("persists handoff, correction admission, changed V2 and second independent review", async () => {
     const h = harness();
     currentN2 = () => h.current().n2!;
