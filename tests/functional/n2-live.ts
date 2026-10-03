@@ -536,7 +536,7 @@ export async function runLiveN2(input: {
   const finalMission = await inspectMission(input.request, missionPath, companyId);
   assert.equal(finalMission.mission.aggregate.phase, "accepted");
   assert.equal(finalMission.n2.status, "accepted");
-  assert.equal(finalMission.n2.correctionsUsed, 1);
+  assert.equal(finalMission.mission.aggregate.n2.correctionsUsed, 1);
   assert.equal(finalMission.n2.submissions.length, 2);
   assert.equal(finalMission.n2.usage.complete, true);
   assert.notEqual(finalMission.n2.submissions[0].candidateCommit, finalMission.n2.submissions[1].candidateCommit);
