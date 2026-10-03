@@ -1,3 +1,165 @@
+# N2 — revue native et comptabilité déterministe
+
+## Checkpoint actuel — 2026-10-03
+
+**Le parcours natif complet à modèle déterministe est qualifié sur le host inchangé
+`61b3fd57a695614dc4a37e2303f426a34a9795cf`. Les anciennes commandes LIVE
+`codex_local`, les trois runs, le rendez-vous modèle et le core patch décrits plus
+bas sont historiques : ils ne lancent pas le nouveau profil expérimental.**
+Aucun nouveau launcher provider, déploiement ni migration d'agents installés n'est
+livré ou autorisé par ce checkpoint.
+
+Source exécutable : `99cc01dd74af193c4d9e020718a93a9db8971a20` ; le commit
+suivant ne met à jour que README/rapport/manifeste. Le package de ce SHA a été
+construit, installé et chargé dans une instance éphémère authentifiée. La vraie
+mission N1 legacy `ready_for_review` sert de départ, puis quatre exécutions réelles :
+
+1. Le Lead transmet V1, relit et revérifie son bundle exact, puis termine avec
+   `needs_review`. Le finalizer crée la carte native et son réveil reviewer.
+2. Le reviewer indépendant rejette V1 par la route native. Il reste `running`
+   après le verdict ; l'issue garde le Lead comme assignee. Council a posé une
+   dépendance d'attente après admission du reviewer, avant le rejet.
+3. L'événement terminal permet le règlement des tokens exacts du reviewer,
+   puis la réservation individuelle de correction, le retrait de la dépendance
+   et un seul réveil du Lead. Le modèle produit un vrai commit/bundle V2 distinct.
+4. La correction prépare V2 et réserve individuellement reviewer2 avant son
+   `finish needs_review`. Le reviewer final accepte le candidat exact via une
+   nouvelle carte ; tous les coûts sont ensuite soldés.
+
+Preuve : `artifacts/n2-native-lifecycle-99cc01dd74af193c4d9e020718a93a9db8971a20.json`,
+SHA-256 `7a7796c0753e16b544c57b2a11d8d60c406e1ca43e9fb55928d2699a84c91bb6`.
+Elle contient quatre runs `succeeded`, quatre cost rows, quatre réservations
+soldées à 124 tokens chacune (496 au total), exposition restante zéro et reprise
+sans cinquième exécution. Les lignes root comprennent aussi le prédécesseur N1
+fixture et une admission annulée par dépendance avant démarrage ; elles restent
+visibles dans `allRootRuns`. La reprise appelle réellement le contrôleur et la
+récupération Paperclip ; elle ne prétend pas qualifier chaque crash intermédiaire.
+Le checkpoint au début effectif de correction vérifie le reviewer terminal, sa
+cost row et son règlement. V1=`e0881e2c9d1a61e4c30495e0b2edf4cfd82cdcdd`,
+V2=`a1f9852ef509c33d9b4e536690b161e0b43d0fb5` dans le dépôt éphémère.
+
+Gates : `artifacts/n2-native-lifecycle-gates-99cc01dd74af193c4d9e020718a93a9db8971a20.json`,
+SHA-256 `449d96b1a0992facd99327abf5dfc3739ca8538e0b638434b477d2835b2d7322`.
+`node scripts/ci/run-checks.mjs` : typecheck, 246 tests, build PASS.
+Audit Fallow 3.23.0, base `035f69ac86b8955ede299ffb9e8c326c3d3abd38` : PASS.
+La revue indépendante a fait avancer le refus du second rejet avant tout effet
+natif ; une régression le vérifie. Les tests de reçus couvrent aussi un mauvais
+run source natif, conservé `indeterminate`, et une relecture sans second POST.
+
+## Contrat G3/G4 et autorité
+
+Le nouveau profil est opt-in : `n2RuntimeProfile: "paperclip_runner-experimental"`.
+Les autres chemins restent legacy. Le contrat N1 n'est pas réécrit : son candidat
+vérifié est consommé par une nouvelle transmission, avec sa propre réservation.
+La carte native provient exclusivement du vrai finalizer d'un run natif ; aucune
+carte, status decision, heartbeat N2 ou cost row N2 n'est fabriquée par Council.
+
+Council lit `GET /api/heartbeat-runs/:runId` avec sa clé standard d'agent configurée.
+Le readback qualifié expose company/issue/agent/run, les dates terminales et les
+compteurs normalisés `usageJson.usageSource=per_run`. Le règlement exige cette
+identité, un démarrage, une fin et des tokens positifs ; `inputTokens + outputTokens`
+ne recompte pas le cache. Une mesure absente, nulle ou non qualifiée reste inconnue
+et sa réservation reste ouverte. L'attribution ne dépend plus d'un delta agrégé
+entre runs N2. Le prédicat expérimental d'exclusion de lignes annulées, isolé dans
+`402a7c4`, n'est pas présent dans le diff final du règlement séquentiel.
+
+Transmission et reviewer1, puis correction et reviewer2, ont des réservations
+individuelles distinctes. L'outbox native du reviewer peut donc fonctionner avant
+la persistance du coût source, sans budget forfaitaire par cycle. La frontière
+**rejet reviewer → coût connu/règlement → réserve correction → départ Lead**
+reste strictement séquentielle. Le contrôleur réutilise l'agrégat mission, ses CAS,
+les admissions et les reçus existants : aucune table, aucun agent comptable ni
+nouveau scheduler.
+
+Avant effet, Council vérifie soumission/candidat/reviewer/run et lie le reçu à
+l'operationId, la carte, la décision native et son sourceRun. Le POST public
+`/api/issues/:issueId/interactions/:interactionId/accept|reject` utilise l'identité
+Council avec `x-paperclip-run-id`, pas un owner simulant le reviewer. La réponse
+doit porter les identités et la résolution attendues. Le blocker passe par les
+relations publiques du SDK, sans annuler le reviewer ni changer sa carte. Leur
+retrait et la clôture du blocker par le SDK ne produisent pas de wake ; le
+contrôleur émet explicitement le seul `requestWakeup` de correction.
+
+## Profil expérimental à préparer explicitement
+
+Cette préparation exige l'owner pour la configuration initiale. Elle n'installe
+rien sur une instance durable. Dans la seule qualification éphémère :
+
+- Lead et reviewer indépendants : `adapterType: paperclip_runner`, configuration
+  provider/modèle choisie, rollout `experimental.enableNativeRunner` activé
+  (profil natif du host qualifié), heartbeat périodique désactivé,
+  `wakeOnDemand: true`, `maxConcurrentRuns: 1` pendant tout le cycle.
+- Configuration Council existante : origine API loopback, ID reviewer et sa
+  secret_ref de clé standard ; ajouter `n2RuntimeProfile` ci-dessus et conserver
+  `n1OperatingProfile.maxCorrections: 1`. La preuve utilise 2M tokens par run et
+  une enveloppe de 10M ; les dépenses positives simulées sont 124 par run.
+- Depuis la mission N1 terminée, garder le Lead assignee de la root `in_progress`.
+  Retirer les anciens stages de revue legacy par le PATCH public owner
+  `{ "executionPolicy": { "mode": "normal", "stages": [] } }` avant démarrage.
+  L'owner appelle ensuite `POST <missionPath>/commands` avec `companyId`,
+  `command: "start-review"`, UUID `commandId`, `expectedVersion`, UUID
+  `submissionId`, UUID `reservationId` pour reviewer1 et UUID distinct
+  `transmissionReservationId`. Une relecture du même commandId ne relance pas.
+
+Les instructions de ces agents doivent porter explicitement le profil :
+
+- Lead transmission : `inspect`, puis `attest-transmission` sur
+  `/api/plugins/:pluginId/api/issues/:rootIssueId/council/commands`, avec
+  `missionId`, `commandId`, `expectedVersion`. Après succès, terminer par le
+  contrat runner `needs_review` et une attention review ciblant le reviewer.
+- Lead correction : `inspect`, effectuer la correction bornée, uploader le bundle,
+  puis `prepare-resubmission` avec les identités exactes V2, `correctedPaths` et
+  un UUID `reviewReservationId`. Terminer `needs_review` ciblant le même reviewer.
+- Reviewer : `inspect`, `confirm-review-handoff`, examen du candidat exact,
+  puis `/decision` avec verdict, justification, référence de soumission,
+  operationId stable et approvedCommit exact pour acceptation. Le premier rejet
+  fournit `correctionReservationId` ; sa réservation effective attend le coût.
+  Le succès natif renvoie HTTP 200 pendant le run, puis le reviewer termine.
+  Ne pas appeler séparément `resolve_review` en contournant cette séquence Council.
+
+Après le départ initial, aucun geste owner, toggle de wake ou rendez-vous artificiel
+ne participe au parcours qualifié. `reconcile-native-n2` sur la route owner des
+commandes de mission offre une relecture déterministe ; un effet ambigu demeure
+réservé/inconnu et n'autorise pas une clé de remplacement ou un nouveau départ.
+Les anciennes instructions `codex_local` ne sont pas un profil prêt à adopter.
+
+## Rejeu et limites
+
+Depuis le candidat source propre, avec les dépendances disponibles :
+
+```sh
+PAPERCLIP_TEST_HOST_ROOT="$PWD/.paperclip/qualification/paperclip" \
+COUNCIL_N2_NATIVE_HOST_COMMIT=61b3fd57a695614dc4a37e2303f426a34a9795cf \
+pnpm qualification:native:n2
+```
+
+Le launcher réclame une preuve create-only liée au SHA ; il refuse de l'écraser.
+La substitution est limitée à `nativeSessionBackendFactory`, seam officielle du
+modèle. Le wrapper de test délègue entièrement au vrai heartbeatService : queue,
+claim, gates, finalizer, HTTP/auth, événements, cost rows et recovery sont réels.
+Les trois runs de préparation N1 restent des fixtures explicites, jamais comptés
+parmi les quatre exécutions N2. Il n'y a ni provider, ni core patch, ni daemon
+simulé, ni migration d'agent installé. Le runtime éphémère a été supprimé.
+
+Le probe de causalité est rejouable par
+`node node_modules/vitest/vitest.mjs run --config scripts/qualification/n2-native-dependency.config.mjs`.
+Il établit la conservation de la carte après insertion publique du blocker, le
+coût terminal natif et la lecture par clé Council. Son troisième cas démontre
+qu'un reviewer bloqué avant admission perd son contexte d'outbox et n'est pas
+restauré par un simple wake public : ce raccord a été écarté. Ces expériences
+partielles ne remplacent pas la preuve complète ci-dessus.
+
+La qualité du modèle, les coûts provider réels, l'installation durable et le LIVE
+restent non qualifiés. L'acceptation native peut rendre d'autres issues dépendantes
+éligibles avant le coût final : N2 n'en crée pas, et le futur raccord N6 devra lier
+l'admission suivante au règlement, pas seulement à `root.status=done`. Aucun
+raccord N3/Executive/N6 ni garantie globale contre l'usage d'autres APIs hors du
+workflow Council n'est revendiqué.
+
+---
+
+# Historique conservé — recommandations antérieures remplacées
+
 # N2 — ordinary correction and confirmed acceptance
 
 ## Current checkpoint — 2026-10-03

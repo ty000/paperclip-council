@@ -1,9 +1,9 @@
 {
   "schema_version": "proof-manifest.v1",
-  "proof_id": "paperclip-council-n2-campaign-candidate-2026-10-03",
-  "subject": "Published draft PR #18 candidate based on origin/main d4d4a6032a96b6bd1e9c5cb6b9b754b05f08f28b; the exact head is recorded by PR readback and Paperclip-native N2 qualification remains excluded",
-  "status": "implementation-corrected-needs-fresh-live-authorization",
-  "summary": "Authorized isolated campaign 7847e64 reached an exact prepared changes_requested verdict, but immediate native application cancelled the active reviewer before authoritative usage could settle. The provider-free correction defers exact receipt-backed application until the matching succeeded-run event and settled usage; spontaneous native lifecycle delivery remains unqualified.",
+  "proof_id": "paperclip-council-n2-native-runner-deterministic-2026-10-03",
+  "subject": "Experimental paperclip_runner N2 on unchanged host61b3fd57; exact executable candidate 99cc01dd74af193c4d9e020718a93a9db8971a20",
+  "status": "native-deterministic-lifecycle-qualified-provider-and-durable-adoption-not-qualified",
+  "summary": "Installed ephemeral package traversed legacyN1 ready_for_review -> native transmission -> reviewer rejection while running -> terminal cost and settlement -> reserved real V2 correction -> final exact-candidate native acceptance. Four succeeded native runs, four cost rows, 496 simulated tokens, four settled reservations, zero exposure, recovery without fifth execution. Official nativeSessionBackendFactory alone substitutes model execution. No core patch, provider, migration, or wake-toggle rendezvous.",
   "categories": [
     "functional",
     "quality",
@@ -12,12 +12,30 @@
   ],
   "evidence": [
     {
+      "id": "n2-current-native-four-run-proof",
+      "category": "functional",
+      "kind": "native-runtime-evidence",
+      "location": "artifacts/n2-native-lifecycle-99cc01dd74af193c4d9e020718a93a9db8971a20.json",
+      "sha256": "7a7796c0753e16b544c57b2a11d8d60c406e1ca43e9fb55928d2699a84c91bb6",
+      "replayable": true,
+      "notes": "Clean source/installed package exact SHA; unchanged host61b3fd57; model-only substitution; real API/auth/heartbeat/finalizer/cost/events/recovery; explicit legacy N1 fixtures excluded from four actual executions. Cancelled predispatch row remains visible."
+    },
+    {
+      "id": "n2-current-source-gates",
+      "category": "quality",
+      "kind": "command-output-manifest",
+      "location": "artifacts/n2-native-lifecycle-gates-99cc01dd74af193c4d9e020718a93a9db8971a20.json",
+      "sha256": "449d96b1a0992facd99327abf5dfc3739ca8538e0b638434b477d2835b2d7322",
+      "replayable": true,
+      "notes": "Canonical typecheck/246tests/build PASS; Fallow3.23.0 diff-gate base035f69ac86b8955ede299ffb9e8c326c3d3abd38 PASS; linked artifact hashes. Final follow-up only changes documentation."
+    },
+    {
       "id": "n2-test-suite",
       "category": "functional",
       "kind": "automated-test",
       "location": "pnpm test",
       "replayable": true,
-      "notes": "Observed pass: 22 test files and 227 tests, including exact public reviewer preparation, deferred finished-event settlement/application, duplicate delivery, stale identity and unknown-usage guards."
+      "notes": "HISTORICAL: Observed pass: 22 test files and 227 tests, including exact public reviewer preparation, deferred finished-event settlement/application, duplicate delivery, stale identity and unknown-usage guards."
     },
     {
       "id": "n2-typecheck",
@@ -25,7 +43,7 @@
       "kind": "command-output",
       "location": "pnpm typecheck",
       "replayable": true,
-      "notes": "Observed exit 0 on the local candidate."
+      "notes": "HISTORICAL: Observed exit 0 on the local candidate."
     },
     {
       "id": "n2-build",
@@ -33,7 +51,7 @@
       "kind": "command-output",
       "location": "pnpm build",
       "replayable": true,
-      "notes": "Observed exit 0 on the local candidate."
+      "notes": "HISTORICAL: Observed exit 0 on the local candidate."
     },
     {
       "id": "n2-static-audit",
@@ -41,7 +59,7 @@
       "kind": "command-output",
       "location": "python3 /home/davy-lp/.codex/plugins/cache/home-local/static-code-audit/0.4.1/scripts/static_audit_gate.py diff-gate --repo /home/davy-lp/.codex/worktrees/council-n2/paperclip-council --base-ref origin/main",
       "replayable": true,
-      "notes": "Required on the exact committed candidate against origin/main and the previous published 7847e64 head; recorded separately by final gate output."
+      "notes": "HISTORICAL: Required on the exact committed candidate against origin/main and the previous published 7847e64 head; recorded separately by final gate output."
     },
     {
       "id": "n2-clean-bounded-qualification",
@@ -49,7 +67,7 @@
       "kind": "command-output",
       "location": "pnpm qualification:bounded",
       "replayable": true,
-      "notes": "Run only after commit on the clean exact PR-head candidate. This remains local/non-provider qualification and does not establish N2 native acceptance."
+      "notes": "HISTORICAL: Run only after commit on the clean exact PR-head candidate. This remains local/non-provider qualification and does not establish N2 native acceptance."
     },
     {
       "id": "n2-live-launcher-contract",
@@ -57,7 +75,7 @@
       "kind": "source-and-test",
       "location": "pnpm qualification:live:n2 and tests/run-bounded.spec.ts",
       "replayable": false,
-      "notes": "Requires fresh explicit LIVE authorization per exact SHA, exact gpt-5.6-sol/high settings, six 2,000,000-unit reservations inside a fresh 12,000,000-unit period, and create-only commit-qualified artifacts."
+      "notes": "HISTORICAL: Requires fresh explicit LIVE authorization per exact SHA, exact gpt-5.6-sol/high settings, six 2,000,000-unit reservations inside a fresh 12,000,000-unit period, and create-only commit-qualified artifacts."
     },
     {
       "id": "n2-live-cbcb22c-nonconclusive",
@@ -65,7 +83,7 @@
       "kind": "preserved-runtime-evidence",
       "location": "artifacts/n2-live-cbcb22cf1c5b040f4f5abdadc13c05be4b58f735.json",
       "replayable": false,
-      "notes": "SHA-256 af7bcba7b0856fe74894c14e7a74abd910482e88690eeae414326d7a898b90e4. Three N1 runs succeeded and settled; start-review returned malformed_admission before any N2 reviewer run. The paired zero-byte PNG is not UI evidence. No retry occurred."
+      "notes": "HISTORICAL: SHA-256 af7bcba7b0856fe74894c14e7a74abd910482e88690eeae414326d7a898b90e4. Three N1 runs succeeded and settled; start-review returned malformed_admission before any N2 reviewer run. The paired zero-byte PNG is not UI evidence. No retry occurred."
     },
     {
       "id": "n2-live-0e5c814-nonconclusive",
@@ -73,7 +91,7 @@
       "kind": "preserved-runtime-evidence",
       "location": "artifacts/n2-live-0e5c81468239d2fa697eafc3bb5acee323c68840.json",
       "replayable": false,
-      "notes": "SHA-256 ee946d282a38743ac794086b0b81458e9dad626aaf50e1f271b545fb36caa0b6. Three N1 runs succeeded and settled at 1,687,463 known units; the N2 reservation used the correct UUID, but the native review handoff became durable unknown before a reviewer run because the SDK status update did not apply Paperclip execution-policy semantics. The paired zero-byte PNG is not UI evidence. No retry occurred."
+      "notes": "HISTORICAL: SHA-256 ee946d282a38743ac794086b0b81458e9dad626aaf50e1f271b545fb36caa0b6. Three N1 runs succeeded and settled at 1,687,463 known units; the N2 reservation used the correct UUID, but the native review handoff became durable unknown before a reviewer run because the SDK status update did not apply Paperclip execution-policy semantics. The paired zero-byte PNG is not UI evidence. No retry occurred."
     },
     {
       "id": "n2-live-586608b-nonconclusive",
@@ -81,7 +99,7 @@
       "kind": "preserved-runtime-evidence",
       "location": "artifacts/n2-live-586608b475ecc8fe71acd1ff1ee8014e2d93d9ae.json",
       "replayable": false,
-      "notes": "2,291,108 bytes; SHA-256 0635d78130c7e1bbc5f3aa6e32f14df5256e7a312aa26a1df2afe6e4e373e0be. Three N1 runs succeeded and settled at 2,279,035 known units. Submission and review reservation were persisted, but the reviewer credential's public status PATCH returned HTTP 409 under the lead's native assignee/run lock; no reviewer run or retry occurred. The paired zero-byte PNG is not UI evidence."
+      "notes": "HISTORICAL: 2,291,108 bytes; SHA-256 0635d78130c7e1bbc5f3aa6e32f14df5256e7a312aa26a1df2afe6e4e373e0be. Three N1 runs succeeded and settled at 2,279,035 known units. Submission and review reservation were persisted, but the reviewer credential's public status PATCH returned HTTP 409 under the lead's native assignee/run lock; no reviewer run or retry occurred. The paired zero-byte PNG is not UI evidence."
     },
     {
       "id": "n2-live-7847e64-nonconclusive",
@@ -89,39 +107,34 @@
       "kind": "preserved-runtime-evidence",
       "location": "artifacts/n2-live-7847e648dd1ba8b06220e9790bbe22240b7888d8.json",
       "replayable": false,
-      "notes": "SHA-256 a741c684258f2cb44208e8028d592d364cff8bac190fd6e134c679567b0779bc. Exact handoff and changes_requested were observed, but immediate issue reassignment cancelled reviewer run 93257fed-37f8-48d8-b9c0-bb8e0176207c before usage settlement. Usage remains unknown; two 2,000,000-unit reservations were open; no correction, V2, acceptance or UI proof exists."
+      "notes": "HISTORICAL: SHA-256 a741c684258f2cb44208e8028d592d364cff8bac190fd6e134c679567b0779bc. Exact handoff and changes_requested were observed, but immediate issue reassignment cancelled reviewer run 93257fed-37f8-48d8-b9c0-bb8e0176207c before usage settlement. Usage remains unknown; two 2,000,000-unit reservations were open; no correction, V2, acceptance or UI proof exists."
     }
   ],
   "replay": {
     "preconditions": [
-      "Use /home/davy-lp/.codex/worktrees/council-n2/paperclip-council at the exact clean draft PR #18 head identified by publication readback, with base origin/main at d4d4a6032a96b6bd1e9c5cb6b9b754b05f08f28b.",
-      "Use the repository-supported Node and pnpm toolchain with dependencies already installed.",
-      "Do not treat fixture tests or local compilation as Paperclip-native execution proof."
+      "Use clean executable candidate 99cc01dd74af193c4d9e020718a93a9db8971a20 and the qualified unchanged host61b3fd57a695614dc4a37e2303f426a34a9795cf.",
+      "Use installed pinned dependencies and the repository-supported Node/pnpm toolchain.",
+      "No LIVE authorization flags; output proof is create-only. Existing historical proof must not be overwritten."
     ],
     "steps": [
-      "Run pnpm typecheck.",
-      "Run pnpm test.",
-      "Run pnpm build.",
-      "Run the static audit command recorded by evidence n2-static-audit.",
-      "Run pnpm qualification:bounded only from the clean exact candidate.",
-      "Run the LIVE N2 campaign only after separate explicit provider authorization."
+      "node scripts/ci/run-checks.mjs",
+      "node scripts/ci/run-static-audit.mjs --base-ref 035f69ac86b8955ede299ffb9e8c326c3d3abd38",
+      "PAPERCLIP_TEST_HOST_ROOT=\"$PWD/.paperclip/qualification/paperclip\" COUNCIL_N2_NATIVE_HOST_COMMIT=61b3fd57a695614dc4a37e2303f426a34a9795cf pnpm qualification:native:n2"
     ],
     "expected_artifacts": [
-      "TypeScript typecheck exits 0.",
-      "Vitest reports 22 passing files and 227 passing tests.",
-      "The build exits 0 and produces the repository build outputs.",
-      "The canonical static audit wrapper reports status pass.",
-      "Before LIVE qualification, the candidate is only ready to request the campaign and N2 closure remains open."
+      "Canonical gates pass; native qualification reports N2 NATIVE LIFECYCLE WITH DETERMINISTIC MODEL VALIDATED.",
+      "Four actual native succeeded runs and cost rows, all reservations settled, zero exposure, exact distinct V2 accepted, no fifth execution after recovery.",
+      "Owned ephemeral runtime removed; no provider or core modification."
     ]
   },
   "closure": {
-    "decision": "keep-open",
-    "rationale": "The deferred terminal-run application correction can be proposed for publication after provider-free gates, but N2 still requires a fresh observed native correction, resubmission, acceptance, usage settlement, restart readback and UI capture.",
+    "decision": "qualified-deterministic-native-only",
+    "rationale": "Nominal native N2 cycle is demonstrated on the unchanged host; the experimental runtime profile requires explicit setup. Provider performance/decision quality, durable installation, LIVE and downstream N6 admission remain outside this evidence.",
     "next_required_actions": [
-      "Commit and publish the deferred terminal-run application correction, then obtain fresh explicit LIVE/provider authorization for that exact SHA; every earlier campaign authority, including 7847e64, was consumed.",
-      "Run the campaign once without blind retry and preserve any unknown native effect.",
-      "Validate native acceptance, usage settlement, restart inspection, exact UUID UI capture, and only then issue an N2 qualification verdict and SHA-bound N3 handoff."
+      "Independent review and parent-controlled publication of the candidate; no merge/deploy authorization is implied.",
+      "Any durable adoption or provider campaign requires its separate explicit scope and configuration; the historical codex_local LIVE launchers do not launch this native profile.",
+      "Future N6 integration must gate successor admission on settlement, not root.status=done alone."
     ]
   },
-  "generated_at": "2026-10-03T00:00:00+02:00"
+  "generated_at": "2026-10-03T16:54:00+02:00"
 }

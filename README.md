@@ -39,27 +39,26 @@ this exact persisted candidate without rewriting the N1 path. See the
 
 ## N2 development boundary
 
-Version 0.6 adds the fail-closed native N2 path for an immutable N1 submission,
-an independent pinned reviewer, an optional single correction, a changed V2
-candidate, and receipt-backed native acceptance. The owner starts each review
-only after a run reservation and command intent are durable. Reviewer and
-correction runs confirm their authenticated native identities against persisted
-baselines; V2 is reverified before the second native handoff. An uncertain
-handoff or decision remains visible and blocks dependent work.
+The current opt-in profile is `n2RuntimeProfile: paperclip_runner-experimental`.
+It consumes the existing verified N1 candidate through a separately reserved native
+transmission, then runs independent review, one optional correction and final
+review. Native completion cards, verdicts, scheduling, costs and recovery are real;
+Council preserves the candidate/run/card receipt binding and individual reservations.
+After rejection, a dependency holds correction until reviewer usage is known and
+settled. Native reviewers are individually reserved before their source finishes.
 
-An initially conforming V1 may be accepted directly. The qualification scenario
-still exercises `changes_requested` → correction → V2 → fresh review → approval.
-`n1OperatingProfile.maxCorrections: 1` is mandatory for this path; the default
-remains zero. `settle-n2-usage` uses the existing exact-run admission settlement
-and the mission page reports whether every recorded N2 run is settled. This is
-implemented and locally tested. The guarded `qualification:live:n2` launcher
-requires a clean committed candidate, exact `gpt-5.6-sol` / `high` settings,
-six explicit per-run reservations, and a period allowance equal to six times
-the per-run amount. It runs N1, then independent V1 review, one lead correction,
-fresh V2 review, terminal settlement, restart readback and the exact-mission UI
-capture. It will not run without separate provider authorization, and its
-presence is not provider-backed N2 proof. See the
-[N2 report](docs/reviews/n2/REPORT.md) for the exact proof boundary.
+The installed-package qualification passes with four native runs and four cost rows
+on unchanged host `61b3fd57`, with only the official model backend substituted.
+It uses no provider, core patch, model rendezvous or wake toggles during the cycle.
+This does not qualify durable installation or LIVE provider execution. The
+[N2 report](docs/reviews/n2/REPORT.md) records the exact source/proof, owner setup,
+agent instructions, accounting boundaries and remaining N6 admission limitation.
+
+### Historical legacy N2 launchers
+
+The following `codex_local` LIVE/preflight commands and operator-assisted sequence
+are retained as history. They do not launch the experimental native profile and
+must not be reused as its campaign recipe. No new provider launcher is supplied.
 
 The proposed campaign command is:
 
@@ -368,35 +367,25 @@ Licensed under the MIT License; see [LICENSE](./LICENSE).
 
 ### Native N2 lifecycle with a deterministic model
 
-`pnpm qualification:native:n2` runs the installed Council package against a clean,
-explicit host selected by `PAPERCLIP_TEST_HOST_ROOT` and its exact
-`COUNCIL_N2_NATIVE_HOST_COMMIT`. It never invokes a provider. The fixture replaces
-only adapter execution; Paperclip owns API authorization, run finalization, cost
-rows, events, issue locks and recovery. Three N1 preparation rows remain explicitly
-labelled fixtures in a separate zero-usage period. N2 uses three real scheduled
-runs with deterministic, positive usage returned through the adapter contract.
-The launcher rejects an existing candidate artifact and validates final acceptance,
-three runs/costs, exact candidate/host identities and owned runtime cleanup.
+`pnpm qualification:native:n2` builds and installs the exact clean Council candidate
+in an ephemeral authenticated instance using `PAPERCLIP_TEST_HOST_ROOT` and its
+exact `COUNCIL_N2_NATIVE_HOST_COMMIT`. The qualified host is unchanged
+`61b3fd57a695614dc4a37e2303f426a34a9795cf`.
 
-This is an operator-assisted contract. The operator reserves before each launch,
-enables wakes for that launch, observes its exact run and disables wakes again.
-The lead remains disabled while the reviewer verdict is applied. After terminal
-usage is known and settled, the operator admits the next stage. The deterministic
-model rendezvous reproduces the disabled-wake state before finishing; it does not
-prove that the enable/observe/disable window is safe for arbitrarily fast models.
-No autonomous scheduler or atomic dispatch-and-disable API is claimed.
+Only `nativeSessionBackendFactory` is substituted. Real Paperclip services own
+admission, API authorization, native review cards, finalization, costs, events and
+recovery. Three N1 preparation rows remain labelled fixtures; N2 executes a real
+native transmission, reviewer1, correction and reviewer2. Each run has its own
+reservation and public per-run usage readback. Unknown usage retains its exposure.
 
-The compatible host must respect `wakeOnDemand=false` in run-release and
-maintenance recovery. The historical qualification pin `61b3fd57` lacks the
-release guarantee; the separate core candidate must be reviewed and published
-before any deployment claim. This command does not repin the normal host or
-change a durable instance.
+The launcher checks final exact-candidate acceptance, four successful runs/costs,
+settled reservations, replay without a fifth execution, and owned runtime cleanup.
+The dependency-cancelled predispatch row remains visible in the evidence. Neither
+an operator rendezvous nor wake disabling masks the reviewer-to-correction boundary.
+The earlier three-run, patched-host approach is historical and has been replaced.
 
-For N2, the approval authority is the immutable verified submission: its stored
-company/issue, exact base and candidate, verified bundle digest/size, attributed
-contributions and corrected paths, mandate, designated reviewer and bound run.
-Approval rechecks the native attachment metadata against that submission. A
-legacy `delivery-manifest` is not a second source of N2 candidate identity. The
-non-N2 approval path still requires that manifest and its work-product checks.
-Unknown usage, an extra run, a changed candidate, an uncertain effect or missing
-attachment still prevents dependent work; the admission rules are unchanged.
+See the [N2 report](docs/reviews/n2/REPORT.md) for the explicit experimental setup
+and agent command contract. No durable agent is migrated and no provider is called.
+N2 approval still rechecks the immutable verified submission attachment; the
+non-N2 legacy approval path still requires its delivery manifest. Native final
+acceptance is not yet an N6 guarantee that all dependent work waits for final cost.
