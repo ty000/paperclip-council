@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { DecisionReceipt } from "../src/decision-receipts.js";
 import type { IntegratedCandidateVerification } from "../src/integration.js";
-import type { MissionAggregate, MissionRecord } from "../src/missions.js";
+import { canonicalPayloadHash, type MissionAggregate, type MissionRecord } from "../src/missions.js";
 import {
   applyN2Decision,
   bindN2CorrectionRun,
@@ -315,4 +315,22 @@ describe("N2 ordinary correction and confirmed acceptance", () => {
       receipt: observedReceipt({ operationId: randomUUID(), verdict: "approved", runId: ids.reviewerRun2 }),
     })).toThrowError(/active immutable submission/);
   });
+});
+
+
+it("binds native GET receipts to the persisted reviewer report and rejects legacy-shaped substitutes", () => {
+  const { source, reviewing } = reviewingRound1(); const submission = reviewing.submissions[0]!;
+  const report = { schema: "council-native-review-v1", packetHash: "f".repeat(64), subject: { submissionId: submission.submissionId,
+    candidateCommit: submission.candidateCommit, bundleSha256: submission.sha256, evidenceRevision: submission.evidenceRevision, mandateHash: submission.mandateHash },
+    verdict: "approved", rationale: "Exact reviewed candidate", dispositions: [] };
+  source.aggregate.n2 = { ...reviewing, native: { reviewProtocol: "native-verdict-readback-v1", reviewPackets: [{ operationId: ids.operation1,
+    hash: report.packetHash, packet: { submission }, observation: { runId: ids.reviewerRun1, report } }] } } as never;
+  const receipt = observedReceipt({ operationId: ids.operation1, verdict: "approved", runId: ids.reviewerRun1 });
+  const apply = () => applyN2Decision(reviewing, source, { submissionId: submission.submissionId, actorAgentId: ids.reviewer, runId: ids.reviewerRun1,
+    operationId: ids.operation1, verdict: "approved", criteria: ["Exact candidate"], reasons: [report.rationale], receipt });
+  expect(apply).toThrow(/receipt content/);
+  receipt.requestBody = { method: "GET", provenance: "native-review-terminal-readback-v1", packetHash: report.packetHash, reportHash: canonicalPayloadHash(report) };
+  expect(apply().status).toBe("accepted");
+  receipt.requestBody.reportHash = "0".repeat(64); expect(apply).toThrow(/receipt content/);
+  receipt.requestBody.reportHash = canonicalPayloadHash(report); receipt.requestBody.packetHash = "0".repeat(64); expect(apply).toThrow(/receipt content/);
 });

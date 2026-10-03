@@ -335,7 +335,15 @@ function decisionReceiptMetadataMatches(mission: MissionRecord, input: N2Decisio
     && receipt.runId === input.runId;
 }
 
-function decisionReceiptSubjectMatches(submission: N2Submission, input: N2DecisionInput): boolean {
+function decisionReceiptSubjectMatches(mission: MissionRecord, submission: N2Submission, input: N2DecisionInput): boolean {
+  if (mission.aggregate.n2?.native?.reviewProtocol === "native-verdict-readback-v1") {
+    const packet = mission.aggregate.n2.native.reviewPackets?.find(p => p.operationId === input.operationId && p.packet.submission.submissionId === submission.submissionId);
+    const observation = packet?.observation; const body = input.receipt.requestBody;
+    return Boolean(packet && observation && observation.runId === input.runId && observation.report.verdict === input.verdict
+      && body.method === "GET" && body.provenance === "native-review-terminal-readback-v1" && body.packetHash === packet.hash
+      && body.reportHash === canonicalPayloadHash(observation.report)
+      && observation.report.subject.submissionId === submission.submissionId && observation.report.subject.candidateCommit === submission.candidateCommit);
+  }
   const receipt = input.receipt;
   const requestStatus = input.verdict === "changes_requested" ? "in_progress" : "done";
   const lines = typeof receipt.requestBody.comment === "string"
@@ -353,7 +361,7 @@ function validateDecisionReceipt(mission: MissionRecord, submission: N2Submissio
   if (!decisionReceiptMetadataMatches(mission, input)) {
     throw new MissionError(409, "decision_receipt_mismatch", "Decision receipt is not bound to this mission, actor, run, operation, and verdict");
   }
-  if (!decisionReceiptSubjectMatches(submission, input)) {
+  if (!decisionReceiptSubjectMatches(mission, submission, input)) {
     throw new MissionError(409, "decision_receipt_subject_mismatch", "Decision receipt content is not bound to the active submission and candidate");
   }
 }

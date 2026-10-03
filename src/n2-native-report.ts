@@ -15,6 +15,7 @@ export type NativeReviewPacket = {
 export type NativeReviewPacketRecord = {
   packet: NativeReviewPacket; hash: string; operationId: string; correctionReservationId: string;
   settlementCommandId: string; publishedAt?: string;
+  observation?: { runId: string; interactionId: string; decisionId: string; report: NativeReviewerReport; observedAt: string };
 };
 export type NativeReviewerReport = {
   schema: "council-native-review-v1"; packetHash: string;
@@ -97,7 +98,7 @@ export function parseNativeReviewerReport(summary: unknown, record: NativeReview
 
 export async function readNativeReviewOutcome(ctx: PluginContext, m: MissionRecord) {
   const state = storedN2(m); const round = state.rounds.at(-1)!;
-  if (round.verdict) return null;
+  if (round.verdict || m.aggregate.control?.status === "blocked" && m.aggregate.control.reason === "correction_limit_exceeded") return null;
   const record = state.native?.reviewPackets?.find(r => r.packet.submission.submissionId === state.activeSubmissionId);
   if (!record?.publishedAt) return null;
   const p = record.packet;

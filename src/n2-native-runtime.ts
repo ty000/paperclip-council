@@ -303,13 +303,19 @@ async function reconcileNativeVerdict(ctx: PluginContext, mission: MissionRecord
   mission = await n2Cas(ctx, mission, { ...mission.aggregate, phase: "reviewing", n2: { ...state, status: "reviewing",
     rounds: state.rounds.map(r => r.round === round.round ? { ...r, handoff: { ...r.handoff, state: "confirmed", reviewerRunId: run.id,
       observedAt: new Date().toISOString(), usageSettledAt: new Date().toISOString() } } : r),
-    native: { ...native, reviewCards: native.reviewCards.some(c => c.round === round.round) ? native.reviewCards
+    native: { ...native, reviewPackets: native.reviewPackets!.map(p => p.hash === record.hash ? { ...p,
+      observation: { runId: run.id, interactionId: card.id, decisionId: binding.decisionId, report, observedAt: new Date().toISOString() } } : p),
+      reviewCards: native.reviewCards.some(c => c.round === round.round) ? native.reviewCards
       : [...native.reviewCards, { ...binding, round: round.round, settlementCommandId: record.settlementCommandId }] } },
     ...(synthesis && n3 ? { n3: { ...mission.aggregate.n3!, rounds: mission.aggregate.n3!.rounds.map(r => r === n3 ? { ...r, review: synthesis } : r) } } : {}) });
   const common = { companyId: mission.companyId, issueId: mission.rootIssueId, actorAgentId: run.agentId, runId: run.id,
     operationId: record.operationId, justification: report.rationale, resultReference: n2SubmissionResultReference(state.activeSubmissionId), nativeReview: binding };
   const decision: CouncilDecisionInput = report.verdict === "approved" ? { ...common, verdict: "approved", approvedCommit: record.packet.submission.candidateCommit }
     : { ...common, verdict: "changes_requested" };
+  if (report.verdict === "changes_requested" && state.correctionsUsed >= state.correctionLimit) {
+    return n2Cas(ctx, mission, { ...mission.aggregate, control: { status: "blocked", reason: "correction_limit_exceeded" },
+      journal: [...mission.aggregate.journal, { action: "native_rejection_correction_limit_exceeded", runId: run.id, submissionId: state.activeSubmissionId }] });
+  }
   mission = await prepareN2Decision(ctx, mission, decision, record.correctionReservationId);
   const receipt = await recordCouncilNativeReadback(ctx, decision, { packetHash: record.hash, reportHash: canonicalPayloadHash(report), card });
   return recordN2Decision(ctx, mission.missionId, decision, receipt);
