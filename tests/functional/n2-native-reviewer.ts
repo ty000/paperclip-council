@@ -39,7 +39,7 @@ export async function holdDedicatedLead(input: any, prepared: any, trace: any[],
   trace.push({ event: "owner_holds_dedicated_lead_before_final_handoff", runId, policy: readback.body.runtimeConfig.heartbeat, activeRunIds: active.map((r: any) => r.id) });
 }
 
-export async function releaseReservedCorrection(input: any, prepared: any, mission: any, trace: any[], heartbeat: any) {
+async function releaseReservedCorrection(input: any, prepared: any, mission: any, trace: any[], heartbeat: any) {
   if (mission.aggregate.n2?.native?.correctionOwnerAction !== "restore_wake_policy" || mission.aggregate.n2.status !== "correction_requested") return;
   const envelope = (await input.request("human", "GET", `${prepared.admissionPath}?companyId=${prepared.companyId}&periodKey=${encodeURIComponent(prepared.nativePeriodKey)}`)).body.envelope;
   assert(envelope.reservations.some((r: any) => r.reservationId === mission.aggregate.n2.correction.reservationId && r.status === "reserved"));
