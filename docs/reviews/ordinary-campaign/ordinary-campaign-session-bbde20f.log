@@ -1,0 +1,70 @@
+(node:354892) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +63
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 63, reused 0, downloaded 60, added 60
+Progress: resolved 63, reused 0, downloaded 63, added 63, done
+.../esbuild@0.28.2/node_modules/esbuild postinstall$ node install.js
+.../esbuild@0.28.2/node_modules/esbuild postinstall: Done
+
+dependencies:
++ @paperclipai/plugin-sdk 2026.916.1
++ react 19.3.0
+
+devDependencies:
++ @paperclipai/shared 2026.916.1
++ @types/node 24.19.0
++ @types/react 19.3.0
++ esbuild 0.28.2
++ fallow 3.23.0
++ tsx 4.23.15
++ typescript 7.0.2
++ vitest 4.1.11
+
+Done in 2.1s
+
+> @paperclipai/plugin-council@0.6.0 build /tmp/paperclip-council-package-blBC9L/candidate
+> tsc && node ./esbuild.config.mjs
+
+{
+  severity_local: 'NOTICE',
+  severity: 'NOTICE',
+  code: '42P06',
+  message: 'schema "plugin_private_paperclip_council_270061461e" already exists, skipping',
+  file: 'schemacmds.c',
+  line: '135',
+  routine: 'CreateSchemaCommand'
+}
+[19:03:58] [33mWARN[39m: [36msetPluginEventBus called more than once, replacing existing bus[39m
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - `__dirname` (vite.config.ts:15:30). Use `import.meta.dirname` instead
+  - import "./src/lib/vite-watch" without a file extension (vite.config.ts:5:41). Add the file extension
+  - import "./src/lib/vite-api-proxy" without a file extension (vite.config.ts:6:32). Add the file extension
+  - import "./src/lib/vite-sw-build-id" without a file extension (vite.config.ts:7:44). Add the file extension
+  - import "./src/lib/vite-build-commit" without a file extension (vite.config.ts:8:40). Add the file extension
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+`server.hmr.protocol/host/port/path/clientPort/timeout/server` is deprecated. Use `server.ws.*` instead. Note that this option may be set by a plugin. Set VITE_DEPRECATION_TRACE=1 to see where it is called.
+{
+  severity_local: 'NOTICE',
+  severity: 'NOTICE',
+  code: '42P06',
+  message: 'schema "plugin_private_paperclip_council_270061461e" already exists, skipping',
+  file: 'schemacmds.c',
+  line: '135',
+  routine: 'CreateSchemaCommand'
+}
+strict mode: missing type "number,string" for keyword "format" at "#/properties/councilApiKey" (strictTypes)
+{
+  severity_local: 'NOTICE',
+  severity: 'NOTICE',
+  code: '42P06',
+  message: 'schema "plugin_private_paperclip_council_270061461e" already exists, skipping',
+  file: 'schemacmds.c',
+  line: '135',
+  routine: 'CreateSchemaCommand'
+}
+Ordinary session prepared, agents disabled. Evidence: /home/davy-lp/.codex/worktrees/council-n5/paperclip-council/artifacts/ordinary-campaign-session-bbde20f6ea481b0416c5223c1b3a3bb50c975791.json
+{"outcome":"ORDINARY CAMPAIGN PREPARATION OBSERVED","evidence":"/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/artifacts/ordinary-campaign-session-bbde20f6ea481b0416c5223c1b3a3bb50c975791.json","results":{"installation":"PASS"}}
+Ordinary session completed: /home/davy-lp/.codex/worktrees/council-n5/paperclip-council/artifacts/ordinary-campaign-session-bbde20f6ea481b0416c5223c1b3a3bb50c975791.json
