@@ -178,6 +178,13 @@ async function fixture(options: FixtureOptions = {}) {
 }
 
 describe("integrated Git candidate verification", () => {
+  it("checks the missing old reference while verifying both real contributions for owner recovery", async () => {
+    const { ctx, input } = await fixture({ stacked: true });
+    const result = await verifyIntegratedCandidate(ctx, { ...input, missingReference: "71b5f95145410736c691552b836df8f20df3880e" });
+    expect(result.checks.some(check => check.name === "missing-recorded-reference")).toBe(true);
+    await expect(verifyIntegratedCandidate(ctx, { ...input, missingReference: input.contributions[0].commit }))
+      .rejects.toThrow("cannot replace a reference present");
+  });
   it("verifies issue-bound bytes, refs, two contributions, ownership and bounded Git checks", async () => {
     const { ctx, input } = await fixture();
 

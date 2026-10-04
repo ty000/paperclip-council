@@ -36,3 +36,8 @@ artifacts/n45-*.log
 
 artifacts/ordinary-campaign-*.json
 artifacts/ordinary-campaign-*.log
+
+artifacts/m2-recovery-*.bundle
+artifacts/m2-recovery-*.json
+artifacts/m2-reference-transport-*.json
+artifacts/m2-reference-transport-*.log

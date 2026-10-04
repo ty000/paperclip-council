@@ -20,7 +20,7 @@ vi.mock("../src/integration.js", async (importOriginal) => {
 import { AdmissionError, readAdmission, reserveAdmission, settleAdmission } from "../src/admission.js";
 import { verifyIntegratedCandidate } from "../src/integration.js";
 import { executeN1BoardCommand, handleN1AgentApi } from "../src/n1-missions.js";
-import type { MissionAggregate } from "../src/missions.js";
+import { handleMissionApi, type MissionAggregate } from "../src/missions.js";
 import { reconcileTerminalN1Usage } from "./functional/n1-live.js";
 
 const id = {
@@ -1599,5 +1599,112 @@ describe("N1 mission transitions", () => {
       expect.objectContaining({ contributionId: id.contributionB, response: { status: 200, body: { outcome: "settled" } } }),
     ]);
     expect(result.runs.map((run) => run.id)).toEqual([id.leadRun, "beta-run"]);
+  });
+});
+
+describe("owner recovery of a known contribution reference", () => {
+  function recovery() {
+    const initial = aggregate();
+    initial.phase = "executing";
+    initial.control = { status: "active" };
+    const slots = plan.map((entry, i) => ({ ...entry, commit: (i ? "b" : "a").repeat(40),
+      childIssueId: i ? id.childB : id.childA, authorRunId: i ? id.reviewer : id.contributorRun,
+      dispatchRunId: i ? id.reviewer : id.contributorRun, dispatchState: "requested", issueState: "confirmed",
+      dispatchReservationId: randomUUID(),
+    }));
+    const activationReservationId = randomUUID();
+    initial.n1 = { periodKey: nativeProfile.periodKey, activationReservationId, rootDispatchRunId: id.leadRun,
+      rootDispatchState: "requested", rootDispatchMode: "native", contributions: slots };
+    initial.commandReceipts = [{ commandId: randomUUID(), command: "record-contribution", actorType: "agent", actorId: id.contributorA,
+      payloadHash: "historical-payload", appliedVersion: 2, result: { missionId: id.mission, version: 2 }, recordedAt: new Date(0).toISOString() }];
+    const h = harness(initial, 5);
+    slots.forEach(slot => h.issues.set(slot.childIssueId, nativeIssue({ id: slot.childIssueId, parentId: id.root, assigneeAgentId: slot.assigneeAgentId, status: "done" })));
+    const bindings = [{ issueId: id.root, runId: id.leadRun }, ...slots.map(slot => ({ issueId: slot.childIssueId, runId: slot.dispatchRunId }))];
+    h.getOrchestration.mockImplementation(async (...args: unknown[]) => {
+      const input = args[0] as { issueId: string };
+      const binding = bindings.find(item => item.issueId === input.issueId)!;
+      return { runs: [{ id: binding.runId, status: "succeeded", issueId: input.issueId }] } as never;
+    });
+    const reservations = [activationReservationId, ...slots.map(slot => slot.dispatchReservationId)].map(reservationId => ({
+      reservationId, missionId: id.mission, status: "settled", usage: { status: "known", units: 123 }, remainingExposure: { status: "known", units: 0 },
+    }));
+    vi.mocked(readAdmission).mockResolvedValue(nativeEnvelope(reservations) as never);
+    vi.mocked(verifyIntegratedCandidate).mockResolvedValue({ outcome: "verified", publicationEligible: true,
+      subject: { companyId: id.company, issueId: id.root }, candidate: { attachmentId: id.root, byteSize: 123,
+        sha256: "d".repeat(64), baseCommit: "0".repeat(40), candidateCommit: "c".repeat(40) }, contributions: [], checks: [],
+    });
+    const body = { command: "recover-integration", commandId: randomUUID(), expectedVersion: 5,
+      contributionId: id.contributionA, previousCommit: "a".repeat(40), replacementCommit: "d".repeat(40),
+      reason: "Recorded SHA was expanded incorrectly; owner verified the original Git object and run log",
+      attachmentId: id.root, expectedSha256: "d".repeat(64), baseCommit: "0".repeat(40), candidateCommit: "c".repeat(40) };
+    const apply = () => executeN1BoardCommand(h.ctx, { companyId: id.company, missionId: id.mission, actorUserId: id.owner, body });
+    return { ...h, initial, body, apply, reservations };
+  }
+
+  it("routes owner recovery to review-ready with original receipts/attribution and no wake or acceptance", async () => {
+    const h = recovery();
+    const response = await handleMissionApi({ ...agentRequest({}, { agentId: id.lead, runId: id.leadRun }, id.root),
+      routeKey: "mission-command", params: { companyId: id.company, missionId: id.mission }, body: h.body,
+      actor: { actorType: "user", actorId: id.owner, userId: id.owner },
+    }, h.ctx);
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    const state = h.row().aggregate;
+    expect(state.phase).toBe("ready_for_review");
+    expect(state.commandReceipts[0]).toEqual(h.initial.commandReceipts[0]);
+    expect(state.commandReceipts[1]).toMatchObject({ command: "recover-integration", actorType: "user", actorId: id.owner });
+    const slots = state.n1!.contributions as Array<Record<string, any>>;
+    expect(slots[0]).toMatchObject({ commit: h.body.replacementCommit, authorRunId: id.contributorRun, referenceRecovery: { previousCommit: h.body.previousCommit, actorUserId: id.owner } });
+    expect(state.journal.at(-1)).toMatchObject({ action: "owner_recovered_integration", previousCommit: h.body.previousCommit, actorUserId: id.owner });
+    expect(state.n2).toBeUndefined();
+    expect(h.requestWakeup).not.toHaveBeenCalled();
+    expect(h.update).not.toHaveBeenCalled();
+    expect(settleAdmission).not.toHaveBeenCalled();
+    expect(verifyIntegratedCandidate).toHaveBeenCalledWith(h.ctx, expect.objectContaining({ missingReference: h.body.previousCommit }));
+    expect((await h.apply()).outcome).toBe("replayed");
+    expect(h.execute).toHaveBeenCalledTimes(1);
+    h.body.replacementCommit = "e".repeat(40);
+    await expect(h.apply()).rejects.toMatchObject({ code: "command_identity_conflict" });
+  });
+
+  it("requires the configured owner and never allows the lead to repair its own record", async () => {
+    const h = recovery();
+    await expect(executeN1BoardCommand(h.ctx, { companyId: id.company, missionId: id.mission, actorUserId: id.lead, body: h.body }))
+      .rejects.toMatchObject({ code: "owner_required" });
+    expect(h.execute).not.toHaveBeenCalled();
+  });
+
+  it("refuses unsettled usage or an extra/active native run", async () => {
+    const h = recovery();
+    h.reservations[0].remainingExposure.units = 1;
+    await expect(h.apply()).rejects.toMatchObject({ code: "recovery_usage_unsettled" });
+    h.reservations[0].remainingExposure.units = 0;
+    h.getOrchestration.mockResolvedValue({ runs: [{ id: id.leadRun, status: "running" }] } as never);
+    await expect(h.apply()).rejects.toMatchObject({ code: "recovery_run_not_terminal" });
+    expect(h.execute).not.toHaveBeenCalled();
+  });
+
+  it("refuses stale versions, changed references and an existing candidate", async () => {
+    const h = recovery();
+    h.body.expectedVersion = 4;
+    await expect(h.apply()).rejects.toMatchObject({ code: "version_conflict" });
+    h.body.expectedVersion = 5;
+    h.body.previousCommit = "e".repeat(40);
+    await expect(h.apply()).rejects.toMatchObject({ code: "recovery_reference_mismatch" });
+    h.body.previousCommit = "a".repeat(40);
+    h.advanceMission(a => ({ ...a, n1: { ...a.n1, candidate: {} } }));
+    h.body.expectedVersion = 6;
+    await expect(h.apply()).rejects.toMatchObject({ code: "recovery_unavailable" });
+    expect(h.execute).not.toHaveBeenCalled();
+  });
+
+  it("retains A as the dependency base and leaves all state unchanged on failed Git proof", async () => {
+    const h = recovery();
+    h.advanceMission(a => ({ ...a, n6: { expectedResult: { candidateCommit: "f".repeat(40) } } as never }));
+    h.body.expectedVersion = 6;
+    await expect(h.apply()).rejects.toMatchObject({ code: "recovery_source_mismatch" });
+    h.body.baseCommit = "f".repeat(40);
+    vi.mocked(verifyIntegratedCandidate).mockRejectedValueOnce(new Error("Unowned path"));
+    await expect(h.apply()).rejects.toThrow("Unowned path");
+    expect(h.execute).not.toHaveBeenCalled();
   });
 });

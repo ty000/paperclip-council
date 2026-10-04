@@ -1111,7 +1111,6 @@ describe("bounded qualification launcher", () => {
   it("requires separately generated UUIDs and preserves sanitized non-2xx evidence in every agent instruction", () => {
     const n2MissionId = "11111111-1111-4111-8111-111111111111";
     const instructions = [
-      contributorInstructions(),
       leadInstructions(),
       n2LeadInstructions(n2MissionId),
       n2ReviewerInstructions(n2MissionId),
@@ -1134,9 +1133,9 @@ describe("bounded qualification launcher", () => {
       contributionId: "22222222-2222-4222-8222-222222222222",
       ownedPaths: ["alpha.txt"],
     });
-    expect(nativeDescription).toContain(UUID_GENERATION_COMMAND);
-    expect(nativeDescription).toContain("run this exact command once and separately");
-    expect(nativeDescription).toContain("Never invent, partially copy, or manually edit a UUID.");
+    expect(nativeDescription).toContain("commandId: randomUUID()");
+    expect(nativeDescription).toContain("run this complete command unchanged");
+    expect(nativeDescription).not.toContain("run this exact command once and separately");
     expect(nativeDescription).toContain("preserve the HTTP status and sanitized JSON response body");
     expect(nativeDescription).toContain("without exposing credentials");
   });

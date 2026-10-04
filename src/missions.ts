@@ -22,6 +22,7 @@ const N1_BOARD_COMMANDS = new Set([
   "fixture-bind-contribution-run",
   "reconcile-lead-usage",
   "reconcile-contribution-usage",
+  "recover-integration",
 ]);
 
 export type MissionMandate = {
@@ -38,9 +39,9 @@ export type MissionMandate = {
 
 export type MissionReceipt = {
   commandId: string;
-  command: "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "fixture-bind-contribution-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish"
+  command: "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "fixture-bind-contribution-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish" | "recover-integration"
     | "start-review" | "confirm-review-handoff" | "start-correction" | "prepare-resubmission"
-    | "start-resubmitted-review" | "settle-n2-usage" | "attest-transmission" | "reconcile-native-n2" | "release-native-correction" | "reconcile-ordinary-n2" | "ordinary-verdict";
+    | "start-resubmitted-review" | "settle-n2-usage" | "attest-transmission" | "reconcile-native-n2" | "release-native-correction" | "reconcile-ordinary-n2" | "replace-missing-opinion" | "ordinary-verdict";
   actorType: "user" | "agent";
   actorId: string;
   payloadHash: string;
@@ -682,7 +683,7 @@ export async function handleMissionApi(input: PluginApiRequestInput, ctx: Plugin
       const result = N1_BOARD_COMMANDS.has(String(body.command)) && missionId
         ? await executeN1BoardCommand(ctx, { companyId, missionId, actorUserId, body })
         : (body.command === "start-review" || body.command === "start-correction"
-          || body.command === "start-resubmitted-review" || body.command === "settle-n2-usage" || body.command === "reconcile-native-n2" || body.command === "release-native-correction" || body.command === "reconcile-ordinary-n2") && missionId
+          || body.command === "start-resubmitted-review" || body.command === "settle-n2-usage" || body.command === "reconcile-native-n2" || body.command === "release-native-correction" || body.command === "reconcile-ordinary-n2" || body.command === "replace-missing-opinion") && missionId
           ? await executeN2BoardCommand(ctx, { companyId, missionId, actorUserId, body })
         : await executeMissionCommand(ctx, {
         companyId,

@@ -45,6 +45,11 @@ with terminal per-run accounting before correction or acceptance. See the
 [activation and agent contract](docs/n3/ORDINARY-CLI-REVIEW.md).
 Existing missions retain their persisted protocol.
 
+N1 contributor tasks now include executable Git-to-JSON reporting. The
+[M2 recovery procedure](docs/n6/M2-RECOVERY.md) documents the owner-only recovery
+of a known incorrect contribution reference and the offline preparation command;
+it does not constitute native recovery, review or publication of B.
+
 The historical profile `n2RuntimeProfile: paperclip_runner-experimental` remains compatible.
 It consumes the existing verified N1 candidate through a separately reserved native
 transmission, then runs independent review, one optional correction and final

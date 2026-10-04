@@ -1,0 +1,256 @@
+{
+  "status": "partial-native-review-correction-complete-V2-rejected-correction-limit",
+  "controllerSha": "46748ad9109457a75e279670f4f8570cc981ed85",
+  "controllerPR": "https://github.com/ty000/paperclip-council/pull/34",
+  "hostSha": "61b3fd57a695614dc4a37e2303f426a34a9795cf",
+  "companyId": "44709406-df4a-4d4c-acb3-571821a8b593",
+  "missionId": "43b96da1-11fe-4c46-8ec2-6415ac29dc8b",
+  "version": 91,
+  "phase": "reviewing",
+  "nativeN2Status": "reviewing",
+  "candidateCommit": "60fc6904150424f84d8ce0e264ffabca6078c073",
+  "bundleSha256": "4242fb212e0e4212d3ce0985f7b06de6c67363624c3cd487664288bc672bc115",
+  "councilVerdict": {
+    "schema": "council-ordinary-result-v1",
+    "taskId": "ee749b33-363e-419b-ab5f-9259eb03318a",
+    "subject": {
+      "mandateHash": "601e0b474bfb534f4155610e1b8e88af1c1eea916afcd4217540f281a9d0dd06",
+      "bundleSha256": "4242fb212e0e4212d3ce0985f7b06de6c67363624c3cd487664288bc672bc115",
+      "submissionId": "a258cf4e-1597-4717-86e3-e40a16931f1a",
+      "candidateCommit": "60fc6904150424f84d8ce0e264ffabca6078c073",
+      "evidenceRevision": 68
+    },
+    "verdict": "changes_requested",
+    "missionId": "43b96da1-11fe-4c46-8ec2-6415ac29dc8b",
+    "rationale": "Independent review of the exact V2 subject confirms that the two historical UI defects are corrected in source: missionId is validated and resolved through the existing inspection/merge path, and retained neutral or success rationale is no longer labeled Waiting. Those corrections do not make the candidate acceptable. A fresh run of the repository pinned blocking command, pnpm audit:static --base-ref 01dabaa83ce3912c89f639b352aa1fc91531741d, exits 1 on this exact commit with introduced critical complexity in CoordinationPanel and introduced high complexity in CandidateIdentity. The CI workflow runs this audit as a mandatory gate before typecheck, tests, and build, and the mission plan expressly requires canonical checks to pass with no integration regression. Thus the passing typecheck, focused tests, and owner-reported 443 tests/build cannot resolve the failed required gate. Both exact-subject N3 opinions identify this same blocking defect, with no unresolved questions. Changes are required to accept any candidate, but the mission sole correction has already been consumed; this verdict rejects the current subject and does not authorize a second correction.",
+    "synthesisHash": "119c45c432f26e2cf221ff4b9c370fdb21fcd10d7b3a311097a678187f6d358c"
+  },
+  "verdictApplied": false,
+  "applicationRefusal": "correction_limit_exceeded",
+  "correctionsUsed": 1,
+  "runs": 18,
+  "settled": 18,
+  "knownTokenUnits": 13863240,
+  "remainingExposure": 0,
+  "newRunIds": [
+    "d0a4167e-56e1-4239-be46-b4e933990e22",
+    "3e1ddf5f-6f1f-4bdc-91b1-46b907fa6998",
+    "4baabb4f-966e-4252-8e19-9a3bff058402",
+    "dcd81e8a-7f98-4de3-8a06-9cd43eea6e87",
+    "00040727-1d28-4478-9d93-65b6719dfb67",
+    "1d6e1db4-b303-477b-9fd7-416932076445",
+    "f22b90a2-c819-4e62-847b-f9fa77b70b65"
+  ],
+  "deliveryPR": null,
+  "browserObservation": null,
+  "privateBackupManifest": "artifacts/ordinary-campaign-m2-replacement-private/backup-manifest.json",
+  "cleanup": {
+    "launcherExit": 0,
+    "portsClosed": {
+      "33075": true,
+      "34771": true
+    },
+    "processesAbsent": {
+      "941622": true,
+      "942727": true
+    },
+    "ownedPathsAbsent": {
+      "/tmp/paperclip-council-package-wt7tHX": true,
+      "/tmp/paperclip-council-m2-restore-3T96wx": true
+    },
+    "temporaryOwnerAuthAbsent": true,
+    "nativeKeyRevokedByLauncher": true,
+    "stoppedAt": "2026-10-04T22:53:45.330Z"
+  },
+  "historicalHashesUnchanged": {
+    "original": 36,
+    "continuation": 18
+  },
+  "evidence": [
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-after-prepare.json",
+      "bytes": 287392,
+      "sha256": "8b231925cf8a9556cc842e7d66c0618ba55eab84509bfbf53a39b966b6af5a52"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-after-replay.json",
+      "bytes": 287392,
+      "sha256": "66acf7a44101aae0645db9aae77282c8f2c65374228e7a676b06367606ac0677"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-before-correction-owner-wake.json",
+      "bytes": 380885,
+      "sha256": "43f834e0163ee3fb1af81635b30396b500437669f840ab2d91c5febd291d48f4"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-before-prepare.json",
+      "bytes": 282585,
+      "sha256": "31ce1bee760f1a205542f01c363d4973b5884b4257d59462f0ff3ec151770a4d"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-cleanup.json",
+      "bytes": 402,
+      "sha256": "a8985581f30b0bfecdcf8c7d7a21e33e1d39c642910f26cc4c804dec62f45087"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-command.json",
+      "bytes": 621,
+      "sha256": "7675cb9b4191b8c82f80c2a73b89acf8f929ddd02543278670dbe1a02ff78b7e"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-correction-dispatch-readback.json",
+      "bytes": 380885,
+      "sha256": "74227361a9db2528530d3b42b3e5795307e8270d9cf4d7517b5756c9332e158a"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-correction-owner-wake.json",
+      "bytes": 3147,
+      "sha256": "24ab658aea0bad06a8d90f11bdebc5f52ce3f019e75289a1ced434ee10754d59"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-correction-progress.json",
+      "bytes": 454205,
+      "sha256": "fd46770383c2a9c0f9c6fe1bda2fb8ea494f44730ce8f90cef1b0e08adc32585"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-correction-wait.json",
+      "bytes": 75764,
+      "sha256": "9237a8db54c87686c91c5d6231731383237ea06b7c4c27732f6e3f0c3c77300c"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-correction-wake-receipts.json",
+      "bytes": 1214,
+      "sha256": "11a56c1f21767d1f977a871b4dc50add7f197757f1fffa7e779b465464972684"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-council-terminal.json",
+      "bytes": 380885,
+      "sha256": "2e6dfea6bfb3212d1094c91dee71c7cb738fc257b1e62e434786545e7f61c51d"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-final-agents.json",
+      "bytes": 12921,
+      "sha256": "df3b957e191a048a12484a381644ec3143b287f060276963a93524e98dfe8238"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-final-reconcile.json",
+      "bytes": 282,
+      "sha256": "db5ae72cab4ac4e80c7569173023e35cd491019b6f2906634d7ad0e9110a7373"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-final.json",
+      "bytes": 454205,
+      "sha256": "1c194e3352f22957c9f848fdfda6f039de51339b2c9262ea27735e9d474c0ebe"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-first-wake.json",
+      "bytes": 292077,
+      "sha256": "235d29abd9cdfe0182b5fc12bab55be7f3ce393a594884eab8d6336535f754d4"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-operator.jsonl",
+      "bytes": 512960,
+      "sha256": "64068fb9fd82da94e4c6a41c30ce5a1e8315186da11dd88426f86eb2f9a104c9"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-prepared.json",
+      "bytes": 149758,
+      "sha256": "76e2829880dec998391616f58a4599e9a7af4aece7caec87c95ba99c6aeab306"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-progress.json",
+      "bytes": 361465,
+      "sha256": "afab2f51e7da4f0df4f24907d4ab7e478b33dabe14bba247583751caa4e112cd"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-provider-free.json",
+      "bytes": 2327,
+      "sha256": "54fbf17faf7ead5b3a2c9138ac8ca6178d22e6c8a33cbfc9b412537746d90567"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-restore.json",
+      "bytes": 33481,
+      "sha256": "d4ac60be5c75ddb6a49236b3ee631660add1d93b877e2190fab4f21a79f6a235"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-restore.log",
+      "bytes": 4747,
+      "sha256": "628690169643d146b783e3e22a9783ed0bc9343a82364c44448d383f8622f82d"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-review-context.json",
+      "bytes": 12193,
+      "sha256": "b778d44858c93eac6f1c72fc82acbb0530057a6a6be6d3d0fcc108d248b5f74f"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-run-00040727-1d28-4478-9d93-65b6719dfb67.json",
+      "bytes": 354153,
+      "sha256": "23434e8053b9e5031018c50a164e4062c16dad88a73f0fb33cf4df18553ef351"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-run-1d6e1db4-b303-477b-9fd7-416932076445.json",
+      "bytes": 413210,
+      "sha256": "ae1bc5498a8d5790c008322d3ac17f23901a494db2dc68b376a120dcce4df5e4"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-run-3e1ddf5f-6f1f-4bdc-91b1-46b907fa6998.json",
+      "bytes": 438864,
+      "sha256": "f3e4d405df524f93a124c62bd9b6b26a7a78f8515983e0c3dcf413877a7fd0ec"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-run-4baabb4f-966e-4252-8e19-9a3bff058402.json",
+      "bytes": 442655,
+      "sha256": "49f2c0d655fe72196270b701d4b1b530b79e50bb7cc7c13d935ae3e74a7f6829"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-run-d0a4167e-56e1-4239-be46-b4e933990e22.json",
+      "bytes": 442881,
+      "sha256": "b272ab911602f21c9da2e5d1a708c3cdb1c16f17ec79948384ba44646a364542"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-run-dcd81e8a-7f98-4de3-8a06-9cd43eea6e87.json",
+      "bytes": 583575,
+      "sha256": "c5108671a1607659f550851ca505cce70698b7c584defa5abb147b253393bea2"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-run-f22b90a2-c819-4e62-847b-f9fa77b70b65.json",
+      "bytes": 392322,
+      "sha256": "79ddbde5177d34eb5e9fb3be548050a1828d44feeac58bdb4840c6b20e725ada"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-superseded-issue.json",
+      "bytes": 8681,
+      "sha256": "11dc9315d230ce2a566c5834dd9c1708a0035149ad2702b2bfac22c1bdb4ea70"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-v2-60fc690.bundle",
+      "bytes": 1432595,
+      "sha256": "4242fb212e0e4212d3ce0985f7b06de6c67363624c3cd487664288bc672bc115"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-v2-review-context.json",
+      "bytes": 51487,
+      "sha256": "855a2a72ef6d9eec62fcef6b8e6c410b5d84569bb2220383f37a0b235b19bd0e"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-v2-static-base.log",
+      "bytes": 10993,
+      "sha256": "c840950de14157329cee45618c559244df41f578b350968ae0219b6502d24a87"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-v2-static.log",
+      "bytes": 274,
+      "sha256": "eb386c5262d82d44b8dd09c187cfc7f8a39db454bb39885de4cab06abf977389"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-watch-correction.log",
+      "bytes": 54058,
+      "sha256": "498d849d83458d839546c26afbc33b0f88228029a2937280a49a5bb6c84c2bed"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-replacement-watch.log",
+      "bytes": 20208,
+      "sha256": "941e86742fcabfd5094ddf5a3ede9693784caf8983d9803609c96627077448b5"
+    }
+  ]
+}

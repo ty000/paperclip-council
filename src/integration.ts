@@ -39,6 +39,8 @@ export type IntegratedCandidateInput = {
   candidateCommit: string;
   contributions: [IntegratedContributionInput, IntegratedContributionInput];
   correctedPaths?: string[];
+  /** Owner recovery only: the former reference must not name an imported object. */
+  missingReference?: string;
 };
 
 export type IntegratedCandidateCheck = {
@@ -536,6 +538,7 @@ export async function verifyIntegratedCandidate(
     throw new Error("expectedByteSize must be a positive bounded integer");
   }
   const contributions = validateContributions(input);
+  const missingReference = input.missingReference === undefined ? undefined : commit(input.missingReference, "missingReference");
   if (contributions.some((contribution) => contribution.commit === baseCommit)) {
     throw new Error("Contribution commits must differ from the base commit");
   }
@@ -552,6 +555,11 @@ export async function verifyIntegratedCandidate(
     const bundlePath = resolve(root, "candidate.bundle");
     const repositoryPath = resolve(root, "repository.git");
     await importAndValidateRepository(bytes, bundlePath, repositoryPath, baseCommit, candidateCommit, checks);
+    if (missingReference) {
+      const objects = (await git(["cat-file", "--batch-all-objects", "--batch-check=%(objectname)"], repositoryPath)).split("\n");
+      if (objects.includes(missingReference)) throw new Error("Recovery cannot replace a reference present in the checked bundle");
+      checks.push({ name: "missing-recorded-reference", status: "passed", detail: missingReference + " is absent from the checked bundle" });
+    }
 
     const segmentRoots = await contributionSegmentRoots(
       contributions,
