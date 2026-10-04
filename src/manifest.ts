@@ -73,8 +73,8 @@ const manifest: PaperclipPluginManifestV1 = {
         description: "Reference to the Paperclip company secret containing the dedicated council agent token.",
       },
       n2RuntimeProfile: {
-        type: "string", enum: ["paperclip_runner-experimental"],
-        description: "Experimental native N2 with an individually admitted transmission run. Requires paperclip_runner lead/reviewer and native runner rollout.",
+        type: "string", enum: ["ordinary-cli-v1", "paperclip_runner-experimental"],
+        description: "Select ordinary-cli-v1 for new reviews: separate N3 specialist and Council CLI tasks with terminal accounting. Existing missions retain their persisted runtime; paperclip_runner-experimental remains available for historical native missions.",
       },
       n1FixtureMode: {
         type: "string",

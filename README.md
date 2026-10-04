@@ -39,7 +39,13 @@ this exact persisted candidate without rewriting the N1 path. See the
 
 ## N2 development boundary
 
-The current opt-in profile is `n2RuntimeProfile: paperclip_runner-experimental`.
+The adopted opt-in profile for new reviews is `n2RuntimeProfile: ordinary-cli-v1`:
+separate N3 specialist opinions and Council judgment run as ordinary CLI tasks,
+with terminal per-run accounting before correction or acceptance. See the
+[activation and agent contract](docs/n3/ORDINARY-CLI-REVIEW.md).
+Existing missions retain their persisted protocol.
+
+The historical profile `n2RuntimeProfile: paperclip_runner-experimental` remains compatible.
 It consumes the existing verified N1 candidate through a separately reserved native
 transmission, then runs independent review, one optional correction and final
 review. Native completion cards, verdicts, scheduling, costs and recovery are real;

@@ -1,0 +1,1792 @@
+{
+  "schema": "council-ordinary-installed-v1",
+  "outcome": "BLOCKED",
+  "startedAt": "2026-10-04T15:29:38.891Z",
+  "head": "b2a98587a2df517583a1610b05b7dc42d386efde",
+  "hostSha": "61b3fd57a695614dc4a37e2303f426a34a9795cf",
+  "runtime": "/tmp/council-ordinary-installed-P0pVKf",
+  "timeline": [
+    {
+      "ordinal": 1,
+      "at": "2026-10-04T15:29:49.017Z",
+      "event": "installed_worker_started",
+      "pluginId": "19205a52-6abc-4233-adf7-8dcbef774083"
+    },
+    {
+      "ordinal": 2,
+      "at": "2026-10-04T15:29:51.097Z",
+      "event": "owner_closed_finished_N1_child",
+      "issueId": "be8755ec-116e-4f6d-8667-d35103cc9661",
+      "runId": "39317734-6021-40f3-b96e-4799375558e1"
+    },
+    {
+      "ordinal": 3,
+      "at": "2026-10-04T15:29:52.131Z",
+      "event": "owner_closed_finished_N1_child",
+      "issueId": "0930218f-0e1c-4451-8d9a-10e87e148d46",
+      "runId": "6c8687be-2797-4905-9cc7-7a92da4d56ec"
+    },
+    {
+      "ordinal": 4,
+      "at": "2026-10-04T15:29:52.954Z",
+      "event": "ordinary_review_started"
+    }
+  ],
+  "checks": {},
+  "boundary": "Installed Council owns N2/N3 state, admission, dispatch and reconciliation. Only CLI model/content/usage are deterministic. Owner prepares N1 and closes finished N1 children with lead demand wakes disabled.",
+  "source": {
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/tests/functional/ordinary-cli-fixture.mjs": "cfd23cb8a786d223663163144267e77920241b6d7cff432d764e6fca37434d39",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/tests/functional/ordinary-installed.ts": "0199ce605fde3ebafa02d778c6572ef96f0fc60baed36576deb14fcabe55bd84"
+  },
+  "companyId": "9f26dc6d-0cda-4d78-b6f4-16b5ab459228",
+  "actors": {
+    "lead": "14a579c2-31a3-4268-9e24-ef134862da06",
+    "alpha": "e4b825f3-84d8-491b-b261-96003d1ac535",
+    "beta": "9d13866e-b313-4a96-bbd1-37ba85bc46d6",
+    "product": "dbbe2be0-0835-48ff-96a0-8085cf1243a1",
+    "quality": "9d6a7c33-8200-4474-82fa-89a2648152b2",
+    "council": "242805cd-4bd8-481d-aacf-546f60d348c6"
+  },
+  "pluginId": "19205a52-6abc-4233-adf7-8dcbef774083",
+  "prerequisite": {
+    "companyId": "9f26dc6d-0cda-4d78-b6f4-16b5ab459228",
+    "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28",
+    "rootIssueId": "32c7c4e9-8e42-4cd9-a217-6a531e643a1e",
+    "projectId": "538fba9f-8167-4f62-9921-e4333dbc54b1",
+    "ownerUserId": "local-board",
+    "teamRosterId": "ff125585-3f47-49ce-92a2-7d1f2ef2e3d5",
+    "teamRevision": "c1d36476-91be-4285-8fb7-2a032039ee2f",
+    "councilRosterId": "87836dee-1c2a-4acf-8347-165b939ce6e5",
+    "councilRevision": "5d603ed8-4690-4bc7-b149-ffcc44446ec9",
+    "version": 17,
+    "aggregate": {
+      "n1": {
+        "candidate": {
+          "checks": [
+            {
+              "name": "issue-bound-bundle",
+              "detail": "994 bytes; SHA-256 verified",
+              "status": "passed"
+            },
+            {
+              "name": "git-import-configuration",
+              "detail": "bounded Git delta cache, packed-file mappings and single-thread pack window configured",
+              "status": "passed"
+            },
+            {
+              "name": "git-bundle-verify",
+              "detail": "self-contained bundle verified",
+              "status": "passed"
+            },
+            {
+              "name": "declared-refs",
+              "detail": "base and candidate refs match declared commits",
+              "status": "passed"
+            },
+            {
+              "name": "git-object-bounds",
+              "detail": "10 objects; 1236 expanded bytes",
+              "status": "passed"
+            },
+            {
+              "name": "git-object-integrity",
+              "detail": "git fsck --strict passed",
+              "status": "passed"
+            },
+            {
+              "name": "base-ancestry",
+              "detail": "candidate descends from declared base",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-ancestry",
+              "detail": "two distinct contribution commits are included",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-history-topology",
+              "detail": "each contribution is a bounded linear history rooted at base or a prior declared contribution",
+              "status": "passed"
+            },
+            {
+              "name": "write-ownership",
+              "detail": "every contribution commit changed only its declared paths",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-tree-preservation",
+              "detail": "both contributions survive in the candidate tree",
+              "status": "passed"
+            },
+            {
+              "name": "candidate-delta-attribution",
+              "detail": "complete candidate delta equals the union of attributed contribution deltas",
+              "status": "passed"
+            },
+            {
+              "name": "candidate-history-topology",
+              "detail": "candidate-only history contains exactly the declared integration commit",
+              "status": "passed"
+            },
+            {
+              "name": "git-diff-check",
+              "detail": "candidate diff passed git diff --check",
+              "status": "passed"
+            }
+          ],
+          "outcome": "verified",
+          "subject": {
+            "issueId": "32c7c4e9-8e42-4cd9-a217-6a531e643a1e",
+            "companyId": "9f26dc6d-0cda-4d78-b6f4-16b5ab459228"
+          },
+          "candidate": {
+            "sha256": "caffbd0dffc3bb35f9e78976b590180f28905b3a7b503ede0eafe0004cd72bf7",
+            "byteSize": 994,
+            "baseCommit": "c663f9a2d536683ebb0351ba870da2ba44ba5495",
+            "attachmentId": "30803a9e-ef31-47a6-b8ab-daaed0b88663",
+            "candidateCommit": "1769d3a18a325083a40ecab1ad5da873e3361c59"
+          },
+          "contributions": [
+            {
+              "commit": "fd188064208509e938451afd2fe90d2ed7c6a70f",
+              "ownedPaths": [
+                "alpha.txt"
+              ],
+              "changedPaths": [
+                "alpha.txt"
+              ],
+              "contributionId": "386fb4d8-6b47-431b-99fe-59f3526a9922"
+            },
+            {
+              "commit": "91dab659f0cd06c4c9eecfb9b81339ac2601fad2",
+              "ownedPaths": [
+                "beta.txt"
+              ],
+              "changedPaths": [
+                "beta.txt"
+              ],
+              "contributionId": "7a3a090e-d007-448b-bb8d-07e94088367b"
+            }
+          ],
+          "publicationEligible": true
+        },
+        "periodKey": "ordinary-installed",
+        "activatedAt": "2026-10-04T15:29:49.229Z",
+        "contributions": [
+          {
+            "title": "alpha",
+            "commit": "fd188064208509e938451afd2fe90d2ed7c6a70f",
+            "intentId": "df0a1015-e272-4677-ae7b-022ecbc61d8d",
+            "issueState": "confirmed",
+            "ownedPaths": [
+              "alpha.txt"
+            ],
+            "authorRunId": "39317734-6021-40f3-b96e-4799375558e1",
+            "childIssueId": "be8755ec-116e-4f6d-8667-d35103cc9661",
+            "dispatchRunId": "39317734-6021-40f3-b96e-4799375558e1",
+            "dispatchState": "requested",
+            "contributionId": "386fb4d8-6b47-431b-99fe-59f3526a9922",
+            "assigneeAgentId": "e4b825f3-84d8-491b-b261-96003d1ac535",
+            "dispatchReservationId": "3d2e75ce-e304-4c27-b5a0-08dd7db4b6ae",
+            "dispatchUsageBaselineUnits": 0
+          },
+          {
+            "title": "beta",
+            "commit": "91dab659f0cd06c4c9eecfb9b81339ac2601fad2",
+            "intentId": "77137ea4-f3b8-4f28-a0af-e28750ce09f8",
+            "issueState": "confirmed",
+            "ownedPaths": [
+              "beta.txt"
+            ],
+            "authorRunId": "6c8687be-2797-4905-9cc7-7a92da4d56ec",
+            "childIssueId": "0930218f-0e1c-4451-8d9a-10e87e148d46",
+            "dispatchRunId": "6c8687be-2797-4905-9cc7-7a92da4d56ec",
+            "dispatchState": "requested",
+            "contributionId": "7a3a090e-d007-448b-bb8d-07e94088367b",
+            "assigneeAgentId": "9d13866e-b313-4a96-bbd1-37ba85bc46d6",
+            "dispatchReservationId": "c9c1a1e1-36d0-4a8f-9e9d-bdcb4fbb4663",
+            "dispatchUsageBaselineUnits": 0
+          }
+        ],
+        "rootDispatchMode": "native",
+        "rootDispatchRunId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+        "rootDispatchState": "requested",
+        "rootUsageBaselineUnits": 0,
+        "activationReservationId": "3fe9db78-8a13-4e36-960f-7b04a0ab6318",
+        "candidateRecordedVersion": 16
+      },
+      "phase": "ready_for_review",
+      "control": {
+        "reason": "candidate_ready_for_review",
+        "status": "inactive"
+      },
+      "journal": [
+        {
+          "at": "2026-10-04T15:29:49.190Z",
+          "action": "mission_recorded",
+          "actorUserId": "local-board"
+        },
+        {
+          "at": "2026-10-04T15:29:49.229Z",
+          "action": "mission_activated",
+          "periodKey": "ordinary-installed",
+          "actorUserId": "local-board",
+          "reservationId": "3fe9db78-8a13-4e36-960f-7b04a0ab6318"
+        },
+        {
+          "at": "2026-10-04T15:29:49.268Z",
+          "action": "root_dispatch_claimed",
+          "actorUserId": "local-board",
+          "reservationId": "3fe9db78-8a13-4e36-960f-7b04a0ab6318"
+        },
+        {
+          "at": "2026-10-04T15:29:49.942Z",
+          "runId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "action": "contribution_plan_recorded",
+          "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06"
+        },
+        {
+          "at": "2026-10-04T15:29:50.033Z",
+          "runId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "action": "child_creation_claimed",
+          "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "contributionId": "386fb4d8-6b47-431b-99fe-59f3526a9922"
+        },
+        {
+          "at": "2026-10-04T15:29:50.155Z",
+          "runId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "action": "child_creation_claimed",
+          "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "contributionId": "7a3a090e-d007-448b-bb8d-07e94088367b"
+        },
+        {
+          "at": "2026-10-04T15:29:50.303Z",
+          "runId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "action": "child_dispatch_claimed",
+          "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "reservationId": "3d2e75ce-e304-4c27-b5a0-08dd7db4b6ae",
+          "contributionId": "386fb4d8-6b47-431b-99fe-59f3526a9922"
+        },
+        {
+          "at": "2026-10-04T15:29:50.857Z",
+          "runId": "39317734-6021-40f3-b96e-4799375558e1",
+          "action": "contribution_recorded",
+          "commit": "fd188064208509e938451afd2fe90d2ed7c6a70f",
+          "actorAgentId": "e4b825f3-84d8-491b-b261-96003d1ac535",
+          "contributionId": "386fb4d8-6b47-431b-99fe-59f3526a9922"
+        },
+        {
+          "at": "2026-10-04T15:29:51.315Z",
+          "runId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "action": "child_dispatch_claimed",
+          "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "reservationId": "c9c1a1e1-36d0-4a8f-9e9d-bdcb4fbb4663",
+          "contributionId": "7a3a090e-d007-448b-bb8d-07e94088367b"
+        },
+        {
+          "at": "2026-10-04T15:29:51.900Z",
+          "runId": "6c8687be-2797-4905-9cc7-7a92da4d56ec",
+          "action": "contribution_recorded",
+          "commit": "91dab659f0cd06c4c9eecfb9b81339ac2601fad2",
+          "actorAgentId": "9d13866e-b313-4a96-bbd1-37ba85bc46d6",
+          "contributionId": "7a3a090e-d007-448b-bb8d-07e94088367b"
+        },
+        {
+          "at": "2026-10-04T15:29:52.535Z",
+          "runId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "action": "integrated_candidate_verified",
+          "checks": [
+            {
+              "name": "issue-bound-bundle",
+              "detail": "994 bytes; SHA-256 verified",
+              "status": "passed"
+            },
+            {
+              "name": "git-import-configuration",
+              "detail": "bounded Git delta cache, packed-file mappings and single-thread pack window configured",
+              "status": "passed"
+            },
+            {
+              "name": "git-bundle-verify",
+              "detail": "self-contained bundle verified",
+              "status": "passed"
+            },
+            {
+              "name": "declared-refs",
+              "detail": "base and candidate refs match declared commits",
+              "status": "passed"
+            },
+            {
+              "name": "git-object-bounds",
+              "detail": "10 objects; 1236 expanded bytes",
+              "status": "passed"
+            },
+            {
+              "name": "git-object-integrity",
+              "detail": "git fsck --strict passed",
+              "status": "passed"
+            },
+            {
+              "name": "base-ancestry",
+              "detail": "candidate descends from declared base",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-ancestry",
+              "detail": "two distinct contribution commits are included",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-history-topology",
+              "detail": "each contribution is a bounded linear history rooted at base or a prior declared contribution",
+              "status": "passed"
+            },
+            {
+              "name": "write-ownership",
+              "detail": "every contribution commit changed only its declared paths",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-tree-preservation",
+              "detail": "both contributions survive in the candidate tree",
+              "status": "passed"
+            },
+            {
+              "name": "candidate-delta-attribution",
+              "detail": "complete candidate delta equals the union of attributed contribution deltas",
+              "status": "passed"
+            },
+            {
+              "name": "candidate-history-topology",
+              "detail": "candidate-only history contains exactly the declared integration commit",
+              "status": "passed"
+            },
+            {
+              "name": "git-diff-check",
+              "detail": "candidate diff passed git diff --check",
+              "status": "passed"
+            }
+          ],
+          "candidate": {
+            "sha256": "caffbd0dffc3bb35f9e78976b590180f28905b3a7b503ede0eafe0004cd72bf7",
+            "byteSize": 994,
+            "baseCommit": "c663f9a2d536683ebb0351ba870da2ba44ba5495",
+            "attachmentId": "30803a9e-ef31-47a6-b8ab-daaed0b88663",
+            "candidateCommit": "1769d3a18a325083a40ecab1ad5da873e3361c59"
+          },
+          "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06"
+        },
+        {
+          "at": "2026-10-04T15:29:52.748Z",
+          "runId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "action": "lead_usage_settled_candidate_ready",
+          "candidate": {
+            "sha256": "caffbd0dffc3bb35f9e78976b590180f28905b3a7b503ede0eafe0004cd72bf7",
+            "byteSize": 994,
+            "baseCommit": "c663f9a2d536683ebb0351ba870da2ba44ba5495",
+            "attachmentId": "30803a9e-ef31-47a6-b8ab-daaed0b88663",
+            "candidateCommit": "1769d3a18a325083a40ecab1ad5da873e3361c59"
+          },
+          "actorUserId": "local-board"
+        }
+      ],
+      "mandate": {
+        "limits": {
+          "taskPolicy": "1000 tokens reserved",
+          "periodPolicy": "20000 token envelope",
+          "elapsedMinutes": 30,
+          "correctionLimit": 1
+        },
+        "objective": "Two contributions and independent Council correction",
+        "commitments": [
+          "Provider-free CLI fixture",
+          "One correction maximum"
+        ],
+        "acceptanceCriteria": [
+          "Alpha must contain corrected marker",
+          "Two attributed contributions"
+        ]
+      },
+      "companyId": "9f26dc6d-0cda-4d78-b6f4-16b5ab459228",
+      "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28",
+      "projectId": "538fba9f-8167-4f62-9921-e4333dbc54b1",
+      "readiness": {
+        "mission": "recorded",
+        "blockers": [
+          {
+            "code": "g4_root_reserved",
+            "status": "ready",
+            "message": "Root lead launch allowance is durably reserved."
+          },
+          {
+            "code": "child_dispatch_pending",
+            "status": "pending",
+            "message": "Child launches require their own admission and effect reconciliation."
+          }
+        ],
+        "execution": "blocked",
+        "compositions": "pinned"
+      },
+      "ownerUserId": "local-board",
+      "rootIssueId": "32c7c4e9-8e42-4cd9-a217-6a531e643a1e",
+      "compositions": {
+        "team": {
+          "kind": "team",
+          "name": "Team",
+          "members": [
+            {
+              "agentId": "14a579c2-31a3-4268-9e24-ef134862da06",
+              "responsibilities": [
+                "integration_lead"
+              ]
+            },
+            {
+              "agentId": "e4b825f3-84d8-491b-b261-96003d1ac535",
+              "responsibilities": [
+                "contributor"
+              ]
+            },
+            {
+              "agentId": "9d13866e-b313-4a96-bbd1-37ba85bc46d6",
+              "responsibilities": [
+                "contributor"
+              ]
+            }
+          ],
+          "revision": "c1d36476-91be-4285-8fb7-2a032039ee2f",
+          "rosterId": "ff125585-3f47-49ce-92a2-7d1f2ef2e3d5",
+          "projectId": "538fba9f-8167-4f62-9921-e4333dbc54b1"
+        },
+        "status": "pinned",
+        "council": {
+          "kind": "council",
+          "name": "Council",
+          "members": [
+            {
+              "agentId": "242805cd-4bd8-481d-aacf-546f60d348c6",
+              "responsibilities": [
+                "final_reviewer"
+              ]
+            }
+          ],
+          "revision": "5d603ed8-4690-4bc7-b149-ffcc44446ec9",
+          "rosterId": "87836dee-1c2a-4acf-8347-165b939ce6e5",
+          "projectId": "538fba9f-8167-4f62-9921-e4333dbc54b1"
+        }
+      },
+      "effectIntents": [
+        {
+          "kind": "root_wakeup",
+          "runId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "state": "requested",
+          "queued": true,
+          "issueId": "32c7c4e9-8e42-4cd9-a217-6a531e643a1e",
+          "reservationId": "3fe9db78-8a13-4e36-960f-7b04a0ab6318",
+          "assigneeAgentId": "14a579c2-31a3-4268-9e24-ef134862da06"
+        },
+        {
+          "kind": "child_issue_create",
+          "actor": {
+            "actorRunId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+            "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06"
+          },
+          "state": "confirmed",
+          "title": "alpha",
+          "intentId": "df0a1015-e272-4677-ae7b-022ecbc61d8d",
+          "companyId": "9f26dc6d-0cda-4d78-b6f4-16b5ab459228",
+          "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28",
+          "projectId": "538fba9f-8167-4f62-9921-e4333dbc54b1",
+          "description": "Council N1 contribution. Complete only this bounded child issue.\nMission ID: ecee3f27-86ea-47b2-b906-8d1756b7ac28\nContribution ID: 386fb4d8-6b47-431b-99fe-59f3526a9922\nOwned paths: alpha.txt\nDo not modify files outside the owned paths. Commit the completed change on the current shared branch.\nUse the authenticated endpoint /api/plugins/private.paperclip-council/api/issues/<this-child-issue-id>/council/commands. The first request body is exactly {\"command\":\"inspect\",\"missionId\":\"ecee3f27-86ea-47b2-b906-8d1756b7ac28\"}. Read body.version, then send command=record-contribution with missionId, a fresh commandId, that expectedVersion, the contributionId, and the 40-character commit SHA.\nFor every fresh commandId, run this exact command once and separately: node -e \"console.log(require('node:crypto').randomUUID())\". Never invent, partially copy, or manually edit a UUID.\nMark this Paperclip child issue done only after record-contribution succeeds.\nFor any non-2xx response, preserve the HTTP status and sanitized JSON response body in your final report without exposing credentials.\n\nPlugins/skills à utiliser\nUse the Paperclip skill injected by the host for issue context, authenticated API calls, and status updates. No additional plugin is required.\n\nModele et effort recommandes\nTarget: bounded implementation contributor. Model: gpt-5.6-sol. Effort: high because the run participates in a governed native integration proof. Re-evaluate only if availability is rejected before launch; do not silently substitute. Source: independent mapping /home/davy-lp/.codex/shared/model-selection/model-effort-mapping.md, updated 2026-09-05. Effective runtime settings must be observed separately.",
+          "rootIssueId": "32c7c4e9-8e42-4cd9-a217-6a531e643a1e",
+          "childIssueId": "be8755ec-116e-4f6d-8667-d35103cc9661",
+          "unknownReason": null,
+          "contributionId": "386fb4d8-6b47-431b-99fe-59f3526a9922",
+          "assigneeAgentId": "e4b825f3-84d8-491b-b261-96003d1ac535"
+        },
+        {
+          "kind": "child_issue_create",
+          "actor": {
+            "actorRunId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+            "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06"
+          },
+          "state": "confirmed",
+          "title": "beta",
+          "intentId": "77137ea4-f3b8-4f28-a0af-e28750ce09f8",
+          "companyId": "9f26dc6d-0cda-4d78-b6f4-16b5ab459228",
+          "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28",
+          "projectId": "538fba9f-8167-4f62-9921-e4333dbc54b1",
+          "description": "Council N1 contribution. Complete only this bounded child issue.\nMission ID: ecee3f27-86ea-47b2-b906-8d1756b7ac28\nContribution ID: 7a3a090e-d007-448b-bb8d-07e94088367b\nOwned paths: beta.txt\nDo not modify files outside the owned paths. Commit the completed change on the current shared branch.\nUse the authenticated endpoint /api/plugins/private.paperclip-council/api/issues/<this-child-issue-id>/council/commands. The first request body is exactly {\"command\":\"inspect\",\"missionId\":\"ecee3f27-86ea-47b2-b906-8d1756b7ac28\"}. Read body.version, then send command=record-contribution with missionId, a fresh commandId, that expectedVersion, the contributionId, and the 40-character commit SHA.\nFor every fresh commandId, run this exact command once and separately: node -e \"console.log(require('node:crypto').randomUUID())\". Never invent, partially copy, or manually edit a UUID.\nMark this Paperclip child issue done only after record-contribution succeeds.\nFor any non-2xx response, preserve the HTTP status and sanitized JSON response body in your final report without exposing credentials.\n\nPlugins/skills à utiliser\nUse the Paperclip skill injected by the host for issue context, authenticated API calls, and status updates. No additional plugin is required.\n\nModele et effort recommandes\nTarget: bounded implementation contributor. Model: gpt-5.6-sol. Effort: high because the run participates in a governed native integration proof. Re-evaluate only if availability is rejected before launch; do not silently substitute. Source: independent mapping /home/davy-lp/.codex/shared/model-selection/model-effort-mapping.md, updated 2026-09-05. Effective runtime settings must be observed separately.",
+          "rootIssueId": "32c7c4e9-8e42-4cd9-a217-6a531e643a1e",
+          "childIssueId": "0930218f-0e1c-4451-8d9a-10e87e148d46",
+          "unknownReason": null,
+          "contributionId": "7a3a090e-d007-448b-bb8d-07e94088367b",
+          "assigneeAgentId": "9d13866e-b313-4a96-bbd1-37ba85bc46d6"
+        },
+        {
+          "kind": "child_wakeup",
+          "runId": "39317734-6021-40f3-b96e-4799375558e1",
+          "state": "requested",
+          "queued": true,
+          "issueId": "be8755ec-116e-4f6d-8667-d35103cc9661",
+          "actorRunId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "reservationId": "3d2e75ce-e304-4c27-b5a0-08dd7db4b6ae",
+          "contributionId": "386fb4d8-6b47-431b-99fe-59f3526a9922",
+          "assigneeAgentId": "e4b825f3-84d8-491b-b261-96003d1ac535"
+        },
+        {
+          "kind": "child_wakeup",
+          "runId": "6c8687be-2797-4905-9cc7-7a92da4d56ec",
+          "state": "requested",
+          "queued": true,
+          "issueId": "0930218f-0e1c-4451-8d9a-10e87e148d46",
+          "actorRunId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "reservationId": "c9c1a1e1-36d0-4a8f-9e9d-bdcb4fbb4663",
+          "contributionId": "7a3a090e-d007-448b-bb8d-07e94088367b",
+          "assigneeAgentId": "9d13866e-b313-4a96-bbd1-37ba85bc46d6"
+        }
+      ],
+      "schemaVersion": 1,
+      "commandReceipts": [
+        {
+          "result": {
+            "version": 1,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "local-board",
+          "command": "create",
+          "actorType": "user",
+          "commandId": "402bea9c-9855-4782-868b-9e30d9d22ee5",
+          "recordedAt": "2026-10-04T15:29:49.190Z",
+          "payloadHash": "5e2715272b7581b11f1a786914fa9cec06279cfd59c62355f19b3564128f3874",
+          "appliedVersion": 1
+        },
+        {
+          "result": {
+            "version": 2,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "local-board",
+          "command": "activate",
+          "actorType": "user",
+          "commandId": "85431f6a-aad4-41ab-95cc-b0d0d30bc79e",
+          "recordedAt": "2026-10-04T15:29:49.229Z",
+          "payloadHash": "77bd65521813c6243be615012af3a3ac66475d8a6dbc48d5d8e1bf467c036758",
+          "appliedVersion": 2
+        },
+        {
+          "result": {
+            "version": 3,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "local-board",
+          "command": "start-lead",
+          "actorType": "user",
+          "commandId": "68dbd413-0780-4200-b3cc-5ffaa3d84dfe",
+          "recordedAt": "2026-10-04T15:29:49.268Z",
+          "payloadHash": "8c734cf63596c68d4491e747bfb50fb6cc13c5f3bed4571036382f0b5d57e352",
+          "appliedVersion": 3
+        },
+        {
+          "result": {
+            "version": 5,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "command": "plan",
+          "actorType": "agent",
+          "commandId": "403ed21a-a3f1-464f-9342-d43b01b44c36",
+          "recordedAt": "2026-10-04T15:29:49.942Z",
+          "payloadHash": "58ec79ca69b46b343cd23d26701d4ac9768b28f5abc19facececd6ae60719db1",
+          "appliedVersion": 5
+        },
+        {
+          "result": {
+            "version": 6,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "command": "materialize",
+          "actorType": "agent",
+          "commandId": "042bc4fb-4f46-4d4c-821f-697019a7444d",
+          "recordedAt": "2026-10-04T15:29:50.034Z",
+          "payloadHash": "65f893ed38c9d4ac9ece94c77be477fbe7d4ec9b40036aff05a6aed737293bc1",
+          "appliedVersion": 6
+        },
+        {
+          "result": {
+            "version": 8,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "command": "materialize",
+          "actorType": "agent",
+          "commandId": "90f254f7-3eb0-477d-8507-57edc5c0954e",
+          "recordedAt": "2026-10-04T15:29:50.155Z",
+          "payloadHash": "4151fc58111c05ca0c41394dfd8d085263c1c9caefacd87336d56e86c3058b33",
+          "appliedVersion": 8
+        },
+        {
+          "result": {
+            "version": 10,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "command": "dispatch",
+          "actorType": "agent",
+          "commandId": "26588288-28fd-4060-a658-05bdb58c4ea1",
+          "recordedAt": "2026-10-04T15:29:50.303Z",
+          "payloadHash": "5b506d0ab2b4658829657bec5bdea9be099541fb8577ad3e07ed304b7718b623",
+          "appliedVersion": 10
+        },
+        {
+          "result": {
+            "version": 12,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "e4b825f3-84d8-491b-b261-96003d1ac535",
+          "command": "record-contribution",
+          "actorType": "agent",
+          "commandId": "05728475-466e-47d4-aec1-13fe33738337",
+          "recordedAt": "2026-10-04T15:29:50.857Z",
+          "payloadHash": "5adfce1412ac121c7ff3969d93c189772d69558c43656de8258d93999ec6af4a",
+          "appliedVersion": 12
+        },
+        {
+          "result": {
+            "version": 13,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "command": "dispatch",
+          "actorType": "agent",
+          "commandId": "eac575f8-6a8e-41f6-9563-ad75df4290d1",
+          "recordedAt": "2026-10-04T15:29:51.315Z",
+          "payloadHash": "57fe546619396d4195f1cf0a5b8bfc22d6b4b0da22e0b46e65f70b4717ce2045",
+          "appliedVersion": 13
+        },
+        {
+          "result": {
+            "version": 15,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "9d13866e-b313-4a96-bbd1-37ba85bc46d6",
+          "command": "record-contribution",
+          "actorType": "agent",
+          "commandId": "bc0ccdca-d7dc-49c8-99b5-7853aac11b83",
+          "recordedAt": "2026-10-04T15:29:51.900Z",
+          "payloadHash": "c32b9209b1d13b1cb1d220771e7437b8cac49bc19dd7a49a8b294a0b9f33c687",
+          "appliedVersion": 15
+        },
+        {
+          "result": {
+            "version": 16,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "command": "publish",
+          "actorType": "agent",
+          "commandId": "fca7b8f5-9df3-4d87-be91-00f1869d396f",
+          "recordedAt": "2026-10-04T15:29:52.536Z",
+          "payloadHash": "1016033d5918031b19d7e7198b5345e139fe663eeec257e41c6d9eb54f51b07d",
+          "appliedVersion": 16
+        },
+        {
+          "result": {
+            "version": 17,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "local-board",
+          "command": "reconcile-lead-usage",
+          "actorType": "user",
+          "commandId": "5e1c3e02-2520-48f3-9199-4c4acc67717b",
+          "recordedAt": "2026-10-04T15:29:52.748Z",
+          "payloadHash": "4cc53972291f9216507a9f2a8e56ecb16e2f09838c87944e94130734c707bfd4",
+          "appliedVersion": 17
+        }
+      ],
+      "responsibilities": {
+        "finalReviewerAgentId": "242805cd-4bd8-481d-aacf-546f60d348c6",
+        "requiredPerspectives": [
+          "integration_quality"
+        ],
+        "integrationLeadAgentId": "14a579c2-31a3-4268-9e24-ef134862da06"
+      }
+    },
+    "createdAt": "2026-10-04T15:29:49.191Z",
+    "updatedAt": "2026-10-04T15:29:52.749Z"
+  },
+  "latest": {
+    "companyId": "9f26dc6d-0cda-4d78-b6f4-16b5ab459228",
+    "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28",
+    "rootIssueId": "32c7c4e9-8e42-4cd9-a217-6a531e643a1e",
+    "projectId": "538fba9f-8167-4f62-9921-e4333dbc54b1",
+    "ownerUserId": "local-board",
+    "teamRosterId": "ff125585-3f47-49ce-92a2-7d1f2ef2e3d5",
+    "teamRevision": "c1d36476-91be-4285-8fb7-2a032039ee2f",
+    "councilRosterId": "87836dee-1c2a-4acf-8347-165b939ce6e5",
+    "councilRevision": "5d603ed8-4690-4bc7-b149-ffcc44446ec9",
+    "version": 47,
+    "aggregate": {
+      "n1": {
+        "candidate": {
+          "checks": [
+            {
+              "name": "issue-bound-bundle",
+              "detail": "994 bytes; SHA-256 verified",
+              "status": "passed"
+            },
+            {
+              "name": "git-import-configuration",
+              "detail": "bounded Git delta cache, packed-file mappings and single-thread pack window configured",
+              "status": "passed"
+            },
+            {
+              "name": "git-bundle-verify",
+              "detail": "self-contained bundle verified",
+              "status": "passed"
+            },
+            {
+              "name": "declared-refs",
+              "detail": "base and candidate refs match declared commits",
+              "status": "passed"
+            },
+            {
+              "name": "git-object-bounds",
+              "detail": "10 objects; 1236 expanded bytes",
+              "status": "passed"
+            },
+            {
+              "name": "git-object-integrity",
+              "detail": "git fsck --strict passed",
+              "status": "passed"
+            },
+            {
+              "name": "base-ancestry",
+              "detail": "candidate descends from declared base",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-ancestry",
+              "detail": "two distinct contribution commits are included",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-history-topology",
+              "detail": "each contribution is a bounded linear history rooted at base or a prior declared contribution",
+              "status": "passed"
+            },
+            {
+              "name": "write-ownership",
+              "detail": "every contribution commit changed only its declared paths",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-tree-preservation",
+              "detail": "both contributions survive in the candidate tree",
+              "status": "passed"
+            },
+            {
+              "name": "candidate-delta-attribution",
+              "detail": "complete candidate delta equals the union of attributed contribution deltas",
+              "status": "passed"
+            },
+            {
+              "name": "candidate-history-topology",
+              "detail": "candidate-only history contains exactly the declared integration commit",
+              "status": "passed"
+            },
+            {
+              "name": "git-diff-check",
+              "detail": "candidate diff passed git diff --check",
+              "status": "passed"
+            }
+          ],
+          "outcome": "verified",
+          "subject": {
+            "issueId": "32c7c4e9-8e42-4cd9-a217-6a531e643a1e",
+            "companyId": "9f26dc6d-0cda-4d78-b6f4-16b5ab459228"
+          },
+          "candidate": {
+            "sha256": "caffbd0dffc3bb35f9e78976b590180f28905b3a7b503ede0eafe0004cd72bf7",
+            "byteSize": 994,
+            "baseCommit": "c663f9a2d536683ebb0351ba870da2ba44ba5495",
+            "attachmentId": "30803a9e-ef31-47a6-b8ab-daaed0b88663",
+            "candidateCommit": "1769d3a18a325083a40ecab1ad5da873e3361c59"
+          },
+          "contributions": [
+            {
+              "commit": "fd188064208509e938451afd2fe90d2ed7c6a70f",
+              "ownedPaths": [
+                "alpha.txt"
+              ],
+              "changedPaths": [
+                "alpha.txt"
+              ],
+              "contributionId": "386fb4d8-6b47-431b-99fe-59f3526a9922"
+            },
+            {
+              "commit": "91dab659f0cd06c4c9eecfb9b81339ac2601fad2",
+              "ownedPaths": [
+                "beta.txt"
+              ],
+              "changedPaths": [
+                "beta.txt"
+              ],
+              "contributionId": "7a3a090e-d007-448b-bb8d-07e94088367b"
+            }
+          ],
+          "publicationEligible": true
+        },
+        "periodKey": "ordinary-installed",
+        "activatedAt": "2026-10-04T15:29:49.229Z",
+        "contributions": [
+          {
+            "title": "alpha",
+            "commit": "fd188064208509e938451afd2fe90d2ed7c6a70f",
+            "intentId": "df0a1015-e272-4677-ae7b-022ecbc61d8d",
+            "issueState": "confirmed",
+            "ownedPaths": [
+              "alpha.txt"
+            ],
+            "authorRunId": "39317734-6021-40f3-b96e-4799375558e1",
+            "childIssueId": "be8755ec-116e-4f6d-8667-d35103cc9661",
+            "dispatchRunId": "39317734-6021-40f3-b96e-4799375558e1",
+            "dispatchState": "requested",
+            "contributionId": "386fb4d8-6b47-431b-99fe-59f3526a9922",
+            "assigneeAgentId": "e4b825f3-84d8-491b-b261-96003d1ac535",
+            "dispatchReservationId": "3d2e75ce-e304-4c27-b5a0-08dd7db4b6ae",
+            "dispatchUsageBaselineUnits": 0
+          },
+          {
+            "title": "beta",
+            "commit": "91dab659f0cd06c4c9eecfb9b81339ac2601fad2",
+            "intentId": "77137ea4-f3b8-4f28-a0af-e28750ce09f8",
+            "issueState": "confirmed",
+            "ownedPaths": [
+              "beta.txt"
+            ],
+            "authorRunId": "6c8687be-2797-4905-9cc7-7a92da4d56ec",
+            "childIssueId": "0930218f-0e1c-4451-8d9a-10e87e148d46",
+            "dispatchRunId": "6c8687be-2797-4905-9cc7-7a92da4d56ec",
+            "dispatchState": "requested",
+            "contributionId": "7a3a090e-d007-448b-bb8d-07e94088367b",
+            "assigneeAgentId": "9d13866e-b313-4a96-bbd1-37ba85bc46d6",
+            "dispatchReservationId": "c9c1a1e1-36d0-4a8f-9e9d-bdcb4fbb4663",
+            "dispatchUsageBaselineUnits": 0
+          }
+        ],
+        "rootDispatchMode": "native",
+        "rootDispatchRunId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+        "rootDispatchState": "requested",
+        "rootUsageBaselineUnits": 0,
+        "activationReservationId": "3fe9db78-8a13-4e36-960f-7b04a0ab6318",
+        "candidateRecordedVersion": 16
+      },
+      "n2": {
+        "rounds": [
+          {
+            "round": 1,
+            "handoff": {
+              "state": "confirmed",
+              "reason": null,
+              "observedAt": "2026-10-04T15:29:54.876Z",
+              "reservationId": "73639511-df72-402b-911f-a0fce1a83f26",
+              "reviewerRunId": "ea0a692b-bb08-4055-b010-73ad7851a804",
+              "baselineRunIds": [],
+              "usageSettledAt": "2026-10-04T15:29:55.510Z",
+              "baselineTokenTotal": 0
+            },
+            "verdict": {
+              "runId": "ea0a692b-bb08-4055-b010-73ad7851a804",
+              "reasons": [
+                "The exact candidate has an upheld blocking quality defect; one correction is required"
+              ],
+              "verdict": "changes_requested",
+              "criteria": [
+                "Alpha must contain corrected marker",
+                "Two attributed contributions"
+              ],
+              "decidedAt": "2026-10-04T15:29:55.558Z",
+              "operationId": "8a8e3567-6d20-420e-9ac3-7f44f87b10be",
+              "actorAgentId": "242805cd-4bd8-481d-aacf-546f60d348c6",
+              "nativeStatus": 200,
+              "receiptState": "native_observed"
+            },
+            "submissionId": "da05e9fc-b64b-48b5-910c-8386d63bf956",
+            "reviewerAgentId": "242805cd-4bd8-481d-aacf-546f60d348c6"
+          }
+        ],
+        "status": "correcting",
+        "ordinary": {
+          "tasks": [
+            {
+              "kind": "specialist",
+              "wake": "claimed",
+              "runId": "7fdd6df9-5fb2-4b6b-963c-112c9a141d38",
+              "slotId": "324f2aef-3d0c-4da0-ac33-ddc6c04dd8c6",
+              "taskId": "ec5c6ddd-178d-42ad-a275-f8f7477abd92",
+              "agentId": "dbbe2be0-0835-48ff-96a0-8085cf1243a1",
+              "issueId": "fa51246c-e2fb-4e52-844f-768ec09248c6",
+              "closedAt": "2026-10-04T15:29:53.610Z",
+              "creation": "confirmed",
+              "settledAt": "2026-10-04T15:29:53.579Z",
+              "submissionId": "da05e9fc-b64b-48b5-910c-8386d63bf956",
+              "reservationId": "efc94410-311e-4fe6-aa66-eec04e7e9558",
+              "settlementCommandId": "709e0a7c-c861-4ea6-84f8-287e6a386a20"
+            },
+            {
+              "kind": "specialist",
+              "wake": "claimed",
+              "runId": "42ba3ad7-f4dd-4f0a-98ab-452f6d8f6e57",
+              "slotId": "133fb43d-4c90-4e80-8d8e-06713b02fe3c",
+              "taskId": "e93a1114-c970-4610-b301-aaf5474867da",
+              "agentId": "9d6a7c33-8200-4474-82fa-89a2648152b2",
+              "issueId": "616db7f3-f598-4477-9908-fafb15bb96c2",
+              "closedAt": "2026-10-04T15:29:54.408Z",
+              "creation": "confirmed",
+              "settledAt": "2026-10-04T15:29:54.376Z",
+              "submissionId": "da05e9fc-b64b-48b5-910c-8386d63bf956",
+              "reservationId": "6854fc1a-254d-45d5-9f9e-911e49581df3",
+              "settlementCommandId": "0f0b9a66-516b-4808-ab3a-480bb34bc6ee"
+            },
+            {
+              "kind": "council",
+              "wake": "claimed",
+              "runId": "ea0a692b-bb08-4055-b010-73ad7851a804",
+              "report": {
+                "schema": "council-ordinary-result-v1",
+                "taskId": "8a8e3567-6d20-420e-9ac3-7f44f87b10be",
+                "subject": {
+                  "mandateHash": "5e93f27e6d0209e1e8ebfcce32caf65ed999d34c785074593d5909b9c575abde",
+                  "bundleSha256": "caffbd0dffc3bb35f9e78976b590180f28905b3a7b503ede0eafe0004cd72bf7",
+                  "submissionId": "da05e9fc-b64b-48b5-910c-8386d63bf956",
+                  "candidateCommit": "1769d3a18a325083a40ecab1ad5da873e3361c59",
+                  "evidenceRevision": 17
+                },
+                "verdict": "changes_requested",
+                "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28",
+                "rationale": "The exact candidate has an upheld blocking quality defect; one correction is required",
+                "synthesisHash": "a201e2234dfd86bf192e0a75a164259cbf25f34e77d7a2d16d57998f000ea997"
+              },
+              "taskId": "8a8e3567-6d20-420e-9ac3-7f44f87b10be",
+              "agentId": "242805cd-4bd8-481d-aacf-546f60d348c6",
+              "issueId": "238800b6-32af-4ca7-bb3b-db7acc9f2c41",
+              "closedAt": "2026-10-04T15:29:55.604Z",
+              "creation": "confirmed",
+              "settledAt": "2026-10-04T15:29:55.510Z",
+              "submissionId": "da05e9fc-b64b-48b5-910c-8386d63bf956",
+              "reservationId": "73639511-df72-402b-911f-a0fce1a83f26",
+              "receiptRecordedAt": "2026-10-04T15:29:55.566Z",
+              "settlementCommandId": "d67568e4-1797-4ded-be58-fdca3aad8466"
+            },
+            {
+              "kind": "correction",
+              "wake": "claimed",
+              "runId": "45eb5b6a-473d-4664-856a-a8eb8f5d7dd0",
+              "taskId": "2e63c85d-becb-4066-98b5-db89f8d01448",
+              "agentId": "14a579c2-31a3-4268-9e24-ef134862da06",
+              "issueId": "32c7c4e9-8e42-4cd9-a217-6a531e643a1e",
+              "creation": "confirmed",
+              "submissionId": "da05e9fc-b64b-48b5-910c-8386d63bf956",
+              "reservationId": "123ab790-9440-4802-8c0b-4fad9b4401ea",
+              "settlementCommandId": "587570b6-e116-4b1a-888b-f1788d34312f"
+            }
+          ],
+          "protocol": "ordinary-cli-v1"
+        },
+        "correction": {
+          "runId": "45eb5b6a-473d-4664-856a-a8eb8f5d7dd0",
+          "reasons": [
+            "The exact candidate has an upheld blocking quality defect; one correction is required"
+          ],
+          "criteria": [
+            "Alpha must contain corrected marker",
+            "Two attributed contributions"
+          ],
+          "wakeState": "requested",
+          "reservationId": "123ab790-9440-4802-8c0b-4fad9b4401ea",
+          "executorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "requestedByOperationId": "8a8e3567-6d20-420e-9ac3-7f44f87b10be"
+        },
+        "application": {
+          "state": "observed",
+          "operationId": "8a8e3567-6d20-420e-9ac3-7f44f87b10be",
+          "nativeStatus": 200,
+          "receiptState": "native_observed",
+          "submissionId": "da05e9fc-b64b-48b5-910c-8386d63bf956"
+        },
+        "submissions": [
+          {
+            "sha256": "caffbd0dffc3bb35f9e78976b590180f28905b3a7b503ede0eafe0004cd72bf7",
+            "ordinal": 1,
+            "byteSize": 994,
+            "baseCommit": "c663f9a2d536683ebb0351ba870da2ba44ba5495",
+            "verifiedAt": "2026-10-04T15:29:52.804Z",
+            "mandateHash": "5e93f27e6d0209e1e8ebfcce32caf65ed999d34c785074593d5909b9c575abde",
+            "attachmentId": "30803a9e-ef31-47a6-b8ab-daaed0b88663",
+            "submissionId": "da05e9fc-b64b-48b5-910c-8386d63bf956",
+            "candidateCommit": "1769d3a18a325083a40ecab1ad5da873e3361c59",
+            "evidenceRevision": 17,
+            "predecessorSubmissionId": null
+          }
+        ],
+        "schemaVersion": 1,
+        "correctionLimit": 1,
+        "correctionsUsed": 1,
+        "activeSubmissionId": "da05e9fc-b64b-48b5-910c-8386d63bf956"
+      },
+      "n3": {
+        "slots": [
+          {
+            "slotId": "324f2aef-3d0c-4da0-ac33-ddc6c04dd8c6",
+            "question": "product review of the exact candidate and alpha correction marker",
+            "required": true,
+            "perspective": "product",
+            "specialistAgentId": "dbbe2be0-0835-48ff-96a0-8085cf1243a1"
+          },
+          {
+            "slotId": "133fb43d-4c90-4e80-8d8e-06713b02fe3c",
+            "question": "quality review of the exact candidate and alpha correction marker",
+            "required": true,
+            "perspective": "quality",
+            "specialistAgentId": "9d6a7c33-8200-4474-82fa-89a2648152b2"
+          }
+        ],
+        "rounds": [
+          {
+            "review": {
+              "slots": [
+                {
+                  "slotId": "324f2aef-3d0c-4da0-ac33-ddc6c04dd8c6",
+                  "question": "product review of the exact candidate and alpha correction marker",
+                  "required": true,
+                  "perspective": "product",
+                  "specialistAgentId": "dbbe2be0-0835-48ff-96a0-8085cf1243a1"
+                },
+                {
+                  "slotId": "133fb43d-4c90-4e80-8d8e-06713b02fe3c",
+                  "question": "quality review of the exact candidate and alpha correction marker",
+                  "required": true,
+                  "perspective": "quality",
+                  "specialistAgentId": "9d6a7c33-8200-4474-82fa-89a2648152b2"
+                }
+              ],
+              "status": "synthesized",
+              "subject": {
+                "mandateHash": "5e93f27e6d0209e1e8ebfcce32caf65ed999d34c785074593d5909b9c575abde",
+                "bundleSha256": "caffbd0dffc3bb35f9e78976b590180f28905b3a7b503ede0eafe0004cd72bf7",
+                "submissionId": "da05e9fc-b64b-48b5-910c-8386d63bf956",
+                "candidateCommit": "1769d3a18a325083a40ecab1ad5da873e3361c59",
+                "evidenceRevision": 17
+              },
+              "opinions": [
+                {
+                  "slotId": "324f2aef-3d0c-4da0-ac33-ddc6c04dd8c6",
+                  "outcome": "support",
+                  "subject": {
+                    "mandateHash": "5e93f27e6d0209e1e8ebfcce32caf65ed999d34c785074593d5909b9c575abde",
+                    "bundleSha256": "caffbd0dffc3bb35f9e78976b590180f28905b3a7b503ede0eafe0004cd72bf7",
+                    "submissionId": "da05e9fc-b64b-48b5-910c-8386d63bf956",
+                    "candidateCommit": "1769d3a18a325083a40ecab1ad5da873e3361c59",
+                    "evidenceRevision": 17
+                  },
+                  "findings": [],
+                  "opinionId": "1ad986e4-93fd-4099-bfd5-f09cdc30b600",
+                  "rationale": "product fixture checks support this exact candidate",
+                  "recordedAt": "2026-10-04T15:29:53.448Z",
+                  "perspective": "product",
+                  "specialistRunId": "7fdd6df9-5fb2-4b6b-963c-112c9a141d38",
+                  "specialistAgentId": "dbbe2be0-0835-48ff-96a0-8085cf1243a1",
+                  "unresolvedQuestions": []
+                },
+                {
+                  "slotId": "133fb43d-4c90-4e80-8d8e-06713b02fe3c",
+                  "outcome": "changes_requested",
+                  "subject": {
+                    "mandateHash": "5e93f27e6d0209e1e8ebfcce32caf65ed999d34c785074593d5909b9c575abde",
+                    "bundleSha256": "caffbd0dffc3bb35f9e78976b590180f28905b3a7b503ede0eafe0004cd72bf7",
+                    "submissionId": "da05e9fc-b64b-48b5-910c-8386d63bf956",
+                    "candidateCommit": "1769d3a18a325083a40ecab1ad5da873e3361c59",
+                    "evidenceRevision": 17
+                  },
+                  "findings": [
+                    {
+                      "findingId": "07cd7649-f02e-4784-9d68-788428e36039",
+                      "consequence": "The required marker is absent",
+                      "evidenceRefs": [
+                        "git:1769d3a18a325083a40ecab1ad5da873e3361c59:alpha.txt"
+                      ],
+                      "classification": "blocking_defect",
+                      "evidenceLimits": [
+                        "Deterministic fixture opinion; model judgment not qualified"
+                      ],
+                      "criterionOrRisk": "Alpha must contain corrected marker",
+                      "recommendedAction": "Correct alpha.txt once"
+                    }
+                  ],
+                  "opinionId": "638452a6-becb-47ee-aa76-24278961e80a",
+                  "rationale": "V1 lacks the required marker",
+                  "recordedAt": "2026-10-04T15:29:54.238Z",
+                  "perspective": "quality",
+                  "specialistRunId": "42ba3ad7-f4dd-4f0a-98ab-452f6d8f6e57",
+                  "specialistAgentId": "9d6a7c33-8200-4474-82fa-89a2648152b2",
+                  "unresolvedQuestions": []
+                }
+              ],
+              "synthesis": {
+                "subject": {
+                  "mandateHash": "5e93f27e6d0209e1e8ebfcce32caf65ed999d34c785074593d5909b9c575abde",
+                  "bundleSha256": "caffbd0dffc3bb35f9e78976b590180f28905b3a7b503ede0eafe0004cd72bf7",
+                  "submissionId": "da05e9fc-b64b-48b5-910c-8386d63bf956",
+                  "candidateCommit": "1769d3a18a325083a40ecab1ad5da873e3361c59",
+                  "evidenceRevision": 17
+                },
+                "verdict": "changes_requested",
+                "rationale": "The exact candidate has an upheld blocking quality defect; one correction is required",
+                "recordedAt": "2026-10-04T15:29:54.978Z",
+                "dispositions": [
+                  {
+                    "reason": "The cited file lacks the mandate marker",
+                    "findingId": "07cd7649-f02e-4784-9d68-788428e36039",
+                    "disposition": "upheld_with_correction",
+                    "evidenceRefs": [
+                      "git:1769d3a18a325083a40ecab1ad5da873e3361c59:alpha.txt"
+                    ]
+                  }
+                ],
+                "finalReviewerRunId": "ea0a692b-bb08-4055-b010-73ad7851a804",
+                "finalReviewerAgentId": "242805cd-4bd8-481d-aacf-546f60d348c6"
+              },
+              "schemaVersion": 1,
+              "authorAgentIds": [
+                "14a579c2-31a3-4268-9e24-ef134862da06",
+                "e4b825f3-84d8-491b-b261-96003d1ac535",
+                "9d13866e-b313-4a96-bbd1-37ba85bc46d6"
+              ],
+              "finalReviewerAgentId": "242805cd-4bd8-481d-aacf-546f60d348c6"
+            },
+            "specialists": [
+              {
+                "wake": "claimed",
+                "runId": "7fdd6df9-5fb2-4b6b-963c-112c9a141d38",
+                "slotId": "324f2aef-3d0c-4da0-ac33-ddc6c04dd8c6",
+                "issueId": "fa51246c-e2fb-4e52-844f-768ec09248c6",
+                "creation": "claimed",
+                "settledAt": "2026-10-04T15:29:53.579Z",
+                "reservationId": "efc94410-311e-4fe6-aa66-eec04e7e9558",
+                "settlementCommandId": "709e0a7c-c861-4ea6-84f8-287e6a386a20"
+              },
+              {
+                "wake": "claimed",
+                "runId": "42ba3ad7-f4dd-4f0a-98ab-452f6d8f6e57",
+                "slotId": "133fb43d-4c90-4e80-8d8e-06713b02fe3c",
+                "issueId": "616db7f3-f598-4477-9908-fafb15bb96c2",
+                "creation": "claimed",
+                "settledAt": "2026-10-04T15:29:54.376Z",
+                "reservationId": "6854fc1a-254d-45d5-9f9e-911e49581df3",
+                "settlementCommandId": "0f0b9a66-516b-4808-ab3a-480bb34bc6ee"
+              }
+            ]
+          }
+        ]
+      },
+      "phase": "correcting",
+      "control": {
+        "status": "active"
+      },
+      "journal": [
+        {
+          "at": "2026-10-04T15:29:49.190Z",
+          "action": "mission_recorded",
+          "actorUserId": "local-board"
+        },
+        {
+          "at": "2026-10-04T15:29:49.229Z",
+          "action": "mission_activated",
+          "periodKey": "ordinary-installed",
+          "actorUserId": "local-board",
+          "reservationId": "3fe9db78-8a13-4e36-960f-7b04a0ab6318"
+        },
+        {
+          "at": "2026-10-04T15:29:49.268Z",
+          "action": "root_dispatch_claimed",
+          "actorUserId": "local-board",
+          "reservationId": "3fe9db78-8a13-4e36-960f-7b04a0ab6318"
+        },
+        {
+          "at": "2026-10-04T15:29:49.942Z",
+          "runId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "action": "contribution_plan_recorded",
+          "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06"
+        },
+        {
+          "at": "2026-10-04T15:29:50.033Z",
+          "runId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "action": "child_creation_claimed",
+          "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "contributionId": "386fb4d8-6b47-431b-99fe-59f3526a9922"
+        },
+        {
+          "at": "2026-10-04T15:29:50.155Z",
+          "runId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "action": "child_creation_claimed",
+          "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "contributionId": "7a3a090e-d007-448b-bb8d-07e94088367b"
+        },
+        {
+          "at": "2026-10-04T15:29:50.303Z",
+          "runId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "action": "child_dispatch_claimed",
+          "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "reservationId": "3d2e75ce-e304-4c27-b5a0-08dd7db4b6ae",
+          "contributionId": "386fb4d8-6b47-431b-99fe-59f3526a9922"
+        },
+        {
+          "at": "2026-10-04T15:29:50.857Z",
+          "runId": "39317734-6021-40f3-b96e-4799375558e1",
+          "action": "contribution_recorded",
+          "commit": "fd188064208509e938451afd2fe90d2ed7c6a70f",
+          "actorAgentId": "e4b825f3-84d8-491b-b261-96003d1ac535",
+          "contributionId": "386fb4d8-6b47-431b-99fe-59f3526a9922"
+        },
+        {
+          "at": "2026-10-04T15:29:51.315Z",
+          "runId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "action": "child_dispatch_claimed",
+          "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "reservationId": "c9c1a1e1-36d0-4a8f-9e9d-bdcb4fbb4663",
+          "contributionId": "7a3a090e-d007-448b-bb8d-07e94088367b"
+        },
+        {
+          "at": "2026-10-04T15:29:51.900Z",
+          "runId": "6c8687be-2797-4905-9cc7-7a92da4d56ec",
+          "action": "contribution_recorded",
+          "commit": "91dab659f0cd06c4c9eecfb9b81339ac2601fad2",
+          "actorAgentId": "9d13866e-b313-4a96-bbd1-37ba85bc46d6",
+          "contributionId": "7a3a090e-d007-448b-bb8d-07e94088367b"
+        },
+        {
+          "at": "2026-10-04T15:29:52.535Z",
+          "runId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "action": "integrated_candidate_verified",
+          "checks": [
+            {
+              "name": "issue-bound-bundle",
+              "detail": "994 bytes; SHA-256 verified",
+              "status": "passed"
+            },
+            {
+              "name": "git-import-configuration",
+              "detail": "bounded Git delta cache, packed-file mappings and single-thread pack window configured",
+              "status": "passed"
+            },
+            {
+              "name": "git-bundle-verify",
+              "detail": "self-contained bundle verified",
+              "status": "passed"
+            },
+            {
+              "name": "declared-refs",
+              "detail": "base and candidate refs match declared commits",
+              "status": "passed"
+            },
+            {
+              "name": "git-object-bounds",
+              "detail": "10 objects; 1236 expanded bytes",
+              "status": "passed"
+            },
+            {
+              "name": "git-object-integrity",
+              "detail": "git fsck --strict passed",
+              "status": "passed"
+            },
+            {
+              "name": "base-ancestry",
+              "detail": "candidate descends from declared base",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-ancestry",
+              "detail": "two distinct contribution commits are included",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-history-topology",
+              "detail": "each contribution is a bounded linear history rooted at base or a prior declared contribution",
+              "status": "passed"
+            },
+            {
+              "name": "write-ownership",
+              "detail": "every contribution commit changed only its declared paths",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-tree-preservation",
+              "detail": "both contributions survive in the candidate tree",
+              "status": "passed"
+            },
+            {
+              "name": "candidate-delta-attribution",
+              "detail": "complete candidate delta equals the union of attributed contribution deltas",
+              "status": "passed"
+            },
+            {
+              "name": "candidate-history-topology",
+              "detail": "candidate-only history contains exactly the declared integration commit",
+              "status": "passed"
+            },
+            {
+              "name": "git-diff-check",
+              "detail": "candidate diff passed git diff --check",
+              "status": "passed"
+            }
+          ],
+          "candidate": {
+            "sha256": "caffbd0dffc3bb35f9e78976b590180f28905b3a7b503ede0eafe0004cd72bf7",
+            "byteSize": 994,
+            "baseCommit": "c663f9a2d536683ebb0351ba870da2ba44ba5495",
+            "attachmentId": "30803a9e-ef31-47a6-b8ab-daaed0b88663",
+            "candidateCommit": "1769d3a18a325083a40ecab1ad5da873e3361c59"
+          },
+          "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06"
+        },
+        {
+          "at": "2026-10-04T15:29:52.748Z",
+          "runId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "action": "lead_usage_settled_candidate_ready",
+          "candidate": {
+            "sha256": "caffbd0dffc3bb35f9e78976b590180f28905b3a7b503ede0eafe0004cd72bf7",
+            "byteSize": 994,
+            "baseCommit": "c663f9a2d536683ebb0351ba870da2ba44ba5495",
+            "attachmentId": "30803a9e-ef31-47a6-b8ab-daaed0b88663",
+            "candidateCommit": "1769d3a18a325083a40ecab1ad5da873e3361c59"
+          },
+          "actorUserId": "local-board"
+        },
+        {
+          "at": "2026-10-04T15:29:55.558Z",
+          "runId": "ea0a692b-bb08-4055-b010-73ad7851a804",
+          "action": "n2_decision_recorded",
+          "verdict": "changes_requested",
+          "operationId": "8a8e3567-6d20-420e-9ac3-7f44f87b10be",
+          "actorAgentId": "242805cd-4bd8-481d-aacf-546f60d348c6",
+          "receiptState": "native_observed",
+          "submissionId": "da05e9fc-b64b-48b5-910c-8386d63bf956"
+        }
+      ],
+      "mandate": {
+        "limits": {
+          "taskPolicy": "1000 tokens reserved",
+          "periodPolicy": "20000 token envelope",
+          "elapsedMinutes": 30,
+          "correctionLimit": 1
+        },
+        "objective": "Two contributions and independent Council correction",
+        "commitments": [
+          "Provider-free CLI fixture",
+          "One correction maximum"
+        ],
+        "acceptanceCriteria": [
+          "Alpha must contain corrected marker",
+          "Two attributed contributions"
+        ]
+      },
+      "companyId": "9f26dc6d-0cda-4d78-b6f4-16b5ab459228",
+      "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28",
+      "projectId": "538fba9f-8167-4f62-9921-e4333dbc54b1",
+      "readiness": {
+        "mission": "recorded",
+        "blockers": [
+          {
+            "code": "g4_root_reserved",
+            "status": "ready",
+            "message": "Root lead launch allowance is durably reserved."
+          },
+          {
+            "code": "child_dispatch_pending",
+            "status": "pending",
+            "message": "Child launches require their own admission and effect reconciliation."
+          }
+        ],
+        "execution": "blocked",
+        "compositions": "pinned"
+      },
+      "ownerUserId": "local-board",
+      "rootIssueId": "32c7c4e9-8e42-4cd9-a217-6a531e643a1e",
+      "compositions": {
+        "team": {
+          "kind": "team",
+          "name": "Team",
+          "members": [
+            {
+              "agentId": "14a579c2-31a3-4268-9e24-ef134862da06",
+              "responsibilities": [
+                "integration_lead"
+              ]
+            },
+            {
+              "agentId": "e4b825f3-84d8-491b-b261-96003d1ac535",
+              "responsibilities": [
+                "contributor"
+              ]
+            },
+            {
+              "agentId": "9d13866e-b313-4a96-bbd1-37ba85bc46d6",
+              "responsibilities": [
+                "contributor"
+              ]
+            }
+          ],
+          "revision": "c1d36476-91be-4285-8fb7-2a032039ee2f",
+          "rosterId": "ff125585-3f47-49ce-92a2-7d1f2ef2e3d5",
+          "projectId": "538fba9f-8167-4f62-9921-e4333dbc54b1"
+        },
+        "status": "pinned",
+        "council": {
+          "kind": "council",
+          "name": "Council",
+          "members": [
+            {
+              "agentId": "242805cd-4bd8-481d-aacf-546f60d348c6",
+              "responsibilities": [
+                "final_reviewer"
+              ]
+            }
+          ],
+          "revision": "5d603ed8-4690-4bc7-b149-ffcc44446ec9",
+          "rosterId": "87836dee-1c2a-4acf-8347-165b939ce6e5",
+          "projectId": "538fba9f-8167-4f62-9921-e4333dbc54b1"
+        }
+      },
+      "effectIntents": [
+        {
+          "kind": "root_wakeup",
+          "runId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "state": "requested",
+          "queued": true,
+          "issueId": "32c7c4e9-8e42-4cd9-a217-6a531e643a1e",
+          "reservationId": "3fe9db78-8a13-4e36-960f-7b04a0ab6318",
+          "assigneeAgentId": "14a579c2-31a3-4268-9e24-ef134862da06"
+        },
+        {
+          "kind": "child_issue_create",
+          "actor": {
+            "actorRunId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+            "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06"
+          },
+          "state": "confirmed",
+          "title": "alpha",
+          "intentId": "df0a1015-e272-4677-ae7b-022ecbc61d8d",
+          "companyId": "9f26dc6d-0cda-4d78-b6f4-16b5ab459228",
+          "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28",
+          "projectId": "538fba9f-8167-4f62-9921-e4333dbc54b1",
+          "description": "Council N1 contribution. Complete only this bounded child issue.\nMission ID: ecee3f27-86ea-47b2-b906-8d1756b7ac28\nContribution ID: 386fb4d8-6b47-431b-99fe-59f3526a9922\nOwned paths: alpha.txt\nDo not modify files outside the owned paths. Commit the completed change on the current shared branch.\nUse the authenticated endpoint /api/plugins/private.paperclip-council/api/issues/<this-child-issue-id>/council/commands. The first request body is exactly {\"command\":\"inspect\",\"missionId\":\"ecee3f27-86ea-47b2-b906-8d1756b7ac28\"}. Read body.version, then send command=record-contribution with missionId, a fresh commandId, that expectedVersion, the contributionId, and the 40-character commit SHA.\nFor every fresh commandId, run this exact command once and separately: node -e \"console.log(require('node:crypto').randomUUID())\". Never invent, partially copy, or manually edit a UUID.\nMark this Paperclip child issue done only after record-contribution succeeds.\nFor any non-2xx response, preserve the HTTP status and sanitized JSON response body in your final report without exposing credentials.\n\nPlugins/skills à utiliser\nUse the Paperclip skill injected by the host for issue context, authenticated API calls, and status updates. No additional plugin is required.\n\nModele et effort recommandes\nTarget: bounded implementation contributor. Model: gpt-5.6-sol. Effort: high because the run participates in a governed native integration proof. Re-evaluate only if availability is rejected before launch; do not silently substitute. Source: independent mapping /home/davy-lp/.codex/shared/model-selection/model-effort-mapping.md, updated 2026-09-05. Effective runtime settings must be observed separately.",
+          "rootIssueId": "32c7c4e9-8e42-4cd9-a217-6a531e643a1e",
+          "childIssueId": "be8755ec-116e-4f6d-8667-d35103cc9661",
+          "unknownReason": null,
+          "contributionId": "386fb4d8-6b47-431b-99fe-59f3526a9922",
+          "assigneeAgentId": "e4b825f3-84d8-491b-b261-96003d1ac535"
+        },
+        {
+          "kind": "child_issue_create",
+          "actor": {
+            "actorRunId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+            "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06"
+          },
+          "state": "confirmed",
+          "title": "beta",
+          "intentId": "77137ea4-f3b8-4f28-a0af-e28750ce09f8",
+          "companyId": "9f26dc6d-0cda-4d78-b6f4-16b5ab459228",
+          "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28",
+          "projectId": "538fba9f-8167-4f62-9921-e4333dbc54b1",
+          "description": "Council N1 contribution. Complete only this bounded child issue.\nMission ID: ecee3f27-86ea-47b2-b906-8d1756b7ac28\nContribution ID: 7a3a090e-d007-448b-bb8d-07e94088367b\nOwned paths: beta.txt\nDo not modify files outside the owned paths. Commit the completed change on the current shared branch.\nUse the authenticated endpoint /api/plugins/private.paperclip-council/api/issues/<this-child-issue-id>/council/commands. The first request body is exactly {\"command\":\"inspect\",\"missionId\":\"ecee3f27-86ea-47b2-b906-8d1756b7ac28\"}. Read body.version, then send command=record-contribution with missionId, a fresh commandId, that expectedVersion, the contributionId, and the 40-character commit SHA.\nFor every fresh commandId, run this exact command once and separately: node -e \"console.log(require('node:crypto').randomUUID())\". Never invent, partially copy, or manually edit a UUID.\nMark this Paperclip child issue done only after record-contribution succeeds.\nFor any non-2xx response, preserve the HTTP status and sanitized JSON response body in your final report without exposing credentials.\n\nPlugins/skills à utiliser\nUse the Paperclip skill injected by the host for issue context, authenticated API calls, and status updates. No additional plugin is required.\n\nModele et effort recommandes\nTarget: bounded implementation contributor. Model: gpt-5.6-sol. Effort: high because the run participates in a governed native integration proof. Re-evaluate only if availability is rejected before launch; do not silently substitute. Source: independent mapping /home/davy-lp/.codex/shared/model-selection/model-effort-mapping.md, updated 2026-09-05. Effective runtime settings must be observed separately.",
+          "rootIssueId": "32c7c4e9-8e42-4cd9-a217-6a531e643a1e",
+          "childIssueId": "0930218f-0e1c-4451-8d9a-10e87e148d46",
+          "unknownReason": null,
+          "contributionId": "7a3a090e-d007-448b-bb8d-07e94088367b",
+          "assigneeAgentId": "9d13866e-b313-4a96-bbd1-37ba85bc46d6"
+        },
+        {
+          "kind": "child_wakeup",
+          "runId": "39317734-6021-40f3-b96e-4799375558e1",
+          "state": "requested",
+          "queued": true,
+          "issueId": "be8755ec-116e-4f6d-8667-d35103cc9661",
+          "actorRunId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "reservationId": "3d2e75ce-e304-4c27-b5a0-08dd7db4b6ae",
+          "contributionId": "386fb4d8-6b47-431b-99fe-59f3526a9922",
+          "assigneeAgentId": "e4b825f3-84d8-491b-b261-96003d1ac535"
+        },
+        {
+          "kind": "child_wakeup",
+          "runId": "6c8687be-2797-4905-9cc7-7a92da4d56ec",
+          "state": "requested",
+          "queued": true,
+          "issueId": "0930218f-0e1c-4451-8d9a-10e87e148d46",
+          "actorRunId": "8c24eff0-23a7-4c3f-8780-12d681b9da6a",
+          "actorAgentId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "reservationId": "c9c1a1e1-36d0-4a8f-9e9d-bdcb4fbb4663",
+          "contributionId": "7a3a090e-d007-448b-bb8d-07e94088367b",
+          "assigneeAgentId": "9d13866e-b313-4a96-bbd1-37ba85bc46d6"
+        },
+        {
+          "at": "2026-10-04T15:29:55.517Z",
+          "kind": "n2_decision",
+          "state": "requested",
+          "verdict": "changes_requested",
+          "decision": {
+            "runId": "ea0a692b-bb08-4055-b010-73ad7851a804",
+            "verdict": "changes_requested",
+            "operationId": "8a8e3567-6d20-420e-9ac3-7f44f87b10be",
+            "actorAgentId": "242805cd-4bd8-481d-aacf-546f60d348c6",
+            "justification": "The exact candidate has an upheld blocking quality defect; one correction is required",
+            "resultReference": "council:n2:submission:da05e9fc-b64b-48b5-910c-8386d63bf956"
+          },
+          "actorRunId": "ea0a692b-bb08-4055-b010-73ad7851a804",
+          "operationId": "8a8e3567-6d20-420e-9ac3-7f44f87b10be",
+          "actorAgentId": "242805cd-4bd8-481d-aacf-546f60d348c6",
+          "decisionHash": "22a9a6cea5f8b01e26f921e531978956e0dbff60c651ff7e8815965c753665be",
+          "nativeStatus": 200,
+          "receiptState": "native_observed",
+          "submissionId": "da05e9fc-b64b-48b5-910c-8386d63bf956",
+          "reservationId": "123ab790-9440-4802-8c0b-4fad9b4401ea",
+          "settlementCommandId": "3829687c-9555-4f15-85c4-f7b32086b200"
+        }
+      ],
+      "schemaVersion": 1,
+      "commandReceipts": [
+        {
+          "result": {
+            "version": 1,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "local-board",
+          "command": "create",
+          "actorType": "user",
+          "commandId": "402bea9c-9855-4782-868b-9e30d9d22ee5",
+          "recordedAt": "2026-10-04T15:29:49.190Z",
+          "payloadHash": "5e2715272b7581b11f1a786914fa9cec06279cfd59c62355f19b3564128f3874",
+          "appliedVersion": 1
+        },
+        {
+          "result": {
+            "version": 2,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "local-board",
+          "command": "activate",
+          "actorType": "user",
+          "commandId": "85431f6a-aad4-41ab-95cc-b0d0d30bc79e",
+          "recordedAt": "2026-10-04T15:29:49.229Z",
+          "payloadHash": "77bd65521813c6243be615012af3a3ac66475d8a6dbc48d5d8e1bf467c036758",
+          "appliedVersion": 2
+        },
+        {
+          "result": {
+            "version": 3,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "local-board",
+          "command": "start-lead",
+          "actorType": "user",
+          "commandId": "68dbd413-0780-4200-b3cc-5ffaa3d84dfe",
+          "recordedAt": "2026-10-04T15:29:49.268Z",
+          "payloadHash": "8c734cf63596c68d4491e747bfb50fb6cc13c5f3bed4571036382f0b5d57e352",
+          "appliedVersion": 3
+        },
+        {
+          "result": {
+            "version": 5,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "command": "plan",
+          "actorType": "agent",
+          "commandId": "403ed21a-a3f1-464f-9342-d43b01b44c36",
+          "recordedAt": "2026-10-04T15:29:49.942Z",
+          "payloadHash": "58ec79ca69b46b343cd23d26701d4ac9768b28f5abc19facececd6ae60719db1",
+          "appliedVersion": 5
+        },
+        {
+          "result": {
+            "version": 6,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "command": "materialize",
+          "actorType": "agent",
+          "commandId": "042bc4fb-4f46-4d4c-821f-697019a7444d",
+          "recordedAt": "2026-10-04T15:29:50.034Z",
+          "payloadHash": "65f893ed38c9d4ac9ece94c77be477fbe7d4ec9b40036aff05a6aed737293bc1",
+          "appliedVersion": 6
+        },
+        {
+          "result": {
+            "version": 8,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "command": "materialize",
+          "actorType": "agent",
+          "commandId": "90f254f7-3eb0-477d-8507-57edc5c0954e",
+          "recordedAt": "2026-10-04T15:29:50.155Z",
+          "payloadHash": "4151fc58111c05ca0c41394dfd8d085263c1c9caefacd87336d56e86c3058b33",
+          "appliedVersion": 8
+        },
+        {
+          "result": {
+            "version": 10,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "command": "dispatch",
+          "actorType": "agent",
+          "commandId": "26588288-28fd-4060-a658-05bdb58c4ea1",
+          "recordedAt": "2026-10-04T15:29:50.303Z",
+          "payloadHash": "5b506d0ab2b4658829657bec5bdea9be099541fb8577ad3e07ed304b7718b623",
+          "appliedVersion": 10
+        },
+        {
+          "result": {
+            "version": 12,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "e4b825f3-84d8-491b-b261-96003d1ac535",
+          "command": "record-contribution",
+          "actorType": "agent",
+          "commandId": "05728475-466e-47d4-aec1-13fe33738337",
+          "recordedAt": "2026-10-04T15:29:50.857Z",
+          "payloadHash": "5adfce1412ac121c7ff3969d93c189772d69558c43656de8258d93999ec6af4a",
+          "appliedVersion": 12
+        },
+        {
+          "result": {
+            "version": 13,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "command": "dispatch",
+          "actorType": "agent",
+          "commandId": "eac575f8-6a8e-41f6-9563-ad75df4290d1",
+          "recordedAt": "2026-10-04T15:29:51.315Z",
+          "payloadHash": "57fe546619396d4195f1cf0a5b8bfc22d6b4b0da22e0b46e65f70b4717ce2045",
+          "appliedVersion": 13
+        },
+        {
+          "result": {
+            "version": 15,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "9d13866e-b313-4a96-bbd1-37ba85bc46d6",
+          "command": "record-contribution",
+          "actorType": "agent",
+          "commandId": "bc0ccdca-d7dc-49c8-99b5-7853aac11b83",
+          "recordedAt": "2026-10-04T15:29:51.900Z",
+          "payloadHash": "c32b9209b1d13b1cb1d220771e7437b8cac49bc19dd7a49a8b294a0b9f33c687",
+          "appliedVersion": 15
+        },
+        {
+          "result": {
+            "version": 16,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "14a579c2-31a3-4268-9e24-ef134862da06",
+          "command": "publish",
+          "actorType": "agent",
+          "commandId": "fca7b8f5-9df3-4d87-be91-00f1869d396f",
+          "recordedAt": "2026-10-04T15:29:52.536Z",
+          "payloadHash": "1016033d5918031b19d7e7198b5345e139fe663eeec257e41c6d9eb54f51b07d",
+          "appliedVersion": 16
+        },
+        {
+          "result": {
+            "version": 17,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "local-board",
+          "command": "reconcile-lead-usage",
+          "actorType": "user",
+          "commandId": "5e1c3e02-2520-48f3-9199-4c4acc67717b",
+          "recordedAt": "2026-10-04T15:29:52.748Z",
+          "payloadHash": "4cc53972291f9216507a9f2a8e56ecb16e2f09838c87944e94130734c707bfd4",
+          "appliedVersion": 17
+        },
+        {
+          "result": {
+            "version": 18,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "local-board",
+          "command": "start-review",
+          "actorType": "user",
+          "commandId": "207a853f-9c76-4bb3-8962-fbd424f4aa4b",
+          "recordedAt": "2026-10-04T15:29:52.809Z",
+          "payloadHash": "89afcfaf087cbc7a69535a5dc7760852bf65a71d38572fce7dd12930f2ea260e",
+          "appliedVersion": 18
+        },
+        {
+          "result": {
+            "version": 23,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "dbbe2be0-0835-48ff-96a0-8085cf1243a1",
+          "command": "n3-opinion",
+          "actorType": "agent",
+          "commandId": "b277cd6a-dcf9-416c-bd15-d8991b1a3434",
+          "recordedAt": "2026-10-04T15:29:53.448Z",
+          "payloadHash": "6eb8e11b234e0f9906961bfc2a7ec5ea5cf67d343d6597d7ecf6951c3d375a90",
+          "appliedVersion": 23
+        },
+        {
+          "result": {
+            "version": 30,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "9d6a7c33-8200-4474-82fa-89a2648152b2",
+          "command": "n3-opinion",
+          "actorType": "agent",
+          "commandId": "423bbbfa-577a-4765-a98f-50a8e63f25d6",
+          "recordedAt": "2026-10-04T15:29:54.238Z",
+          "payloadHash": "33e617973e0ddf9d073dbf535a440bd3763a595a7e4b5095beda84cecf9a7b35",
+          "appliedVersion": 30
+        },
+        {
+          "result": {
+            "version": 38,
+            "missionId": "ecee3f27-86ea-47b2-b906-8d1756b7ac28"
+          },
+          "actorId": "242805cd-4bd8-481d-aacf-546f60d348c6",
+          "command": "ordinary-verdict",
+          "actorType": "agent",
+          "commandId": "f0fc7361-3d55-4f6f-bdbf-63c334bb5df5",
+          "recordedAt": "2026-10-04T15:29:54.978Z",
+          "payloadHash": "d82f45dce2dd2a789e752d420254f929d79bc829028c5ba16d55bb8639edbb33",
+          "appliedVersion": 38
+        }
+      ],
+      "responsibilities": {
+        "finalReviewerAgentId": "242805cd-4bd8-481d-aacf-546f60d348c6",
+        "requiredPerspectives": [
+          "integration_quality"
+        ],
+        "integrationLeadAgentId": "14a579c2-31a3-4268-9e24-ef134862da06"
+      }
+    },
+    "createdAt": "2026-10-04T15:29:49.191Z",
+    "updatedAt": "2026-10-04T15:29:56.036Z"
+  },
+  "error": {
+    "message": "AssertionError [ERR_ASSERTION]: [{\"id\":\"8a8f13a0-f56e-49b6-b813-6637e88168bd\",\"status\":\"scheduled_retry\",\"error\":null},{\"id\":\"45eb5b6a-473d-4664-856a-a8eb8f5d7dd0\",\"status\":\"failed\",\"error\":\"file:///home/davy-lp/.codex/worktrees/council-n5/paperclip-council/tests/functional/ordinary-cli-fixture.mjs:21\"},{\"id\":\"ea0a692b-bb08-4055-b010-73ad7851a804\",\"status\":\"succeeded\",\"error\":null},{\"id\":\"42ba3ad7-f4dd-4f0a-98ab-452f6d8f6e57\",\"status\":\"succeeded\",\"error\":null},{\"id\":\"7fdd6df9-5fb2-4b6b-963c-112c9a141d38\",\"status\":\"succeeded\",\"error\":null},{\"id\":\"6c8687be-2797-4905-9cc7-7a92da4d56ec\",\"status\":\"succeeded\",\"error\":null},{\"id\":\"39317734-6021-40f3-b96e-4799375558e1\",\"status\":\"succeeded\",\"error\":null},{\"id\":\"8c24eff0-23a7-4c3f-8780-12d681b9da6a\",\"status\":\"succeeded\",\"error\":null}]",
+    "stack": "AssertionError [ERR_ASSERTION]: [{\"id\":\"8a8f13a0-f56e-49b6-b813-6637e88168bd\",\"status\":\"scheduled_retry\",\"error\":null},{\"id\":\"45eb5b6a-473d-4664-856a-a8eb8f5d7dd0\",\"status\":\"failed\",\"error\":\"file:///home/davy-lp/.codex/worktrees/council-n5/paperclip-council/tests/functional/ordinary-cli-fixture.mjs:21\"},{\"id\":\"ea0a692b-bb08-4055-b010-73ad7851a804\",\"status\":\"succeeded\",\"error\":null},{\"id\":\"42ba3ad7-f4dd-4f0a-98ab-452f6d8f6e57\",\"status\":\"succeeded\",\"error\":null},{\"id\":\"7fdd6df9-5fb2-4b6b-963c-112c9a141d38\",\"status\":\"succeeded\",\"error\":null},{\"id\":\"6c8687be-2797-4905-9cc7-7a92da4d56ec\",\"status\":\"succeeded\",\"error\":null},{\"id\":\"39317734-6021-40f3-b96e-4799375558e1\",\"status\":\"succeeded\",\"error\":null},{\"id\":\"8c24eff0-23a7-4c3f-8780-12d681b9da6a\",\"status\":\"succeeded\",\"error\":null}]\n    at mission (/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/tests/functional/ordinary-installed.ts:190:5)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async waitFor (/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/tests/functional/ordinary-installed.ts:49:19)\n    at async <anonymous> (/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/tests/functional/ordinary-installed.ts:187:13)"
+  },
+  "cleanup": {
+    "databaseCleaned": true,
+    "serverStopped": true,
+    "runtimeRemoved": true
+  },
+  "hostTrackedUnchanged": true,
+  "finishedAt": "2026-10-04T15:30:01.526Z"
+}

@@ -1,0 +1,95 @@
+{
+  "sourceCommit": "be0d7d2fd6a52dac5bc3827a65200ee67988d25c",
+  "proofSha256": "1b281d15efaf54124dd12d48a81616fac39c8ab145a2c3cbf0c141f3c11cccb4",
+  "sourceHashesMatch": true,
+  "allSevenExactIdentitiesAndPerRun": true,
+  "allSevenOneSettlementZeroExposure": true,
+  "eachNextReservationAfterPreviousSettlement": true,
+  "limit": "Saved company run-list summaries are excerpts; product validates full individual GET response.",
+  "order": [
+    {
+      "kind": "specialist",
+      "taskId": "79f8798f-1572-4427-8a5d-99eaa9a44a3e",
+      "issueId": "016fe5f3-a2d4-4804-a9a7-10944cf91ef7",
+      "runId": "72c03a6e-8a71-47cc-b798-6835286dcd36",
+      "reservationId": "1acf14be-caf8-4e51-b6d2-6846bf2d2f81",
+      "reservedAt": "2026-10-04T15:59:12.546Z",
+      "startedAt": "2026-10-04T15:59:12.614Z",
+      "finishedAt": "2026-10-04T15:59:13.316Z",
+      "settledAt": "2026-10-04T15:59:13.390Z",
+      "closedAt": "2026-10-04T15:59:13.422Z"
+    },
+    {
+      "kind": "specialist",
+      "taskId": "80389ecf-d99c-4e11-847b-f148e0aa1b39",
+      "issueId": "8547eb90-eb05-41db-9353-009d5478d6a0",
+      "runId": "4a1d7ef9-c89b-4dca-a2b8-9d6b1512ee13",
+      "reservationId": "e5e6a8c5-49bc-40d5-8412-9d3602b32512",
+      "reservedAt": "2026-10-04T15:59:13.465Z",
+      "startedAt": "2026-10-04T15:59:13.567Z",
+      "finishedAt": "2026-10-04T15:59:14.276Z",
+      "settledAt": "2026-10-04T15:59:14.353Z",
+      "closedAt": "2026-10-04T15:59:14.388Z"
+    },
+    {
+      "kind": "council",
+      "taskId": "16c6b879-eb7d-4fe2-bf39-d6aa3e03ce6e",
+      "issueId": "4cb720af-6ba2-40b5-88aa-a5ef3e4a1086",
+      "runId": "fb2c747b-4f44-431c-8071-a81a5ac95998",
+      "reservationId": "937a603f-3f66-4ab5-aa67-87235dd3d8c9",
+      "reservedAt": "2026-10-04T15:59:14.425Z",
+      "startedAt": "2026-10-04T15:59:14.490Z",
+      "finishedAt": "2026-10-04T15:59:15.517Z",
+      "settledAt": "2026-10-04T15:59:15.570Z",
+      "closedAt": "2026-10-04T15:59:15.652Z"
+    },
+    {
+      "kind": "correction",
+      "taskId": "9dd7aa3a-db86-4880-8fd4-74d5a57deeb4",
+      "issueId": "e41f6729-2fd7-4e3f-bce2-70fda7b300d9",
+      "runId": "901273ac-b1ee-480e-a64b-df970f7a3fad",
+      "reservationId": "b7ee4caf-0553-40e9-80c7-03acc9dfd789",
+      "reservedAt": "2026-10-04T15:59:15.664Z",
+      "startedAt": "2026-10-04T15:59:15.736Z",
+      "finishedAt": "2026-10-04T15:59:16.450Z",
+      "settledAt": "2026-10-04T15:59:16.508Z",
+      "closedAt": "2026-10-04T15:59:16.513Z"
+    },
+    {
+      "kind": "specialist",
+      "taskId": "afef512c-e486-42d4-bfaf-cecd8e03d485",
+      "issueId": "d6ce98d6-91f8-4582-87fa-56c07bdca94f",
+      "runId": "0a241b7c-1cf9-4811-a686-77898c1cdd46",
+      "reservationId": "5e70d6e3-fb48-49fa-b84e-46d2f5ca9334",
+      "reservedAt": "2026-10-04T15:59:16.551Z",
+      "startedAt": "2026-10-04T15:59:16.627Z",
+      "finishedAt": "2026-10-04T15:59:17.227Z",
+      "settledAt": "2026-10-04T15:59:17.306Z",
+      "closedAt": "2026-10-04T15:59:17.338Z"
+    },
+    {
+      "kind": "specialist",
+      "taskId": "363c490f-14b9-4dbc-823f-8a34b66ab1db",
+      "issueId": "14a2ab9f-2735-4478-ad79-b49cf9a358f0",
+      "runId": "61212569-3911-41bd-8f06-319929efc05c",
+      "reservationId": "8ba88dac-0f3a-407d-b363-83b9125f2a00",
+      "reservedAt": "2026-10-04T15:59:17.382Z",
+      "startedAt": "2026-10-04T15:59:17.471Z",
+      "finishedAt": "2026-10-04T15:59:18.137Z",
+      "settledAt": "2026-10-04T15:59:18.207Z",
+      "closedAt": "2026-10-04T15:59:18.234Z"
+    },
+    {
+      "kind": "council",
+      "taskId": "40bfb12b-7cfd-42d9-bfca-b99d86c06c2e",
+      "issueId": "c0e6d340-eef9-4035-af24-0d6ed6791d6d",
+      "runId": "6b260f6d-caa4-49b0-af37-0650aade2bfc",
+      "reservationId": "6b3ecc1f-571b-479d-829a-54d5df602027",
+      "reservedAt": "2026-10-04T15:59:18.287Z",
+      "startedAt": "2026-10-04T15:59:18.359Z",
+      "finishedAt": "2026-10-04T15:59:19.320Z",
+      "settledAt": "2026-10-04T15:59:19.394Z",
+      "closedAt": "2026-10-04T15:59:19.476Z"
+    }
+  ]
+}

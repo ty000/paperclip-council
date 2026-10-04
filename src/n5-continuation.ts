@@ -49,7 +49,7 @@ export async function rebindN5Plan(ctx: PluginContext, m: MissionRecord, input: 
   const lead = m.aggregate.responsibilities.integrationLeadAgentId; const n5 = m.aggregate.n5;
   const runId = input.actor.runId;
   const admittedRuns = [m.aggregate.n1?.rootDispatchRunId, m.aggregate.n2?.native?.transmission.runId, m.aggregate.n2?.correction?.runId,
-    ...m.aggregate.n3?.rounds.map(round => round.transmission.runId) ?? []];
+    ...m.aggregate.n3?.rounds.map(round => round.transmission?.runId) ?? []];
   if (!n5 || input.actor.actorType !== "agent" || input.actor.agentId !== lead || input.params.issueId !== m.rootIssueId
       || !runId || !admittedRuns.includes(runId)) throw new MissionError(403, "n5_plan_actor", "Exact admitted root lead run required for plan rebinding");
   const run = await readNativeRun(ctx, { companyId: m.companyId, issueId: m.rootIssueId, agentId: lead, runId });

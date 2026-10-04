@@ -1,3 +1,6 @@
+import { readOrdinaryRun } from "./g4-native.js";
+import { canonicalPayloadHash } from "./missions.js";
+import type { OrdinaryReport } from "./n2-ordinary-state.js";
 import { createHash, randomUUID } from "node:crypto";
 import type { PluginContext, PluginPerformActionContext } from "@paperclipai/plugin-sdk";
 import type { CouncilConfig, CouncilDecisionInput, CouncilVerdict } from "./contracts.js";
@@ -470,6 +473,28 @@ export async function recordCouncilNativeReadback(ctx: PluginContext, input: Cou
   const targetUrl = `/api/issues/${input.issueId}/interactions`;
   const requestBody = { method: "GET", provenance: "native-review-terminal-readback-v1", packetHash: evidence.packetHash,
     reportHash: evidence.reportHash, nativeReview: input.nativeReview, runId: input.runId };
+  return recordReadback(ctx, input, targetUrl, requestBody, evidence.card);
+}
+
+/** A terminal CLI report observation, never a native completion-review receipt. */
+export async function recordCouncilOrdinaryReadback(ctx: PluginContext, input: CouncilDecisionInput, evidence: {
+  issueId: string; report: OrdinaryReport; requestBody: Record<string, unknown>;
+}): Promise<DecisionReceipt> {
+  const run = await readOrdinaryRun(ctx, { companyId: input.companyId, issueId: evidence.issueId, agentId: input.actorAgentId, runId: input.runId });
+  let report: unknown;
+  try { report = JSON.parse(String(run.resultJson?.summary)); } catch { report = null; }
+  if (run.status !== "succeeded" || !run.finishedAt || !report || canonicalPayloadHash(report) !== canonicalPayloadHash(evidence.report)
+      || input.verdict !== evidence.report.verdict || evidence.requestBody.provenance !== "ordinary-task-terminal-readback-v1"
+      || evidence.requestBody.reportHash !== canonicalPayloadHash(report) || evidence.requestBody.runId !== run.id
+      || evidence.requestBody.issueId !== evidence.issueId || run.usageJson?.usageSource !== "per_run") {
+    throw new DecisionReceiptError(409, "ordinary_readback_invalid", "Exact terminal CLI report and attributed usage required");
+  }
+  return recordReadback(ctx, input, `/api/heartbeat-runs/${run.id}`, evidence.requestBody,
+    { runId: run.id, issueId: evidence.issueId, agentId: run.agentId, report, usage: run.usageJson });
+}
+
+async function recordReadback(ctx: PluginContext, input: CouncilDecisionInput, targetUrl: string,
+  requestBody: Record<string, unknown>, observation: unknown): Promise<DecisionReceipt> {
   const hash = contentHash(input, targetUrl, requestBody);
   const attemptId = randomUUID();
   await ctx.db.execute(`INSERT INTO ${table(ctx)}
@@ -483,5 +508,5 @@ export async function recordCouncilNativeReadback(ctx: PluginContext, input: Cou
     throw new DecisionReceiptError(409, "operation_content_conflict", "Native readback operation is bound to different evidence");
   }
   if (row.native_observed_at) return parseReceipt(row);
-  return recordNativeObservation(ctx, input, row.attempt_id, { status: 200, body: evidence.card, usable: true, blockReason: null });
+  return recordNativeObservation(ctx, input, row.attempt_id, { status: 200, body: observation, usable: true, blockReason: null });
 }

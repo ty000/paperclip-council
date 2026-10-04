@@ -1,0 +1,2172 @@
+{
+  "schema": "council-ordinary-installed-v1",
+  "outcome": "BLOCKED",
+  "startedAt": "2026-10-04T15:41:59.572Z",
+  "head": "4cf87845ab33e8a2b6d4e815f9b584201102698d",
+  "hostSha": "61b3fd57a695614dc4a37e2303f426a34a9795cf",
+  "runtime": "/tmp/council-ordinary-installed-9seN3S",
+  "timeline": [
+    {
+      "ordinal": 1,
+      "at": "2026-10-04T15:42:09.551Z",
+      "event": "installed_worker_started",
+      "pluginId": "0264d096-985e-4933-9dee-cb9e76b88e91"
+    },
+    {
+      "ordinal": 2,
+      "at": "2026-10-04T15:42:11.590Z",
+      "event": "owner_closed_finished_N1_child",
+      "issueId": "23691402-6cc1-482e-843d-09350a8ba929",
+      "runId": "b86d7687-4f3c-45e2-8400-cf6d5f83ede0"
+    },
+    {
+      "ordinal": 3,
+      "at": "2026-10-04T15:42:12.607Z",
+      "event": "owner_closed_finished_N1_child",
+      "issueId": "e9e13190-5a28-4cee-a4aa-f33b736f2f88",
+      "runId": "11cf3cf8-cf62-4ee0-9728-3843d0c65729"
+    },
+    {
+      "ordinal": 4,
+      "at": "2026-10-04T15:42:13.559Z",
+      "event": "ordinary_review_started"
+    },
+    {
+      "ordinal": 5,
+      "at": "2026-10-04T15:42:14.305Z",
+      "event": "owned_failure_cleanup_cancelled_pending_runs"
+    }
+  ],
+  "checks": {},
+  "boundary": "Installed Council owns N2/N3 state, admission, dispatch and reconciliation. Only CLI model/content/usage are deterministic. Owner prepares N1 and closes finished N1 children with lead demand wakes disabled.",
+  "source": {
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/tests/functional/ordinary-cli-fixture.mjs": "845d798af6d53a67ab36daa21ee859ebfbf3a37bad29d67eeb2d0f833c9a6d27",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/tests/functional/ordinary-installed.ts": "44f24f766dbd11af893d8f4e1ae43c4f92b76f02c7db308b2cdfc6a8d73350ed",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/dist/worker.js": "a2d3be1f68c0263ce706d92a4233fc31a722c11df3db3eece2316dbb4c4832a2",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/admission.ts": "264145c4b8a4a4b4ee26264ba123a2c44d68a55b3eaae0f1dfbcdd909e82ce79",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/contracts.ts": "fc558310cacc592058cdc9884fe81f83ff58e5b1e6e911a83e0ff7f8d2f8c658",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/contribution-effects.ts": "0e23475126c3645e129da61803b0c1e2d72edd98efcf3a8ef7385d07a7a177fe",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/decision-adapter.ts": "c0ef4a2c73a9c52d5bda05f426b977ffb117545f120bd2f330b62ad25613f3e1",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/decision-receipts.ts": "8fdb2df73f7a76315a05ead945aea6d44873ba2a8a0e14162d47c3949851320e",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/delivery-manifest.ts": "c0f94f78b52118e5b1117a0228c051c99f3e8d5612836d6ea5a6220d42766390",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/foundation-probe.ts": "a312903693386811b58d8e8c3343914a2684b6c1428afc880560e2e35425e84a",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/g4-native.ts": "2e09a8c011e10a5959880dcee79a6ac35a55d918e9cb639b0bfc92910b384469",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/index.ts": "f4d97bdf95cde0004d421c74e3302484fb506b623f93e157249149eeb0a3efaf",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/integration.ts": "8fa58c80a9797d117c0274cd8aec2b5c09391b5f44ebdbe2d2aac732cd00d4ad",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/manifest.ts": "afe34f6fe908e35ec5cc620edf8f80d3d7482eccb05d7aa07a715875b17ea6fc",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/mission-tool.ts": "3f1a487f5e34e1ac70c3aaa5defadf3bc98a93c05ab03f50f5e3b0949da69334",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/missions.ts": "2b0bb5c40398f0adf61173be47a8645a5189782ba63d7065328ecc35b0b10509",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/n1-missions.ts": "452b42c18d271cb55ac5883afc27b6b9822b0f3c06950f650ebf475adc9b78e8",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/n2-finished-event.ts": "1ddb535801242ea0a830b898c845be51f054832cdf5eaa78978567ba6e9119fa",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/n2-missions.ts": "d883996f547cb29148fd23f3f345e44e20a129c2fdf66f5354ce0e5c8498b294",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/n2-native-report.ts": "e7f0aad34b244de3745216ffbf5a16e7212d6d19eb0b84181ac227ee7b92f597",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/n2-native-runtime.ts": "3db020c06cde5612a25755fe87d3721655c40af7bd83d8bed3e56fe3caa039a0",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/n2-ordinary-agent.ts": "b6a2836e8c4c8cb6848ac40e2e6f58839dbe7b4452ea364201e40b1f6c22a729",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/n2-ordinary-instructions.ts": "7fc8afb942cc38fd10c49b7e53cfd76c624e17e3987aacc68e3b6893763d6681",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/n2-ordinary-runtime.ts": "31e9fd5e4203155adcce37020f227326a7a21115e0dac7d489992374b2b53434",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/n2-ordinary-state.ts": "52b7e0195e8eb4061428042128b6aba4dbeef36ceb10e4d48bf15dda885cbb14",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/n3-opinions.ts": "517ace14964f46def794c7e88d6e8bde192c04a81b9a5bb4293831a13c5b7fc3",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/n3-runtime.ts": "6b8088bddf2b415e5e4eb147fafa6190ed4a627d13bfb6906ee9d3ed7f25f011",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/n3-state.ts": "4a8e06d2e8007df2473a68f2c7ca7804a0333ebe9eb888e3f1d8a8a603fe298d",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/n5-continuation.ts": "6652078efcd2af12899aef5fbceb469814953fb7d419eda998dddf178fa32cd2",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/n5-native.ts": "91ec0aebb50866953d18a631d7268b30cb5d71a6e7616b5d4fd586a43c3ecc3a",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/n5-preflight.ts": "ba314cf28e082b62c8e8800570c9c3ea2ba3f16d80415cc965fc51902356bf5b",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/n5-runtime.ts": "2dc65a64e5ed11809258ec63f7907c5b2314131b7c791601fde1619b38c92ae1",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/n5-state.ts": "1b706e5221b87a920df963bec9470c3bf97ca7a8799d40e39bcca2308d489156",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/rosters.ts": "7ebdb86fa56eb09cedcea64b73a8d833a12397b9baa8991a47fc782f55778b70",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/ui/decision-receipts.tsx": "3602f5217eca4f37e072c91c90b6ef4bd58c0c73236c520fcca29ba1230a1b39",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/ui/index.tsx": "a51275f88ee0fc5f22ef22c95b72a7effda63d70eafe4a3e6c8c66cd04b8b70e",
+    "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/src/worker.ts": "5f208e5573a5e4094f9784bb2de256de154470598fdee4a52cd7bec66c0d16fe"
+  },
+  "companyId": "8cfe0265-aa85-4a44-81f2-afb52690d8f7",
+  "actors": {
+    "lead": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+    "alpha": "383ba830-db0f-426a-9da1-b9f6c6834d5b",
+    "beta": "c103848e-169b-4d6a-adca-ebbe59042f6b",
+    "product": "90498334-acd5-4427-8ef6-462ae3bc4e94",
+    "quality": "074b5e45-c764-40b4-ad49-840f788af34a",
+    "council": "117e34e5-241e-4bb3-a07e-ef975da88120"
+  },
+  "pluginId": "0264d096-985e-4933-9dee-cb9e76b88e91",
+  "prerequisite": {
+    "companyId": "8cfe0265-aa85-4a44-81f2-afb52690d8f7",
+    "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b",
+    "rootIssueId": "1f9ca573-8215-4498-bda9-d21b2e969719",
+    "projectId": "9087a06f-d8c3-4e23-a284-7e80b464e2fb",
+    "ownerUserId": "local-board",
+    "teamRosterId": "bd556ac1-395f-4b26-9dc1-71a5dcf9f50d",
+    "teamRevision": "baf3ead7-b19c-4d66-88a4-ebe91d9b16b5",
+    "councilRosterId": "44d979cc-f313-4580-8ced-08e6be0dfff2",
+    "councilRevision": "7931380b-36dc-431d-a0cc-3777f488a9f6",
+    "version": 17,
+    "aggregate": {
+      "n1": {
+        "candidate": {
+          "checks": [
+            {
+              "name": "issue-bound-bundle",
+              "detail": "973 bytes; SHA-256 verified",
+              "status": "passed"
+            },
+            {
+              "name": "git-import-configuration",
+              "detail": "bounded Git delta cache, packed-file mappings and single-thread pack window configured",
+              "status": "passed"
+            },
+            {
+              "name": "git-bundle-verify",
+              "detail": "self-contained bundle verified",
+              "status": "passed"
+            },
+            {
+              "name": "declared-refs",
+              "detail": "base and candidate refs match declared commits",
+              "status": "passed"
+            },
+            {
+              "name": "git-object-bounds",
+              "detail": "10 objects; 1236 expanded bytes",
+              "status": "passed"
+            },
+            {
+              "name": "git-object-integrity",
+              "detail": "git fsck --strict passed",
+              "status": "passed"
+            },
+            {
+              "name": "base-ancestry",
+              "detail": "candidate descends from declared base",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-ancestry",
+              "detail": "two distinct contribution commits are included",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-history-topology",
+              "detail": "each contribution is a bounded linear history rooted at base or a prior declared contribution",
+              "status": "passed"
+            },
+            {
+              "name": "write-ownership",
+              "detail": "every contribution commit changed only its declared paths",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-tree-preservation",
+              "detail": "both contributions survive in the candidate tree",
+              "status": "passed"
+            },
+            {
+              "name": "candidate-delta-attribution",
+              "detail": "complete candidate delta equals the union of attributed contribution deltas",
+              "status": "passed"
+            },
+            {
+              "name": "candidate-history-topology",
+              "detail": "candidate-only history contains exactly the declared integration commit",
+              "status": "passed"
+            },
+            {
+              "name": "git-diff-check",
+              "detail": "candidate diff passed git diff --check",
+              "status": "passed"
+            }
+          ],
+          "outcome": "verified",
+          "subject": {
+            "issueId": "1f9ca573-8215-4498-bda9-d21b2e969719",
+            "companyId": "8cfe0265-aa85-4a44-81f2-afb52690d8f7"
+          },
+          "candidate": {
+            "sha256": "0ef742f3798049d7f290ed65f3dc63392dca58bf9d532a6cdfa7d990d79dcb17",
+            "byteSize": 973,
+            "baseCommit": "efd160dd1e9fe6107cb6a2420e48ced9db401902",
+            "attachmentId": "0b2ea52f-34f8-4fc8-8528-0126d6af227b",
+            "candidateCommit": "ee8b193710fe00a4b6a2a6c50e5c6211bd0b6124"
+          },
+          "contributions": [
+            {
+              "commit": "885b768bb481750b3ef1c79c5123e9cc52648882",
+              "ownedPaths": [
+                "alpha.txt"
+              ],
+              "changedPaths": [
+                "alpha.txt"
+              ],
+              "contributionId": "7a3fbb7b-7874-4ba6-9393-37da15aa12ba"
+            },
+            {
+              "commit": "068073cd3540a9d11758a66765a1f0682043b8e3",
+              "ownedPaths": [
+                "beta.txt"
+              ],
+              "changedPaths": [
+                "beta.txt"
+              ],
+              "contributionId": "ac0ce6bf-721c-4547-bc00-392f6a6a129d"
+            }
+          ],
+          "publicationEligible": true
+        },
+        "periodKey": "ordinary-installed",
+        "activatedAt": "2026-10-04T15:42:09.762Z",
+        "contributions": [
+          {
+            "title": "alpha",
+            "commit": "885b768bb481750b3ef1c79c5123e9cc52648882",
+            "intentId": "f8729bcb-aaba-40df-ac98-d91a84030aae",
+            "issueState": "confirmed",
+            "ownedPaths": [
+              "alpha.txt"
+            ],
+            "authorRunId": "b86d7687-4f3c-45e2-8400-cf6d5f83ede0",
+            "childIssueId": "23691402-6cc1-482e-843d-09350a8ba929",
+            "dispatchRunId": "b86d7687-4f3c-45e2-8400-cf6d5f83ede0",
+            "dispatchState": "requested",
+            "contributionId": "7a3fbb7b-7874-4ba6-9393-37da15aa12ba",
+            "assigneeAgentId": "383ba830-db0f-426a-9da1-b9f6c6834d5b",
+            "dispatchReservationId": "b77ea232-f4ca-4585-976b-1dbd39e0ea11",
+            "dispatchUsageBaselineUnits": 0
+          },
+          {
+            "title": "beta",
+            "commit": "068073cd3540a9d11758a66765a1f0682043b8e3",
+            "intentId": "34736049-df0d-4a1a-870e-1f99af5288a6",
+            "issueState": "confirmed",
+            "ownedPaths": [
+              "beta.txt"
+            ],
+            "authorRunId": "11cf3cf8-cf62-4ee0-9728-3843d0c65729",
+            "childIssueId": "e9e13190-5a28-4cee-a4aa-f33b736f2f88",
+            "dispatchRunId": "11cf3cf8-cf62-4ee0-9728-3843d0c65729",
+            "dispatchState": "requested",
+            "contributionId": "ac0ce6bf-721c-4547-bc00-392f6a6a129d",
+            "assigneeAgentId": "c103848e-169b-4d6a-adca-ebbe59042f6b",
+            "dispatchReservationId": "56a26aed-4da9-4f0a-847c-6296952a6d8a",
+            "dispatchUsageBaselineUnits": 0
+          }
+        ],
+        "rootDispatchMode": "native",
+        "rootDispatchRunId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+        "rootDispatchState": "requested",
+        "rootUsageBaselineUnits": 0,
+        "activationReservationId": "4510fc33-f6a8-4669-ad70-2c6554afa8c8",
+        "candidateRecordedVersion": 16
+      },
+      "phase": "ready_for_review",
+      "control": {
+        "reason": "candidate_ready_for_review",
+        "status": "inactive"
+      },
+      "journal": [
+        {
+          "at": "2026-10-04T15:42:09.721Z",
+          "action": "mission_recorded",
+          "actorUserId": "local-board"
+        },
+        {
+          "at": "2026-10-04T15:42:09.762Z",
+          "action": "mission_activated",
+          "periodKey": "ordinary-installed",
+          "actorUserId": "local-board",
+          "reservationId": "4510fc33-f6a8-4669-ad70-2c6554afa8c8"
+        },
+        {
+          "at": "2026-10-04T15:42:09.803Z",
+          "action": "root_dispatch_claimed",
+          "actorUserId": "local-board",
+          "reservationId": "4510fc33-f6a8-4669-ad70-2c6554afa8c8"
+        },
+        {
+          "at": "2026-10-04T15:42:10.479Z",
+          "runId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "action": "contribution_plan_recorded",
+          "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2"
+        },
+        {
+          "at": "2026-10-04T15:42:10.570Z",
+          "runId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "action": "child_creation_claimed",
+          "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "contributionId": "7a3fbb7b-7874-4ba6-9393-37da15aa12ba"
+        },
+        {
+          "at": "2026-10-04T15:42:10.698Z",
+          "runId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "action": "child_creation_claimed",
+          "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "contributionId": "ac0ce6bf-721c-4547-bc00-392f6a6a129d"
+        },
+        {
+          "at": "2026-10-04T15:42:10.851Z",
+          "runId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "action": "child_dispatch_claimed",
+          "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "reservationId": "b77ea232-f4ca-4585-976b-1dbd39e0ea11",
+          "contributionId": "7a3fbb7b-7874-4ba6-9393-37da15aa12ba"
+        },
+        {
+          "at": "2026-10-04T15:42:11.411Z",
+          "runId": "b86d7687-4f3c-45e2-8400-cf6d5f83ede0",
+          "action": "contribution_recorded",
+          "commit": "885b768bb481750b3ef1c79c5123e9cc52648882",
+          "actorAgentId": "383ba830-db0f-426a-9da1-b9f6c6834d5b",
+          "contributionId": "7a3fbb7b-7874-4ba6-9393-37da15aa12ba"
+        },
+        {
+          "at": "2026-10-04T15:42:11.879Z",
+          "runId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "action": "child_dispatch_claimed",
+          "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "reservationId": "56a26aed-4da9-4f0a-847c-6296952a6d8a",
+          "contributionId": "ac0ce6bf-721c-4547-bc00-392f6a6a129d"
+        },
+        {
+          "at": "2026-10-04T15:42:12.450Z",
+          "runId": "11cf3cf8-cf62-4ee0-9728-3843d0c65729",
+          "action": "contribution_recorded",
+          "commit": "068073cd3540a9d11758a66765a1f0682043b8e3",
+          "actorAgentId": "c103848e-169b-4d6a-adca-ebbe59042f6b",
+          "contributionId": "ac0ce6bf-721c-4547-bc00-392f6a6a129d"
+        },
+        {
+          "at": "2026-10-04T15:42:13.082Z",
+          "runId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "action": "integrated_candidate_verified",
+          "checks": [
+            {
+              "name": "issue-bound-bundle",
+              "detail": "973 bytes; SHA-256 verified",
+              "status": "passed"
+            },
+            {
+              "name": "git-import-configuration",
+              "detail": "bounded Git delta cache, packed-file mappings and single-thread pack window configured",
+              "status": "passed"
+            },
+            {
+              "name": "git-bundle-verify",
+              "detail": "self-contained bundle verified",
+              "status": "passed"
+            },
+            {
+              "name": "declared-refs",
+              "detail": "base and candidate refs match declared commits",
+              "status": "passed"
+            },
+            {
+              "name": "git-object-bounds",
+              "detail": "10 objects; 1236 expanded bytes",
+              "status": "passed"
+            },
+            {
+              "name": "git-object-integrity",
+              "detail": "git fsck --strict passed",
+              "status": "passed"
+            },
+            {
+              "name": "base-ancestry",
+              "detail": "candidate descends from declared base",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-ancestry",
+              "detail": "two distinct contribution commits are included",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-history-topology",
+              "detail": "each contribution is a bounded linear history rooted at base or a prior declared contribution",
+              "status": "passed"
+            },
+            {
+              "name": "write-ownership",
+              "detail": "every contribution commit changed only its declared paths",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-tree-preservation",
+              "detail": "both contributions survive in the candidate tree",
+              "status": "passed"
+            },
+            {
+              "name": "candidate-delta-attribution",
+              "detail": "complete candidate delta equals the union of attributed contribution deltas",
+              "status": "passed"
+            },
+            {
+              "name": "candidate-history-topology",
+              "detail": "candidate-only history contains exactly the declared integration commit",
+              "status": "passed"
+            },
+            {
+              "name": "git-diff-check",
+              "detail": "candidate diff passed git diff --check",
+              "status": "passed"
+            }
+          ],
+          "candidate": {
+            "sha256": "0ef742f3798049d7f290ed65f3dc63392dca58bf9d532a6cdfa7d990d79dcb17",
+            "byteSize": 973,
+            "baseCommit": "efd160dd1e9fe6107cb6a2420e48ced9db401902",
+            "attachmentId": "0b2ea52f-34f8-4fc8-8528-0126d6af227b",
+            "candidateCommit": "ee8b193710fe00a4b6a2a6c50e5c6211bd0b6124"
+          },
+          "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2"
+        },
+        {
+          "at": "2026-10-04T15:42:13.353Z",
+          "runId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "action": "lead_usage_settled_candidate_ready",
+          "candidate": {
+            "sha256": "0ef742f3798049d7f290ed65f3dc63392dca58bf9d532a6cdfa7d990d79dcb17",
+            "byteSize": 973,
+            "baseCommit": "efd160dd1e9fe6107cb6a2420e48ced9db401902",
+            "attachmentId": "0b2ea52f-34f8-4fc8-8528-0126d6af227b",
+            "candidateCommit": "ee8b193710fe00a4b6a2a6c50e5c6211bd0b6124"
+          },
+          "actorUserId": "local-board"
+        }
+      ],
+      "mandate": {
+        "limits": {
+          "taskPolicy": "1000 tokens reserved",
+          "periodPolicy": "20000 token envelope",
+          "elapsedMinutes": 30,
+          "correctionLimit": 1
+        },
+        "objective": "Two contributions and independent Council correction",
+        "commitments": [
+          "Provider-free CLI fixture",
+          "One correction maximum"
+        ],
+        "acceptanceCriteria": [
+          "Alpha must contain corrected marker",
+          "Two attributed contributions"
+        ]
+      },
+      "companyId": "8cfe0265-aa85-4a44-81f2-afb52690d8f7",
+      "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b",
+      "projectId": "9087a06f-d8c3-4e23-a284-7e80b464e2fb",
+      "readiness": {
+        "mission": "recorded",
+        "blockers": [
+          {
+            "code": "g4_root_reserved",
+            "status": "ready",
+            "message": "Root lead launch allowance is durably reserved."
+          },
+          {
+            "code": "child_dispatch_pending",
+            "status": "pending",
+            "message": "Child launches require their own admission and effect reconciliation."
+          }
+        ],
+        "execution": "blocked",
+        "compositions": "pinned"
+      },
+      "ownerUserId": "local-board",
+      "rootIssueId": "1f9ca573-8215-4498-bda9-d21b2e969719",
+      "compositions": {
+        "team": {
+          "kind": "team",
+          "name": "Team",
+          "members": [
+            {
+              "agentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+              "responsibilities": [
+                "integration_lead"
+              ]
+            },
+            {
+              "agentId": "383ba830-db0f-426a-9da1-b9f6c6834d5b",
+              "responsibilities": [
+                "contributor"
+              ]
+            },
+            {
+              "agentId": "c103848e-169b-4d6a-adca-ebbe59042f6b",
+              "responsibilities": [
+                "contributor"
+              ]
+            }
+          ],
+          "revision": "baf3ead7-b19c-4d66-88a4-ebe91d9b16b5",
+          "rosterId": "bd556ac1-395f-4b26-9dc1-71a5dcf9f50d",
+          "projectId": "9087a06f-d8c3-4e23-a284-7e80b464e2fb"
+        },
+        "status": "pinned",
+        "council": {
+          "kind": "council",
+          "name": "Council",
+          "members": [
+            {
+              "agentId": "117e34e5-241e-4bb3-a07e-ef975da88120",
+              "responsibilities": [
+                "final_reviewer"
+              ]
+            }
+          ],
+          "revision": "7931380b-36dc-431d-a0cc-3777f488a9f6",
+          "rosterId": "44d979cc-f313-4580-8ced-08e6be0dfff2",
+          "projectId": "9087a06f-d8c3-4e23-a284-7e80b464e2fb"
+        }
+      },
+      "effectIntents": [
+        {
+          "kind": "root_wakeup",
+          "runId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "state": "requested",
+          "queued": true,
+          "issueId": "1f9ca573-8215-4498-bda9-d21b2e969719",
+          "reservationId": "4510fc33-f6a8-4669-ad70-2c6554afa8c8",
+          "assigneeAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2"
+        },
+        {
+          "kind": "child_issue_create",
+          "actor": {
+            "actorRunId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+            "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2"
+          },
+          "state": "confirmed",
+          "title": "alpha",
+          "intentId": "f8729bcb-aaba-40df-ac98-d91a84030aae",
+          "companyId": "8cfe0265-aa85-4a44-81f2-afb52690d8f7",
+          "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b",
+          "projectId": "9087a06f-d8c3-4e23-a284-7e80b464e2fb",
+          "description": "Council N1 contribution. Complete only this bounded child issue.\nMission ID: ec15a523-62ea-4f17-b6ed-20489d448f9b\nContribution ID: 7a3fbb7b-7874-4ba6-9393-37da15aa12ba\nOwned paths: alpha.txt\nDo not modify files outside the owned paths. Commit the completed change on the current shared branch.\nUse the authenticated endpoint /api/plugins/private.paperclip-council/api/issues/<this-child-issue-id>/council/commands. The first request body is exactly {\"command\":\"inspect\",\"missionId\":\"ec15a523-62ea-4f17-b6ed-20489d448f9b\"}. Read body.version, then send command=record-contribution with missionId, a fresh commandId, that expectedVersion, the contributionId, and the 40-character commit SHA.\nFor every fresh commandId, run this exact command once and separately: node -e \"console.log(require('node:crypto').randomUUID())\". Never invent, partially copy, or manually edit a UUID.\nMark this Paperclip child issue done only after record-contribution succeeds.\nFor any non-2xx response, preserve the HTTP status and sanitized JSON response body in your final report without exposing credentials.\n\nPlugins/skills à utiliser\nUse the Paperclip skill injected by the host for issue context, authenticated API calls, and status updates. No additional plugin is required.\n\nModele et effort recommandes\nTarget: bounded implementation contributor. Model: gpt-5.6-sol. Effort: high because the run participates in a governed native integration proof. Re-evaluate only if availability is rejected before launch; do not silently substitute. Source: independent mapping /home/davy-lp/.codex/shared/model-selection/model-effort-mapping.md, updated 2026-09-05. Effective runtime settings must be observed separately.",
+          "rootIssueId": "1f9ca573-8215-4498-bda9-d21b2e969719",
+          "childIssueId": "23691402-6cc1-482e-843d-09350a8ba929",
+          "unknownReason": null,
+          "contributionId": "7a3fbb7b-7874-4ba6-9393-37da15aa12ba",
+          "assigneeAgentId": "383ba830-db0f-426a-9da1-b9f6c6834d5b"
+        },
+        {
+          "kind": "child_issue_create",
+          "actor": {
+            "actorRunId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+            "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2"
+          },
+          "state": "confirmed",
+          "title": "beta",
+          "intentId": "34736049-df0d-4a1a-870e-1f99af5288a6",
+          "companyId": "8cfe0265-aa85-4a44-81f2-afb52690d8f7",
+          "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b",
+          "projectId": "9087a06f-d8c3-4e23-a284-7e80b464e2fb",
+          "description": "Council N1 contribution. Complete only this bounded child issue.\nMission ID: ec15a523-62ea-4f17-b6ed-20489d448f9b\nContribution ID: ac0ce6bf-721c-4547-bc00-392f6a6a129d\nOwned paths: beta.txt\nDo not modify files outside the owned paths. Commit the completed change on the current shared branch.\nUse the authenticated endpoint /api/plugins/private.paperclip-council/api/issues/<this-child-issue-id>/council/commands. The first request body is exactly {\"command\":\"inspect\",\"missionId\":\"ec15a523-62ea-4f17-b6ed-20489d448f9b\"}. Read body.version, then send command=record-contribution with missionId, a fresh commandId, that expectedVersion, the contributionId, and the 40-character commit SHA.\nFor every fresh commandId, run this exact command once and separately: node -e \"console.log(require('node:crypto').randomUUID())\". Never invent, partially copy, or manually edit a UUID.\nMark this Paperclip child issue done only after record-contribution succeeds.\nFor any non-2xx response, preserve the HTTP status and sanitized JSON response body in your final report without exposing credentials.\n\nPlugins/skills à utiliser\nUse the Paperclip skill injected by the host for issue context, authenticated API calls, and status updates. No additional plugin is required.\n\nModele et effort recommandes\nTarget: bounded implementation contributor. Model: gpt-5.6-sol. Effort: high because the run participates in a governed native integration proof. Re-evaluate only if availability is rejected before launch; do not silently substitute. Source: independent mapping /home/davy-lp/.codex/shared/model-selection/model-effort-mapping.md, updated 2026-09-05. Effective runtime settings must be observed separately.",
+          "rootIssueId": "1f9ca573-8215-4498-bda9-d21b2e969719",
+          "childIssueId": "e9e13190-5a28-4cee-a4aa-f33b736f2f88",
+          "unknownReason": null,
+          "contributionId": "ac0ce6bf-721c-4547-bc00-392f6a6a129d",
+          "assigneeAgentId": "c103848e-169b-4d6a-adca-ebbe59042f6b"
+        },
+        {
+          "kind": "child_wakeup",
+          "runId": "b86d7687-4f3c-45e2-8400-cf6d5f83ede0",
+          "state": "requested",
+          "queued": true,
+          "issueId": "23691402-6cc1-482e-843d-09350a8ba929",
+          "actorRunId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "reservationId": "b77ea232-f4ca-4585-976b-1dbd39e0ea11",
+          "contributionId": "7a3fbb7b-7874-4ba6-9393-37da15aa12ba",
+          "assigneeAgentId": "383ba830-db0f-426a-9da1-b9f6c6834d5b"
+        },
+        {
+          "kind": "child_wakeup",
+          "runId": "11cf3cf8-cf62-4ee0-9728-3843d0c65729",
+          "state": "requested",
+          "queued": true,
+          "issueId": "e9e13190-5a28-4cee-a4aa-f33b736f2f88",
+          "actorRunId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "reservationId": "56a26aed-4da9-4f0a-847c-6296952a6d8a",
+          "contributionId": "ac0ce6bf-721c-4547-bc00-392f6a6a129d",
+          "assigneeAgentId": "c103848e-169b-4d6a-adca-ebbe59042f6b"
+        }
+      ],
+      "schemaVersion": 1,
+      "commandReceipts": [
+        {
+          "result": {
+            "version": 1,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "local-board",
+          "command": "create",
+          "actorType": "user",
+          "commandId": "5d33d134-da2a-48f1-ad0d-f0bcb2a74c44",
+          "recordedAt": "2026-10-04T15:42:09.721Z",
+          "payloadHash": "8df7869f98ada11679e3d9d994be6954a00af3af3030e56ff1a21f840c46cbe9",
+          "appliedVersion": 1
+        },
+        {
+          "result": {
+            "version": 2,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "local-board",
+          "command": "activate",
+          "actorType": "user",
+          "commandId": "96c07522-d664-4c2b-af0e-391750793e70",
+          "recordedAt": "2026-10-04T15:42:09.762Z",
+          "payloadHash": "d033fb26a971dd1a22ec62577417b8d2f96448a31c8685faddbde5c8e52db884",
+          "appliedVersion": 2
+        },
+        {
+          "result": {
+            "version": 3,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "local-board",
+          "command": "start-lead",
+          "actorType": "user",
+          "commandId": "c5b6396a-9ec1-41aa-b27e-d9591ed3d58c",
+          "recordedAt": "2026-10-04T15:42:09.803Z",
+          "payloadHash": "4988724ab361843d0b9e24aa215ee5feff81be6f5a07900115cfda75b5e3a4b8",
+          "appliedVersion": 3
+        },
+        {
+          "result": {
+            "version": 5,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "command": "plan",
+          "actorType": "agent",
+          "commandId": "fe96775f-aef8-4451-b145-8419e0a5a00e",
+          "recordedAt": "2026-10-04T15:42:10.479Z",
+          "payloadHash": "c2c4b39ddfd56ae704dddfdbd2c4526ae9cbe312bd01365f408861e536416833",
+          "appliedVersion": 5
+        },
+        {
+          "result": {
+            "version": 6,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "command": "materialize",
+          "actorType": "agent",
+          "commandId": "fb96fe38-c92e-453c-a2ef-35af95025146",
+          "recordedAt": "2026-10-04T15:42:10.570Z",
+          "payloadHash": "57a41d0b1f27a650f8608b72d27d4e0a0b7e860056b85b966c4ee668951d7557",
+          "appliedVersion": 6
+        },
+        {
+          "result": {
+            "version": 8,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "command": "materialize",
+          "actorType": "agent",
+          "commandId": "fff68722-8b91-4dc6-8c21-9eb564cae215",
+          "recordedAt": "2026-10-04T15:42:10.698Z",
+          "payloadHash": "ba5fa04e98244cb45dfc731229fc071f8021ed4dd5048daff44da08d2db22bb4",
+          "appliedVersion": 8
+        },
+        {
+          "result": {
+            "version": 10,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "command": "dispatch",
+          "actorType": "agent",
+          "commandId": "63c81b15-94c4-4004-af94-86ae32d5cd9d",
+          "recordedAt": "2026-10-04T15:42:10.851Z",
+          "payloadHash": "fc7b0a19dd6fbee2a22bbc9f16568c6f5774eb6c593a7c0dbf1c515df33ac70c",
+          "appliedVersion": 10
+        },
+        {
+          "result": {
+            "version": 12,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "383ba830-db0f-426a-9da1-b9f6c6834d5b",
+          "command": "record-contribution",
+          "actorType": "agent",
+          "commandId": "f2037f68-d689-4b2f-a51a-85cbe60d1e59",
+          "recordedAt": "2026-10-04T15:42:11.411Z",
+          "payloadHash": "23ed97a7c6afcde59aec14297bb83105654b067615dbcf4e1eb44e4e319399a5",
+          "appliedVersion": 12
+        },
+        {
+          "result": {
+            "version": 13,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "command": "dispatch",
+          "actorType": "agent",
+          "commandId": "43bc3aca-712f-4a8d-a752-71aecd4caa41",
+          "recordedAt": "2026-10-04T15:42:11.879Z",
+          "payloadHash": "bfb2ff773a6e081262efe7c8b1e94ff80d12f8bf597ca208acc7deac37dd2403",
+          "appliedVersion": 13
+        },
+        {
+          "result": {
+            "version": 15,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "c103848e-169b-4d6a-adca-ebbe59042f6b",
+          "command": "record-contribution",
+          "actorType": "agent",
+          "commandId": "5d8e0395-bb57-4040-ad59-fb5b36760f82",
+          "recordedAt": "2026-10-04T15:42:12.451Z",
+          "payloadHash": "e4f1fe55d7f0d096c672d9ed2c3e1cdb310910084febfb7eef139ab7003c5d84",
+          "appliedVersion": 15
+        },
+        {
+          "result": {
+            "version": 16,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "command": "publish",
+          "actorType": "agent",
+          "commandId": "698a02aa-5ce5-49f7-83fb-014ce9850e0b",
+          "recordedAt": "2026-10-04T15:42:13.082Z",
+          "payloadHash": "655d84f8f77a68571e7cca055f90dacaad6f59cccb74f907a8d6978f6a383c73",
+          "appliedVersion": 16
+        },
+        {
+          "result": {
+            "version": 17,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "local-board",
+          "command": "reconcile-lead-usage",
+          "actorType": "user",
+          "commandId": "820310f3-b036-4200-b27b-647b59eda9ac",
+          "recordedAt": "2026-10-04T15:42:13.353Z",
+          "payloadHash": "a0307ebb50d3d3ca0b64642bb69a48cfc3abea209d1608b109a9f6789c085d77",
+          "appliedVersion": 17
+        }
+      ],
+      "responsibilities": {
+        "finalReviewerAgentId": "117e34e5-241e-4bb3-a07e-ef975da88120",
+        "requiredPerspectives": [
+          "integration_quality"
+        ],
+        "integrationLeadAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2"
+      }
+    },
+    "createdAt": "2026-10-04T15:42:09.722Z",
+    "updatedAt": "2026-10-04T15:42:13.354Z"
+  },
+  "latest": {
+    "companyId": "8cfe0265-aa85-4a44-81f2-afb52690d8f7",
+    "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b",
+    "rootIssueId": "1f9ca573-8215-4498-bda9-d21b2e969719",
+    "projectId": "9087a06f-d8c3-4e23-a284-7e80b464e2fb",
+    "ownerUserId": "local-board",
+    "teamRosterId": "bd556ac1-395f-4b26-9dc1-71a5dcf9f50d",
+    "teamRevision": "baf3ead7-b19c-4d66-88a4-ebe91d9b16b5",
+    "councilRosterId": "44d979cc-f313-4580-8ced-08e6be0dfff2",
+    "councilRevision": "7931380b-36dc-431d-a0cc-3777f488a9f6",
+    "version": 22,
+    "aggregate": {
+      "n1": {
+        "candidate": {
+          "checks": [
+            {
+              "name": "issue-bound-bundle",
+              "detail": "973 bytes; SHA-256 verified",
+              "status": "passed"
+            },
+            {
+              "name": "git-import-configuration",
+              "detail": "bounded Git delta cache, packed-file mappings and single-thread pack window configured",
+              "status": "passed"
+            },
+            {
+              "name": "git-bundle-verify",
+              "detail": "self-contained bundle verified",
+              "status": "passed"
+            },
+            {
+              "name": "declared-refs",
+              "detail": "base and candidate refs match declared commits",
+              "status": "passed"
+            },
+            {
+              "name": "git-object-bounds",
+              "detail": "10 objects; 1236 expanded bytes",
+              "status": "passed"
+            },
+            {
+              "name": "git-object-integrity",
+              "detail": "git fsck --strict passed",
+              "status": "passed"
+            },
+            {
+              "name": "base-ancestry",
+              "detail": "candidate descends from declared base",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-ancestry",
+              "detail": "two distinct contribution commits are included",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-history-topology",
+              "detail": "each contribution is a bounded linear history rooted at base or a prior declared contribution",
+              "status": "passed"
+            },
+            {
+              "name": "write-ownership",
+              "detail": "every contribution commit changed only its declared paths",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-tree-preservation",
+              "detail": "both contributions survive in the candidate tree",
+              "status": "passed"
+            },
+            {
+              "name": "candidate-delta-attribution",
+              "detail": "complete candidate delta equals the union of attributed contribution deltas",
+              "status": "passed"
+            },
+            {
+              "name": "candidate-history-topology",
+              "detail": "candidate-only history contains exactly the declared integration commit",
+              "status": "passed"
+            },
+            {
+              "name": "git-diff-check",
+              "detail": "candidate diff passed git diff --check",
+              "status": "passed"
+            }
+          ],
+          "outcome": "verified",
+          "subject": {
+            "issueId": "1f9ca573-8215-4498-bda9-d21b2e969719",
+            "companyId": "8cfe0265-aa85-4a44-81f2-afb52690d8f7"
+          },
+          "candidate": {
+            "sha256": "0ef742f3798049d7f290ed65f3dc63392dca58bf9d532a6cdfa7d990d79dcb17",
+            "byteSize": 973,
+            "baseCommit": "efd160dd1e9fe6107cb6a2420e48ced9db401902",
+            "attachmentId": "0b2ea52f-34f8-4fc8-8528-0126d6af227b",
+            "candidateCommit": "ee8b193710fe00a4b6a2a6c50e5c6211bd0b6124"
+          },
+          "contributions": [
+            {
+              "commit": "885b768bb481750b3ef1c79c5123e9cc52648882",
+              "ownedPaths": [
+                "alpha.txt"
+              ],
+              "changedPaths": [
+                "alpha.txt"
+              ],
+              "contributionId": "7a3fbb7b-7874-4ba6-9393-37da15aa12ba"
+            },
+            {
+              "commit": "068073cd3540a9d11758a66765a1f0682043b8e3",
+              "ownedPaths": [
+                "beta.txt"
+              ],
+              "changedPaths": [
+                "beta.txt"
+              ],
+              "contributionId": "ac0ce6bf-721c-4547-bc00-392f6a6a129d"
+            }
+          ],
+          "publicationEligible": true
+        },
+        "periodKey": "ordinary-installed",
+        "activatedAt": "2026-10-04T15:42:09.762Z",
+        "contributions": [
+          {
+            "title": "alpha",
+            "commit": "885b768bb481750b3ef1c79c5123e9cc52648882",
+            "intentId": "f8729bcb-aaba-40df-ac98-d91a84030aae",
+            "issueState": "confirmed",
+            "ownedPaths": [
+              "alpha.txt"
+            ],
+            "authorRunId": "b86d7687-4f3c-45e2-8400-cf6d5f83ede0",
+            "childIssueId": "23691402-6cc1-482e-843d-09350a8ba929",
+            "dispatchRunId": "b86d7687-4f3c-45e2-8400-cf6d5f83ede0",
+            "dispatchState": "requested",
+            "contributionId": "7a3fbb7b-7874-4ba6-9393-37da15aa12ba",
+            "assigneeAgentId": "383ba830-db0f-426a-9da1-b9f6c6834d5b",
+            "dispatchReservationId": "b77ea232-f4ca-4585-976b-1dbd39e0ea11",
+            "dispatchUsageBaselineUnits": 0
+          },
+          {
+            "title": "beta",
+            "commit": "068073cd3540a9d11758a66765a1f0682043b8e3",
+            "intentId": "34736049-df0d-4a1a-870e-1f99af5288a6",
+            "issueState": "confirmed",
+            "ownedPaths": [
+              "beta.txt"
+            ],
+            "authorRunId": "11cf3cf8-cf62-4ee0-9728-3843d0c65729",
+            "childIssueId": "e9e13190-5a28-4cee-a4aa-f33b736f2f88",
+            "dispatchRunId": "11cf3cf8-cf62-4ee0-9728-3843d0c65729",
+            "dispatchState": "requested",
+            "contributionId": "ac0ce6bf-721c-4547-bc00-392f6a6a129d",
+            "assigneeAgentId": "c103848e-169b-4d6a-adca-ebbe59042f6b",
+            "dispatchReservationId": "56a26aed-4da9-4f0a-847c-6296952a6d8a",
+            "dispatchUsageBaselineUnits": 0
+          }
+        ],
+        "rootDispatchMode": "native",
+        "rootDispatchRunId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+        "rootDispatchState": "requested",
+        "rootUsageBaselineUnits": 0,
+        "activationReservationId": "4510fc33-f6a8-4669-ad70-2c6554afa8c8",
+        "candidateRecordedVersion": 16
+      },
+      "n2": {
+        "rounds": [
+          {
+            "round": 1,
+            "handoff": {
+              "state": "awaiting_native",
+              "reason": null,
+              "observedAt": null,
+              "reservationId": "3d83a815-7b8e-43a2-898e-4a09b27b5d72",
+              "reviewerRunId": null,
+              "baselineRunIds": [],
+              "baselineTokenTotal": 0
+            },
+            "verdict": null,
+            "submissionId": "88c5474e-5106-4648-9e97-b57e48eabd0c",
+            "reviewerAgentId": "117e34e5-241e-4bb3-a07e-ef975da88120"
+          }
+        ],
+        "status": "review_handoff",
+        "ordinary": {
+          "tasks": [
+            {
+              "kind": "specialist",
+              "wake": "claimed",
+              "runId": "c697b185-57fd-4a36-a3a8-4340991b247e",
+              "slotId": "ec8203f6-c32d-481f-8ffb-1640e74bd758",
+              "taskId": "3669210a-64bf-4082-8e3c-6747632b5e52",
+              "agentId": "90498334-acd5-4427-8ef6-462ae3bc4e94",
+              "issueId": "254a70a8-dfcc-48ec-820d-3260ed938267",
+              "creation": "confirmed",
+              "submissionId": "88c5474e-5106-4648-9e97-b57e48eabd0c",
+              "reservationId": "088c07df-ace8-436d-bfc4-743e899f51bf",
+              "settlementCommandId": "8d6c64d6-2756-46a5-9d1f-1d8ba5fcba2f"
+            },
+            {
+              "kind": "specialist",
+              "wake": "pending",
+              "runId": null,
+              "slotId": "1b7af803-45c0-4668-be7a-a18d9fabca8e",
+              "taskId": "77826f3b-7546-4309-bc10-09e7657dde98",
+              "agentId": "074b5e45-c764-40b4-ad49-840f788af34a",
+              "issueId": null,
+              "creation": "pending",
+              "submissionId": "88c5474e-5106-4648-9e97-b57e48eabd0c",
+              "reservationId": "960e4ee7-df31-4ea8-88fe-2419bdb7df2f",
+              "settlementCommandId": "ca98e915-9ca7-47a4-aa51-8f6cc952c794"
+            },
+            {
+              "kind": "council",
+              "wake": "pending",
+              "runId": null,
+              "taskId": "f6bb8726-d20c-401b-949b-5022b76c90ae",
+              "agentId": "117e34e5-241e-4bb3-a07e-ef975da88120",
+              "issueId": null,
+              "creation": "pending",
+              "submissionId": "88c5474e-5106-4648-9e97-b57e48eabd0c",
+              "reservationId": "3d83a815-7b8e-43a2-898e-4a09b27b5d72",
+              "settlementCommandId": "7b3022f4-681e-4582-b9de-d2e1a2c09464"
+            }
+          ],
+          "protocol": "ordinary-cli-v1"
+        },
+        "correction": null,
+        "application": {
+          "state": "none",
+          "operationId": null,
+          "nativeStatus": null,
+          "receiptState": null,
+          "submissionId": null
+        },
+        "submissions": [
+          {
+            "sha256": "0ef742f3798049d7f290ed65f3dc63392dca58bf9d532a6cdfa7d990d79dcb17",
+            "ordinal": 1,
+            "byteSize": 973,
+            "baseCommit": "efd160dd1e9fe6107cb6a2420e48ced9db401902",
+            "verifiedAt": "2026-10-04T15:42:13.406Z",
+            "mandateHash": "5e93f27e6d0209e1e8ebfcce32caf65ed999d34c785074593d5909b9c575abde",
+            "attachmentId": "0b2ea52f-34f8-4fc8-8528-0126d6af227b",
+            "submissionId": "88c5474e-5106-4648-9e97-b57e48eabd0c",
+            "candidateCommit": "ee8b193710fe00a4b6a2a6c50e5c6211bd0b6124",
+            "evidenceRevision": 17,
+            "predecessorSubmissionId": null
+          }
+        ],
+        "schemaVersion": 1,
+        "correctionLimit": 1,
+        "correctionsUsed": 0,
+        "activeSubmissionId": "88c5474e-5106-4648-9e97-b57e48eabd0c"
+      },
+      "n3": {
+        "slots": [
+          {
+            "slotId": "ec8203f6-c32d-481f-8ffb-1640e74bd758",
+            "question": "product review of the exact candidate and alpha correction marker",
+            "required": true,
+            "perspective": "product",
+            "specialistAgentId": "90498334-acd5-4427-8ef6-462ae3bc4e94"
+          },
+          {
+            "slotId": "1b7af803-45c0-4668-be7a-a18d9fabca8e",
+            "question": "quality review of the exact candidate and alpha correction marker",
+            "required": true,
+            "perspective": "quality",
+            "specialistAgentId": "074b5e45-c764-40b4-ad49-840f788af34a"
+          }
+        ],
+        "rounds": [
+          {
+            "review": {
+              "slots": [
+                {
+                  "slotId": "ec8203f6-c32d-481f-8ffb-1640e74bd758",
+                  "question": "product review of the exact candidate and alpha correction marker",
+                  "required": true,
+                  "perspective": "product",
+                  "specialistAgentId": "90498334-acd5-4427-8ef6-462ae3bc4e94"
+                },
+                {
+                  "slotId": "1b7af803-45c0-4668-be7a-a18d9fabca8e",
+                  "question": "quality review of the exact candidate and alpha correction marker",
+                  "required": true,
+                  "perspective": "quality",
+                  "specialistAgentId": "074b5e45-c764-40b4-ad49-840f788af34a"
+                }
+              ],
+              "status": "collecting_opinions",
+              "subject": {
+                "mandateHash": "5e93f27e6d0209e1e8ebfcce32caf65ed999d34c785074593d5909b9c575abde",
+                "bundleSha256": "0ef742f3798049d7f290ed65f3dc63392dca58bf9d532a6cdfa7d990d79dcb17",
+                "submissionId": "88c5474e-5106-4648-9e97-b57e48eabd0c",
+                "candidateCommit": "ee8b193710fe00a4b6a2a6c50e5c6211bd0b6124",
+                "evidenceRevision": 17
+              },
+              "opinions": [],
+              "synthesis": null,
+              "schemaVersion": 1,
+              "authorAgentIds": [
+                "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+                "383ba830-db0f-426a-9da1-b9f6c6834d5b",
+                "c103848e-169b-4d6a-adca-ebbe59042f6b"
+              ],
+              "finalReviewerAgentId": "117e34e5-241e-4bb3-a07e-ef975da88120"
+            },
+            "specialists": [
+              {
+                "wake": "pending",
+                "runId": null,
+                "slotId": "ec8203f6-c32d-481f-8ffb-1640e74bd758",
+                "issueId": null,
+                "creation": "pending",
+                "reservationId": "46fab8ba-ffa5-49bb-b9f2-7a45e0ff6784",
+                "settlementCommandId": "ea0e2116-9000-4f37-9f1f-7f5be2b7b256"
+              },
+              {
+                "wake": "pending",
+                "runId": null,
+                "slotId": "1b7af803-45c0-4668-be7a-a18d9fabca8e",
+                "issueId": null,
+                "creation": "pending",
+                "reservationId": "0161a8bc-a2ed-4f55-9048-c4edd84c791c",
+                "settlementCommandId": "08257ba9-6193-4a03-8546-b97a45181f8f"
+              }
+            ]
+          }
+        ]
+      },
+      "phase": "review_handoff",
+      "control": {
+        "status": "active"
+      },
+      "journal": [
+        {
+          "at": "2026-10-04T15:42:09.721Z",
+          "action": "mission_recorded",
+          "actorUserId": "local-board"
+        },
+        {
+          "at": "2026-10-04T15:42:09.762Z",
+          "action": "mission_activated",
+          "periodKey": "ordinary-installed",
+          "actorUserId": "local-board",
+          "reservationId": "4510fc33-f6a8-4669-ad70-2c6554afa8c8"
+        },
+        {
+          "at": "2026-10-04T15:42:09.803Z",
+          "action": "root_dispatch_claimed",
+          "actorUserId": "local-board",
+          "reservationId": "4510fc33-f6a8-4669-ad70-2c6554afa8c8"
+        },
+        {
+          "at": "2026-10-04T15:42:10.479Z",
+          "runId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "action": "contribution_plan_recorded",
+          "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2"
+        },
+        {
+          "at": "2026-10-04T15:42:10.570Z",
+          "runId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "action": "child_creation_claimed",
+          "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "contributionId": "7a3fbb7b-7874-4ba6-9393-37da15aa12ba"
+        },
+        {
+          "at": "2026-10-04T15:42:10.698Z",
+          "runId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "action": "child_creation_claimed",
+          "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "contributionId": "ac0ce6bf-721c-4547-bc00-392f6a6a129d"
+        },
+        {
+          "at": "2026-10-04T15:42:10.851Z",
+          "runId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "action": "child_dispatch_claimed",
+          "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "reservationId": "b77ea232-f4ca-4585-976b-1dbd39e0ea11",
+          "contributionId": "7a3fbb7b-7874-4ba6-9393-37da15aa12ba"
+        },
+        {
+          "at": "2026-10-04T15:42:11.411Z",
+          "runId": "b86d7687-4f3c-45e2-8400-cf6d5f83ede0",
+          "action": "contribution_recorded",
+          "commit": "885b768bb481750b3ef1c79c5123e9cc52648882",
+          "actorAgentId": "383ba830-db0f-426a-9da1-b9f6c6834d5b",
+          "contributionId": "7a3fbb7b-7874-4ba6-9393-37da15aa12ba"
+        },
+        {
+          "at": "2026-10-04T15:42:11.879Z",
+          "runId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "action": "child_dispatch_claimed",
+          "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "reservationId": "56a26aed-4da9-4f0a-847c-6296952a6d8a",
+          "contributionId": "ac0ce6bf-721c-4547-bc00-392f6a6a129d"
+        },
+        {
+          "at": "2026-10-04T15:42:12.450Z",
+          "runId": "11cf3cf8-cf62-4ee0-9728-3843d0c65729",
+          "action": "contribution_recorded",
+          "commit": "068073cd3540a9d11758a66765a1f0682043b8e3",
+          "actorAgentId": "c103848e-169b-4d6a-adca-ebbe59042f6b",
+          "contributionId": "ac0ce6bf-721c-4547-bc00-392f6a6a129d"
+        },
+        {
+          "at": "2026-10-04T15:42:13.082Z",
+          "runId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "action": "integrated_candidate_verified",
+          "checks": [
+            {
+              "name": "issue-bound-bundle",
+              "detail": "973 bytes; SHA-256 verified",
+              "status": "passed"
+            },
+            {
+              "name": "git-import-configuration",
+              "detail": "bounded Git delta cache, packed-file mappings and single-thread pack window configured",
+              "status": "passed"
+            },
+            {
+              "name": "git-bundle-verify",
+              "detail": "self-contained bundle verified",
+              "status": "passed"
+            },
+            {
+              "name": "declared-refs",
+              "detail": "base and candidate refs match declared commits",
+              "status": "passed"
+            },
+            {
+              "name": "git-object-bounds",
+              "detail": "10 objects; 1236 expanded bytes",
+              "status": "passed"
+            },
+            {
+              "name": "git-object-integrity",
+              "detail": "git fsck --strict passed",
+              "status": "passed"
+            },
+            {
+              "name": "base-ancestry",
+              "detail": "candidate descends from declared base",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-ancestry",
+              "detail": "two distinct contribution commits are included",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-history-topology",
+              "detail": "each contribution is a bounded linear history rooted at base or a prior declared contribution",
+              "status": "passed"
+            },
+            {
+              "name": "write-ownership",
+              "detail": "every contribution commit changed only its declared paths",
+              "status": "passed"
+            },
+            {
+              "name": "contribution-tree-preservation",
+              "detail": "both contributions survive in the candidate tree",
+              "status": "passed"
+            },
+            {
+              "name": "candidate-delta-attribution",
+              "detail": "complete candidate delta equals the union of attributed contribution deltas",
+              "status": "passed"
+            },
+            {
+              "name": "candidate-history-topology",
+              "detail": "candidate-only history contains exactly the declared integration commit",
+              "status": "passed"
+            },
+            {
+              "name": "git-diff-check",
+              "detail": "candidate diff passed git diff --check",
+              "status": "passed"
+            }
+          ],
+          "candidate": {
+            "sha256": "0ef742f3798049d7f290ed65f3dc63392dca58bf9d532a6cdfa7d990d79dcb17",
+            "byteSize": 973,
+            "baseCommit": "efd160dd1e9fe6107cb6a2420e48ced9db401902",
+            "attachmentId": "0b2ea52f-34f8-4fc8-8528-0126d6af227b",
+            "candidateCommit": "ee8b193710fe00a4b6a2a6c50e5c6211bd0b6124"
+          },
+          "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2"
+        },
+        {
+          "at": "2026-10-04T15:42:13.353Z",
+          "runId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "action": "lead_usage_settled_candidate_ready",
+          "candidate": {
+            "sha256": "0ef742f3798049d7f290ed65f3dc63392dca58bf9d532a6cdfa7d990d79dcb17",
+            "byteSize": 973,
+            "baseCommit": "efd160dd1e9fe6107cb6a2420e48ced9db401902",
+            "attachmentId": "0b2ea52f-34f8-4fc8-8528-0126d6af227b",
+            "candidateCommit": "ee8b193710fe00a4b6a2a6c50e5c6211bd0b6124"
+          },
+          "actorUserId": "local-board"
+        }
+      ],
+      "mandate": {
+        "limits": {
+          "taskPolicy": "1000 tokens reserved",
+          "periodPolicy": "20000 token envelope",
+          "elapsedMinutes": 30,
+          "correctionLimit": 1
+        },
+        "objective": "Two contributions and independent Council correction",
+        "commitments": [
+          "Provider-free CLI fixture",
+          "One correction maximum"
+        ],
+        "acceptanceCriteria": [
+          "Alpha must contain corrected marker",
+          "Two attributed contributions"
+        ]
+      },
+      "companyId": "8cfe0265-aa85-4a44-81f2-afb52690d8f7",
+      "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b",
+      "projectId": "9087a06f-d8c3-4e23-a284-7e80b464e2fb",
+      "readiness": {
+        "mission": "recorded",
+        "blockers": [
+          {
+            "code": "g4_root_reserved",
+            "status": "ready",
+            "message": "Root lead launch allowance is durably reserved."
+          },
+          {
+            "code": "child_dispatch_pending",
+            "status": "pending",
+            "message": "Child launches require their own admission and effect reconciliation."
+          }
+        ],
+        "execution": "blocked",
+        "compositions": "pinned"
+      },
+      "ownerUserId": "local-board",
+      "rootIssueId": "1f9ca573-8215-4498-bda9-d21b2e969719",
+      "compositions": {
+        "team": {
+          "kind": "team",
+          "name": "Team",
+          "members": [
+            {
+              "agentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+              "responsibilities": [
+                "integration_lead"
+              ]
+            },
+            {
+              "agentId": "383ba830-db0f-426a-9da1-b9f6c6834d5b",
+              "responsibilities": [
+                "contributor"
+              ]
+            },
+            {
+              "agentId": "c103848e-169b-4d6a-adca-ebbe59042f6b",
+              "responsibilities": [
+                "contributor"
+              ]
+            }
+          ],
+          "revision": "baf3ead7-b19c-4d66-88a4-ebe91d9b16b5",
+          "rosterId": "bd556ac1-395f-4b26-9dc1-71a5dcf9f50d",
+          "projectId": "9087a06f-d8c3-4e23-a284-7e80b464e2fb"
+        },
+        "status": "pinned",
+        "council": {
+          "kind": "council",
+          "name": "Council",
+          "members": [
+            {
+              "agentId": "117e34e5-241e-4bb3-a07e-ef975da88120",
+              "responsibilities": [
+                "final_reviewer"
+              ]
+            }
+          ],
+          "revision": "7931380b-36dc-431d-a0cc-3777f488a9f6",
+          "rosterId": "44d979cc-f313-4580-8ced-08e6be0dfff2",
+          "projectId": "9087a06f-d8c3-4e23-a284-7e80b464e2fb"
+        }
+      },
+      "effectIntents": [
+        {
+          "kind": "root_wakeup",
+          "runId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "state": "requested",
+          "queued": true,
+          "issueId": "1f9ca573-8215-4498-bda9-d21b2e969719",
+          "reservationId": "4510fc33-f6a8-4669-ad70-2c6554afa8c8",
+          "assigneeAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2"
+        },
+        {
+          "kind": "child_issue_create",
+          "actor": {
+            "actorRunId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+            "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2"
+          },
+          "state": "confirmed",
+          "title": "alpha",
+          "intentId": "f8729bcb-aaba-40df-ac98-d91a84030aae",
+          "companyId": "8cfe0265-aa85-4a44-81f2-afb52690d8f7",
+          "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b",
+          "projectId": "9087a06f-d8c3-4e23-a284-7e80b464e2fb",
+          "description": "Council N1 contribution. Complete only this bounded child issue.\nMission ID: ec15a523-62ea-4f17-b6ed-20489d448f9b\nContribution ID: 7a3fbb7b-7874-4ba6-9393-37da15aa12ba\nOwned paths: alpha.txt\nDo not modify files outside the owned paths. Commit the completed change on the current shared branch.\nUse the authenticated endpoint /api/plugins/private.paperclip-council/api/issues/<this-child-issue-id>/council/commands. The first request body is exactly {\"command\":\"inspect\",\"missionId\":\"ec15a523-62ea-4f17-b6ed-20489d448f9b\"}. Read body.version, then send command=record-contribution with missionId, a fresh commandId, that expectedVersion, the contributionId, and the 40-character commit SHA.\nFor every fresh commandId, run this exact command once and separately: node -e \"console.log(require('node:crypto').randomUUID())\". Never invent, partially copy, or manually edit a UUID.\nMark this Paperclip child issue done only after record-contribution succeeds.\nFor any non-2xx response, preserve the HTTP status and sanitized JSON response body in your final report without exposing credentials.\n\nPlugins/skills à utiliser\nUse the Paperclip skill injected by the host for issue context, authenticated API calls, and status updates. No additional plugin is required.\n\nModele et effort recommandes\nTarget: bounded implementation contributor. Model: gpt-5.6-sol. Effort: high because the run participates in a governed native integration proof. Re-evaluate only if availability is rejected before launch; do not silently substitute. Source: independent mapping /home/davy-lp/.codex/shared/model-selection/model-effort-mapping.md, updated 2026-09-05. Effective runtime settings must be observed separately.",
+          "rootIssueId": "1f9ca573-8215-4498-bda9-d21b2e969719",
+          "childIssueId": "23691402-6cc1-482e-843d-09350a8ba929",
+          "unknownReason": null,
+          "contributionId": "7a3fbb7b-7874-4ba6-9393-37da15aa12ba",
+          "assigneeAgentId": "383ba830-db0f-426a-9da1-b9f6c6834d5b"
+        },
+        {
+          "kind": "child_issue_create",
+          "actor": {
+            "actorRunId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+            "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2"
+          },
+          "state": "confirmed",
+          "title": "beta",
+          "intentId": "34736049-df0d-4a1a-870e-1f99af5288a6",
+          "companyId": "8cfe0265-aa85-4a44-81f2-afb52690d8f7",
+          "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b",
+          "projectId": "9087a06f-d8c3-4e23-a284-7e80b464e2fb",
+          "description": "Council N1 contribution. Complete only this bounded child issue.\nMission ID: ec15a523-62ea-4f17-b6ed-20489d448f9b\nContribution ID: ac0ce6bf-721c-4547-bc00-392f6a6a129d\nOwned paths: beta.txt\nDo not modify files outside the owned paths. Commit the completed change on the current shared branch.\nUse the authenticated endpoint /api/plugins/private.paperclip-council/api/issues/<this-child-issue-id>/council/commands. The first request body is exactly {\"command\":\"inspect\",\"missionId\":\"ec15a523-62ea-4f17-b6ed-20489d448f9b\"}. Read body.version, then send command=record-contribution with missionId, a fresh commandId, that expectedVersion, the contributionId, and the 40-character commit SHA.\nFor every fresh commandId, run this exact command once and separately: node -e \"console.log(require('node:crypto').randomUUID())\". Never invent, partially copy, or manually edit a UUID.\nMark this Paperclip child issue done only after record-contribution succeeds.\nFor any non-2xx response, preserve the HTTP status and sanitized JSON response body in your final report without exposing credentials.\n\nPlugins/skills à utiliser\nUse the Paperclip skill injected by the host for issue context, authenticated API calls, and status updates. No additional plugin is required.\n\nModele et effort recommandes\nTarget: bounded implementation contributor. Model: gpt-5.6-sol. Effort: high because the run participates in a governed native integration proof. Re-evaluate only if availability is rejected before launch; do not silently substitute. Source: independent mapping /home/davy-lp/.codex/shared/model-selection/model-effort-mapping.md, updated 2026-09-05. Effective runtime settings must be observed separately.",
+          "rootIssueId": "1f9ca573-8215-4498-bda9-d21b2e969719",
+          "childIssueId": "e9e13190-5a28-4cee-a4aa-f33b736f2f88",
+          "unknownReason": null,
+          "contributionId": "ac0ce6bf-721c-4547-bc00-392f6a6a129d",
+          "assigneeAgentId": "c103848e-169b-4d6a-adca-ebbe59042f6b"
+        },
+        {
+          "kind": "child_wakeup",
+          "runId": "b86d7687-4f3c-45e2-8400-cf6d5f83ede0",
+          "state": "requested",
+          "queued": true,
+          "issueId": "23691402-6cc1-482e-843d-09350a8ba929",
+          "actorRunId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "reservationId": "b77ea232-f4ca-4585-976b-1dbd39e0ea11",
+          "contributionId": "7a3fbb7b-7874-4ba6-9393-37da15aa12ba",
+          "assigneeAgentId": "383ba830-db0f-426a-9da1-b9f6c6834d5b"
+        },
+        {
+          "kind": "child_wakeup",
+          "runId": "11cf3cf8-cf62-4ee0-9728-3843d0c65729",
+          "state": "requested",
+          "queued": true,
+          "issueId": "e9e13190-5a28-4cee-a4aa-f33b736f2f88",
+          "actorRunId": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+          "actorAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "reservationId": "56a26aed-4da9-4f0a-847c-6296952a6d8a",
+          "contributionId": "ac0ce6bf-721c-4547-bc00-392f6a6a129d",
+          "assigneeAgentId": "c103848e-169b-4d6a-adca-ebbe59042f6b"
+        }
+      ],
+      "schemaVersion": 1,
+      "commandReceipts": [
+        {
+          "result": {
+            "version": 1,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "local-board",
+          "command": "create",
+          "actorType": "user",
+          "commandId": "5d33d134-da2a-48f1-ad0d-f0bcb2a74c44",
+          "recordedAt": "2026-10-04T15:42:09.721Z",
+          "payloadHash": "8df7869f98ada11679e3d9d994be6954a00af3af3030e56ff1a21f840c46cbe9",
+          "appliedVersion": 1
+        },
+        {
+          "result": {
+            "version": 2,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "local-board",
+          "command": "activate",
+          "actorType": "user",
+          "commandId": "96c07522-d664-4c2b-af0e-391750793e70",
+          "recordedAt": "2026-10-04T15:42:09.762Z",
+          "payloadHash": "d033fb26a971dd1a22ec62577417b8d2f96448a31c8685faddbde5c8e52db884",
+          "appliedVersion": 2
+        },
+        {
+          "result": {
+            "version": 3,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "local-board",
+          "command": "start-lead",
+          "actorType": "user",
+          "commandId": "c5b6396a-9ec1-41aa-b27e-d9591ed3d58c",
+          "recordedAt": "2026-10-04T15:42:09.803Z",
+          "payloadHash": "4988724ab361843d0b9e24aa215ee5feff81be6f5a07900115cfda75b5e3a4b8",
+          "appliedVersion": 3
+        },
+        {
+          "result": {
+            "version": 5,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "command": "plan",
+          "actorType": "agent",
+          "commandId": "fe96775f-aef8-4451-b145-8419e0a5a00e",
+          "recordedAt": "2026-10-04T15:42:10.479Z",
+          "payloadHash": "c2c4b39ddfd56ae704dddfdbd2c4526ae9cbe312bd01365f408861e536416833",
+          "appliedVersion": 5
+        },
+        {
+          "result": {
+            "version": 6,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "command": "materialize",
+          "actorType": "agent",
+          "commandId": "fb96fe38-c92e-453c-a2ef-35af95025146",
+          "recordedAt": "2026-10-04T15:42:10.570Z",
+          "payloadHash": "57a41d0b1f27a650f8608b72d27d4e0a0b7e860056b85b966c4ee668951d7557",
+          "appliedVersion": 6
+        },
+        {
+          "result": {
+            "version": 8,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "command": "materialize",
+          "actorType": "agent",
+          "commandId": "fff68722-8b91-4dc6-8c21-9eb564cae215",
+          "recordedAt": "2026-10-04T15:42:10.698Z",
+          "payloadHash": "ba5fa04e98244cb45dfc731229fc071f8021ed4dd5048daff44da08d2db22bb4",
+          "appliedVersion": 8
+        },
+        {
+          "result": {
+            "version": 10,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "command": "dispatch",
+          "actorType": "agent",
+          "commandId": "63c81b15-94c4-4004-af94-86ae32d5cd9d",
+          "recordedAt": "2026-10-04T15:42:10.851Z",
+          "payloadHash": "fc7b0a19dd6fbee2a22bbc9f16568c6f5774eb6c593a7c0dbf1c515df33ac70c",
+          "appliedVersion": 10
+        },
+        {
+          "result": {
+            "version": 12,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "383ba830-db0f-426a-9da1-b9f6c6834d5b",
+          "command": "record-contribution",
+          "actorType": "agent",
+          "commandId": "f2037f68-d689-4b2f-a51a-85cbe60d1e59",
+          "recordedAt": "2026-10-04T15:42:11.411Z",
+          "payloadHash": "23ed97a7c6afcde59aec14297bb83105654b067615dbcf4e1eb44e4e319399a5",
+          "appliedVersion": 12
+        },
+        {
+          "result": {
+            "version": 13,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "command": "dispatch",
+          "actorType": "agent",
+          "commandId": "43bc3aca-712f-4a8d-a752-71aecd4caa41",
+          "recordedAt": "2026-10-04T15:42:11.879Z",
+          "payloadHash": "bfb2ff773a6e081262efe7c8b1e94ff80d12f8bf597ca208acc7deac37dd2403",
+          "appliedVersion": 13
+        },
+        {
+          "result": {
+            "version": 15,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "c103848e-169b-4d6a-adca-ebbe59042f6b",
+          "command": "record-contribution",
+          "actorType": "agent",
+          "commandId": "5d8e0395-bb57-4040-ad59-fb5b36760f82",
+          "recordedAt": "2026-10-04T15:42:12.451Z",
+          "payloadHash": "e4f1fe55d7f0d096c672d9ed2c3e1cdb310910084febfb7eef139ab7003c5d84",
+          "appliedVersion": 15
+        },
+        {
+          "result": {
+            "version": 16,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+          "command": "publish",
+          "actorType": "agent",
+          "commandId": "698a02aa-5ce5-49f7-83fb-014ce9850e0b",
+          "recordedAt": "2026-10-04T15:42:13.082Z",
+          "payloadHash": "655d84f8f77a68571e7cca055f90dacaad6f59cccb74f907a8d6978f6a383c73",
+          "appliedVersion": 16
+        },
+        {
+          "result": {
+            "version": 17,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "local-board",
+          "command": "reconcile-lead-usage",
+          "actorType": "user",
+          "commandId": "820310f3-b036-4200-b27b-647b59eda9ac",
+          "recordedAt": "2026-10-04T15:42:13.353Z",
+          "payloadHash": "a0307ebb50d3d3ca0b64642bb69a48cfc3abea209d1608b109a9f6789c085d77",
+          "appliedVersion": 17
+        },
+        {
+          "result": {
+            "version": 18,
+            "missionId": "ec15a523-62ea-4f17-b6ed-20489d448f9b"
+          },
+          "actorId": "local-board",
+          "command": "start-review",
+          "actorType": "user",
+          "commandId": "ba15086e-5020-4029-bb2f-a031a083aef6",
+          "recordedAt": "2026-10-04T15:42:13.411Z",
+          "payloadHash": "64f852f32a32733093bdf6f5b17cf438a08b89fa72c931bab4acb812d90246e5",
+          "appliedVersion": 18
+        }
+      ],
+      "responsibilities": {
+        "finalReviewerAgentId": "117e34e5-241e-4bb3-a07e-ef975da88120",
+        "requiredPerspectives": [
+          "integration_quality"
+        ],
+        "integrationLeadAgentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2"
+      }
+    },
+    "createdAt": "2026-10-04T15:42:09.722Z",
+    "updatedAt": "2026-10-04T15:42:13.547Z"
+  },
+  "error": {
+    "message": "AssertionError [ERR_ASSERTION]: [{\"id\":\"a42ea32d-4db1-4c8d-b2b0-26fd988f0fdc\",\"status\":\"scheduled_retry\",\"error\":null},{\"id\":\"c697b185-57fd-4a36-a3a8-4340991b247e\",\"status\":\"failed\",\"error\":\"file:///home/davy-lp/.codex/worktrees/council-n5/paperclip-council/tests/functional/ordinary-cli-fixture.mjs:21\"},{\"id\":\"11cf3cf8-cf62-4ee0-9728-3843d0c65729\",\"status\":\"succeeded\",\"error\":null},{\"id\":\"b86d7687-4f3c-45e2-8400-cf6d5f83ede0\",\"status\":\"succeeded\",\"error\":null},{\"id\":\"cc56788b-1a48-41e4-80d7-901fc0a489cd\",\"status\":\"succeeded\",\"error\":null}]",
+    "stack": "AssertionError [ERR_ASSERTION]: [{\"id\":\"a42ea32d-4db1-4c8d-b2b0-26fd988f0fdc\",\"status\":\"scheduled_retry\",\"error\":null},{\"id\":\"c697b185-57fd-4a36-a3a8-4340991b247e\",\"status\":\"failed\",\"error\":\"file:///home/davy-lp/.codex/worktrees/council-n5/paperclip-council/tests/functional/ordinary-cli-fixture.mjs:21\"},{\"id\":\"11cf3cf8-cf62-4ee0-9728-3843d0c65729\",\"status\":\"succeeded\",\"error\":null},{\"id\":\"b86d7687-4f3c-45e2-8400-cf6d5f83ede0\",\"status\":\"succeeded\",\"error\":null},{\"id\":\"cc56788b-1a48-41e4-80d7-901fc0a489cd\",\"status\":\"succeeded\",\"error\":null}]\n    at mission (/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/tests/functional/ordinary-installed.ts:192:5)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async waitFor (/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/tests/functional/ordinary-installed.ts:51:19)\n    at async <anonymous> (/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/tests/functional/ordinary-installed.ts:189:13)"
+  },
+  "runs": [
+    {
+      "id": "a42ea32d-4db1-4c8d-b2b0-26fd988f0fdc",
+      "companyId": "8cfe0265-aa85-4a44-81f2-afb52690d8f7",
+      "agentId": "90498334-acd5-4427-8ef6-462ae3bc4e94",
+      "invocationSource": "automation",
+      "triggerDetail": "system",
+      "status": "scheduled_retry",
+      "startedAt": null,
+      "finishedAt": null,
+      "error": null,
+      "wakeupRequestId": "3f089ad6-df23-4f48-a191-a49f26852515",
+      "exitCode": null,
+      "signal": null,
+      "usageJson": null,
+      "sessionIdBefore": null,
+      "sessionIdAfter": null,
+      "logStore": null,
+      "logRef": null,
+      "logBytes": null,
+      "logSha256": null,
+      "logCompressed": false,
+      "stdoutExcerpt": null,
+      "stderrExcerpt": null,
+      "errorCode": null,
+      "externalRunId": null,
+      "processPid": null,
+      "processGroupId": null,
+      "processStartedAt": null,
+      "lastOutputAt": null,
+      "lastOutputSeq": 0,
+      "lastOutputStream": null,
+      "lastOutputBytes": null,
+      "retryOfRunId": "c697b185-57fd-4a36-a3a8-4340991b247e",
+      "processLossRetryCount": 0,
+      "scheduledRetryAt": "2026-10-04T15:42:44.124Z",
+      "scheduledRetryAttempt": 1,
+      "scheduledRetryReason": "transient_failure",
+      "livenessState": null,
+      "livenessReason": null,
+      "continuationAttempt": 0,
+      "lastUsefulActionAt": null,
+      "nextAction": null,
+      "createdAt": "2026-10-04T15:42:14.135Z",
+      "updatedAt": "2026-10-04T15:42:14.124Z",
+      "contextSnapshot": {
+        "issueId": "254a70a8-dfcc-48ec-820d-3260ed938267",
+        "taskId": "254a70a8-dfcc-48ec-820d-3260ed938267",
+        "taskKey": "254a70a8-dfcc-48ec-820d-3260ed938267",
+        "wakeReason": "transient_failure_retry",
+        "wakeSource": "assignment",
+        "wakeTriggerDetail": "system"
+      },
+      "resultJson": null
+    },
+    {
+      "id": "c697b185-57fd-4a36-a3a8-4340991b247e",
+      "companyId": "8cfe0265-aa85-4a44-81f2-afb52690d8f7",
+      "agentId": "90498334-acd5-4427-8ef6-462ae3bc4e94",
+      "invocationSource": "assignment",
+      "triggerDetail": "system",
+      "status": "failed",
+      "startedAt": "2026-10-04T15:42:13.526Z",
+      "finishedAt": "2026-10-04T15:42:14.074Z",
+      "error": "file:///home/davy-lp/.codex/worktrees/council-n5/paperclip-council/tests/functional/ordinary-cli-fixture.mjs:21",
+      "wakeupRequestId": "574fa886-2dc4-4f23-9cac-a31d6e12caea",
+      "exitCode": 1,
+      "signal": null,
+      "usageJson": {
+        "model": "fixture-no-provider",
+        "biller": "chatgpt",
+        "provider": "openai",
+        "costStatus": "reported",
+        "billingType": "subscription_included",
+        "inputTokens": 0,
+        "usageSource": "per_run",
+        "freshSession": true,
+        "outputTokens": 0,
+        "sessionReused": false,
+        "rawInputTokens": 0,
+        "sessionRotated": false,
+        "configFreshness": {
+          "session": {
+            "reset": false,
+            "categories": [
+              "adapter",
+              "adapterConfig",
+              "agentRuntimeConfig",
+              "instructions",
+              "issueOverrides",
+              "workspaceConfig",
+              "environment",
+              "envBindings",
+              "secrets",
+              "runtimeSkills"
+            ],
+            "resetReasons": [],
+            "nextFingerprint": "v1:sha256:7a1791d96fb4971d1b5f073e47ddfeb3fac05150e8e2cd07d3c8985535b92e90",
+            "changedCategories": [],
+            "taskSessionReused": false,
+            "fingerprintVersion": 1,
+            "taskSessionAvailable": false,
+            "storedFingerprintPresent": false
+          },
+          "version": 1,
+          "workspace": {
+            "action": "create",
+            "reasons": [],
+            "categories": [
+              "mode",
+              "projectWorkspace",
+              "strategy",
+              "repo",
+              "lifecycleCommands",
+              "runtimeServices",
+              "environment",
+              "realization"
+            ],
+            "reuseRequested": false,
+            "nextFingerprint": "v1:sha256:bc0fd4edfa5d0ad164b7f581929e15f023956ecba3dd15c4d204e6b21d154bc9",
+            "workspaceReused": false,
+            "activeWorkspaceId": "eb5ad5b2-df92-452f-94e7-04c30ddc46a2",
+            "changedCategories": [],
+            "storedFingerprint": null,
+            "fingerprintVersion": 1,
+            "inferredFingerprint": null,
+            "previousWorkspaceId": null,
+            "configSnapshotRefreshed": false,
+            "storedFingerprintPresent": false
+          }
+        },
+        "rawOutputTokens": 0,
+        "cachedInputTokens": 0,
+        "taskSessionReused": false,
+        "rawCachedInputTokens": 0,
+        "sessionRotationReason": null
+      },
+      "sessionIdBefore": null,
+      "sessionIdAfter": null,
+      "logStore": "local_file",
+      "logRef": "8cfe0265-aa85-4a44-81f2-afb52690d8f7/90498334-acd5-4427-8ef6-462ae3bc4e94/c697b185-57fd-4a36-a3a8-4340991b247e.ndjson",
+      "logBytes": 1874,
+      "logSha256": "2b5425bc7da873d2d68a9ba6cff9ca6509689e56eab751cefca230bc0bca59d2",
+      "logCompressed": false,
+      "stdoutExcerpt": null,
+      "stderrExcerpt": null,
+      "errorCode": "adapter_failed",
+      "externalRunId": null,
+      "processPid": 201104,
+      "processGroupId": 201104,
+      "processStartedAt": "2026-10-04T15:42:13.764Z",
+      "lastOutputAt": "2026-10-04T15:42:14.006Z",
+      "lastOutputSeq": 3,
+      "lastOutputStream": "stderr",
+      "lastOutputBytes": 1874,
+      "retryOfRunId": null,
+      "processLossRetryCount": 0,
+      "scheduledRetryAt": null,
+      "scheduledRetryAttempt": 0,
+      "scheduledRetryReason": null,
+      "livenessState": "failed",
+      "livenessReason": "Run ended with failed (adapter_failed)",
+      "continuationAttempt": 0,
+      "lastUsefulActionAt": null,
+      "nextAction": null,
+      "createdAt": "2026-10-04T15:42:13.494Z",
+      "updatedAt": "2026-10-04T15:42:14.149Z",
+      "contextSnapshot": {
+        "issueId": "254a70a8-dfcc-48ec-820d-3260ed938267",
+        "taskId": "254a70a8-dfcc-48ec-820d-3260ed938267",
+        "taskKey": "254a70a8-dfcc-48ec-820d-3260ed938267",
+        "wakeReason": "council_ordinary_admitted",
+        "wakeSource": "assignment",
+        "wakeTriggerDetail": "system"
+      },
+      "resultJson": null
+    },
+    {
+      "id": "11cf3cf8-cf62-4ee0-9728-3843d0c65729",
+      "companyId": "8cfe0265-aa85-4a44-81f2-afb52690d8f7",
+      "agentId": "c103848e-169b-4d6a-adca-ebbe59042f6b",
+      "invocationSource": "assignment",
+      "triggerDetail": "system",
+      "status": "succeeded",
+      "startedAt": "2026-10-04T15:42:11.958Z",
+      "finishedAt": "2026-10-04T15:42:12.528Z",
+      "error": null,
+      "wakeupRequestId": "fda81a27-21fc-494e-abeb-12c4ff9cf0b1",
+      "exitCode": 0,
+      "signal": null,
+      "usageJson": {
+        "model": "fixture-no-provider",
+        "biller": "chatgpt",
+        "provider": "openai",
+        "costStatus": "unpriced",
+        "billingType": "subscription_included",
+        "inputTokens": 120,
+        "usageSource": "per_run",
+        "freshSession": true,
+        "outputTokens": 30,
+        "sessionReused": false,
+        "rawInputTokens": 120,
+        "sessionRotated": false,
+        "configFreshness": {
+          "session": {
+            "reset": false,
+            "categories": [
+              "adapter",
+              "adapterConfig",
+              "agentRuntimeConfig",
+              "instructions",
+              "issueOverrides",
+              "workspaceConfig",
+              "environment",
+              "envBindings",
+              "secrets",
+              "runtimeSkills"
+            ],
+            "resetReasons": [],
+            "nextFingerprint": "v1:sha256:65c55f71f41182cfdd95d119a1334ba16402be5bd2c1d7119b5ea5be34826860",
+            "changedCategories": [],
+            "taskSessionReused": false,
+            "fingerprintVersion": 1,
+            "taskSessionAvailable": false,
+            "storedFingerprintPresent": false
+          },
+          "version": 1,
+          "workspace": {
+            "action": "create",
+            "reasons": [],
+            "categories": [
+              "mode",
+              "projectWorkspace",
+              "strategy",
+              "repo",
+              "lifecycleCommands",
+              "runtimeServices",
+              "environment",
+              "realization"
+            ],
+            "reuseRequested": false,
+            "nextFingerprint": "v1:sha256:bc0fd4edfa5d0ad164b7f581929e15f023956ecba3dd15c4d204e6b21d154bc9",
+            "workspaceReused": false,
+            "activeWorkspaceId": "a1403e8b-5139-48f8-9e33-56eec8de084c",
+            "changedCategories": [],
+            "storedFingerprint": null,
+            "fingerprintVersion": 1,
+            "inferredFingerprint": null,
+            "previousWorkspaceId": null,
+            "configSnapshotRefreshed": false,
+            "storedFingerprintPresent": false
+          }
+        },
+        "rawOutputTokens": 30,
+        "cachedInputTokens": 20,
+        "taskSessionReused": false,
+        "persistedSessionId": "80eaa1e9-2deb-4c1d-a99c-03d49800d6ac",
+        "rawCachedInputTokens": 20,
+        "sessionRotationReason": null
+      },
+      "sessionIdBefore": null,
+      "sessionIdAfter": "80eaa1e9-2deb-4c1d-a99c-03d49800d6ac",
+      "logStore": "local_file",
+      "logRef": "8cfe0265-aa85-4a44-81f2-afb52690d8f7/c103848e-169b-4d6a-adca-ebbe59042f6b/11cf3cf8-cf62-4ee0-9728-3843d0c65729.ndjson",
+      "logBytes": 867,
+      "logSha256": "e6451548aebd55f684ff1794f46d9577ccd03a5ebfaaa6ad88b6fdaccc0dbe30",
+      "logCompressed": false,
+      "stdoutExcerpt": null,
+      "stderrExcerpt": null,
+      "errorCode": null,
+      "externalRunId": null,
+      "processPid": 201016,
+      "processGroupId": 201016,
+      "processStartedAt": "2026-10-04T15:42:12.208Z",
+      "lastOutputAt": "2026-10-04T15:42:12.458Z",
+      "lastOutputSeq": 4,
+      "lastOutputStream": "stdout",
+      "lastOutputBytes": 867,
+      "retryOfRunId": null,
+      "processLossRetryCount": 0,
+      "scheduledRetryAt": null,
+      "scheduledRetryAttempt": 0,
+      "scheduledRetryReason": null,
+      "livenessState": "advanced",
+      "livenessReason": "Run produced concrete action evidence: 1 workspace operation(s), 1 activity event(s), 1 tool/action event(s)",
+      "continuationAttempt": 0,
+      "lastUsefulActionAt": "2026-10-04T15:42:12.512Z",
+      "nextAction": null,
+      "createdAt": "2026-10-04T15:42:11.912Z",
+      "updatedAt": "2026-10-04T15:42:12.668Z",
+      "contextSnapshot": {
+        "issueId": "e9e13190-5a28-4cee-a4aa-f33b736f2f88",
+        "taskId": "e9e13190-5a28-4cee-a4aa-f33b736f2f88",
+        "taskKey": "e9e13190-5a28-4cee-a4aa-f33b736f2f88",
+        "wakeReason": "council_contribution_dispatch",
+        "wakeSource": "assignment",
+        "wakeTriggerDetail": "system"
+      },
+      "resultJson": {
+        "summary": "{\"fixture\":\"N1 real CLI contribution\",\"name\":\"beta\"}"
+      }
+    },
+    {
+      "id": "b86d7687-4f3c-45e2-8400-cf6d5f83ede0",
+      "companyId": "8cfe0265-aa85-4a44-81f2-afb52690d8f7",
+      "agentId": "383ba830-db0f-426a-9da1-b9f6c6834d5b",
+      "invocationSource": "assignment",
+      "triggerDetail": "system",
+      "status": "succeeded",
+      "startedAt": "2026-10-04T15:42:10.926Z",
+      "finishedAt": "2026-10-04T15:42:11.496Z",
+      "error": null,
+      "wakeupRequestId": "3082a4f6-221b-4ad2-b8d9-2e177e40f693",
+      "exitCode": 0,
+      "signal": null,
+      "usageJson": {
+        "model": "fixture-no-provider",
+        "biller": "chatgpt",
+        "provider": "openai",
+        "costStatus": "unpriced",
+        "billingType": "subscription_included",
+        "inputTokens": 120,
+        "usageSource": "per_run",
+        "freshSession": true,
+        "outputTokens": 30,
+        "sessionReused": false,
+        "rawInputTokens": 120,
+        "sessionRotated": false,
+        "configFreshness": {
+          "session": {
+            "reset": false,
+            "categories": [
+              "adapter",
+              "adapterConfig",
+              "agentRuntimeConfig",
+              "instructions",
+              "issueOverrides",
+              "workspaceConfig",
+              "environment",
+              "envBindings",
+              "secrets",
+              "runtimeSkills"
+            ],
+            "resetReasons": [],
+            "nextFingerprint": "v1:sha256:68749a17954311eb05402f6a7be876d633b00d1ff2ab2563d877fbda20b387d5",
+            "changedCategories": [],
+            "taskSessionReused": false,
+            "fingerprintVersion": 1,
+            "taskSessionAvailable": false,
+            "storedFingerprintPresent": false
+          },
+          "version": 1,
+          "workspace": {
+            "action": "create",
+            "reasons": [],
+            "categories": [
+              "mode",
+              "projectWorkspace",
+              "strategy",
+              "repo",
+              "lifecycleCommands",
+              "runtimeServices",
+              "environment",
+              "realization"
+            ],
+            "reuseRequested": false,
+            "nextFingerprint": "v1:sha256:bc0fd4edfa5d0ad164b7f581929e15f023956ecba3dd15c4d204e6b21d154bc9",
+            "workspaceReused": false,
+            "activeWorkspaceId": "06197d09-5729-47d3-872d-23da621cebd7",
+            "changedCategories": [],
+            "storedFingerprint": null,
+            "fingerprintVersion": 1,
+            "inferredFingerprint": null,
+            "previousWorkspaceId": null,
+            "configSnapshotRefreshed": false,
+            "storedFingerprintPresent": false
+          }
+        },
+        "rawOutputTokens": 30,
+        "cachedInputTokens": 20,
+        "taskSessionReused": false,
+        "persistedSessionId": "8f50548c-9983-4fed-a7d9-aea82fe06509",
+        "rawCachedInputTokens": 20,
+        "sessionRotationReason": null
+      },
+      "sessionIdBefore": null,
+      "sessionIdAfter": "8f50548c-9983-4fed-a7d9-aea82fe06509",
+      "logStore": "local_file",
+      "logRef": "8cfe0265-aa85-4a44-81f2-afb52690d8f7/383ba830-db0f-426a-9da1-b9f6c6834d5b/b86d7687-4f3c-45e2-8400-cf6d5f83ede0.ndjson",
+      "logBytes": 869,
+      "logSha256": "d9d91bfe0b19b209cd886e659b10ce7829684f2db5b36cd5687cbd04125fd586",
+      "logCompressed": false,
+      "stdoutExcerpt": null,
+      "stderrExcerpt": null,
+      "errorCode": null,
+      "externalRunId": null,
+      "processPid": 200986,
+      "processGroupId": 200986,
+      "processStartedAt": "2026-10-04T15:42:11.172Z",
+      "lastOutputAt": "2026-10-04T15:42:11.419Z",
+      "lastOutputSeq": 4,
+      "lastOutputStream": "stdout",
+      "lastOutputBytes": 869,
+      "retryOfRunId": null,
+      "processLossRetryCount": 0,
+      "scheduledRetryAt": null,
+      "scheduledRetryAttempt": 0,
+      "scheduledRetryReason": null,
+      "livenessState": "advanced",
+      "livenessReason": "Run produced concrete action evidence: 1 workspace operation(s), 1 activity event(s), 1 tool/action event(s)",
+      "continuationAttempt": 0,
+      "lastUsefulActionAt": "2026-10-04T15:42:11.476Z",
+      "nextAction": null,
+      "createdAt": "2026-10-04T15:42:10.892Z",
+      "updatedAt": "2026-10-04T15:42:11.655Z",
+      "contextSnapshot": {
+        "issueId": "23691402-6cc1-482e-843d-09350a8ba929",
+        "taskId": "23691402-6cc1-482e-843d-09350a8ba929",
+        "taskKey": "23691402-6cc1-482e-843d-09350a8ba929",
+        "wakeReason": "council_contribution_dispatch",
+        "wakeSource": "assignment",
+        "wakeTriggerDetail": "system"
+      },
+      "resultJson": {
+        "summary": "{\"fixture\":\"N1 real CLI contribution\",\"name\":\"alpha\"}"
+      }
+    },
+    {
+      "id": "cc56788b-1a48-41e4-80d7-901fc0a489cd",
+      "companyId": "8cfe0265-aa85-4a44-81f2-afb52690d8f7",
+      "agentId": "3e21bd08-0316-461a-bf66-eaf15d1049e2",
+      "invocationSource": "assignment",
+      "triggerDetail": "system",
+      "status": "succeeded",
+      "startedAt": "2026-10-04T15:42:09.899Z",
+      "finishedAt": "2026-10-04T15:42:13.162Z",
+      "error": null,
+      "wakeupRequestId": "0fbcebe4-2d94-4bf7-97e5-340ee2a10586",
+      "exitCode": 0,
+      "signal": null,
+      "usageJson": {
+        "model": "fixture-no-provider",
+        "biller": "chatgpt",
+        "provider": "openai",
+        "costStatus": "unpriced",
+        "billingType": "subscription_included",
+        "inputTokens": 120,
+        "usageSource": "per_run",
+        "freshSession": true,
+        "outputTokens": 30,
+        "sessionReused": false,
+        "rawInputTokens": 120,
+        "sessionRotated": false,
+        "configFreshness": {
+          "session": {
+            "reset": false,
+            "categories": [
+              "adapter",
+              "adapterConfig",
+              "agentRuntimeConfig",
+              "instructions",
+              "issueOverrides",
+              "workspaceConfig",
+              "environment",
+              "envBindings",
+              "secrets",
+              "runtimeSkills"
+            ],
+            "resetReasons": [],
+            "nextFingerprint": "v1:sha256:f3b8ebb7662fe35a17eaf8a4b22b0dc6e7bbafebd021cc610478969040597f28",
+            "changedCategories": [],
+            "taskSessionReused": false,
+            "fingerprintVersion": 1,
+            "taskSessionAvailable": false,
+            "storedFingerprintPresent": false
+          },
+          "version": 1,
+          "workspace": {
+            "action": "create",
+            "reasons": [],
+            "categories": [
+              "mode",
+              "projectWorkspace",
+              "strategy",
+              "repo",
+              "lifecycleCommands",
+              "runtimeServices",
+              "environment",
+              "realization"
+            ],
+            "reuseRequested": false,
+            "nextFingerprint": "v1:sha256:bc0fd4edfa5d0ad164b7f581929e15f023956ecba3dd15c4d204e6b21d154bc9",
+            "workspaceReused": false,
+            "activeWorkspaceId": "926e7656-fc9c-4924-95fc-9700bd37e62d",
+            "changedCategories": [],
+            "storedFingerprint": null,
+            "fingerprintVersion": 1,
+            "inferredFingerprint": null,
+            "previousWorkspaceId": null,
+            "configSnapshotRefreshed": false,
+            "storedFingerprintPresent": false
+          }
+        },
+        "rawOutputTokens": 30,
+        "cachedInputTokens": 20,
+        "taskSessionReused": false,
+        "persistedSessionId": "59d7f4b5-e895-44b8-862b-2aef62a6d971",
+        "rawCachedInputTokens": 20,
+        "sessionRotationReason": null
+      },
+      "sessionIdBefore": null,
+      "sessionIdAfter": "59d7f4b5-e895-44b8-862b-2aef62a6d971",
+      "logStore": "local_file",
+      "logRef": "8cfe0265-aa85-4a44-81f2-afb52690d8f7/3e21bd08-0316-461a-bf66-eaf15d1049e2/cc56788b-1a48-41e4-80d7-901fc0a489cd.ndjson",
+      "logBytes": 914,
+      "logSha256": "333e08a52e2e8394b863c6131bc31ad1e306df4059782d19b9b765db496dc5c0",
+      "logCompressed": false,
+      "stdoutExcerpt": null,
+      "stderrExcerpt": null,
+      "errorCode": null,
+      "externalRunId": null,
+      "processPid": 200962,
+      "processGroupId": 200962,
+      "processStartedAt": "2026-10-04T15:42:10.240Z",
+      "lastOutputAt": "2026-10-04T15:42:13.091Z",
+      "lastOutputSeq": 4,
+      "lastOutputStream": "stdout",
+      "lastOutputBytes": 914,
+      "retryOfRunId": null,
+      "processLossRetryCount": 0,
+      "scheduledRetryAt": null,
+      "scheduledRetryAttempt": 0,
+      "scheduledRetryReason": null,
+      "livenessState": "advanced",
+      "livenessReason": "Run produced concrete action evidence: 1 work product(s), 1 workspace operation(s), 9 activity event(s), 1 tool/action event(s)",
+      "continuationAttempt": 0,
+      "lastUsefulActionAt": "2026-10-04T15:42:13.145Z",
+      "nextAction": null,
+      "createdAt": "2026-10-04T15:42:09.848Z",
+      "updatedAt": "2026-10-04T15:42:13.303Z",
+      "contextSnapshot": {
+        "issueId": "1f9ca573-8215-4498-bda9-d21b2e969719",
+        "taskId": "1f9ca573-8215-4498-bda9-d21b2e969719",
+        "taskKey": "1f9ca573-8215-4498-bda9-d21b2e969719",
+        "wakeReason": "council_integration_lead_dispatch",
+        "wakeSource": "assignment",
+        "wakeTriggerDetail": "system"
+      },
+      "resultJson": {
+        "summary": "{\"fixture\":\"N1 real CLI prerequisite\",\"candidateCommit\":\"ee8b193710fe00a4b6a2a6c50e5c6211bd0b6124\"}"
+      }
+    }
+  ],
+  "cleanup": {
+    "databaseCleaned": true,
+    "serverStopped": true,
+    "runtimeRemoved": true
+  },
+  "hostTrackedUnchanged": true,
+  "finishedAt": "2026-10-04T15:42:19.515Z"
+}

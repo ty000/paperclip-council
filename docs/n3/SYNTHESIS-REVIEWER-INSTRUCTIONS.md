@@ -1,5 +1,11 @@
 # N3 synthesis reviewer instructions
 
+For `ordinary-cli-v1`, follow the generated task/inspect instructions and the
+[ordinary CLI contract](ORDINARY-CLI-REVIEW.md). Submit the opinion or
+`ordinary-verdict`, then finish normally; the plugin records the accounting wait
+and closes tasks after terminal settlement. The native-card section below applies
+only to persisted historical runner missions.
+
 The assigned Generalist Reviewer is the sole synthesis and root-verdict owner
 for this round. Specialists advise; favorable opinion count is never authority.
 

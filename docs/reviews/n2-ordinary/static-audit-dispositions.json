@@ -1,0 +1,573 @@
+{
+  "sourceCommit": "be0d7d2fd6a52dac5bc3827a65200ee67988d25c",
+  "functionalVerdict": "PASS",
+  "normalizedWrapper": {
+    "status": "pass",
+    "exit": 0,
+    "unclassifiedCount": 419,
+    "limit": "Wrapper omits raw finding arrays; PASS is not a clean raw audit."
+  },
+  "rawBefore": {
+    "verdict": "fail",
+    "exit": 1,
+    "sha256": "8fb236c017607c0a3dfb024fb9fa2389abad8e4656be26a708dcbd6a07b083bd",
+    "introducedComplexityArrayCount": 16,
+    "introducedComplexityAttribution": 15
+  },
+  "rawAfter": {
+    "verdict": "fail",
+    "exit": 1,
+    "sha256": "900891382a38083726410c3f31be13585a0e4ed00ab6d75bd7b5c4e70d93365c",
+    "introducedComplexityArrayCount": 14,
+    "introducedComplexityAttribution": 13
+  },
+  "manualReview": {
+    "review": "Local independent review by n2_intermediate_review and parent; not GitHub or external review",
+    "verdict": "PASS with disclosed maintenance debt; no remaining introduced critical product finding",
+    "remediation": "One pass only: two local ordinary helpers and command membership checks; predicates and ordering preserved",
+    "counterAnomaly": "Before raw array16 vs attribution15; after14 vs13. Both retained without invented reconciliation."
+  },
+  "cycles": [
+    {
+      "files": [
+        "src/decision-receipts.ts",
+        "src/missions.ts",
+        "src/n2-missions.ts",
+        "src/n2-native-runtime.ts"
+      ],
+      "delayedEdges": [
+        {
+          "path": "src/n2-missions.ts",
+          "line": 928,
+          "col": 43
+        }
+      ],
+      "disposition": "Nonblocking after manual source review: no new top-level await or eager initialization cycle. Real bidirectional structural debt retained; no graph refactor or suppression."
+    },
+    {
+      "files": [
+        "src/decision-receipts.ts",
+        "src/missions.ts",
+        "src/n2-missions.ts",
+        "src/n2-ordinary-runtime.ts"
+      ],
+      "delayedEdges": [
+        {
+          "path": "src/n2-missions.ts",
+          "line": 924,
+          "col": 45
+        }
+      ],
+      "disposition": "Nonblocking after manual source review: no new top-level await or eager initialization cycle. Real bidirectional structural debt retained; no graph refactor or suppression."
+    },
+    {
+      "files": [
+        "src/missions.ts",
+        "src/n2-missions.ts",
+        "src/n2-ordinary-agent.ts"
+      ],
+      "delayedEdges": [
+        {
+          "path": "src/n2-missions.ts",
+          "line": 1386,
+          "col": 47
+        }
+      ],
+      "disposition": "Nonblocking after manual source review: no new top-level await or eager initialization cycle. Real bidirectional structural debt retained; no graph refactor or suppression."
+    },
+    {
+      "files": [
+        "src/missions.ts",
+        "src/n2-missions.ts",
+        "src/n2-ordinary-agent.ts",
+        "src/n2-ordinary-state.ts"
+      ],
+      "delayedEdges": [
+        {
+          "path": "src/n2-missions.ts",
+          "line": 1386,
+          "col": 47
+        }
+      ],
+      "disposition": "Nonblocking after manual source review: no new top-level await or eager initialization cycle. Real bidirectional structural debt retained; no graph refactor or suppression."
+    },
+    {
+      "files": [
+        "src/missions.ts",
+        "src/n2-missions.ts",
+        "src/n2-ordinary-runtime.ts"
+      ],
+      "delayedEdges": [
+        {
+          "path": "src/n2-missions.ts",
+          "line": 924,
+          "col": 45
+        }
+      ],
+      "disposition": "Nonblocking after manual source review: no new top-level await or eager initialization cycle. Real bidirectional structural debt retained; no graph refactor or suppression."
+    },
+    {
+      "files": [
+        "src/missions.ts",
+        "src/n2-missions.ts",
+        "src/n2-ordinary-runtime.ts",
+        "src/n2-ordinary-state.ts"
+      ],
+      "delayedEdges": [
+        {
+          "path": "src/n2-missions.ts",
+          "line": 924,
+          "col": 45
+        }
+      ],
+      "disposition": "Nonblocking after manual source review: no new top-level await or eager initialization cycle. Real bidirectional structural debt retained; no graph refactor or suppression."
+    },
+    {
+      "files": [
+        "src/missions.ts",
+        "src/n2-missions.ts",
+        "src/n2-ordinary-runtime.ts",
+        "src/n3-runtime.ts"
+      ],
+      "delayedEdges": [
+        {
+          "path": "src/n2-missions.ts",
+          "line": 924,
+          "col": 45
+        }
+      ],
+      "disposition": "Nonblocking after manual source review: no new top-level await or eager initialization cycle. Real bidirectional structural debt retained; no graph refactor or suppression."
+    },
+    {
+      "files": [
+        "src/n2-missions.ts",
+        "src/n2-ordinary-agent.ts"
+      ],
+      "delayedEdges": [
+        {
+          "path": "src/n2-missions.ts",
+          "line": 1386,
+          "col": 47
+        }
+      ],
+      "disposition": "Nonblocking after manual source review: no new top-level await or eager initialization cycle. Real bidirectional structural debt retained; no graph refactor or suppression."
+    },
+    {
+      "files": [
+        "src/n2-missions.ts",
+        "src/n2-ordinary-agent.ts",
+        "src/n2-ordinary-state.ts"
+      ],
+      "delayedEdges": [
+        {
+          "path": "src/n2-missions.ts",
+          "line": 1386,
+          "col": 47
+        }
+      ],
+      "disposition": "Nonblocking after manual source review: no new top-level await or eager initialization cycle. Real bidirectional structural debt retained; no graph refactor or suppression."
+    },
+    {
+      "files": [
+        "src/n2-missions.ts",
+        "src/n2-ordinary-runtime.ts"
+      ],
+      "delayedEdges": [
+        {
+          "path": "src/n2-missions.ts",
+          "line": 924,
+          "col": 45
+        }
+      ],
+      "disposition": "Nonblocking after manual source review: no new top-level await or eager initialization cycle. Real bidirectional structural debt retained; no graph refactor or suppression."
+    },
+    {
+      "files": [
+        "src/n2-missions.ts",
+        "src/n2-ordinary-runtime.ts",
+        "src/n2-ordinary-state.ts"
+      ],
+      "delayedEdges": [
+        {
+          "path": "src/n2-missions.ts",
+          "line": 924,
+          "col": 45
+        }
+      ],
+      "disposition": "Nonblocking after manual source review: no new top-level await or eager initialization cycle. Real bidirectional structural debt retained; no graph refactor or suppression."
+    },
+    {
+      "files": [
+        "src/n2-missions.ts",
+        "src/n2-ordinary-runtime.ts",
+        "src/n3-runtime.ts"
+      ],
+      "delayedEdges": [
+        {
+          "path": "src/n2-missions.ts",
+          "line": 924,
+          "col": 45
+        }
+      ],
+      "disposition": "Nonblocking after manual source review: no new top-level await or eager initialization cycle. Real bidirectional structural debt retained; no graph refactor or suppression."
+    }
+  ],
+  "complexity": [
+    {
+      "path": "src/mission-tool.ts",
+      "name": "missionToolRequest",
+      "line": 12,
+      "severity": "moderate",
+      "cyclomatic": 29,
+      "cognitive": 19,
+      "crap": 31.8,
+      "coverage_source": "estimated",
+      "coverage_tier": "high",
+      "disposition": "Moderate/high product complexity reviewed against bounded contracts and passing tests; retained maintenance debt, no observed behavior defect. No second remediation pass."
+    },
+    {
+      "path": "src/n5-runtime.ts",
+      "name": "startN5Publication",
+      "line": 35,
+      "severity": "moderate",
+      "cyclomatic": 28,
+      "cognitive": 18,
+      "crap": 30.6,
+      "coverage_source": "estimated",
+      "coverage_tier": "high",
+      "disposition": "Moderate/high product complexity reviewed against bounded contracts and passing tests; retained maintenance debt, no observed behavior defect. No second remediation pass."
+    },
+    {
+      "path": "src/n2-ordinary-agent.ts",
+      "name": "bindActor",
+      "line": 10,
+      "severity": "high",
+      "cyclomatic": 16,
+      "cognitive": 10,
+      "crap": 71.3,
+      "coverage_source": "estimated",
+      "coverage_tier": "partial",
+      "disposition": "Moderate/high product complexity reviewed against bounded contracts and passing tests; retained maintenance debt, no observed behavior defect. No second remediation pass."
+    },
+    {
+      "path": "src/g4-native.ts",
+      "name": "settleExactUsage",
+      "line": 67,
+      "severity": "high",
+      "cyclomatic": 14,
+      "cognitive": 5,
+      "crap": 56.3,
+      "coverage_source": "estimated",
+      "coverage_tier": "partial",
+      "disposition": "Moderate/high product complexity reviewed against bounded contracts and passing tests; retained maintenance debt, no observed behavior defect. No second remediation pass."
+    },
+    {
+      "path": "src/n2-missions.ts",
+      "name": "ordinaryReceiptSubjectMatches",
+      "line": 349,
+      "severity": "high",
+      "cyclomatic": 14,
+      "cognitive": 1,
+      "crap": 56.3,
+      "coverage_source": "estimated",
+      "coverage_tier": "partial",
+      "disposition": "Moderate/high product complexity reviewed against bounded contracts and passing tests; retained maintenance debt, no observed behavior defect. No second remediation pass."
+    },
+    {
+      "path": "src/n2-ordinary-runtime.ts",
+      "name": "reconcileOrdinaryN2",
+      "line": 144,
+      "severity": "moderate",
+      "cyclomatic": 13,
+      "cognitive": 23,
+      "crap": null,
+      "coverage_source": null,
+      "coverage_tier": null,
+      "disposition": "Moderate/high product complexity reviewed against bounded contracts and passing tests; retained maintenance debt, no observed behavior defect. No second remediation pass."
+    },
+    {
+      "path": "src/n5-runtime.ts",
+      "name": "authorize",
+      "line": 19,
+      "severity": "moderate",
+      "cyclomatic": 13,
+      "cognitive": 8,
+      "crap": 49.5,
+      "coverage_source": "estimated",
+      "coverage_tier": "partial",
+      "disposition": "Moderate/high product complexity reviewed against bounded contracts and passing tests; retained maintenance debt, no observed behavior defect. No second remediation pass."
+    },
+    {
+      "path": "src/n2-missions.ts",
+      "name": "n2Blockage",
+      "line": 606,
+      "severity": "moderate",
+      "cyclomatic": 12,
+      "cognitive": 11,
+      "crap": 43.1,
+      "coverage_source": "estimated",
+      "coverage_tier": "partial",
+      "disposition": "Moderate/high product complexity reviewed against bounded contracts and passing tests; retained maintenance debt, no observed behavior defect. No second remediation pass."
+    },
+    {
+      "path": "src/n2-ordinary-runtime.ts",
+      "name": "dispatchTask",
+      "line": 67,
+      "severity": "moderate",
+      "cyclomatic": 12,
+      "cognitive": 12,
+      "crap": 43.1,
+      "coverage_source": "estimated",
+      "coverage_tier": "partial",
+      "disposition": "Moderate/high product complexity reviewed against bounded contracts and passing tests; retained maintenance debt, no observed behavior defect. No second remediation pass."
+    },
+    {
+      "path": "tests/functional/ordinary-installed.ts",
+      "name": "<arrow>",
+      "line": 189,
+      "severity": "critical",
+      "cyclomatic": 10,
+      "cognitive": 6,
+      "crap": 110.0,
+      "coverage_source": "estimated",
+      "coverage_tier": "none",
+      "disposition": "Harness/probe orchestration; critical CRAP uses estimated none coverage despite installed execution. Nonblocking."
+    },
+    {
+      "path": "docs/reviews/n2-intermediate/probe.ts",
+      "name": "settleCliRun",
+      "line": 63,
+      "severity": "high",
+      "cyclomatic": 9,
+      "cognitive": 4,
+      "crap": 90.0,
+      "coverage_source": "estimated",
+      "coverage_tier": "none",
+      "disposition": "Harness/probe orchestration; critical CRAP uses estimated none coverage despite installed execution. Nonblocking."
+    },
+    {
+      "path": "tests/functional/ordinary-cli-fixture.mjs",
+      "name": "api",
+      "line": 15,
+      "severity": "moderate",
+      "cyclomatic": 6,
+      "cognitive": 6,
+      "crap": 42.0,
+      "coverage_source": "estimated",
+      "coverage_tier": "none",
+      "disposition": "Harness/probe orchestration; critical CRAP uses estimated none coverage despite installed execution. Nonblocking."
+    },
+    {
+      "path": "tests/functional/ordinary-installed.ts",
+      "name": "<arrow>",
+      "line": 160,
+      "severity": "moderate",
+      "cyclomatic": 6,
+      "cognitive": 7,
+      "crap": 42.0,
+      "coverage_source": "estimated",
+      "coverage_tier": "none",
+      "disposition": "Harness/probe orchestration; critical CRAP uses estimated none coverage despite installed execution. Nonblocking."
+    },
+    {
+      "path": "docs/reviews/n2-intermediate/probe.ts",
+      "name": "stage",
+      "line": 148,
+      "severity": "moderate",
+      "cyclomatic": 5,
+      "cognitive": 5,
+      "crap": 30.0,
+      "coverage_source": "estimated",
+      "coverage_tier": "none",
+      "disposition": "Harness/probe orchestration; critical CRAP uses estimated none coverage despite installed execution. Nonblocking."
+    }
+  ],
+  "duplication": [
+    {
+      "fingerprint": "dup:c77b3abb6f87acd9-r2",
+      "instances": [
+        {
+          "file": "docs/reviews/n2-intermediate/probe.ts",
+          "start_line": 23,
+          "end_line": 59
+        },
+        {
+          "file": "tests/functional/ordinary-installed.ts",
+          "start_line": 22,
+          "end_line": 55
+        }
+      ],
+      "disposition": "Harness/probe setup and cleanup reuse. Prior proof immutable; deduplication outside bounded integration."
+    },
+    {
+      "fingerprint": "dup:c77b3abb6f87acd9-r4",
+      "instances": [
+        {
+          "file": "docs/reviews/n2-intermediate/probe.ts",
+          "start_line": 88,
+          "end_line": 104
+        },
+        {
+          "file": "tests/functional/ordinary-installed.ts",
+          "start_line": 64,
+          "end_line": 80
+        }
+      ],
+      "disposition": "Harness/probe setup and cleanup reuse. Prior proof immutable; deduplication outside bounded integration."
+    },
+    {
+      "fingerprint": "dup:c77b3abb6f87acd9-r7",
+      "instances": [
+        {
+          "file": "docs/reviews/n2-intermediate/probe.ts",
+          "start_line": 256,
+          "end_line": 263
+        },
+        {
+          "file": "tests/functional/ordinary-installed.ts",
+          "start_line": 248,
+          "end_line": 252
+        }
+      ],
+      "disposition": "Harness/probe setup and cleanup reuse. Prior proof immutable; deduplication outside bounded integration."
+    },
+    {
+      "fingerprint": "dup:c77b3abb6f87acd9-r18",
+      "instances": [
+        {
+          "file": "docs/reviews/n2-intermediate/probe.ts",
+          "start_line": 104,
+          "end_line": 110
+        },
+        {
+          "file": "tests/functional/ordinary-installed.ts",
+          "start_line": 80,
+          "end_line": 85
+        }
+      ],
+      "disposition": "Harness/probe setup and cleanup reuse. Prior proof immutable; deduplication outside bounded integration."
+    },
+    {
+      "fingerprint": "dup:6ac99be3",
+      "instances": [
+        {
+          "file": "docs/reviews/n2-intermediate/probe.ts",
+          "start_line": 95,
+          "end_line": 102
+        },
+        {
+          "file": "tests/functional/ordinary-installed.ts",
+          "start_line": 71,
+          "end_line": 78
+        },
+        {
+          "file": "tests/functional/ordinary-installed.ts",
+          "start_line": 118,
+          "end_line": 125
+        }
+      ],
+      "disposition": "Harness/probe setup and cleanup reuse. Prior proof immutable; deduplication outside bounded integration."
+    },
+    {
+      "fingerprint": "dup:c77b3abb6f87acd9-r12",
+      "instances": [
+        {
+          "file": "docs/reviews/n2-intermediate/fixture-cli.mjs",
+          "start_line": 18,
+          "end_line": 22
+        },
+        {
+          "file": "docs/reviews/n2-intermediate/probe.ts",
+          "start_line": 46,
+          "end_line": 50
+        },
+        {
+          "file": "tests/functional/ordinary-installed.ts",
+          "start_line": 42,
+          "end_line": 46
+        }
+      ],
+      "disposition": "Harness/probe setup and cleanup reuse. Prior proof immutable; deduplication outside bounded integration."
+    },
+    {
+      "fingerprint": "dup:c77b3abb6f87acd9-r13",
+      "instances": [
+        {
+          "file": "docs/reviews/n2-intermediate/probe.ts",
+          "start_line": 11,
+          "end_line": 17
+        },
+        {
+          "file": "tests/functional/ordinary-installed.ts",
+          "start_line": 10,
+          "end_line": 16
+        }
+      ],
+      "disposition": "Harness/probe setup and cleanup reuse. Prior proof immutable; deduplication outside bounded integration."
+    },
+    {
+      "fingerprint": "dup:c77b3abb6f87acd9-r3",
+      "instances": [
+        {
+          "file": "src/n2-finished-event.ts",
+          "start_line": 76,
+          "end_line": 85
+        },
+        {
+          "file": "src/n2-finished-event.ts",
+          "start_line": 107,
+          "end_line": 116
+        }
+      ],
+      "disposition": "Small product readback/event branches retain distinct native/ordinary identity predicates; deferred maintenance."
+    },
+    {
+      "fingerprint": "dup:c77b3abb6f87acd9-r5",
+      "instances": [
+        {
+          "file": "src/g4-native.ts",
+          "start_line": 25,
+          "end_line": 31
+        },
+        {
+          "file": "src/g4-native.ts",
+          "start_line": 39,
+          "end_line": 45
+        }
+      ],
+      "disposition": "Small product readback/event branches retain distinct native/ordinary identity predicates; deferred maintenance."
+    },
+    {
+      "fingerprint": "dup:3c2dea07",
+      "instances": [
+        {
+          "file": "src/n2-finished-event.ts",
+          "start_line": 68,
+          "end_line": 71
+        },
+        {
+          "file": "src/n2-finished-event.ts",
+          "start_line": 94,
+          "end_line": 98
+        }
+      ],
+      "disposition": "Small product readback/event branches retain distinct native/ordinary identity predicates; deferred maintenance."
+    },
+    {
+      "fingerprint": "dup:c77b3abb6f87acd9-r11",
+      "instances": [
+        {
+          "file": "docs/reviews/n2-intermediate/probe.ts",
+          "start_line": 80,
+          "end_line": 88
+        },
+        {
+          "file": "tests/functional/ordinary-installed.ts",
+          "start_line": 50,
+          "end_line": 64
+        }
+      ],
+      "disposition": "Harness/probe setup and cleanup reuse. Prior proof immutable; deduplication outside bounded integration."
+    }
+  ]
+}

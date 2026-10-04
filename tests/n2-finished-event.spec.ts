@@ -5,6 +5,8 @@ import { AdmissionError } from "../src/admission.js";
 
 const mocks = vi.hoisted(() => ({
   getMissionByRootIssue: vi.fn(),
+  getMissionByOrdinaryIssue: vi.fn(),
+  reconcileOrdinaryN2: vi.fn(),
   findPreparedN2Decision: vi.fn(),
   settlePreparedN2ReviewUsage: vi.fn(),
   recordN2Decision: vi.fn(),
@@ -14,6 +16,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../src/missions.js", async (importOriginal) => ({
   ...await importOriginal<typeof import("../src/missions.js")>(),
   getMissionByRootIssue: mocks.getMissionByRootIssue,
+  getMissionByOrdinaryIssue: mocks.getMissionByOrdinaryIssue,
 }));
 vi.mock("../src/n2-missions.js", async (importOriginal) => ({
   ...await importOriginal<typeof import("../src/n2-missions.js")>(),
@@ -25,6 +28,8 @@ vi.mock("../src/decision-receipts.js", async (importOriginal) => ({
   ...await importOriginal<typeof import("../src/decision-receipts.js")>(),
   executeCouncilDecision: mocks.executeCouncilDecision,
 }));
+
+vi.mock("../src/n2-ordinary-runtime.js", () => ({ reconcileOrdinaryN2: mocks.reconcileOrdinaryN2 }));
 
 import { handleN2RunFinished } from "../src/n2-finished-event.js";
 
@@ -178,4 +183,19 @@ describe("N2 finished-run decision application", () => {
     expect(mocks.settlePreparedN2ReviewUsage).not.toHaveBeenCalled();
     expect(mocks.executeCouncilDecision).not.toHaveBeenCalled();
   });
+});
+
+
+it("routes a parentless ordinary stage by exact stored issue/run/actor before legacy fallback", async () => {
+  vi.clearAllMocks();
+  const ordinary = { ...mission, aggregate: { n2: { ordinary: { tasks: [{ issueId: ids.issue, runId: ids.run, agentId: ids.reviewer }] } } } };
+  mocks.getMissionByOrdinaryIssue.mockResolvedValue(ordinary);
+  mocks.reconcileOrdinaryN2.mockResolvedValue(ordinary);
+  const result = await handleN2RunFinished({} as PluginContext, event());
+  expect(result.outcome).toBe("reconciled");
+  expect(mocks.reconcileOrdinaryN2).toHaveBeenCalledOnce();
+  expect(mocks.getMissionByRootIssue).not.toHaveBeenCalled();
+  ordinary.aggregate.n2.ordinary.tasks[0]!.runId = randomUUID();
+  expect(await handleN2RunFinished({} as PluginContext, event())).toMatchObject({ outcome: "ignored", reason: "ordinary_task_unbound" });
+  expect(mocks.reconcileOrdinaryN2).toHaveBeenCalledOnce();
 });

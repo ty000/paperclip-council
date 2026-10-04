@@ -6,12 +6,14 @@ Purpose: reduce duplicated functionality and competing ownership. The [PRD 0.6](
 
 Inspection baseline: Paperclip `61b3fd57a695614dc4a37e2303f426a34a9795cf`, also pinned by Council's qualification configuration. Sources below were read locally; they establish available contracts and source behavior, not target-instance configuration or successful Council integration. Council comparison: main `64fc809`, N1 completion `eca320d`, draft N2 `a7760eb`. Absence of an equivalent in these inspected paths is not proof that none exists anywhere in Paperclip.
 
+October 4 refinement: the owner adopted [ordinary CLI Council review](n3/ORDINARY-CLI-REVIEW.md) for new N2/N3 missions. It reuses Paperclip tasks/auth/CLI runs/events and existing Council admission/N3 contracts; native completion-review policy is no longer required by this path. Historical runner missions remain readable and use their persisted protocol. Acceptance still requires the exact Council judgment, terminal usage and durable readback; no N6 closure follows.
+
 ## 1. Native review is already a workflow — C02–C06, N2
 
 - **Observed:** execution policy routes executor completion to a selected reviewer, returns requested changes to the executor, resumes the same stage after resubmission and records approval. `maxReviewRounds` exists; the default is three and human decisions reset its counter. Each stage requires one approval; multiple participants are alternatives, not collected specialist opinions. See [transitions and round limits][policy], [transition tests][policy-tests] and [schema][issue-schema].
 - **Overlap:** a second generic review/correction loop, round counter or dispatcher in Council could disagree with native assignment and escalation.
 - **Limit:** Council's one allowed correction is not automatically native `maxReviewRounds=1`: the native code can escalate to a human when the next changes-requested count reaches the threshold. Compare meanings before copying a numerical limit.
-- **Decision:** native review/correction/approval is the default. Align the selected Council correction limit with native semantics; retain exact-candidate binding, contributor/reviewer conflict checks, attributed opinions and uncertain-effect receipts. Add only the missing Council guarantee, not another review workflow or counter with a competing meaning.
+- **Historical decision (superseded for new ordinary-profile missions by the October 4 refinement above):** native review/correction/approval is the default. Align the selected Council correction limit with native semantics; retain exact-candidate binding, contributor/reviewer conflict checks, attributed opinions and uncertain-effect receipts. Add only the missing Council guarantee, not another review workflow or counter with a competing meaning.
 
 ## 2. Assignment and routines already trigger execution — C18–C21, N2/N5/N6
 

@@ -1,5 +1,11 @@
 # N3 specialist review instructions
 
+For `ordinary-cli-v1`, follow the generated task/inspect instructions and the
+[ordinary CLI contract](ORDINARY-CLI-REVIEW.md). Submit the opinion or
+`ordinary-verdict`, then finish normally; the plugin records the accounting wait
+and closes tasks after terminal settlement. The native-card section below applies
+only to persisted historical runner missions.
+
 Use these instructions only for a selected native specialist child review. The
 mission selects two or more relevant perspectives before the round; the seven
 prepared perspectives are supported, but they are not a mandatory committee.

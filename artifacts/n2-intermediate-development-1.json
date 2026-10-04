@@ -1,0 +1,48 @@
+{
+  "schema": "council-n2-intermediate-provider-free-v1",
+  "outcome": "BLOCKED",
+  "startedAt": "2026-10-04T14:04:58.690Z",
+  "source": {
+    "head": "84d79cd7779de706e99f4bea1df45743cf3186cb",
+    "branch": "codex/council-n2-intermediate-proof",
+    "hostSha": "61b3fd57a695614dc4a37e2303f426a34a9795cf",
+    "files": {
+      "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/docs/reviews/n2-intermediate/fixture-cli.mjs": "d740fce9deda594e40f1568f9e66a2530859caad1e62ae3a3ca8b4f5a7a4a6fa",
+      "/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/docs/reviews/n2-intermediate/probe.ts": "addf6fc5c4633100bce95a7fe968a6c0a4e76e620e90a4afe2c6180562bfb64c"
+    },
+    "hostTrackedUnchanged": true
+  },
+  "boundary": {
+    "model": "deterministic CLI fixture; no provider",
+    "adapter": "real codex_local engine=cli and JSONL parser",
+    "controller": "explicit owner-assisted probe; sole dispatcher; no automatic Council integration claimed",
+    "admission": "real Council utilities and CAS persisted in fresh PostgreSQL; context bridge supplies DB and standard API key",
+    "accounting": "synthetic token values persisted by real heartbeat cost path; monetary cost may remain unknown",
+    "candidate": "concrete owned Git fixture; no product feature or real model judgment",
+    "nativeExecutionPolicy": false,
+    "qualification": "feasibility only; not N2/N6/LIVE qualification"
+  },
+  "runtime": "/tmp/council-n2-intermediate-HhTDKw",
+  "timeline": [],
+  "runs": [],
+  "checks": {},
+  "companyId": "3aac5cb4-ef47-4167-aac2-7b673b095cd4",
+  "candidates": {
+    "v1": "0e261b91652f97b307e437ca2fb1513bc6d3d61e"
+  },
+  "actors": {
+    "technical": "2200ccd2-85ab-4520-96af-b3cf49a80b66",
+    "council": "48f474ce-8376-43bb-8f7a-b2e3303af19c",
+    "correction": "fd53ef8d-40f5-4ac0-97ea-449d2bc9479c"
+  },
+  "error": {
+    "message": "Error: Cannot find module 'postgres'\nRequire stack:\n- /home/davy-lp/.codex/worktrees/council-n5/paperclip-council/.paperclip/qualification/paperclip/server/package.json",
+    "stack": "Error: Cannot find module 'postgres'\nRequire stack:\n- /home/davy-lp/.codex/worktrees/council-n5/paperclip-council/.paperclip/qualification/paperclip/server/package.json\n    at node:internal/modules/cjs/loader:1564:15\n    at nextResolveSimple (/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/node_modules/.pnpm/tsx@4.23.15/node_modules/tsx/dist/register-B1c7OH6V.cjs:23:1010)\n    at /home/davy-lp/.codex/worktrees/council-n5/paperclip-council/node_modules/.pnpm/tsx@4.23.15/node_modules/tsx/dist/register-B1c7OH6V.cjs:22:4512\n    at /home/davy-lp/.codex/worktrees/council-n5/paperclip-council/node_modules/.pnpm/tsx@4.23.15/node_modules/tsx/dist/register-B1c7OH6V.cjs:22:2830\n    at resolveTsPaths (/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/node_modules/.pnpm/tsx@4.23.15/node_modules/tsx/dist/register-B1c7OH6V.cjs:23:762)\n    at /home/davy-lp/.codex/worktrees/council-n5/paperclip-council/node_modules/.pnpm/tsx@4.23.15/node_modules/tsx/dist/register-B1c7OH6V.cjs:23:1203\n    at j._resolveFilename (file:///home/davy-lp/.codex/worktrees/council-n5/paperclip-council/node_modules/.pnpm/tsx@4.23.15/node_modules/tsx/dist/register-nyXW-TH3.mjs:2:18825)\n    at wrapResolveFilename (node:internal/modules/cjs/loader:1118:27)\n    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1142:10)\n    at defaultResolve (node:internal/modules/cjs/loader:1199:20)"
+  },
+  "cleanup": {
+    "databaseCleaned": true,
+    "serverStopped": true,
+    "runtimeRemoved": true
+  },
+  "finishedAt": "2026-10-04T14:05:17.554Z"
+}

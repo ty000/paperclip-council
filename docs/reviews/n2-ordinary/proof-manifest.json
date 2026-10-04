@@ -1,0 +1,93 @@
+{
+  "schema_version": "proof-manifest.v1",
+  "proof_id": "council-ordinary-installed-2026-10-04",
+  "subject": "Installed ordinary CLI N2/N3 review, one Git correction and accepted N5 candidate handoff; provider-free only",
+  "status": "pass",
+  "summary": "Current source be0d7d2fd6a52dac5bc3827a65200ee67988d25c: installed functional PASS and 362 tests. Normalized audit wrapper PASS; raw Fallow FAIL retained and manually disposed after one bounded pass removed the three introduced critical product findings.",
+  "categories": [
+    "functional",
+    "quality",
+    "operations"
+  ],
+  "evidence": [
+    {
+      "id": "installed",
+      "category": "functional",
+      "kind": "runtime-observation",
+      "location": "artifacts/n2-ordinary-installed-be0d7d2.json",
+      "replayable": true,
+      "notes": "Exit 0; exact source and worker hashes; SHA256=1b281d15efaf54124dd12d48a81616fac39c8ab145a2c3cbf0c141f3c11cccb4"
+    },
+    {
+      "id": "checks",
+      "category": "quality",
+      "kind": "automated-test",
+      "location": "docs/reviews/n2-ordinary/checks-remediation.log",
+      "replayable": true,
+      "notes": "Exit 0; 362 tests, typecheck and build; SHA256=bd0a065e1d59e351eff48e050d37b2f86f1d8e2c63025c3b72c3f93b0f34db12"
+    },
+    {
+      "id": "audit-wrapper",
+      "category": "quality",
+      "kind": "command-output",
+      "location": "docs/reviews/n2-ordinary/static-audit-wrapper-after.json",
+      "replayable": true,
+      "notes": "Exit 0/PASS normalized; 419 unclassified; does not imply raw clean; SHA256=4d9b61725f4ede028b528104c83bff3d8b1af3f686a7113397fc67da89247023"
+    },
+    {
+      "id": "readback",
+      "category": "operations",
+      "kind": "runtime-observation",
+      "location": "docs/reviews/n2-ordinary/readback-checks-be0d7d2.json",
+      "replayable": true,
+      "notes": "Derived exact identity/order/37 hashes; SHA256=98ac21fa03e6101a3668b7d5afa1f8eb82a4e90541d788035e6144d91184583e"
+    },
+    {
+      "id": "audit-raw-before",
+      "category": "quality",
+      "kind": "command-output",
+      "location": "docs/reviews/n2-ordinary/static-audit-raw-before.json",
+      "replayable": true,
+      "notes": "Exit 1/FAIL preserved; initial critical product findings and all raw arrays; SHA256=8fb236c017607c0a3dfb024fb9fa2389abad8e4656be26a708dcbd6a07b083bd"
+    },
+    {
+      "id": "audit-raw-after",
+      "category": "quality",
+      "kind": "command-output",
+      "location": "docs/reviews/n2-ordinary/static-audit-raw-after.json",
+      "replayable": true,
+      "notes": "Exit 1/FAIL preserved; no introduced critical product finding; 12 cycles, 11 duplication groups, 14 introduced complexity entries vs attribution13; SHA256=900891382a38083726410c3f31be13585a0e4ed00ab6d75bd7b5c4e70d93365c"
+    },
+    {
+      "id": "audit-dispositions",
+      "category": "quality",
+      "kind": "manual-review",
+      "location": "docs/reviews/n2-ordinary/static-audit-dispositions.json",
+      "replayable": true,
+      "notes": "Local independent review; indexed reasons for nonblocking residuals; not GitHub review; SHA256=f799a31b730a6e270a91af2d90c086b0a929adc352c2d66f775b2f732b31aed4"
+    }
+  ],
+  "replay": {
+    "preconditions": [
+      "Use an isolated Council checkout at source commit be0d7d2fd6a52dac5bc3827a65200ee67988d25c with dependencies installed.",
+      "Qualification host HEAD 61b3fd57a695614dc4a37e2303f426a34a9795cf, tracked clean, no concurrent host worker. No provider credentials or external publication."
+    ],
+    "steps": [
+      "node scripts/ci/run-checks.mjs",
+      "FALLOW_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 node_modules/.bin/fallow audit --base 84d79cd7779de706e99f4bea1df45743cf3186cb --format json --quiet",
+      "node scripts/ci/run-static-audit.mjs --base-ref 84d79cd7779de706e99f4bea1df45743cf3186cb",
+      "node_modules/.bin/tsx tests/functional/ordinary-installed.ts artifacts/n2-ordinary-installed-<unique-name>.json"
+    ],
+    "expected_artifacts": [
+      "New JSON output, exit 0 and INSTALLED ORDINARY COUNCIL PROVIDER-FREE VALIDATED",
+      "10 successful runs, 7 ordinary API bindings, 2 running-report nonadmission observations, all reservations settled, cleanup true",
+      "Raw audit FAIL retained separately from normalized wrapper PASS; manual residual classification remains required."
+    ]
+  },
+  "closure": {
+    "decision": "close-final",
+    "rationale": "Closes only bounded functional integration after independent manual disposition of residual raw audit failures. Does not claim raw static cleanliness, real model judgment, tool gateway enablement, N5 publication, N6 or M1 completion.",
+    "next_required_actions": []
+  },
+  "generated_at": "2026-10-04T16:02:05.359391+00:00"
+}

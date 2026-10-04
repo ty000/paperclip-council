@@ -65,6 +65,7 @@ export type N2ReviewRound = {
 };
 
 export type N2State = {
+  ordinary?: import("./n2-ordinary-state.js").OrdinaryN2State;
   native?: import("./n2-native-runtime.js").N2NativeRuntime;
   schemaVersion: 1;
   correctionLimit: 1;
@@ -345,7 +346,18 @@ function nativeReceiptSubjectMatches(mission: MissionRecord, submission: N2Submi
       && observation.report.subject.submissionId === submission.submissionId && observation.report.subject.candidateCommit === submission.candidateCommit);
 }
 
+function ordinaryReceiptSubjectMatches(mission: MissionRecord, submission: N2Submission, input: N2DecisionInput): boolean {
+  const task = mission.aggregate.n2!.ordinary!.tasks.find(task => task.kind === "council" && task.submissionId === submission.submissionId);
+  const body = input.receipt.requestBody;
+  return Boolean(task?.report && task.settledAt && task.runId === input.runId && task.agentId === input.actorAgentId
+    && body.provenance === "ordinary-task-terminal-readback-v1" && body.method === "GET"
+    && body.issueId === task.issueId && body.runId === task.runId && body.reportHash === canonicalPayloadHash(task.report)
+    && body.subjectHash === canonicalPayloadHash(task.report.subject) && task.report.subject.candidateCommit === submission.candidateCommit
+    && task.report.subject.submissionId === submission.submissionId && task.report.verdict === input.verdict);
+}
+
 function decisionReceiptSubjectMatches(mission: MissionRecord, submission: N2Submission, input: N2DecisionInput): boolean {
+  if (mission.aggregate.n2?.ordinary) return ordinaryReceiptSubjectMatches(mission, submission, input);
   if (mission.aggregate.n2?.native?.reviewProtocol === "native-verdict-readback-v1") {
     return nativeReceiptSubjectMatches(mission, submission, input);
   }
@@ -592,6 +604,11 @@ export function startN2ResubmittedReview(
 }
 
 function n2Blockage(state: N2State, round: N2ReviewRound | null) {
+  if (state.ordinary) {
+    const task = state.ordinary.tasks.find(item => !item.closedAt);
+    return task && (task.creation === "claimed" || task.wake === "claimed" && !task.runId)
+      ? { code: "ordinary_effect_unknown", message: "Ordinary task effect is claimed without confirmed identity; preserve reservation and reconcile its readback.", nextActorId: null } : null;
+  }
   if (state.status === "application_unknown") {
     return { code: "application_unknown", message: "Native decision outcome is uncertain; dependent work remains blocked.", nextActorId: null };
   }
@@ -614,7 +631,19 @@ function nativeN2NextAction(state: N2State) {
   return null;
 }
 
+function ordinaryN2NextAction(state: N2State, round: N2ReviewRound | null) {
+  const task = state.ordinary!.tasks.find(item => !item.closedAt);
+  if (!task) return { actorKind: "operator" as const, actorId: null, label: "Exact candidate accepted after Council terminal report and all admitted usage settled." };
+  if (n2Blockage(state, round)) return { actorKind: "operator" as const, actorId: null, label: "Inspect the claimed ordinary effect; do not dispatch a replacement." };
+  return { actorKind: "agent" as const, actorId: task.agentId, label: task.settledAt
+    ? "Council controller reconciles the settled task before admitting the next action."
+    : task.kind === "specialist" ? "Submit this candidate's N3 opinion, then finish the CLI run."
+    : task.kind === "council" ? "Submit ordinary-verdict, then finish with the exact returned finishReport JSON. Acceptance waits for terminal usage."
+    : "Amend the integration commit, verify and prepare V2, then finish the admitted correction run." };
+}
+
 function n2NextAction(state: N2State, round: N2ReviewRound | null) {
+  if (state.ordinary) return ordinaryN2NextAction(state, round);
   const nativeAction = nativeN2NextAction(state);
   if (nativeAction) return nativeAction;
   if (round?.handoff.state === "unknown") {
@@ -665,9 +694,11 @@ export function inspectN2State(mission: MissionRecord) {
       settledAt: state.correction.usageSettledAt ?? null,
     } : null,
   };
-  const usageComplete = usage.reviews.every((entry) => entry.runId && entry.settled)
+  const usageComplete = (!state.ordinary || state.ordinary.tasks.every(task => Boolean(task.settledAt))) && usage.reviews.every((entry) => entry.runId && entry.settled)
     && (!usage.correction || usage.correction.settled);
   return {
+    runtimeProfile: state.ordinary?.protocol ?? (state.native ? "paperclip-native-runner-v1" : "legacy"),
+    ordinaryTasks: state.ordinary?.tasks,
     submission,
     submissions: state.submissions,
     reviewer: {
@@ -889,7 +920,11 @@ export async function executeN2BoardCommand(ctx: PluginContext, input: {
   const mission = await getMission(ctx, input.companyId, input.missionId);
   if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
   await requireMissionOwner(ctx, mission, input.actorUserId);
-  if ((await ctx.config.get(input.companyId)).n2RuntimeProfile === "paperclip_runner-experimental") {
+  if (mission.aggregate.n2?.ordinary || !mission.aggregate.n2 && (await ctx.config.get(input.companyId)).n2RuntimeProfile === "ordinary-cli-v1") {
+    const { executeOrdinaryN2Board } = await import("./n2-ordinary-runtime.js");
+    return executeOrdinaryN2Board(ctx, mission, input);
+  }
+  if (mission.aggregate.n2?.native || !mission.aggregate.n2 && (await ctx.config.get(input.companyId)).n2RuntimeProfile === "paperclip_runner-experimental") {
     const { executeNativeN2Board } = await import("./n2-native-runtime.js");
     return executeNativeN2Board(ctx, mission, input);
   }
@@ -1347,6 +1382,10 @@ export async function handleN2AgentApi(input: PluginApiRequestInput, ctx: Plugin
     const missionId = runtimeUuid(body.missionId, "missionId");
     const mission = await getMission(ctx, input.companyId, missionId);
     if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
+    if (mission.aggregate.n2?.ordinary) {
+      const { executeOrdinaryN2Agent } = await import("./n2-ordinary-agent.js");
+      return { status: 200, body: await executeOrdinaryN2Agent(ctx, mission, input, body) };
+    }
     if (input.params.issueId !== mission.rootIssueId) throw new MissionError(404, "mission_issue_not_found", "N2 commands address the mission root issue");
     if (mission.aggregate.n2?.native) {
       const { executeNativeN2Agent } = await import("./n2-native-runtime.js");
@@ -1494,7 +1533,7 @@ export async function prepareN2Decision(
   let correctionAdmission: Record<string, unknown> = {};
   if (decision.verdict === "changes_requested") {
     const reservationId = runtimeUuid(correctionReservationId, "correctionReservationId");
-    if (!state.native) await reserveN2Run(ctx, mission, { reservationId, effectId: decision.operationId, kind: "correction" });
+    if (!state.native && !state.ordinary) await reserveN2Run(ctx, mission, { reservationId, effectId: decision.operationId, kind: "correction" });
     correctionAdmission = { reservationId };
   }
   return n2Cas(ctx, mission, {

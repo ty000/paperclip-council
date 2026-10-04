@@ -27,3 +27,21 @@ it.each([
   await expect(settleNativeExactRunUsage({} as never, binding)).rejects.toMatchObject({ code });
   expect(settleAdmission).not.toHaveBeenCalled();
 });
+
+it("settles ordinary CLI per_run through contextSnapshot without weakening the native reader", async () => {
+  const { settleOrdinaryRunUsage, readNativeRun } = await import("../src/g4-native.js");
+  vi.mocked(councilNativeRequest).mockResolvedValue({ status: 200, body: { ...run(), nativeIssueId: null } });
+  await settleOrdinaryRunUsage({} as never, binding);
+  expect(settleAdmission).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ usage: expect.objectContaining({ units: 124 }) }));
+  await expect(readNativeRun({} as never, binding)).rejects.toMatchObject({ code: "g4_run_identity_unqualified" });
+});
+it.each([
+  { id: "other" }, { companyId: "other" }, { agentId: "other" }, { contextSnapshot: { issueId: "other" } },
+  { nativeIssueId: "issue" }, { contextSnapshot: { issueId: "issue", nativeReviewInteractionId: "card" } },
+  { status: "running", finishedAt: null }, { usageJson: { usageSource: "session", inputTokens: 101, outputTokens: 23 } },
+])("retains ordinary exposure on identity or usage uncertainty %j", async patch => {
+  const { settleOrdinaryRunUsage } = await import("../src/g4-native.js");
+  vi.mocked(councilNativeRequest).mockResolvedValue({ status: 200, body: { ...run(), nativeIssueId: null, ...patch } });
+  await expect(settleOrdinaryRunUsage({} as never, binding)).rejects.toThrow();
+  expect(settleAdmission).not.toHaveBeenCalled();
+});
