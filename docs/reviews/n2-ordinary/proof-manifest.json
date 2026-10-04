@@ -1,0 +1,67 @@
+{
+  "schema_version": "proof-manifest.v1",
+  "proof_id": "council-ordinary-installed-2026-10-04",
+  "subject": "Installed ordinary CLI N2/N3 review, one Git correction and accepted N5 candidate handoff; provider-free only",
+  "status": "pass",
+  "summary": "Exact source 567f1d39709b402f42df79b2f5ffd8752d32d803: 3 prerequisite + 7 ordinary successful CLI runs, 10 settled reservations, 1500 synthetic measured tokens, no surprise run; independent Council judgments for V1/V2.",
+  "categories": [
+    "functional",
+    "quality",
+    "operations"
+  ],
+  "evidence": [
+    {
+      "id": "installed",
+      "category": "functional",
+      "kind": "runtime-observation",
+      "location": "artifacts/n2-ordinary-installed-567f1d3.json",
+      "replayable": true,
+      "notes": "exit 0; source and built-worker hashes included; SHA256=d5a7d1729d5cc7e661c9338b16f7f30fd15cec443e2137c10d12390a07ba21a3"
+    },
+    {
+      "id": "checks",
+      "category": "quality",
+      "kind": "automated-test",
+      "location": "docs/reviews/n2-ordinary/checks.log",
+      "replayable": true,
+      "notes": "exit 0; typecheck/build + 362 tests in 34 files; SHA256=fb842fc2b1df809f6fae62636ee08233c6c554b5fb0992c61a96306da5389804"
+    },
+    {
+      "id": "audit",
+      "category": "quality",
+      "kind": "command-output",
+      "location": "docs/reviews/n2-ordinary/static-audit.json",
+      "replayable": true,
+      "notes": "exit 0; Fallow 3.23.0 base 84d79cd7779de706e99f4bea1df45743cf3186cb; SHA256=beaad2b1457fa27ef28e69dfbe09b4e71fffd6de769568dbf7f0c38ddd8e41aa"
+    },
+    {
+      "id": "readback",
+      "category": "operations",
+      "kind": "runtime-observation",
+      "location": "docs/reviews/n2-ordinary/readback-checks.json",
+      "replayable": true,
+      "notes": "Derived identity/order/hash verification against original installed artifact; SHA256=663e3833f5156fcc9e3cc8cad55392b449edd6637fa83dd6ad421dcf1985649d"
+    }
+  ],
+  "replay": {
+    "preconditions": [
+      "Use an isolated Council checkout at source commit 567f1d39709b402f42df79b2f5ffd8752d32d803 with dependencies installed.",
+      "Qualification host HEAD 61b3fd57a695614dc4a37e2303f426a34a9795cf, tracked clean, no concurrent host worker. No provider credentials or external publication."
+    ],
+    "steps": [
+      "node scripts/ci/run-checks.mjs",
+      "node scripts/ci/run-static-audit.mjs --base-ref 84d79cd7779de706e99f4bea1df45743cf3186cb",
+      "node_modules/.bin/tsx tests/functional/ordinary-installed.ts artifacts/n2-ordinary-installed-<unique-name>.json"
+    ],
+    "expected_artifacts": [
+      "New JSON output, exit 0 and INSTALLED ORDINARY COUNCIL PROVIDER-FREE VALIDATED",
+      "10 successful runs, 7 ordinary API bindings, 2 running-report nonadmission observations, all reservations settled, cleanup true"
+    ]
+  },
+  "closure": {
+    "decision": "close-final",
+    "rationale": "Closes only the bounded product integration and installed provider-free proof; no real model, tool gateway enablement, N5 publication, N6 or M1 completion claim.",
+    "next_required_actions": []
+  },
+  "generated_at": "2026-10-04T15:48:04.645261+00:00"
+}

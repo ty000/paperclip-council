@@ -1,0 +1,102 @@
+{
+  "sourceCommit": "567f1d39709b402f42df79b2f5ffd8752d32d803",
+  "proofSha256": "d5a7d1729d5cc7e661c9338b16f7f30fd15cec443e2137c10d12390a07ba21a3",
+  "sourceHashesMatch": true,
+  "allSevenExactIdentitiesAndPerRun": true,
+  "allSevenOneSettlementZeroExposure": true,
+  "eachNextReservationAfterPreviousSettlement": true,
+  "limit": "Saved company run-list summaries are excerpts; the installed controller validates full summary using the individual GET-heartbeat-run API.",
+  "order": [
+    {
+      "kind": "specialist",
+      "taskId": "8af32cbe-bba5-4116-9efe-888a8a72baac",
+      "issueId": "13261dfe-c2e9-4054-bba4-4811555a805d",
+      "runId": "d612dd72-3eda-46a5-854f-cebf5bff4416",
+      "reservationId": "bdca6542-3af0-41cc-a523-9314c6b20332",
+      "reservedAt": "2026-10-04T15:44:40.240Z",
+      "runCreatedAt": "2026-10-04T15:44:40.283Z",
+      "startedAt": "2026-10-04T15:44:40.314Z",
+      "finishedAt": "2026-10-04T15:44:41.025Z",
+      "settledAt": "2026-10-04T15:44:41.091Z",
+      "closedAt": "2026-10-04T15:44:41.123Z"
+    },
+    {
+      "kind": "specialist",
+      "taskId": "38e10d71-82d1-41ff-8154-f673440300bb",
+      "issueId": "050dd5ad-a232-446d-9e20-9f07978aec04",
+      "runId": "5263c7b1-03fb-4e38-a7b7-7a74b30e652e",
+      "reservationId": "3f3c1ee0-2616-4965-a713-89daa863affb",
+      "reservedAt": "2026-10-04T15:44:41.161Z",
+      "runCreatedAt": "2026-10-04T15:44:41.203Z",
+      "startedAt": "2026-10-04T15:44:41.233Z",
+      "finishedAt": "2026-10-04T15:44:41.892Z",
+      "settledAt": "2026-10-04T15:44:41.943Z",
+      "closedAt": "2026-10-04T15:44:41.979Z"
+    },
+    {
+      "kind": "council",
+      "taskId": "48d12d97-2bc6-45c4-88cc-925fdc162000",
+      "issueId": "08c7adc1-4536-4169-8d82-4c9e3669f48d",
+      "runId": "14389498-2179-4e56-ad04-45aae4424aaf",
+      "reservationId": "7642ef6a-10f2-405e-bbc6-5100b37e2af2",
+      "reservedAt": "2026-10-04T15:44:42.032Z",
+      "runCreatedAt": "2026-10-04T15:44:42.070Z",
+      "startedAt": "2026-10-04T15:44:42.105Z",
+      "finishedAt": "2026-10-04T15:44:43.118Z",
+      "settledAt": "2026-10-04T15:44:43.172Z",
+      "closedAt": "2026-10-04T15:44:43.261Z"
+    },
+    {
+      "kind": "correction",
+      "taskId": "bdfc74ba-34a5-4442-b59b-f832cd791c31",
+      "issueId": "5b51c2ab-976d-4710-b6d2-bc7768a0eaba",
+      "runId": "664f922b-937a-47f3-ad6b-42589e5c1d60",
+      "reservationId": "96322784-428d-44bd-84ae-3c4d2694133d",
+      "reservedAt": "2026-10-04T15:44:43.272Z",
+      "runCreatedAt": "2026-10-04T15:44:43.325Z",
+      "startedAt": "2026-10-04T15:44:43.357Z",
+      "finishedAt": "2026-10-04T15:44:44.149Z",
+      "settledAt": "2026-10-04T15:44:44.209Z",
+      "closedAt": "2026-10-04T15:44:44.217Z"
+    },
+    {
+      "kind": "specialist",
+      "taskId": "da5e8578-66cc-4328-9c15-e152eb44d1a2",
+      "issueId": "123a5a3a-b88b-4123-b3da-6dd0418d489c",
+      "runId": "29a09f10-e73c-424f-81a5-9f476297e5e9",
+      "reservationId": "c0e3f490-597a-4baa-9b89-a0345a47dd3e",
+      "reservedAt": "2026-10-04T15:44:44.265Z",
+      "runCreatedAt": "2026-10-04T15:44:44.306Z",
+      "startedAt": "2026-10-04T15:44:44.336Z",
+      "finishedAt": "2026-10-04T15:44:44.990Z",
+      "settledAt": "2026-10-04T15:44:45.046Z",
+      "closedAt": "2026-10-04T15:44:45.084Z"
+    },
+    {
+      "kind": "specialist",
+      "taskId": "9b4c1af8-0f1d-4269-bb53-83c4aa6e338a",
+      "issueId": "48ac3241-637f-4824-bc16-73bd6bc39106",
+      "runId": "f6874ba4-6a74-4f87-8875-34f77efe458d",
+      "reservationId": "8671c29e-6e91-419e-baaa-e5cc7598e4dc",
+      "reservedAt": "2026-10-04T15:44:45.135Z",
+      "runCreatedAt": "2026-10-04T15:44:45.175Z",
+      "startedAt": "2026-10-04T15:44:45.206Z",
+      "finishedAt": "2026-10-04T15:44:45.849Z",
+      "settledAt": "2026-10-04T15:44:45.907Z",
+      "closedAt": "2026-10-04T15:44:45.935Z"
+    },
+    {
+      "kind": "council",
+      "taskId": "2f293512-258c-448d-abb2-a8b0c2aefd4e",
+      "issueId": "2c0f0ee3-8d97-4099-ab4e-6e37c79bead1",
+      "runId": "e5e89e4b-7cf7-4db8-9bce-7a52408614f0",
+      "reservationId": "f46ffc8a-c672-4d31-a28b-572d46b651fa",
+      "reservedAt": "2026-10-04T15:44:45.981Z",
+      "runCreatedAt": "2026-10-04T15:44:46.026Z",
+      "startedAt": "2026-10-04T15:44:46.057Z",
+      "finishedAt": "2026-10-04T15:44:47.071Z",
+      "settledAt": "2026-10-04T15:44:47.132Z",
+      "closedAt": "2026-10-04T15:44:47.225Z"
+    }
+  ]
+}
