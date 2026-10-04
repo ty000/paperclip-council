@@ -1,3 +1,4 @@
+import { n5PublisherInstructions } from "./n5-instructions.js";
 import { requestN5Correction, rebindN5Plan } from "./n5-continuation.js";
 import { acceptedN5Submission } from "./n5-preflight.js";
 import { randomUUID } from "node:crypto";
@@ -61,13 +62,13 @@ export async function startN5Publication(ctx: PluginContext, initial: MissionRec
     projectId: m.projectId, rootIssueId: m.rootIssueId, missionId: m.missionId, contributionId: intentId,
     assigneeAgentId: n5.authority.publisherAgentId, title: `Council delivery ${submission.submissionId}`,
     description: JSON.stringify({ missionId: m.missionId, intentId, operation: updating ? "update" : "create", targetUrl: m.aggregate.n5!.publication!.targetUrl, plan: n5.plan, authority: n5.authority, submission,
-      instructions: "Use n5-inspect then n5-claim-publication before git/gh. Only effectPermission=execute allows one effect of the specified operation. For update, push only the newly accepted head to the unchanged authorized branch and update the SAME targetUrl PR; never create another PR. Verify local and remote candidate/ref before gh. Write native delivery JSON {intentId,url,link} with link as Markdown autolink <URL> and pull_request work product, refresh the external object, then n5-observe-delivery. Ambiguous effect: never create again. Finish with attributed checks/review limits." }) });
+      instructions: n5PublisherInstructions(m) }) });
   if (created.state !== "confirmed") return m;
   m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...m.aggregate.n5!.publication!, issueId: created.issue.id, creation: "confirmed" } });
   await reserveN2Run(ctx, m, { reservationId, effectId: intentId, kind: updating ? "correction" : "initial" });
   m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...m.aggregate.n5!.publication!, wake: "claimed" } });
   await ctx.issues.update(created.issue.id, { status: "todo" }, m.companyId);
-  const wake = await ctx.issues.requestWakeup(created.issue.id, m.companyId, { idempotencyKey: `council:n5:${intentId}`, reason: "council_n5_authorized_delivery" });
+  const wake = await ctx.issues.requestWakeup(created.issue.id, m.companyId, { idempotencyKey: `council:n5:${intentId}`, reason: "council_n5_authorized_delivery", actorUserId: m.ownerUserId });
   m = await fresh(ctx, m);
   if (!m.aggregate.n5!.publication!.runId && wake.runId) m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...m.aggregate.n5!.publication!, runId: wake.runId } });
   return m;
@@ -89,6 +90,7 @@ export async function reconcileN5(ctx: PluginContext, initial: MissionRecord) {
     m = await fresh(ctx, m); p = m.aggregate.n5!.publication!;
     m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...p, settledAt: new Date().toISOString() } });
   }
+  if (m.aggregate.n2?.ordinary) await ctx.issues.update(p.issueId!, { status: "done" }, m.companyId);
   return m.aggregate.n5!.publication!.claimedAt ? refreshN5Observation(ctx, m) : m;
 }
 
@@ -124,6 +126,9 @@ function attributedObservation(value: unknown, states: string[], actor: PluginAp
       || !v.evidenceRefs.length || v.evidenceRefs.some(r => typeof r !== "string" || !r || r.length > 1000)) throw new MissionError(422, "n5_checks_binding", "Checks/reviews need explicit state, exact head and evidence references");
   return { headSha, state: v.state, evidenceRefs: v.evidenceRefs, observedAt: new Date().toISOString(), agentId: actor.agentId ?? null, userId: actor.userId ?? null, runId: actor.runId ?? null };
 }
+async function holdOrdinaryPublisher(ctx: PluginContext, m: MissionRecord) {
+  if (m.aggregate.n2?.ordinary) await ctx.issues.update(m.aggregate.n5!.publication!.issueId!, { status: "blocked" }, m.companyId);
+}
 export async function handleN5Agent(ctx: PluginContext, input: PluginApiRequestInput) {
   try {
     const body = input.body as Record<string, unknown>;
@@ -137,7 +142,10 @@ export async function handleN5Agent(ctx: PluginContext, input: PluginApiRequestI
     m = await bindPublisher(ctx, m, input);
     if (body.command === "n5-inspect") return { status: 200, body: { version: m.version, delivery: inspectN5(m) } };
     const prior = runtimeReceipt(m, runtimeUuid(body.commandId, "commandId"), input.actor.agentId!, canonicalPayloadHash(body));
-    if (prior) return { status: 200, body: { outcome: "replayed", effectPermission: "none", mission: m, receipt: prior } };
+    if (prior) {
+      await holdOrdinaryPublisher(ctx, m);
+      return { status: 200, body: { outcome: "replayed", effectPermission: "none", mission: m, receipt: prior } };
+    }
     const n5 = m.aggregate.n5!; let p = n5.publication!;
     if (body.command === "n5-claim-publication") {
       if (p.claimedAt) throw new MissionError(409, "n5_effect_already_claimed", "One publication intent is already consumed; correlate readback without another effect");
@@ -153,6 +161,7 @@ export async function handleN5Agent(ctx: PluginContext, input: PluginApiRequestI
         reviews: body.reviews ? attributedObservation(body.reviews, ["unknown", "pending", "approved", "changes_requested"], input.actor, observation.headSha) as NonNullable<typeof p.reviews> : undefined };
     } else throw new MissionError(400, "n5_unknown_command", "Unknown delivery command");
     const result = await n2CommandCas(ctx, m, body, "agent", input.actor.agentId!, { ...m.aggregate, n5: { ...n5, publication: p } });
+    await holdOrdinaryPublisher(ctx, m);
     return { status: 200, body: { ...result, effectPermission: body.command === "n5-claim-publication" && result.outcome === "applied" ? "execute" : "none" } };
   } catch (error) {
     if (error instanceof MissionError || error instanceof AdmissionError) return { status: error.status, body: { code: error.code, error: error.message } };

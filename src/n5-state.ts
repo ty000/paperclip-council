@@ -37,7 +37,7 @@ export function inspectN5(mission: MissionRecord) {
   if (!n5) return null;
   const p = n5.publication; const o = p?.observation;
   const fresh = Boolean(o && !p?.readbackUnavailable && Date.now() - Date.parse(o.lastResolvedAt) <= 300_000);
-  const ready = Boolean(o && p && currentAcceptance(mission, p) && fresh && o.matchesCandidate && o.state === "open" && !o.draft
+  const ready = Boolean(o && p && (!mission.aggregate.n2?.ordinary || p.settledAt) && currentAcceptance(mission, p) && fresh && o.matchesCandidate && o.state === "open" && !o.draft
     && p?.checks?.headSha === o.headSha && p.checks.state === "passed"
     && p?.reviews?.headSha === o.headSha && p.reviews.state === "approved");
   return { ...n5, ready, nativeReadbackFresh: fresh, checksSource: "attributed_actor_observation", reviewsSource: "attributed_actor_observation",

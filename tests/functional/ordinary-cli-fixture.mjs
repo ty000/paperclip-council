@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // Sole model seam: deterministic CLI output and content; all business calls use installed APIs.
+import { publishDelivery, rebindDeliveryPlan } from "./ordinary-delivery-fixture.mjs";
 import assert from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
@@ -34,7 +35,8 @@ async function observe(read, ok, label) {
 }
 const git = (...args) => execFileSync("git", args, { cwd: config.repoPath, encoding: "utf8" }).trim();
 await api("POST", `/api/issues/${issueId}/checkout`, { agentId, expectedStatuses: ["todo", "in_progress"] });
-let inspection = await observe(async () => { try { return await call({ command: "inspect" }); }
+const inspectCommand = agentId === config.actors.publisher ? "n5-inspect" : "inspect";
+let inspection = await observe(async () => { try { return await call({ command: inspectCommand }); }
   catch (e) { if (["root_dispatch_run_mismatch", "dispatch_run_mismatch"].includes(e.response?.code)) return null; throw e; } }, Boolean, "dispatch binding");
 async function command(command, extra = {}) {
   inspection = await call({ command: "inspect" });
@@ -51,7 +53,8 @@ async function uploadCandidate() {
   return { attachmentId: attached.id, candidateCommit, baseCommit: config.baseCommit, expectedSha256 };
 }
 let summary;
-if (inspection.task) {
+if (agentId === config.actors.publisher) summary = await publishDelivery({ api, call, config, issueId, runId, git });
+else if (inspection.task) {
   inspection = await call({ command: "ordinary-inspect" });
   await writeFile(resolve(config.runtime, `api-${runId}.json`), JSON.stringify({ runId, issueId, agentId, taskId: inspection.task.taskId }));
   const task = inspection.task;
@@ -65,7 +68,7 @@ if (inspection.task) {
     const review = inspection.n3.review;
     const slot = review.slots.find(slot => slot.slotId === task.slotId);
     const corrected = (await readFile(resolve(config.repoPath, "alpha.txt"), "utf8")).includes("corrected");
-    const findings = slot.perspective === "quality" && !corrected ? [{ findingId: randomUUID(), classification: "blocking_defect",
+    const findings = slot.perspective === "quality" && !corrected && !config.delivery ? [{ findingId: randomUUID(), classification: "blocking_defect",
       criterionOrRisk: "Alpha must contain corrected marker", evidenceRefs: [`git:${review.subject.candidateCommit}:alpha.txt`],
       evidenceLimits: ["Deterministic fixture opinion; model judgment not qualified"], consequence: "The required marker is absent", recommendedAction: "Correct alpha.txt once" }] : [];
     const opinion = { opinionId: randomUUID(), slotId: task.slotId, subject: review.subject,
@@ -88,6 +91,7 @@ if (inspection.task) {
     await new Promise(r => setTimeout(r, 400));
   } else {
     assert.equal(task.kind, "correction");
+    if (config.delivery) await rebindDeliveryPlan({ api, call, config });
     await writeFile(resolve(config.repoPath, "alpha.txt"), "alpha corrected\n");
     git("add", "alpha.txt"); git("commit", "--amend", "-m", "fixture: bounded correction");
     const candidate = await uploadCandidate();

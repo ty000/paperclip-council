@@ -1,0 +1,8 @@
+Proof gate: pass
+Claim under review: Installed provider-free ordinary CLI N5 supports V1 acceptance, one PR, owner-resumed unique correction and V2 update of the same PR with terminal accounting
+Accepted evidence: Canonical checks: typecheck/build/365 tests after bounded remediation: command-output; Exact committed installed N5 scenario, twelve real CLI runs, same PR update and cleanup: runtime-observation; Normalized static diff wrapper PASS, raw FAIL separately retained and manually disposed: command-output
+Rejected evidence: none
+Commands replayed: node scripts/ci/run-checks.mjs; COUNCIL_ORDINARY_DELIVERY=1 node_modules/.bin/tsx tests/functional/ordinary-installed.ts artifacts/n5-ordinary-installed-76cd747.json; node scripts/ci/run-static-audit.mjs --base-ref 756744fc88eefda2332c01922d01571e916031a7
+Manual or hidden dependency: no
+Residual risk: Raw Fallow FAIL (exit1), with moderate readiness complexity and three harness clones manually classified nonblocking; inherited cycles. Model content/usage and GitHub effects/transport are synthetic. N1 setup, owner resume and refresh/reconciliation are explicit assistance. A rejected concurrent V1 refresh CAS did not lose state/effects. No LIVE, external publication, UI, isolated-worktree resume or N6 qualification.
+Closure allowed: yes

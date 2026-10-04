@@ -1,7 +1,9 @@
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { canonicalPayloadHash, MissionError, type MissionRecord } from "./missions.js";
 import { n2CommandCas, nativeN2Profile, reserveN2Run, runtimeUuid } from "./n2-missions.js";
-import { readNativeRun } from "./g4-native.js";
+import { ordinaryTask } from "./n2-ordinary-state.js";
+import { ordinaryTaskInstructions } from "./n2-ordinary-instructions.js";
+import { readNativeRun, readOrdinaryRun } from "./g4-native.js";
 import { readN5Plan } from "./n5-native.js";
 import { acceptedN5Submission } from "./n5-preflight.js";
 
@@ -15,7 +17,7 @@ export function prepareN5Continuation(m: MissionRecord, input: { requestId: stri
   acceptedN5Submission(m);
   const n2 = m.aggregate.n2!; const n5 = m.aggregate.n5; const p = n5?.publication;
   if (n2.correctionsUsed >= n2.correctionLimit || n2.rounds.length !== 1 || n5?.continuation) throw new MissionError(409, "correction_limit_exceeded", "The mission's single cumulative correction is already consumed; new product authority would be required");
-  if (!n5 || !n2.native || !p?.settledAt || !p.observation || p.state !== "opened" || p.observation.state !== "open") throw new MissionError(409, "n5_correction_publication_required", "Settled native publication and an observed open PR are required");
+  if (!n5 || (!n2.native && !n2.ordinary) || !p?.settledAt || !p.observation || p.state !== "opened" || p.observation.state !== "open") throw new MissionError(409, "n5_correction_publication_required", "Settled publication and an observed open PR are required");
   const continuation = { requestId: input.requestId, reason: input.reason, criteria: input.criteria, requestedBy: input.actorId,
     requestedAt: new Date().toISOString(), periodKey: input.periodKey, previousApplication: structuredClone(n2.application),
     previousPlan: structuredClone(n5.plan), previousPublication: structuredClone(p), reopen: { state: "claimed" as const, reservationId: input.reservationId } };
@@ -23,7 +25,10 @@ export function prepareN5Continuation(m: MissionRecord, input: { requestId: stri
     n5: { ...n5, continuation }, n2: { ...n2, correctionsUsed: 1 as const, status: "correction_requested" as const,
       correction: { requestedByOperationId: input.requestId, criteria: input.criteria, reasons: [input.reason],
         executorAgentId: m.aggregate.responsibilities.integrationLeadAgentId, runId: null, reservationId: input.reservationId, wakeState: "claimed" as const },
-      native: { ...n2.native, releaseState: "claimed" as const } },
+      ...(n2.ordinary ? { ordinary: { ...n2.ordinary, tasks: [...n2.ordinary.tasks,
+        { ...ordinaryTask("correction", n2.activeSubmissionId, m.aggregate.responsibilities.integrationLeadAgentId),
+          taskId: input.requestId, reservationId: input.reservationId, issueId: m.rootIssueId, creation: "confirmed" as const, wake: "claimed" as const }] } }
+        : { native: { ...n2.native!, releaseState: "claimed" as const } }) },
     journal: [...m.aggregate.journal, { action: "n5_post_acceptance_correction", requestId: input.requestId,
       acceptedSubmissionId: p.submission.submissionId, reservationId: input.reservationId, actorId: input.actorId, reason: input.reason }] };
 }
@@ -39,6 +44,10 @@ export async function requestN5Correction(ctx: PluginContext, m: MissionRecord, 
   if (root?.status !== "done" || root.assigneeAgentId !== m.aggregate.responsibilities.integrationLeadAgentId) throw new MissionError(409, "n5_reopen_target", "Accepted native root must remain done under its integration lead");
   await reserveN2Run(ctx, m, { reservationId, effectId: requestId, kind: "correction" });
   const result = await n2CommandCas(ctx, m, body, "user", actorId, aggregate);
+  if (result.outcome === "applied" && aggregate.n2.ordinary) {
+    const task = aggregate.n2.ordinary.tasks.at(-1)!;
+    await ctx.issues.update(m.rootIssueId, { description: (root.description ?? "") + "\n\nPost-publication correction: " + reason + "\nCriteria: " + JSON.stringify(criteria) + "\n" + ordinaryTaskInstructions(result.mission, task) }, m.companyId);
+  }
   return { ...result, effectPermission: result.outcome === "applied" ? "execute" : "none",
     nativeAction: { actor: "same_authenticated_owner", method: "PATCH", path: `/api/issues/${m.rootIssueId}`,
       body: { resume: true, comment: `Council correction ${requestId}: ${reason}` },
@@ -52,7 +61,7 @@ export async function rebindN5Plan(ctx: PluginContext, m: MissionRecord, input: 
     ...m.aggregate.n3?.rounds.map(round => round.transmission?.runId) ?? []];
   if (!n5 || input.actor.actorType !== "agent" || input.actor.agentId !== lead || input.params.issueId !== m.rootIssueId
       || !runId || !admittedRuns.includes(runId)) throw new MissionError(403, "n5_plan_actor", "Exact admitted root lead run required for plan rebinding");
-  const run = await readNativeRun(ctx, { companyId: m.companyId, issueId: m.rootIssueId, agentId: lead, runId });
+  const run = await (m.aggregate.n2?.ordinary ? readOrdinaryRun : readNativeRun)(ctx, { companyId: m.companyId, issueId: m.rootIssueId, agentId: lead, runId });
   if (run.status !== "running" || !run.startedAt || run.finishedAt) throw new MissionError(409, "n5_plan_run", "Plan rebinding requires its active native lead run");
   const reason = requiredReason(body.reason);
   const plan = await readN5Plan(ctx, m, runtimeUuid(body.planRevisionId, "planRevisionId"));

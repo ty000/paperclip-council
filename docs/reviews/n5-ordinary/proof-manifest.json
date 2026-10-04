@@ -1,0 +1,113 @@
+{
+  "schema": "council-ordinary-delivery-proof-v1",
+  "status": "functional-pass-with-static-reservations",
+  "sourceCommit": "76cd747e90e12704c232c95d8b785eb8e9fa151b",
+  "baseCommit": "756744fc88eefda2332c01922d01571e916031a7",
+  "hostCommit": "61b3fd57a695614dc4a37e2303f426a34a9795cf",
+  "branch": "codex/council-ordinary-delivery",
+  "installed": {
+    "command": "COUNCIL_ORDINARY_DELIVERY=1 node_modules/.bin/tsx tests/functional/ordinary-installed.ts artifacts/n5-ordinary-installed-76cd747.json",
+    "exitCode": 0,
+    "outcome": "INSTALLED ORDINARY DELIVERY PROVIDER-FREE VALIDATED",
+    "artifact": "artifacts/n5-ordinary-installed-76cd747.json",
+    "sha256": "62ad1e68f4b2b48be8eb11d607ccc21c9de35be8d587fa27f13358e6af547d00",
+    "expectedRuns": 12,
+    "observedRuns": 12,
+    "terminalStatus": "all succeeded",
+    "settledReservations": 12,
+    "knownTokens": 1800,
+    "exposure": 0,
+    "samePrCreateCount": 1,
+    "samePrUpdateCount": 1,
+    "correctionsUsed": 1,
+    "ownerAssistance": [
+      "N1 prerequisite terminal-child closure with lead demand wakes held",
+      "configure existing plan/publication authority",
+      "one request-delivery-correction and one public owner resume PATCH",
+      "one refresh after real 300-second host backoff and owner reconcile"
+    ],
+    "cleanup": {
+      "databaseCleaned": true,
+      "serverStopped": true,
+      "runtimeRemoved": true
+    }
+  },
+  "checks": {
+    "targeted": "29 passed",
+    "canonical": "typecheck/build/365 tests PASS; after remediation before source commit",
+    "proofAssertionAddition": "two publisher issue and owner resume public assertions added after checks, before source commit; exercised in exact installed run",
+    "sourceHashesVerified": 40
+  },
+  "staticAudit": {
+    "base": "756744fc88eefda2332c01922d01571e916031a7",
+    "rawCommand": "FALLOW_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 node_modules/.bin/fallow audit --base 756744fc88eefda2332c01922d01571e916031a7 --format json --quiet",
+    "rawExitCode": 1,
+    "rawVerdict": "fail",
+    "wrapperCommand": "node scripts/ci/run-static-audit.mjs --base-ref 756744fc88eefda2332c01922d01571e916031a7",
+    "wrapperExitCode": 0,
+    "wrapperStatus": "pass",
+    "finalHead": "76cd747e90e12704c232c95d8b785eb8e9fa151b",
+    "introduced": {
+      "deadCode": 0,
+      "complexity": 1,
+      "duplication": 3
+    },
+    "manualDisposition": "No blocking product finding. inspectN5 moderate readiness conjunction; three harness/probe duplication groups; four inherited cycles. One bounded remediation only; raw-before/precommit/final retained distinctly."
+  },
+  "review": {
+    "kind": "independent local agent source and artifact review",
+    "status": "PASS",
+    "notGitHubReview": true
+  },
+  "nonblockingObservations": [
+    "V1 publisher post-settlement refresh CAS conflict with owner correction; rejected stale write, preserved correction/history/accounting, no extra effect/run",
+    "Gateway deny_default retained; ordinary authenticated plugin API is the qualified contract"
+  ],
+  "limits": [
+    "Deterministic model judgments/content/usage",
+    "Simulated GitHub publication and read transport; no external PR exists from this run",
+    "Shared workspace resume; isolated worktree recreation not qualified",
+    "N1 owner assistance and owner resume/refresh explicit",
+    "No provider, LIVE campaign, merge, deployment, produced Delivery UI or N6 dependency",
+    "N45 runner preparation launcher remains historical and unported"
+  ],
+  "files": {
+    "artifacts/n5-ordinary-installed-76cd747.json": "62ad1e68f4b2b48be8eb11d607ccc21c9de35be8d587fa27f13358e6af547d00",
+    "docs/reviews/n5-ordinary/readback-checks.json": "1c7b3c502da83c7821f852bc0b296dfb333639fa8d42cf54642580abbed82427",
+    "docs/reviews/n5-ordinary/static-audit-raw-before.json": "16c18801a06087370ed6416b3be8dbb366641bbab7a994cf95dbd9fdbff9089f",
+    "docs/reviews/n5-ordinary/static-audit-raw-precommit.json": "bf1de4bb5ed02e6a3c025e01839a70e69a7f2f2223d5fec65c5abe883f716a57",
+    "docs/reviews/n5-ordinary/static-audit-raw.json": "ce4933074f7bc260aee867f50ff0909fd07fa9ae82adb910294172a767286ffd",
+    "docs/reviews/n5-ordinary/static-audit-wrapper-before.json": "1d5ccbb67e93460fa022bb09a95f32183340a0435f6826f54e02dd7e9561b126",
+    "docs/reviews/n5-ordinary/static-audit-wrapper-precommit.json": "75eeaf7b73ac8117d9d1bdf09c5603e555f0a4b41e8058cd7cc8457f437aa849",
+    "docs/reviews/n5-ordinary/static-audit-wrapper.json": "ec7666c003f314c285aa1e80ce2bd5cbb05f1295207a512ccff29693220f0730",
+    "docs/reviews/n5-ordinary/checks-final.log": "dfe60af3114f58876a00855139b252921d59f1e7d02b4d8014c194c257d00547",
+    "docs/reviews/n5-ordinary/checks.log": "b4be0e487f7b97dd2e5fb4aba761a1682f480995623bcf0333985e1885998667",
+    "docs/reviews/n5-ordinary/installed-76cd747.log": "cf75c43b50b38c21f0dfc5903ae5a66d8e9f8b6072de42528863e76d979196c0",
+    "docs/reviews/n5-ordinary/REPORT.md": "d48e898243ce61ff56a0f88834e9e529d41f1e7c6d9b9b9779f3597ef2bec035"
+  },
+  "claim": "Installed provider-free ordinary CLI N5 supports V1 acceptance, one PR, owner-resumed unique correction and V2 update of the same PR with terminal accounting",
+  "evidence": [
+    {
+      "type": "command-output",
+      "result": "pass",
+      "description": "Canonical checks: typecheck/build/365 tests after bounded remediation",
+      "command": "node scripts/ci/run-checks.mjs",
+      "path": "docs/reviews/n5-ordinary/checks-final.log"
+    },
+    {
+      "type": "runtime-observation",
+      "result": "pass",
+      "description": "Exact committed installed N5 scenario, twelve real CLI runs, same PR update and cleanup",
+      "command": "COUNCIL_ORDINARY_DELIVERY=1 node_modules/.bin/tsx tests/functional/ordinary-installed.ts artifacts/n5-ordinary-installed-76cd747.json",
+      "path": "artifacts/n5-ordinary-installed-76cd747.json"
+    },
+    {
+      "type": "command-output",
+      "result": "pass",
+      "description": "Normalized static diff wrapper PASS, raw FAIL separately retained and manually disposed",
+      "command": "node scripts/ci/run-static-audit.mjs --base-ref 756744fc88eefda2332c01922d01571e916031a7",
+      "path": "docs/reviews/n5-ordinary/static-audit-wrapper.json"
+    }
+  ],
+  "residual_risk": "Raw Fallow FAIL (exit1), with moderate readiness complexity and three harness clones manually classified nonblocking; inherited cycles. Model content/usage and GitHub effects/transport are synthetic. N1 setup, owner resume and refresh/reconciliation are explicit assistance. A rejected concurrent V1 refresh CAS did not lose state/effects. No LIVE, external publication, UI, isolated-worktree resume or N6 qualification."
+}

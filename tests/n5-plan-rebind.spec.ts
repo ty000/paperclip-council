@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import { beforeEach, expect, it, vi } from "vitest";
 import { rebindN5Plan } from "../src/n5-continuation.js";
 import { readN5Plan } from "../src/n5-native.js";
-import { readNativeRun } from "../src/g4-native.js";
+import { readNativeRun, readOrdinaryRun } from "../src/g4-native.js";
 import { n2CommandCas } from "../src/n2-missions.js";
 vi.mock("../src/n5-native.js", () => ({ readN5Plan: vi.fn() }));
-vi.mock("../src/g4-native.js", () => ({ readNativeRun: vi.fn() }));
+vi.mock("../src/g4-native.js", () => ({ readNativeRun: vi.fn(), readOrdinaryRun: vi.fn() }));
 vi.mock("../src/n2-missions.js", () => ({ n2CommandCas: vi.fn(), nativeN2Profile: vi.fn(), reserveN2Run: vi.fn(), runtimeUuid: (id: string) => id }));
 beforeEach(() => vi.clearAllMocks());
 function setup() {
@@ -37,4 +37,14 @@ it("records the native revision history while preserving publisher and repositor
   const next = vi.mocked(n2CommandCas).mock.calls[0]![5];
   expect(next.n5!.authority).toEqual(before.authority); expect(next.n5!.plan.revisionId).toBe(body.planRevisionId);
   expect(next.n5!.planHistory![0]!.plan).toEqual(before.plan); expect(m.aggregate.n5).toEqual(before);
+});
+
+it("rebinds the exact admitted ordinary correction using CLI run identity without requiring native completion", async () => {
+  const { m, input, body } = setup();
+  m.aggregate.n2.ordinary = { protocol: "ordinary-cli-v1", tasks: [] };
+  vi.mocked(readOrdinaryRun).mockResolvedValue({ status: "running", startedAt: "now", finishedAt: null } as never);
+  await rebindN5Plan({} as never, m, input, body);
+  expect(readOrdinaryRun).toHaveBeenCalledWith({}, { companyId: m.companyId, issueId: m.rootIssueId, agentId: input.actor.agentId, runId: input.actor.runId });
+  expect(readNativeRun).not.toHaveBeenCalled();
+  expect(vi.mocked(n2CommandCas).mock.calls[0]![5].n5!.planHistory![0]!.runId).toBe(input.actor.runId);
 });
