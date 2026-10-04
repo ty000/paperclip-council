@@ -1,0 +1,1093 @@
+{
+  "observedAt": "2026-10-04T17:40:24.358729+00:00",
+  "outcome": "BLOCKED_BEFORE_CORRECTION",
+  "source": "dd6e4a388bb13ef432daa7071ceeb47d5a895a3b",
+  "host": "61b3fd57a695614dc4a37e2303f426a34a9795cf",
+  "companyId": "4d1005f5-5b80-4c7b-b60c-63820d6be65e",
+  "missionId": "171d435a-66e8-4542-b5bd-76b4a151f73a",
+  "rootIssueId": "4dfd971c-bda1-435b-8de2-ead323e767ec",
+  "candidate": {
+    "sha256": "cec29bdfcc50df93970ee53102f4e92e5b13b3ee0c8533614573a941b571eb88",
+    "byteSize": 1346065,
+    "baseCommit": "dd6e4a388bb13ef432daa7071ceeb47d5a895a3b",
+    "attachmentId": "0f6be3f4-5f2c-4071-9a7e-1e3d437dcfa6",
+    "candidateCommit": "49e92ffb91a5baf8c50d78518ce99e109aa6c0f7"
+  },
+  "runs": [
+    {
+      "id": "c0f999dd-16b2-4fbe-bbd9-9633b242699c",
+      "agentId": "986b50c1-989c-44e9-b24a-4c1671af6873",
+      "status": "succeeded",
+      "usageSource": "per_run",
+      "inputTokens": 332949,
+      "outputTokens": 5708,
+      "cachedInputTokens": 270592,
+      "nativeIssueId": null,
+      "issueId": "911585a5-ca99-4545-967b-132ed96ff382"
+    },
+    {
+      "id": "3a9b5cb4-41c4-4ee7-9bba-5309a5c14ad7",
+      "agentId": "77719ed2-879f-492d-8d4d-ecff2e406955",
+      "status": "succeeded",
+      "usageSource": "per_run",
+      "inputTokens": 314813,
+      "outputTokens": 4485,
+      "cachedInputTokens": 262784,
+      "nativeIssueId": null,
+      "issueId": "9471a801-8a23-4903-a140-9982129f88a1"
+    },
+    {
+      "id": "6e0d2689-fcf9-4a80-a1ac-9bd733839040",
+      "agentId": "9559184a-edb2-41c2-a131-4db863900270",
+      "status": "succeeded",
+      "usageSource": "per_run",
+      "inputTokens": 485465,
+      "outputTokens": 4803,
+      "cachedInputTokens": 411264,
+      "nativeIssueId": null,
+      "issueId": "90ecd559-8df2-4322-94df-2ca41c08cb0f"
+    },
+    {
+      "id": "6afa0096-5fd6-4e00-86f2-d0b12e65175c",
+      "agentId": "768c6ab2-69d0-47cc-9c5d-6bd86c755155",
+      "status": "succeeded",
+      "usageSource": "per_run",
+      "inputTokens": 779634,
+      "outputTokens": 7048,
+      "cachedInputTokens": 719616,
+      "nativeIssueId": null,
+      "issueId": "f909210e-a776-483a-aca7-020c7417a94d"
+    },
+    {
+      "id": "8903a13d-d7eb-46f5-8069-69542917a730",
+      "agentId": "b636c858-33ba-4c3f-b2f1-68bc0ea226c0",
+      "status": "succeeded",
+      "usageSource": "per_run",
+      "inputTokens": 532404,
+      "outputTokens": 10047,
+      "cachedInputTokens": 467968,
+      "nativeIssueId": null,
+      "issueId": "d39837d1-38b7-4dd8-a5fb-991e4a7cf224"
+    },
+    {
+      "id": "a3cb3adf-4c43-48c4-b524-85c7e4ba9713",
+      "agentId": "314dc659-4fdc-4b36-b01f-07da7a0a6a52",
+      "status": "succeeded",
+      "usageSource": "per_run",
+      "inputTokens": 1743418,
+      "outputTokens": 10785,
+      "cachedInputTokens": 1671552,
+      "nativeIssueId": null,
+      "issueId": "4dfd971c-bda1-435b-8de2-ead323e767ec"
+    }
+  ],
+  "reservations": [
+    {
+      "id": "0c7b7929-c8fe-43ed-90bb-17c762469da0",
+      "status": "settled",
+      "units": 1754203,
+      "remainingExposure": 0
+    },
+    {
+      "id": "917755d2-1684-4827-9d00-2ce733235905",
+      "status": "settled",
+      "units": 542451,
+      "remainingExposure": 0
+    },
+    {
+      "id": "00fe26b2-777f-47fb-98e9-07a7b3c36799",
+      "status": "settled",
+      "units": 786682,
+      "remainingExposure": 0
+    },
+    {
+      "id": "5fb54e5c-c068-4603-9d6d-3eaf91e3a04e",
+      "status": "settled",
+      "units": 490268,
+      "remainingExposure": 0
+    },
+    {
+      "id": "36c35d0b-bc7d-44b2-98c6-16d7ac138e1b",
+      "status": "settled",
+      "units": 319298,
+      "remainingExposure": 0
+    },
+    {
+      "id": "2842d2b1-6e3f-4b09-89a9-b2b2909c8574",
+      "status": "settled",
+      "units": 338657,
+      "remainingExposure": 0
+    }
+  ],
+  "totalTokens": 4231559,
+  "correctionsUsed": 0,
+  "n2Status": "reviewing",
+  "verdictApplied": false,
+  "councilReport": {
+    "schema": "council-ordinary-result-v1",
+    "taskId": "c8848f26-9962-4b09-9a1b-0761985894da",
+    "subject": {
+      "mandateHash": "d34992371ae6bce15d8b21a2aec0dab075ee77b52e6f46728af279a7f0cdf43b",
+      "bundleSha256": "cec29bdfcc50df93970ee53102f4e92e5b13b3ee0c8533614573a941b571eb88",
+      "submissionId": "faa2d320-49db-4e49-a460-560527bbba60",
+      "candidateCommit": "49e92ffb91a5baf8c50d78518ce99e109aa6c0f7",
+      "evidenceRevision": 18
+    },
+    "verdict": "changes_requested",
+    "missionId": "171d435a-66e8-4542-b5bd-76b4a151f73a",
+    "rationale": "Both exact-subject specialists independently identify the same user-visible blocking defect, and direct inspection of candidate 49e92ff confirms it: the projection correctly gives a closed observation the danger status pull_request_not_open, but its pull-request reference state falls through to open, which the UI renders as \u201cOpen pull request (open)\u201d. The passing 19-test focused suite and typecheck establish general projection integrity but do not cover the contradictory closed-PR reference/label, so they do not resolve this acceptance-criterion failure. The post-install browser observation remains a future verification step, but it cannot cure or disprove the deterministic contradiction in the pinned candidate. Approval is therefore blocked pending the single bounded correction and fresh independent review.",
+    "synthesisHash": "dbf6ed400738bb7aaf146ad78706dba7c68bbb8d02bce77c3d8dad1d1ee23050"
+  },
+  "failure": {
+    "httpStatus": 409,
+    "code": "ordinary_report_missing",
+    "summaryCharacters": 500,
+    "originalResultBytes": 68809,
+    "truncationReason": "oversized_result_json",
+    "publicLogFinalMessageEqualsPreparedReport": true
+  },
+  "githubWrites": 0,
+  "pr": null,
+  "uiObservation": "NOT_REACHED",
+  "modelRetries": 0,
+  "operatorInterventions": [
+    "activate and start lead once; hold lead demand wake",
+    "close each N1 child after succeeded and settled",
+    "settle lead usage",
+    "configure delivery at current plan revision; restore lead demand; start review",
+    "deterministic reconciliation after specialist terminalization",
+    "freeze wake demands and pause seven owned agents after report refusal"
+  ],
+  "gitStatus": "",
+  "gitBundle": {
+    "path": "artifacts/ordinary-campaign-m1-v1.bundle",
+    "sha256": "1b748e961fa7b2f1a489b424eca3b4c5af5a1ff6bf75765037bf3fd7f1b0ccb6"
+  },
+  "terminalReportProof": {
+    "runId": "c0f999dd-16b2-4fbe-bbd9-9633b242699c",
+    "truncatedSummary": "{\"schema\":\"council-ordinary-result-v1\",\"missionId\":\"171d435a-66e8-4542-b5bd-76b4a151f73a\",\"taskId\":\"c8848f26-9962-4b09-9a1b-0761985894da\",\"subject\":{\"submissionId\":\"faa2d320-49db-4e49-a460-560527bbba60\",\"candidateCommit\":\"49e92ffb91a5baf8c50d78518ce99e109aa6c0f7\",\"bundleSha256\":\"cec29bdfcc50df93970ee53102f4e92e5b13b3ee0c8533614573a941b571eb88\",\"evidenceRevision\":18,\"mandateHash\":\"d34992371ae6bce15d8b21a2aec0dab075ee77b52e6f46728af279a7f0cdf43b\"},\"verdict\":\"changes_requested\",\"rationale\":\"Both ex",
+    "completeFinalAgentMessage": "{\"schema\":\"council-ordinary-result-v1\",\"missionId\":\"171d435a-66e8-4542-b5bd-76b4a151f73a\",\"taskId\":\"c8848f26-9962-4b09-9a1b-0761985894da\",\"subject\":{\"submissionId\":\"faa2d320-49db-4e49-a460-560527bbba60\",\"candidateCommit\":\"49e92ffb91a5baf8c50d78518ce99e109aa6c0f7\",\"bundleSha256\":\"cec29bdfcc50df93970ee53102f4e92e5b13b3ee0c8533614573a941b571eb88\",\"evidenceRevision\":18,\"mandateHash\":\"d34992371ae6bce15d8b21a2aec0dab075ee77b52e6f46728af279a7f0cdf43b\"},\"verdict\":\"changes_requested\",\"rationale\":\"Both exact-subject specialists independently identify the same user-visible blocking defect, and direct inspection of candidate 49e92ff confirms it: the projection correctly gives a closed observation the danger status pull_request_not_open, but its pull-request reference state falls through to open, which the UI renders as \u201cOpen pull request (open)\u201d. The passing 19-test focused suite and typecheck establish general projection integrity but do not cover the contradictory closed-PR reference/label, so they do not resolve this acceptance-criterion failure. The post-install browser observation remains a future verification step, but it cannot cure or disprove the deterministic contradiction in the pinned candidate. Approval is therefore blocked pending the single bounded correction and fresh independent review.\",\"synthesisHash\":\"dbf6ed400738bb7aaf146ad78706dba7c68bbb8d02bce77c3d8dad1d1ee23050\"}",
+    "exactStructuralEquality": true
+  },
+  "n3": {
+    "review": {
+      "slots": [
+        {
+          "slotId": "8cebb0a5-e03c-4923-ad2e-66c01727f54c",
+          "question": "Is the integrated implementation correct and scoped?",
+          "required": true,
+          "perspective": "development",
+          "specialistAgentId": "9559184a-edb2-41c2-a131-4db863900270"
+        },
+        {
+          "slotId": "ba1ba235-3b6f-4c38-ba45-532563af7c4a",
+          "question": "Do observations substantiate each user-visible acceptance criterion?",
+          "required": true,
+          "perspective": "quality",
+          "specialistAgentId": "77719ed2-879f-492d-8d4d-ecff2e406955"
+        }
+      ],
+      "status": "synthesized",
+      "subject": {
+        "mandateHash": "d34992371ae6bce15d8b21a2aec0dab075ee77b52e6f46728af279a7f0cdf43b",
+        "bundleSha256": "cec29bdfcc50df93970ee53102f4e92e5b13b3ee0c8533614573a941b571eb88",
+        "submissionId": "faa2d320-49db-4e49-a460-560527bbba60",
+        "candidateCommit": "49e92ffb91a5baf8c50d78518ce99e109aa6c0f7",
+        "evidenceRevision": 18
+      },
+      "opinions": [
+        {
+          "slotId": "8cebb0a5-e03c-4923-ad2e-66c01727f54c",
+          "outcome": "changes_requested",
+          "subject": {
+            "mandateHash": "d34992371ae6bce15d8b21a2aec0dab075ee77b52e6f46728af279a7f0cdf43b",
+            "bundleSha256": "cec29bdfcc50df93970ee53102f4e92e5b13b3ee0c8533614573a941b571eb88",
+            "submissionId": "faa2d320-49db-4e49-a460-560527bbba60",
+            "candidateCommit": "49e92ffb91a5baf8c50d78518ce99e109aa6c0f7",
+            "evidenceRevision": 18
+          },
+          "findings": [
+            {
+              "findingId": "077b1334-2722-4888-a249-3003e20ea9cd",
+              "consequence": "Operators can be shown a closed PR as open in the primary actionable link while the same panel says it is not open, undermining the panel\u2019s authoritative delivery-state interface.",
+              "evidenceRefs": [
+                "candidate:49e92ffb91a5baf8c50d78518ce99e109aa6c0f7:src/delivery-presentation.ts:79-82",
+                "candidate:49e92ffb91a5baf8c50d78518ce99e109aa6c0f7:src/delivery-presentation.ts:124-128",
+                "candidate:49e92ffb91a5baf8c50d78518ce99e109aa6c0f7:src/ui/index.tsx:271-273",
+                "root-issue:4dfd971c-bda1-435b-8de2-ead323e767ec:acceptanceCriteria[3]",
+                "verification:targeted-19-pass;canonical-typecheck-build-394-tests-pass"
+              ],
+              "classification": "blocking_defect",
+              "evidenceLimits": [
+                "Review is static plus automated-test verification; no browser observation was performed.",
+                "Existing tests assert the non-open status precedence but do not assert the returned pullRequest.state or rendered link label for a closed PR."
+              ],
+              "criterionOrRisk": "Acceptance criterion: distinguish draft, open, and ready PR with a correct link; interface correctness for non-open PR observations.",
+              "recommendedAction": "Represent a non-open observation without labeling it open (for example, extend the reference state contract to include the actual non-open state or render a neutral non-open label), and add a projection/UI assertion covering a closed PR while preserving its historical link."
+            }
+          ],
+          "opinionId": "7f278227-1a29-40c7-bc38-4094d354a011",
+          "rationale": "The implementation is narrowly scoped and its full automated checks pass, but the delivery reference contract mislabels every non-draft, non-ready PR as open. For an observed closed PR the panel simultaneously reports \u201cPR is not open\u201d and links \u201cOpen pull request (open)\u201d, so the user-visible delivery state is internally contradictory and does not correctly distinguish PR state.",
+          "recordedAt": "2026-10-04T17:33:38.896Z",
+          "perspective": "development",
+          "specialistRunId": "6e0d2689-fcf9-4a80-a1ac-9bd733839040",
+          "specialistAgentId": "9559184a-edb2-41c2-a131-4db863900270",
+          "unresolvedQuestions": []
+        },
+        {
+          "slotId": "ba1ba235-3b6f-4c38-ba45-532563af7c4a",
+          "outcome": "changes_requested",
+          "subject": {
+            "mandateHash": "d34992371ae6bce15d8b21a2aec0dab075ee77b52e6f46728af279a7f0cdf43b",
+            "bundleSha256": "cec29bdfcc50df93970ee53102f4e92e5b13b3ee0c8533614573a941b571eb88",
+            "submissionId": "faa2d320-49db-4e49-a460-560527bbba60",
+            "candidateCommit": "49e92ffb91a5baf8c50d78518ce99e109aa6c0f7",
+            "evidenceRevision": 18
+          },
+          "findings": [
+            {
+              "findingId": "99fb4910-0c13-46bd-86b8-88f181818cb1",
+              "consequence": "An operator can see a danger status saying the PR is not open alongside an actionable link labeled as an open PR, so the panel does not reliably communicate the observed delivery state.",
+              "evidenceRefs": [
+                "candidate:49e92ffb91a5baf8c50d78518ce99e109aa6c0f7:src/delivery-presentation.ts:85-87",
+                "candidate:49e92ffb91a5baf8c50d78518ce99e109aa6c0f7:src/delivery-presentation.ts:124-137",
+                "candidate:49e92ffb91a5baf8c50d78518ce99e109aa6c0f7:src/ui/index.tsx:265-274",
+                "candidate:49e92ffb91a5baf8c50d78518ce99e109aa6c0f7:tests/delivery-presentation.spec.ts:77-90",
+                "verification:focused-delivery-projection-19-pass",
+                "verification:typecheck-pass",
+                "verification:closed-pr-projection-status=pull_request_not_open;reference-state=open"
+              ],
+              "classification": "blocking_defect",
+              "evidenceLimits": [
+                "Focused unit tests and TypeScript checks were executed locally against the exact pinned candidate; the previously reported 394-test canonical run was not independently repeated in this review.",
+                "The existing closed-PR test asserts status precedence but not the returned pullRequest.state or rendered link label.",
+                "No browser observation was available because the candidate is not an accepted installed build; final actual UI observation is owner-assisted after accepted build installation."
+              ],
+              "criterionOrRisk": "Acceptance criterion 4: distinguish draft, open, and ready PR with a correct link; user-visible state must not contradict the actionable PR reference.",
+              "recommendedAction": "In the single allowed correction, represent a non-open observation with a neutral/actual non-open reference state or label rather than \u201copen\u201d, and add a projection or UI assertion for a closed PR that preserves the historical link without calling it open."
+            }
+          ],
+          "opinionId": "a583a6b0-29aa-4779-94ae-196112c16cc2",
+          "rationale": "The exact candidate is cleanly bound and its focused projection tests (19/19) plus TypeScript checks pass. Those observations substantiate bound-plan display, readiness gating, candidate/head mismatch handling, and pending/failed state precedence at projection level. However, the closed-PR path is observably contradictory: it reports \u201cPR is not open\u201d while returning pullRequest.state=\"open\", and the integrated UI renders that reference as \u201cOpen pull request (open)\u201d. This violates the user-visible requirement to distinguish draft, open, and ready PR state with a correct link label. No browser observation was performed because this candidate is not yet an accepted installed build; final UI observation remains the specified owner-assisted post-installation step and is not the basis of this defect.",
+          "recordedAt": "2026-10-04T17:35:53.117Z",
+          "perspective": "quality",
+          "specialistRunId": "3a9b5cb4-41c4-4ee7-9bba-5309a5c14ad7",
+          "specialistAgentId": "77719ed2-879f-492d-8d4d-ecff2e406955",
+          "unresolvedQuestions": [
+            "After the corrected candidate is independently accepted and installed, will the owner-assisted browser observation confirm the rendered status, plan/PR links, useful actions, and exact accepted-candidate PR binding?"
+          ]
+        }
+      ],
+      "synthesis": {
+        "subject": {
+          "mandateHash": "d34992371ae6bce15d8b21a2aec0dab075ee77b52e6f46728af279a7f0cdf43b",
+          "bundleSha256": "cec29bdfcc50df93970ee53102f4e92e5b13b3ee0c8533614573a941b571eb88",
+          "submissionId": "faa2d320-49db-4e49-a460-560527bbba60",
+          "candidateCommit": "49e92ffb91a5baf8c50d78518ce99e109aa6c0f7",
+          "evidenceRevision": 18
+        },
+        "verdict": "changes_requested",
+        "rationale": "Both exact-subject specialists independently identify the same user-visible blocking defect, and direct inspection of candidate 49e92ff confirms it: the projection correctly gives a closed observation the danger status pull_request_not_open, but its pull-request reference state falls through to open, which the UI renders as \u201cOpen pull request (open)\u201d. The passing 19-test focused suite and typecheck establish general projection integrity but do not cover the contradictory closed-PR reference/label, so they do not resolve this acceptance-criterion failure. The post-install browser observation remains a future verification step, but it cannot cure or disprove the deterministic contradiction in the pinned candidate. Approval is therefore blocked pending the single bounded correction and fresh independent review.",
+        "recordedAt": "2026-10-04T17:38:10.916Z",
+        "dispositions": [
+          {
+            "reason": "The development finding is reproduced in the exact candidate: observation.state other than open selects pull_request_not_open, while references.pullRequest.state still becomes open unless ready or draft, and the UI exposes that value in the actionable link label. This materially violates the mandate to distinguish draft, open, and ready PR states with a correct link. Correct the reference contract/rendering for non-open observations and add an assertion covering the preserved historical link without labeling it open.",
+            "findingId": "077b1334-2722-4888-a249-3003e20ea9cd",
+            "disposition": "upheld_with_correction",
+            "evidenceRefs": [
+              "candidate:49e92ffb91a5baf8c50d78518ce99e109aa6c0f7:src/delivery-presentation.ts:79-82",
+              "candidate:49e92ffb91a5baf8c50d78518ce99e109aa6c0f7:src/delivery-presentation.ts:124-128",
+              "candidate:49e92ffb91a5baf8c50d78518ce99e109aa6c0f7:src/ui/index.tsx:271-273",
+              "root-issue:4dfd971c-bda1-435b-8de2-ead323e767ec:acceptanceCriteria[3]",
+              "verification:focused-delivery-projection-19-pass",
+              "verification:typecheck-pass"
+            ]
+          },
+          {
+            "reason": "The quality finding independently corroborates the same blocking contradiction and adds the missing-test evidence: the closed-PR test verifies precedence only, not the returned reference state or rendered label. Passing focused tests therefore cannot support acceptance of this uncovered user-visible branch. The same bounded correction must represent the actual or neutral non-open state and test its projection/UI presentation.",
+            "findingId": "99fb4910-0c13-46bd-86b8-88f181818cb1",
+            "disposition": "upheld_with_correction",
+            "evidenceRefs": [
+              "candidate:49e92ffb91a5baf8c50d78518ce99e109aa6c0f7:src/delivery-presentation.ts:85-87",
+              "candidate:49e92ffb91a5baf8c50d78518ce99e109aa6c0f7:src/delivery-presentation.ts:124-137",
+              "candidate:49e92ffb91a5baf8c50d78518ce99e109aa6c0f7:src/ui/index.tsx:265-274",
+              "candidate:49e92ffb91a5baf8c50d78518ce99e109aa6c0f7:tests/delivery-presentation.spec.ts:77-90",
+              "verification:closed-pr-projection-status=pull_request_not_open;reference-state=open",
+              "verification:focused-delivery-projection-19-pass",
+              "verification:typecheck-pass"
+            ]
+          }
+        ],
+        "finalReviewerRunId": "c0f999dd-16b2-4fbe-bbd9-9633b242699c",
+        "finalReviewerAgentId": "986b50c1-989c-44e9-b24a-4c1671af6873"
+      },
+      "schemaVersion": 1,
+      "authorAgentIds": [
+        "314dc659-4fdc-4b36-b01f-07da7a0a6a52",
+        "b636c858-33ba-4c3f-b2f1-68bc0ea226c0",
+        "768c6ab2-69d0-47cc-9c5d-6bd86c755155"
+      ],
+      "finalReviewerAgentId": "986b50c1-989c-44e9-b24a-4c1671af6873"
+    },
+    "specialists": [
+      {
+        "wake": "claimed",
+        "runId": "6e0d2689-fcf9-4a80-a1ac-9bd733839040",
+        "slotId": "8cebb0a5-e03c-4923-ad2e-66c01727f54c",
+        "issueId": "90ecd559-8df2-4322-94df-2ca41c08cb0f",
+        "creation": "claimed",
+        "settledAt": "2026-10-04T17:34:17.079Z",
+        "reservationId": "5fb54e5c-c068-4603-9d6d-3eaf91e3a04e",
+        "settlementCommandId": "95057f51-9f08-4841-b9bb-bc209a1f46b3"
+      },
+      {
+        "wake": "claimed",
+        "runId": "3a9b5cb4-41c4-4ee7-9bba-5309a5c14ad7",
+        "slotId": "ba1ba235-3b6f-4c38-ba45-532563af7c4a",
+        "issueId": "9471a801-8a23-4903-a140-9982129f88a1",
+        "creation": "claimed",
+        "settledAt": "2026-10-04T17:36:15.213Z",
+        "reservationId": "36c35d0b-bc7d-44b2-98c6-16d7ac138e1b",
+        "settlementCommandId": "033e3e24-b9a1-41bc-be47-e9c7dee02faf"
+      }
+    ],
+    "missing": [],
+    "usageUnknown": [],
+    "nextActor": "assigned final reviewer"
+  },
+  "cleanup": {
+    "launcherExitCode": 0,
+    "sessionState": "stopped",
+    "launcherCleanup": {
+      "runtimePath": "/tmp/paperclip-council-package-SXmM4U",
+      "ownedRuntimeRemoved": true
+    }
+  },
+  "authorization": {
+    "userDecision": "Autoriser la fusion et la mission",
+    "maxRuns": 12,
+    "nominalRuns": 7,
+    "reservePerRun": 2000000,
+    "periodUnits": 24000000,
+    "maxCorrections": 1,
+    "maxRetries": 0,
+    "sevenAgentModel": "gpt-5.6-sol",
+    "effort": "medium",
+    "publicationTarget": "ty000/paperclip-council codex/council-delivery-ui-m1 -> main",
+    "noMerge": true,
+    "preparationProfileFlagsRemainFalse": true
+  },
+  "privateBackup": {
+    "location": "artifacts/ordinary-campaign-m1-private/backup-manifest.json",
+    "sha256": "134ef32cf3b5db5353fb27474f59d1db2081e41400202c371a9cb65ad128505b",
+    "restoreValidated": false,
+    "providerAuthCopied": false
+  },
+  "rawEvidence": [
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.241432Z-profile-lead.json",
+      "sha256": "e0cb3704641be3cff3fbfc24622f10de3b1dc7e67b4bdbae6e0cd398767f1184",
+      "bytes": 1756
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.291837Z-profile-backend.json",
+      "sha256": "055a97e4e78ea28c66c03bcc2406ee2e7696dba90703354ba6d3352a56014bd7",
+      "bytes": 1759
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.302484Z-profile-frontend.json",
+      "sha256": "1c79af1093230fa9d4a329b111685371b7cecb1608288c78833733afff3e9ae4",
+      "bytes": 1760
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.314291Z-profile-development.json",
+      "sha256": "91482f8295d916f4045ada65da883abb5ee57f646383563019d884f0029bb73f",
+      "bytes": 1763
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.325937Z-profile-quality.json",
+      "sha256": "457779594755cb7d2c95e975c26212e720b072adccf86fdb12152912ae2906ed",
+      "bytes": 1759
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.336112Z-profile-reviewer.json",
+      "sha256": "eaf12e843a2f8b1f42b34c633abfccfb235cc5e6a542e8506815bc0a57c7fac4",
+      "bytes": 1754
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.346520Z-profile-publisher.json",
+      "sha256": "8e839abce96a4518517712a690fe4f4017b432a26bcbf6a73583cfa98e2e242e",
+      "bytes": 1761
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.359383Z-mission.json",
+      "sha256": "3e7ee633f2fcb8ebfd31adf49150aa8ee48309c3e8f159ddcd1c5a54a9d68deb",
+      "bytes": 8358
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.374551Z-activate.json",
+      "sha256": "326a4556318c7b537b6c86b2aaa88ec33a6b688b512fd7c35671693c6fc70077",
+      "bytes": 20068
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.426324Z-enable-lead.json",
+      "sha256": "10b6cb33192713a77160a1ee2dc52bc78d4d93a89e093e0ef1c461fa353ec9dc",
+      "bytes": 2999
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.451169Z-enable-backend.json",
+      "sha256": "bdfa18dcd392b496aeaccd5e46a675e3ee531a0820f12a1dead2f1b5d88d230c",
+      "bytes": 3008
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.472529Z-enable-frontend.json",
+      "sha256": "cf36805b26274f6cf7ea357eb9475f4ed362c040a8a4db29213dc903068615e7",
+      "bytes": 3015
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.498367Z-enable-development.json",
+      "sha256": "be4e7d2f86c3e386c68ed2c557a514c006dd9e36a26119f7b8048d0df1eb3ecc",
+      "bytes": 3030
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.518921Z-enable-quality.json",
+      "sha256": "830c8a4eda8771518f1105f89b7582e020cd1e6df3acc31293530576dd4139ef",
+      "bytes": 3008
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.539831Z-enable-reviewer.json",
+      "sha256": "32438afe3c06cc9fe2e895f59b9df53b6fbdb3dbf989801f57f71b6ebaf5cc57",
+      "bytes": 3003
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.559901Z-enable-publisher.json",
+      "sha256": "c4e1ff90a7673fedd6f134815a89b4f25e6b79078da8e3f8ef9a0fa2f3f2ac4e",
+      "bytes": 3018
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.580642Z-mission.json",
+      "sha256": "17eef820e73a6743e0ad41a55760270e4d5ff3e5dbba0fce2bf15e4a7d759bb7",
+      "bytes": 11418
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.595330Z-startLead.json",
+      "sha256": "79c5372a9830499e16ce94f4d2ec1c26c6e9bffffc55f42ef026c66de3788a1c",
+      "bytes": 22719
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.764989Z-hold-lead.json",
+      "sha256": "675775819b78ad207dd17bf6915915c701a331f1fc1da3ca830c0dea255a556f",
+      "bytes": 3001
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172121.788961Z-runs.json",
+      "sha256": "bdcf8ab4ed2fe17472c30689dd17b3dfca3631a4fc4078135fb2624da7cf10fc",
+      "bytes": 2009
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172139.784625Z-lead-run.json",
+      "sha256": "0992ee45b449a13b1b0998ec63fb495169b04449bdb473a9c58e84a40951c039",
+      "bytes": 62973
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172149.712067Z-lead-log.json",
+      "sha256": "26633342f97fb82daba8b75909afb787cfa54d4ab9d24fdfad12c2b4acd55895",
+      "bytes": 58408
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172217.344841Z-mission.json",
+      "sha256": "95e2775d92da73cd096d89787a6b9ad645680b88564a3c1a78ad5d60c6bcf596",
+      "bytes": 12787
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172217.363791Z-runs.json",
+      "sha256": "1b5546cac754a97f6ec10ba8359ddc27feabcffdfbade72499a11825e1a63930",
+      "bytes": 2183
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172217.375427Z-lead-log.json",
+      "sha256": "fd7b86323d45b47c1cd2130a4ca86e2423475ca745d7a6c2f3c09637a9c9e645",
+      "bytes": 65355
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172304.193501Z-mission.json",
+      "sha256": "28f426c1ed4a745b6cad169c6c235b49a11dd75bf9064d59b4dea12dded3fc6c",
+      "bytes": 25588
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172304.211180Z-runs.json",
+      "sha256": "c35131057ac99f9613e05325c3df483970ba04290928bf48974210798bf014b4",
+      "bytes": 4149
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172304.222310Z-lead-log.json",
+      "sha256": "2333d31d04c5a6c7f2a7019b77088a3f88052939f73500faa7ef412594d71962",
+      "bytes": 93463
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172403.184095Z-mission.json",
+      "sha256": "c0ebb23844c1130345f9bac6ec66115e5df9d78a1a588ed25e515bd5297226fa",
+      "bytes": 25588
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172403.243314Z-runs.json",
+      "sha256": "4de6e9908fe50eda45e5b7e6f914f0218894c47a315644ed5c7f28ab0e6cacb2",
+      "bytes": 4149
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172403.254473Z-admission.json",
+      "sha256": "972c18a7d1add0c0f1616d2633365b1f5113a40b6e40931f55a4e71aa98ef2c4",
+      "bytes": 3786
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172413.737389Z-backend-log.json",
+      "sha256": "ba19df42dbc540798b47c48b0493d788e43d229ddca91bb6972bc11cb24afb3a",
+      "bytes": 170934
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172519.084884Z-runs.json",
+      "sha256": "f8237a00e7d8d121ad8d8f469bed2ffb69f5bacaf61eddb36a29666e53a58bcf",
+      "bytes": 7198
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172519.098926Z-mission.json",
+      "sha256": "7e460b8daa1868d086f8c89ac77892ed7a0e00a72f5029d7fc16e276cda8b926",
+      "bytes": 27854
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172537.402907Z-admission.json",
+      "sha256": "1c24c21a3227d98ef0b0d9cdd21d81b5fced65bef76d7c056869285825165408",
+      "bytes": 4855
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172537.454427Z-backend-terminal.json",
+      "sha256": "f4bd87d4bc65197505da592cc4fd1d0284bc6c40b32299c203b111ba39d1c2f2",
+      "bytes": 78116
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172537.476669Z-owner-close-backend.json",
+      "sha256": "daec56ba191f20c573e7007bb25a739843c9a9c6ece84e37e2091aa68191c0ee",
+      "bytes": 4713
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172647.571950Z-mission.json",
+      "sha256": "10c1cbcc0239823d297efd6eb2631bd00ec4cc39693fa8cdda70b0cb843ac3ac",
+      "bytes": 30823
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172647.589188Z-runs.json",
+      "sha256": "deea89c14df628ad2d5e8cc53d38d705156aab4bb0059fcb90a1ef30515520ad",
+      "bytes": 9161
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172647.602377Z-frontend-log.json",
+      "sha256": "e965e26192434065291e898865e425c4f4cb7cf68d835b7dd2decd01220991b3",
+      "bytes": 237332
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172748.644178Z-mission.json",
+      "sha256": "b6c61f5cbe96cda11165a151909c8c464231eaf301140c48097ce5ddbf7ac939",
+      "bytes": 30823
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172748.666927Z-runs.json",
+      "sha256": "d37b2874dcc7e76d043cd7fd61428d01de0cccc95c30bbc570f141855d12b2bb",
+      "bytes": 9165
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172748.680006Z-frontend-log.json",
+      "sha256": "824ba62c275d715fd5e73af2db25e99d64f513ccd89b35478e4819f970b81054",
+      "bytes": 267365
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172857.970592Z-mission.json",
+      "sha256": "22fc7a0bbf8f3107c349b2103dc380d825a4ad088eff1b8e542c552d32d1ca1e",
+      "bytes": 33053
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172857.988916Z-runs.json",
+      "sha256": "0406899d6a81115ea264d011446a427e0b3eda25a8b977d7a7b00cec388a603a",
+      "bytes": 12314
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172858.003987Z-admission.json",
+      "sha256": "d1f83dd014465795fb70de630f51331f52138843026a1ae359aa5b2fcb463027",
+      "bytes": 6885
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172858.028813Z-frontend-issue.json",
+      "sha256": "c1297fcb48c78757a8680938440d139504f33abed59e4007453a1c6255e8425c",
+      "bytes": 16500
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T172858.055292Z-owner-close-frontend.json",
+      "sha256": "1cd5be5d0287b20561e492ba97ce1227ece60abdb0fbd0130845b9b000b23509",
+      "bytes": 4647
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173001.626743Z-runs.json",
+      "sha256": "8ea334386bab92ed80c641e71382a060d82bfbae5ac9fda94e0ac391a14c9179",
+      "bytes": 12314
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173001.641732Z-mission.json",
+      "sha256": "7d7904eb7e6947a73d7c75d37e3b03c905d7bbac1d4a2b3be054ccba9ca8aeb5",
+      "bytes": 45422
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173001.658485Z-lead-log.json",
+      "sha256": "7e85eedd56ab62d9cb1a513005acbf899cc33df2208ce85ed2cbee1ac65096c0",
+      "bytes": 306741
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173110.806681Z-runs.json",
+      "sha256": "dba29569958fb6535ee3c19dce734d366b4cfdb81a538ba40c69ad8aa2aa6c7e",
+      "bytes": 15536
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173110.823483Z-mission.json",
+      "sha256": "dd5c402029ed9e8c35536e433a0a8398fc93279268c9e41d59532e82020fdace",
+      "bytes": 45422
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173122.268407Z-lead-terminal.json",
+      "sha256": "c4bc5c2b9819c882d6fc0483a7331be713e94a81fe52e5842747b258161e4ce8",
+      "bytes": 110411
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173122.292203Z-mission.json",
+      "sha256": "724f273b34311ea79d1b0bd6b13901a88c027a40d1ce4f122dae3af6fc882235",
+      "bytes": 45422
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173122.307935Z-mission.json",
+      "sha256": "7269888c93b8402f085866e0bdd5fee16b75be304e6914cf652f3d9371aff4e1",
+      "bytes": 45422
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173122.323532Z-settleLead.json",
+      "sha256": "95256d130e948f92e1479fd1e20eee44cba08b2e88c7b6a200c45b1f5e723bbd",
+      "bytes": 93119
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173132.580422Z-mission.json",
+      "sha256": "5867773593ecfa96850ea2ae784c7b967d15196c85556430a9bf3c261d9a6f88",
+      "bytes": 47865
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173132.597476Z-n1-settled.json",
+      "sha256": "0bd23a505087e1b56909bcb5052983d073213a2d90644565ee189382a3c70e69",
+      "bytes": 8098
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173132.611231Z-current-plan.json",
+      "sha256": "91c2ba9a320c89b2989e5efc4baf40a56f85e5e31da01d1be7f69c75f0727cbf",
+      "bytes": 4908
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173143.148062Z-bind-current-plan.json",
+      "sha256": "dbff308f7a7261ecd5ea207d17a6e99b8bfabdfda7750eaca253264ed7f1010f",
+      "bytes": 4908
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173143.162044Z-mission.json",
+      "sha256": "259e75c5b76b2acef4f92622335d6cdba290f6084d0f9ffcc6a6cc57791717d6",
+      "bytes": 47865
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173143.180183Z-configureDelivery.json",
+      "sha256": "a07041024c6efab526cb5c1016d8d88e34ff2e5f2e794aab545a3a9411cc1031",
+      "bytes": 35656
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173143.253698Z-restore-lead-demand.json",
+      "sha256": "9b8a122d22180d955c81a36a4f2b51995dcc794abe4215cd489a8d0cc7988f0a",
+      "bytes": 3021
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173143.276304Z-mission.json",
+      "sha256": "8a71fa397758c8ce968dfd32eb08c5b860304cec42b2241b7b2bf95243827a08",
+      "bytes": 50692
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173143.292399Z-startReview.json",
+      "sha256": "c2cd1db21a2c602d0d99f45f64f29c870abc8ac1271a8d84cecf8650cdd6c5ce",
+      "bytes": 112632
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173143.473219Z-runs.json",
+      "sha256": "cadb92eba2b8fffc7fe934c790b861c8183482b0def4b6d0000c691acc0d6869",
+      "bytes": 17321
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173306.737402Z-mission.json",
+      "sha256": "007c7532896a760c4aedfea2e370d986d58f0c50b404b75e3730f4629072fcef",
+      "bytes": 66152
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173306.757256Z-runs.json",
+      "sha256": "ae360ea519ae6d7ca5b96f136e216908ed5aa68e9519224443dc98bb243a8f36",
+      "bytes": 17499
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173410.011995Z-runs.json",
+      "sha256": "ef125c0f2086798af483fbc5535b7740915e2b151ac7699eae2f1b032a5a9f7a",
+      "bytes": 20584
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173410.029116Z-mission.json",
+      "sha256": "d121e454fee65f39736cb1f11e328c212cf478af77dc012f4805087bb5fb7090",
+      "bytes": 73164
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173410.050283Z-development-log.json",
+      "sha256": "f6ce44bf6b4c19bdc7611f754634b9f5db9353c571adbac82228e49ec2fa62d5",
+      "bytes": 265428
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173416.985401Z-mission.json",
+      "sha256": "d59af8c5d3bf84b0e6ed6c62fd1047f3129b72503922dac6c782b15da11e73e8",
+      "bytes": 73164
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173417.004320Z-reconcileReview.json",
+      "sha256": "c05422be180c55212188b6a93e1a6291122aa88d328d2108efabaf1d0b71a829",
+      "bytes": 125815
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173417.249412Z-runs.json",
+      "sha256": "5d0e7d19fa2d5a22b51d1edca37d094544a117b7ca2e316c4f1c8a1d33cdeb89",
+      "bytes": 22369
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173530.998766Z-mission.json",
+      "sha256": "6e374e881a10f8847b958fd4e06e8e6204aa2ad00a4afa8e76ce207511e7b447",
+      "bytes": 76028
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173531.017561Z-runs.json",
+      "sha256": "cb767e643692fce0975b159849c098007d3edc342d7c33ab1d44c36a22755398",
+      "bytes": 22546
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173531.036048Z-quality-log.json",
+      "sha256": "ccba5d290d011cf12d6095e6bd1997a67092882682f602fa41fc58269d2a973b",
+      "bytes": 88195
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173615.077277Z-runs.json",
+      "sha256": "35cb105dff95b84ea2b74668c3c45d30b922dbb5c8bbdec94aff3578d613a7d3",
+      "bytes": 25657
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173615.096763Z-mission.json",
+      "sha256": "8bc1e59991f7315d868295ab0d0aabc685a78b60f37298db9c66e4392105d6de",
+      "bytes": 85273
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173615.115089Z-mission.json",
+      "sha256": "85a77f856d265ee1bd29409822235e23cd6ff9973fceeca5532aa35a391ca030",
+      "bytes": 85273
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173615.132544Z-reconcileReview.json",
+      "sha256": "d35dcef35d2438cb403da0643a7262b6bdfe1b094bbfcda191edf588fc0e03c6",
+      "bytes": 143721
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173615.381856Z-runs.json",
+      "sha256": "aaa47662a34dd71b90cb34c88d491ab4dd7f5fb379233148941ac68bafb6286a",
+      "bytes": 27442
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173715.999184Z-mission.json",
+      "sha256": "35badd597c32baf751e5659623b1059f46afb748a39b3b57f82e21e686182e05",
+      "bytes": 88360
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173716.020828Z-runs.json",
+      "sha256": "772273b040e11b22bc6bd82b5d91bdb38c63320e0e4ef144e225c2e95f3cae8e",
+      "bytes": 27616
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173716.041455Z-council-log.json",
+      "sha256": "5bf3149523f5809fdd90da5f86f58aca4c2b831b7a9206333c861d325ed2ea98",
+      "bytes": 108130
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173825.031140Z-mission.json",
+      "sha256": "c0ad426de220599a8167734c18368eb1b7fab8cdf01e841b2721c69f973b474d",
+      "bytes": 100774
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173825.051168Z-runs.json",
+      "sha256": "d23db7bff865b84df8d43f22541e0d9062247db714b63f080c522e12f06eb416",
+      "bytes": 27620
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173835.955526Z-runs.json",
+      "sha256": "1b8fb1a2a59eb2c46186abc097488e7e9dbb7f0c2e56adff34892a75a3b43597",
+      "bytes": 30736
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173835.974467Z-council-log.json",
+      "sha256": "89ca3180e0a6ab922d3ef69735c4df30c2404d3427d27fbb4247a76e55b3cda7",
+      "bytes": 197983
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173848.105710Z-runs.json",
+      "sha256": "81a8c8dae4b96a0161a512eece0ff35222d63346e986634893a7bcfb68dcfc16",
+      "bytes": 30736
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173848.125490Z-mission.json",
+      "sha256": "6d2b2ce6a63ebc01ee65c53b7fc306eb65e896191af55203d7074f32ae72ae79",
+      "bytes": 100774
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173848.151702Z-reconcileReview.json",
+      "sha256": "e2648fcf1cdb55da4b996458b744384a7ffa89a662042b7fee06f1f5e6d3517f",
+      "bytes": 520
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173857.824549Z-mission.json",
+      "sha256": "00d44c5d895f7a6e3fd0f9e17ef30be256239fbd2c86569fc7bb61942d6534e7",
+      "bytes": 102267
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173857.843672Z-runs.json",
+      "sha256": "34d8fd9a2694745e068e28ef95c94e3188e8f812d448c6b3a9340ce9b73d0935",
+      "bytes": 30736
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173929.157509Z-council-terminal.json",
+      "sha256": "58f882aaf8a6fb6c8b2ad06c597299bd56d79cf67ebf2414ae3e26bf7ecfeae7",
+      "bytes": 82674
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173929.179203Z-mission.json",
+      "sha256": "71e8dc73dca38fd4a124e73054a0272d51846e7a02fa0b6c8860a0918db89afd",
+      "bytes": 102267
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173929.198218Z-council-full-log.json",
+      "sha256": "38393f2ecea75383f2da336b8d6a82abefc23f30318e6a0ee061f0ec5a21ac56",
+      "bytes": 197983
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173929.211871Z-blocked-admission.json",
+      "sha256": "c671c6438843142a217f8141d3c871304753b07744780a495e882320c2addd40",
+      "bytes": 15034
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173929.224712Z-block-wakes-lead.json",
+      "sha256": "938cb3b8057eeee45fa7f2083d306d1676064b73a8248a26c62ccbd070de5608",
+      "bytes": 3023
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173929.244383Z-block-wakes-backend.json",
+      "sha256": "7baf9794b308d24646b193c38dfdfc1cfef103220560ee5137d85371f2183416",
+      "bytes": 3032
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173929.263449Z-block-wakes-frontend.json",
+      "sha256": "b7f1f37a4f55236b7e62dca43902f76e8879ac06627fd19c54e7521182e1573b",
+      "bytes": 3039
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173929.282344Z-block-wakes-development.json",
+      "sha256": "9c4536f2ae402bdc37acef487a81b233d61c67d0f66be4c2ed7ba86cf3e9253f",
+      "bytes": 3054
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173929.306001Z-block-wakes-quality.json",
+      "sha256": "0743f92eb637a9438bb80d90a04e58556c47fd2d93c34bf7b6618001d19de443",
+      "bytes": 3032
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173929.325701Z-block-wakes-reviewer.json",
+      "sha256": "81da1c845e5f06980c6dcfebaa415a306fcf5dee4eab0eec1e0d88d28c9529f5",
+      "bytes": 3027
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T173929.344517Z-block-wakes-publisher.json",
+      "sha256": "6a11799ae15a5be46b8b043b6ab39f451bc12b9a45273f73881978e9befa30ce",
+      "bytes": 3020
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174023.725847Z-runs.json",
+      "sha256": "176211c7d768e1d43d355c065ce284cc93d27d944e89fd94f2d2c6a9d87de782",
+      "bytes": 30736
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174023.744939Z-final-run-c0f999dd-16b2-4fbe-bbd9-9633b242699c.json",
+      "sha256": "350710d04807c098b23a0b618eb2a131b1971632218cc0e6b0189a5a0d6dcdb9",
+      "bytes": 82674
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174023.765062Z-final-log-c0f999dd-16b2-4fbe-bbd9-9633b242699c.json",
+      "sha256": "7a8ba9aa3d9b686ad127ae4ea86a28e31746690edfdc44bbda5373e3bd2f7f6c",
+      "bytes": 197983
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174023.778212Z-final-run-3a9b5cb4-41c4-4ee7-9bba-5309a5c14ad7.json",
+      "sha256": "b7eae085ff4bf8896ab5fcb0304a870dfdc14db4c2c9df8c00f7decb0e04ffb9",
+      "bytes": 209477
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174023.795854Z-final-log-3a9b5cb4-41c4-4ee7-9bba-5309a5c14ad7.json",
+      "sha256": "c75cedfd799e93d922f7077804909beb1355cca6116cc08bc349f0589eb3bfde",
+      "bytes": 155373
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174023.807947Z-final-run-6e0d2689-fcf9-4a80-a1ac-9bd733839040.json",
+      "sha256": "0b5f67064bab43c74bdf55ab66b7980452bd745bd5d42dda980c98313b12ef0c",
+      "bytes": 82000
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174023.828089Z-final-log-6e0d2689-fcf9-4a80-a1ac-9bd733839040.json",
+      "sha256": "a0c6b6d79eb7e3817bbb515d081acc0e3e4610540718ecf07a2e4581565351a4",
+      "bytes": 265428
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174023.842444Z-final-run-6afa0096-5fd6-4e00-86f2-d0b12e65175c.json",
+      "sha256": "eef3ce0870b9e5866d1de7acd92b540281601e7df6cacb8ef1f90fcdb519f8ee",
+      "bytes": 78157
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174023.864856Z-final-log-6afa0096-5fd6-4e00-86f2-d0b12e65175c.json",
+      "sha256": "aaf3c776326bdf7b7dc6ac15b3fd065813e45a242accec3138ebda5941868cee",
+      "bytes": 288170
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174023.879141Z-final-run-8903a13d-d7eb-46f5-8069-69542917a730.json",
+      "sha256": "c00f11f5b1beca95c37f138565dc3c07af7372d92dc4984c996df5fdf0f46c2c",
+      "bytes": 78116
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174023.903434Z-final-log-8903a13d-d7eb-46f5-8069-69542917a730.json",
+      "sha256": "b48efa4a258669803aea5c434489db0288f97730095553bfe4dc4ad59d02154e",
+      "bytes": 233901
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174023.919790Z-final-run-a3cb3adf-4c43-48c4-b524-85c7e4ba9713.json",
+      "sha256": "6f670312f13b92cc6a2c65b95435049279846e211affdb25ce7875ef7e9139d2",
+      "bytes": 110411
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174023.944251Z-final-log-a3cb3adf-4c43-48c4-b524-85c7e4ba9713.json",
+      "sha256": "865eb984b722eca0b40bca03512834ed0a3bcbe77d058db6468fafe578080129",
+      "bytes": 306741
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174023.960891Z-mission.json",
+      "sha256": "7563f9a76822455ec1c8ddfe1b482ce7769f5983f92e11ef5f16329d3d024f1e",
+      "bytes": 102267
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174023.984887Z-final-admission.json",
+      "sha256": "03c7b085962651295ea230a2250f4f588b254c69025e103e0133ca701a7aa7d6",
+      "bytes": 15034
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174023.999281Z-final-issue-4dfd971c-bda1-435b-8de2-ead323e767ec.json",
+      "sha256": "287430b34b0230943f89abe35016a0b4eafe9de3715b603dc6bcce129d552719",
+      "bytes": 19610
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174024.021952Z-final-comments-4dfd971c-bda1-435b-8de2-ead323e767ec.json",
+      "sha256": "408a89c8089349ef5c56114c6a67e685ce122b15f07b4a70c542ae1fcf8a5b94",
+      "bytes": 2145
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174024.037837Z-final-issue-d39837d1-38b7-4dd8-a5fb-991e4a7cf224.json",
+      "sha256": "40fa072eb0fa8f73901695314efc117c95df0833c28b937291396a12b01553fa",
+      "bytes": 16581
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174024.059656Z-final-comments-d39837d1-38b7-4dd8-a5fb-991e4a7cf224.json",
+      "sha256": "1676c39721476a5b222f61d6e7d9b52bc8dfd2af4879418bc7544bfd702f73ab",
+      "bytes": 1919
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174024.073089Z-final-issue-f909210e-a776-483a-aca7-020c7417a94d.json",
+      "sha256": "c10b966b21d0237be0577685216f6325893545b9276ff3b23c7c89b9e017d723",
+      "bytes": 16515
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174024.093520Z-final-comments-f909210e-a776-483a-aca7-020c7417a94d.json",
+      "sha256": "2cd12e5580f2f37339416e41418b0c4944b5233378cfe4be0bc05f1375013e02",
+      "bytes": 2329
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174024.111025Z-final-issue-90ecd559-8df2-4322-94df-2ca41c08cb0f.json",
+      "sha256": "309eb98bb5ea892698056dc63b36de7e9c5d4e2aa47fb5913fa130ce55d4ceaf",
+      "bytes": 9253
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174024.131965Z-final-comments-90ecd559-8df2-4322-94df-2ca41c08cb0f.json",
+      "sha256": "09705dafd1db381f1ed820fc5b8e578b6c06628c8f7ab3a554aa302a2a29e597",
+      "bytes": 2050
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174024.145268Z-final-issue-9471a801-8a23-4903-a140-9982129f88a1.json",
+      "sha256": "20f4843512a0b7e474cd911c1a4078fb00f33de6828f158f236491dcd3b39e6d",
+      "bytes": 9253
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174024.166870Z-final-comments-9471a801-8a23-4903-a140-9982129f88a1.json",
+      "sha256": "2030bd168b569d3ac3462dd766eabd38725544e242b63f384e1057b3860466fa",
+      "bytes": 2153
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174024.180486Z-final-issue-911585a5-ca99-4545-967b-132ed96ff382.json",
+      "sha256": "3532347b93b6bdfbcc10f56dc78cd7b0390436f0073ba29e0d5d0cf1156809d4",
+      "bytes": 9428
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174024.202382Z-final-comments-911585a5-ca99-4545-967b-132ed96ff382.json",
+      "sha256": "4721942a2378184930ecfab83c3cc0693b9e2fa26de36270b0a4bd752fa081e4",
+      "bytes": 2970
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174024.215583Z-final-plan.json",
+      "sha256": "9214dcc98258e90ea60e86e8e42d020960d235ef98a231f4f1b40e2a807a1e84",
+      "bytes": 4908
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174024.227263Z-pause-lead.json",
+      "sha256": "8db61d252694ca7c4ac64332eeeaeb4e51c6791648ef76baedca37dafce58f80",
+      "bytes": 2892
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174024.245903Z-pause-backend.json",
+      "sha256": "9e3a9b50231dd777cd77fd3aea9f443c07157c33e058adb39e49a690f5022eff",
+      "bytes": 2901
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174024.264293Z-pause-frontend.json",
+      "sha256": "11913bbf3823443dfe35e66ac2e54a1ba66c098ad0272b8c72b260586ce1c02f",
+      "bytes": 2908
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174024.281879Z-pause-development.json",
+      "sha256": "a7430b13ab77daeb263f9d91bf1e048d2b7a111cb69f2fbe447837d0d3b33fe5",
+      "bytes": 2923
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174024.299489Z-pause-quality.json",
+      "sha256": "94076c2633442725b2241578965946c3be74cc80bfde5d5adaac0d35bc8678ee",
+      "bytes": 2901
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174024.318889Z-pause-reviewer.json",
+      "sha256": "fc778e103772719d2eae0e36a87c5edcf7cf063735f64e7ba1860875bb9839eb",
+      "bytes": 2896
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m1-readbacks/20261004T174024.336345Z-pause-publisher.json",
+      "sha256": "2a0f2f1b25b1aeb4e5bf602db88ac6a5e91631bd6cc1986f7fb9c746de502ef4",
+      "bytes": 2889
+    }
+  ]
+}
