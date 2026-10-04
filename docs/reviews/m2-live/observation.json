@@ -1,0 +1,404 @@
+{
+  "status": "partial",
+  "claim": "One authorized real M2 campaign: accepted exact A, durable delegated A-to-B handoff, B blocked on immutable recorded commit typo; no B acceptance/PR/UI claim.",
+  "controllerSha": "01dabaa83ce3912c89f639b352aa1fc91531741d",
+  "hostSha": "61b3fd57a695614dc4a37e2303f426a34a9795cf",
+  "companyId": "44709406-df4a-4d4c-acb3-571821a8b593",
+  "missions": {
+    "A": {
+      "missionId": "a077f010-e4de-4ec2-9db2-e0eb8b45405b",
+      "rootIssueId": "ebff91bb-0fdc-487e-9c27-0a45f57c3fd3",
+      "version": 43
+    },
+    "B": {
+      "missionId": "43b96da1-11fe-4c46-8ec2-6415ac29dc8b",
+      "rootIssueId": "c8f09b30-de3a-431b-8796-ecced45825c0",
+      "version": 30
+    }
+  },
+  "acceptedACommit": "7959f68ce586b8e0a75d26b1e80490ac26e0cb06",
+  "actualBackendBCommit": "71b5f95ab7428feb24049f2204b97b12446cd528",
+  "recordedBackendBCommit": "71b5f95145410736c691552b836df8f20df3880e",
+  "frontendBCommit": "0be2ff1f67bb97f4319ee2de25b6a1a711cf4afc",
+  "recordCommandId": "7144bb5b-b76c-4349-9b0f-71f839362c76",
+  "recordPayloadHash": "f6aff1773d56bbe7a65b10ce5d984dd057aa5cc8d8617f7fbb32a4feb2bb0ec2",
+  "recordPayload": {
+    "missionId": "43b96da1-11fe-4c46-8ec2-6415ac29dc8b",
+    "command": "record-contribution",
+    "commandId": "7144bb5b-b76c-4349-9b0f-71f839362c76",
+    "expectedVersion": 26,
+    "contributionId": "4195b52e-72f4-4b8e-a7ef-9851a95d6ac5",
+    "commit": "71b5f95145410736c691552b836df8f20df3880e"
+  },
+  "counts": {
+    "runs": 10,
+    "succeeded": 10,
+    "settledReservations": 10,
+    "knownTokenUsage": 9279411,
+    "remainingExposure": 0,
+    "providerRetries": 0,
+    "correctionsUsedA": 0,
+    "correctionsUsedB": 0,
+    "pullRequests": 0
+  },
+  "runs": [
+    {
+      "runId": "1ad22b2d-a57f-4ce0-bfc9-2d27f484f702",
+      "agentId": "5922b8f4-0ef8-41fa-a6ca-c233651ab6f4",
+      "issueId": "8aac009c-043b-4a4c-800c-ab77b530a860",
+      "status": "succeeded",
+      "startedAt": "2026-10-04T20:43:53.108Z",
+      "finishedAt": "2026-10-04T20:45:51.267Z",
+      "usageSource": "per_run",
+      "units": 416888,
+      "model": "gpt-5.6-sol"
+    },
+    {
+      "runId": "2d33d2af-95b6-45d0-8b3c-222d0dcab2c7",
+      "agentId": "1e2aa610-4d18-46df-89f4-314641e813e8",
+      "issueId": "02c5b8aa-f6fb-44e2-aa39-509f0928e48b",
+      "status": "succeeded",
+      "startedAt": "2026-10-04T20:48:53.620Z",
+      "finishedAt": "2026-10-04T20:51:54.641Z",
+      "usageSource": "per_run",
+      "units": 639206,
+      "model": "gpt-5.6-sol"
+    },
+    {
+      "runId": "4b475a95-cd69-4c7e-bb40-7847b2034f4d",
+      "agentId": "0213ea00-6d90-441f-af1d-728430bb15b8",
+      "issueId": "ebff91bb-0fdc-487e-9c27-0a45f57c3fd3",
+      "status": "succeeded",
+      "startedAt": "2026-10-04T20:38:51.920Z",
+      "finishedAt": "2026-10-04T20:48:03.223Z",
+      "usageSource": "per_run",
+      "units": 2077359,
+      "model": "gpt-5.6-sol"
+    },
+    {
+      "runId": "7fe9d8f4-ecb4-42d9-8a30-be02c5061af8",
+      "agentId": "708ac007-d3ab-4691-9696-6e888b0af04f",
+      "issueId": "6fbba0be-e330-4bd3-b3da-87c514e17e7a",
+      "status": "succeeded",
+      "startedAt": "2026-10-04T20:49:06.431Z",
+      "finishedAt": "2026-10-04T20:50:26.465Z",
+      "usageSource": "per_run",
+      "units": 198232,
+      "model": "gpt-5.6-sol"
+    },
+    {
+      "runId": "803ca5e5-b4b3-4bdf-84f7-03b6d2085370",
+      "agentId": "2caf6e31-b5c8-4a22-b39a-5602de8fddf2",
+      "issueId": "9f4b6b04-87ec-4004-ab53-dd8d00866967",
+      "status": "succeeded",
+      "startedAt": "2026-10-04T21:01:02.957Z",
+      "finishedAt": "2026-10-04T21:03:51.720Z",
+      "usageSource": "per_run",
+      "units": 633391,
+      "model": "gpt-5.6-sol"
+    },
+    {
+      "runId": "82067e51-4e85-49ef-a647-8b1d8ed5efa3",
+      "agentId": "0213ea00-6d90-441f-af1d-728430bb15b8",
+      "issueId": "c8f09b30-de3a-431b-8796-ecced45825c0",
+      "status": "succeeded",
+      "startedAt": "2026-10-04T20:59:06.709Z",
+      "finishedAt": "2026-10-04T21:09:58.635Z",
+      "usageSource": "per_run",
+      "units": 2272341,
+      "model": "gpt-5.6-sol"
+    },
+    {
+      "runId": "a9d5696e-d3f7-4951-a02f-42818aa52338",
+      "agentId": "2caf6e31-b5c8-4a22-b39a-5602de8fddf2",
+      "issueId": "db4da0ce-84bc-4fb9-8bef-be55b3c34753",
+      "status": "succeeded",
+      "startedAt": "2026-10-04T20:40:35.837Z",
+      "finishedAt": "2026-10-04T20:43:32.897Z",
+      "usageSource": "per_run",
+      "units": 767039,
+      "model": "gpt-5.6-sol"
+    },
+    {
+      "runId": "aa8d530c-e9e6-4c9c-b16e-f941413cb96d",
+      "agentId": "99f00cc0-eb65-482e-a4f4-92a4abc26afc",
+      "issueId": "2759717f-3074-4750-9f6d-3d9f00e23b70",
+      "status": "succeeded",
+      "startedAt": "2026-10-04T20:55:49.926Z",
+      "finishedAt": "2026-10-04T20:58:52.402Z",
+      "usageSource": "per_run",
+      "units": 893142,
+      "model": "gpt-5.6-sol"
+    },
+    {
+      "runId": "ab497b97-4b83-4033-9493-1e418d122b43",
+      "agentId": "5922b8f4-0ef8-41fa-a6ca-c233651ab6f4",
+      "issueId": "603460e1-804e-4317-9048-4ea5437b68d6",
+      "status": "succeeded",
+      "startedAt": "2026-10-04T21:04:31.595Z",
+      "finishedAt": "2026-10-04T21:07:57.693Z",
+      "usageSource": "per_run",
+      "units": 939218,
+      "model": "gpt-5.6-sol"
+    },
+    {
+      "runId": "bec0dc13-4e68-49f1-9578-771e374eb552",
+      "agentId": "db715e26-e317-4b33-a723-731c6c6fd776",
+      "issueId": "11770fe1-c4f8-4c75-a0cf-4789223478f2",
+      "status": "succeeded",
+      "startedAt": "2026-10-04T20:53:01.020Z",
+      "finishedAt": "2026-10-04T20:55:18.025Z",
+      "usageSource": "per_run",
+      "units": 442595,
+      "model": "gpt-5.6-sol"
+    }
+  ],
+  "assistance": [
+    "Owner starts A and holds lead demand wakes during each N1 phase",
+    "Owner closes only terminal and settled contribution children",
+    "Owner reconciles PM/N2 after terminal readbacks; automatic event progression not claimed",
+    "Owner transfers coordinator after PM terminal settlement without successor run",
+    "Owner invokes N6 recovery; existing N1 reserves and dispatches B once",
+    "Owner freezes/pauses, settles terminal lead, preserves native/Git state and stops owned runtime"
+  ],
+  "limits": [
+    "PM rationale prematurely calls A accepted; source acceptance gate kept B waiting",
+    "No facilitation question remained; no facilitator or successor model run",
+    "B contribution recording validates SHA format but not object existence, and is immutable",
+    "Public log redaction elides raw curl payload; exact reconstructed payload hashes to the native receipt",
+    "No B integration candidate/review/acceptance/publication or accepted-build UI observation",
+    "A wrapper static PASS exit0; underlying raw exit1 and moderate coordinationStatus debt remain distinct",
+    "Backup created with native backup primitive; restoration of this M2 backup was not executed"
+  ],
+  "privateBackup": {
+    "directory": "artifacts/ordinary-campaign-m2-final-private",
+    "mode": "0700/0600",
+    "providerAuthRows": 0,
+    "files": [
+      {
+        "file": "database-result.json",
+        "bytes": 3987,
+        "sha256": "fa8f2c604cb15efd481b24f69b140b49ed660473fd95a89a461e1b47df431fd0"
+      },
+      {
+        "file": "native-storage-and-instructions.tar.gz",
+        "bytes": 1934405,
+        "sha256": "40743bcf4848692d9424e4b90f6666f88debe2f56ec97a17402be1b07575cde4"
+      },
+      {
+        "file": "native-paused-final-20261004-231149.sql.gz",
+        "bytes": 865414,
+        "sha256": "6f4c2c06abb15d7b12aeaf8580862491956143bfe9aba4665642413ed768f431"
+      }
+    ],
+    "excluded": [
+      "codex-home",
+      "global-auth",
+      "github-auth",
+      "owner credentials/curl/cookie",
+      "dependencies",
+      "BetterAuth account/session/verification rows",
+      "adapter auth/CLI challenge rows"
+    ]
+  },
+  "cleanup": {
+    "at": "2026-10-04T21:16:30.998602+00:00",
+    "launcherExitCode": 0,
+    "sessionState": "stopped",
+    "stoppedAt": "2026-10-04T21:14:14.967Z",
+    "runtimePath": "/tmp/paperclip-council-package-wt7tHX",
+    "runtimeExists": false,
+    "databasePath": "/tmp/paperclip-council-package-qzEmoU",
+    "databaseExists": false,
+    "applicationPidExists": false,
+    "databasePidExists": false,
+    "appCleanup": "stopped only the plugin worker, listener, and application created by this run",
+    "launcherCleanup": {
+      "runtimePath": "/tmp/paperclip-council-package-wt7tHX",
+      "ownedRuntimeRemoved": true
+    },
+    "privateAuthFilesAbsent": true
+  },
+  "files": [
+    {
+      "path": "artifacts/ordinary-campaign-m2-authorization.json",
+      "bytes": 860,
+      "sha256": "48e798bb0cd5105842d82bf307fb370b4cfcc742de30e0bec45e5213de85132d"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-before-wake.json",
+      "bytes": 17024,
+      "sha256": "f4bcb00b9ba348465db71290aee49cc86a67c285b1376800fbad2bf726e585a7"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-first-wake.json",
+      "bytes": 24079,
+      "sha256": "fa0b24d725269e222ea8ec575ff1197545661b0c0a1cbac3daf4785bf1dc5784"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-B-waiting.json",
+      "bytes": 107484,
+      "sha256": "b3fc594b59123d937e56fca5ba5ca7ca26568f4c7b3c482c0f5e12affa462b32"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-PM-terminal-reconciled.json",
+      "bytes": 117932,
+      "sha256": "2a6d0a750ddb0f603e7cc55e4e335bb6ded2535588a0e5bcf689046f79f18e01"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-before-coordinator-transfer.json",
+      "bytes": 127421,
+      "sha256": "ef6aac755f371e56cf62583c915c194a1b6a0ca576efa1d7844e9f0c74383d08"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-after-coordinator-transfer.json",
+      "bytes": 128582,
+      "sha256": "65d78b4effdde80c269efc2bd877dcc71b2ab0d13ca8855c70ee3c2cd1323a32"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-A-accepted-settled.json",
+      "bytes": 172176,
+      "sha256": "8f2761430beb81df940e13c5c8dd701dfeb15bee57344be57565321777d6ff67"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-B-started-held.json",
+      "bytes": 199504,
+      "sha256": "64047786e8a8e0ca21eced68baadd2854bb48d4917dc3cb12d590a37acf3d9e7"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-final-paused.json",
+      "bytes": 245026,
+      "sha256": "d71f21bdf2ad4e08805859feec0e71d42457b3509dbce11ebfefc8ab41ee9884"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-final-agents.json",
+      "bytes": 42906,
+      "sha256": "f57f580167d86efeebc9ad7892fd6b24f881f47e9c2343a4bb5e0c3e79c5d342"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-reference-mismatch.json",
+      "bytes": 5628,
+      "sha256": "a05cba953ad23fe0f56000c6626bdfbddd3ce123ad9de41b491e181282720141"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-A-static.log",
+      "bytes": 7912,
+      "sha256": "7de7fd299b2fa75aa9a8b75d465169d8778b44ad4a1c5e76285e6a202649996f"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-final-pr-readback.json",
+      "bytes": 3,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-final-ref-readback.json",
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-cleanup.json",
+      "bytes": 628,
+      "sha256": "97b176f0ea6d3384f4185d98424358ad8b1cef0c3212d57bb69391f8a68fc08b"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-A-accepted.bundle",
+      "bytes": 1429200,
+      "sha256": "85e6306656fb3844de3e04ee70410e3de5dfc823cfe337da0e0c01036be54823"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-partial-B.bundle",
+      "bytes": 1431893,
+      "sha256": "2d0808a5ad3f5cc29cd724a3e0923281551d908a21a62f582f79d0d71268465d"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-operator.jsonl",
+      "bytes": 718089,
+      "sha256": "5e88b151a4f0d46e947dbe08b16b61d92d11cc103a6b774919655605565594f0"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-session-01dabaa83ce3912c89f639b352aa1fc91531741d.json",
+      "bytes": 782057,
+      "sha256": "cc69d059375618f5dee6fa4b2737d9028ce39f31338693a120c98bc76b5d74ba"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-run-readbacks/1ad22b2d-a57f-4ce0-bfc9-2d27f484f702.json",
+      "bytes": 312038,
+      "sha256": "369e78aada7b32313dab0d570e0790018432639acc84c5ca6d3fe4a6ec8256af"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-run-readbacks/2d33d2af-95b6-45d0-8b3c-222d0dcab2c7.json",
+      "bytes": 866753,
+      "sha256": "bcab20a3c839228db22e257afc0bc8b303531e517a0b0373ed210c896f274572"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-run-readbacks/4b475a95-cd69-4c7e-bb40-7847b2034f4d.json",
+      "bytes": 400615,
+      "sha256": "8830d3ba5968d14308c9b74b2874bd6a8a2c3489ad1a96e526dbbcf52be03bc1"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-run-readbacks/7fe9d8f4-ecb4-42d9-8a30-be02c5061af8.json",
+      "bytes": 218638,
+      "sha256": "e05457f9db78605d9fbf3ff99edac7eb2961e99660a08865032d48363ae07a97"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-run-readbacks/803ca5e5-b4b3-4bdf-84f7-03b6d2085370.json",
+      "bytes": 273693,
+      "sha256": "ee0d5499049e3075eb9de4f52d99278a61e60cffdfa99feaa6359abbad8744be"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-run-readbacks/82067e51-4e85-49ef-a647-8b1d8ed5efa3.json",
+      "bytes": 875397,
+      "sha256": "60c520b41eb809d940ea3b90917c31c3823a82c015aa0c66fdd3838d05c7fa8c"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-run-readbacks/a9d5696e-d3f7-4951-a02f-42818aa52338.json",
+      "bytes": 299553,
+      "sha256": "5576e4208a94497f187d7ceb43acc3871bc765a0b43234e3222aef969f77cb3e"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-run-readbacks/aa8d530c-e9e6-4c9c-b16e-f941413cb96d.json",
+      "bytes": 340347,
+      "sha256": "cd9028af5d267b7f128a792529f43e1168ef821786d37533fc3ca7d285c52784"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-run-readbacks/ab497b97-4b83-4033-9493-1e418d122b43.json",
+      "bytes": 312847,
+      "sha256": "9e587aec2450fbc1b3c4bdc5c49ad2c816bc65123b5cc9107a5b6dc122621197"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-run-readbacks/bec0dc13-4e68-49f1-9578-771e374eb552.json",
+      "bytes": 425971,
+      "sha256": "d94ef389340c850db01dd55ae1fce78efc48a68d2329487e762ac8055163c3bd"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-operator-scripts/m2-backup.mts",
+      "bytes": 2323,
+      "sha256": "db50016aba988c3e5733d3e8a1b71a73320c8564f775dd4a37e7b2b4c764e1df"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-operator-scripts/m2-capture-logs.py",
+      "bytes": 881,
+      "sha256": "68398c914b9eb09d7ed794c0fe95693bd52f5e6527aa229d35c14f10c10b0399"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-operator-scripts/m2-log.py",
+      "bytes": 563,
+      "sha256": "8ee036d99629861d3d5c74e4c53bcf1b00f43c8e1923d37d0ebc261fd9522afb"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-operator-scripts/m2-n1-observe.py",
+      "bytes": 1503,
+      "sha256": "009cd5be8525e93fe8daa52990da08d38d1acca0254162de38cd5e9a0c54d9b8"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-operator-scripts/m2-owner.py",
+      "bytes": 2336,
+      "sha256": "af6c658104ead755c5be49eedfb8fe8e096543d0bb9d5a071d00095f81073e71"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-operator-scripts/m2-stage-watch.py",
+      "bytes": 1602,
+      "sha256": "b177fbad88b31025e507ce7a3ad1b2aae8afb2eda8d2437632d6fe3a865803ca"
+    }
+  ]
+}
