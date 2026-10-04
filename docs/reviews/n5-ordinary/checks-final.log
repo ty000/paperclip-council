@@ -1,0 +1,140 @@
+[typecheck] START pnpm typecheck
+[test] START pnpm test -- --maxWorkers=2
+[build] START pnpm build
+[test] 
+[test] > @paperclipai/plugin-council@0.6.0 test /home/davy-lp/.codex/worktrees/council-n5/paperclip-council
+[test] > vitest run --config ./vitest.config.ts "--maxWorkers=2"
+[test] 
+[typecheck] 
+[typecheck] > @paperclipai/plugin-council@0.6.0 typecheck /home/davy-lp/.codex/worktrees/council-n5/paperclip-council
+[typecheck] > tsc --noEmit && tsc --noEmit -p tsconfig.test.json
+[typecheck] 
+[build] 
+[build] > @paperclipai/plugin-council@0.6.0 build /home/davy-lp/.codex/worktrees/council-n5/paperclip-council
+[build] > tsc && node ./esbuild.config.mjs
+[build] 
+[test] 
+[test]  RUN  v4.1.11 /home/davy-lp/.codex/worktrees/council-n5/paperclip-council
+[test] 
+[build] PASS duration=0.814s exit=0 signal=none
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[typecheck] PASS duration=1.072s exit=0 signal=none
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Already on 'contribution-a'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Already on 'contribution-a'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Already on 'contribution-a'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Already on 'contribution-a'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Already on 'contribution-a'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'contribution-b-side'
+[test] Switched to branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Automatic merge went well; stopped before committing as requested
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Automatic merge went well; stopped before committing as requested
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Automatic merge went well; stopped before committing as requested
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Cloning into '/tmp/paperclip-owned-root-QevwjQ/paperclip'...
+[test] done.
+[test] HEAD is now at 0331110 fixture
+[test] fatal: repository '/tmp/paperclip-host-fixture-4yen8D/missing-source' does not exist
+[test] Cloning into '/tmp/paperclip-owned-root-lpxw87/paperclip'...
+[test] done.
+[test] HEAD is now at d6f817d fixture
+[test] Cloning into '/tmp/paperclip-owned-root-HZrmjU/paperclip'...
+[test] done.
+[test] HEAD is now at d6f817d fixture
+[test] Cloning into '/tmp/paperclip-owned-root-QUKgEK/paperclip'...
+[test] done.
+[test] HEAD is now at d6f817d fixture
+[test] Cloning into '/tmp/paperclip-owned-root-lUAaSb/paperclip'...
+[test] done.
+[test] HEAD is now at d6f817d fixture
+[test] fatal: Not a valid object name 801e97c3655babdec843b427cf5aab59395252af^{commit}
+[test] kill: (281448): No such process
+[test] 
+[test]  Test Files  34 passed (34)
+[test]       Tests  365 passed (365)
+[test]    Start at  18:22:29
+[test]    Duration  7.88s (transform 629ms, setup 0ms, import 1.90s, tests 10.99s, environment 2ms)
+[test] 
+[test] PASS duration=8.555s exit=0 signal=none
+
+Check summary:
+- typecheck: PASS (1.072s, exit=0, signal=none)
+- test: PASS (8.555s, exit=0, signal=none)
+- build: PASS (0.814s, exit=0, signal=none)
+- total wall time: 8.559s
