@@ -287,9 +287,11 @@ export function markN2ReviewHandoffUnknown(
   };
 }
 
-function boundedList(value: string[], label: string): string[] {
+const MAX_JUSTIFICATION_LENGTH = 8_000;
+
+function boundedList(value: string[], label: string, maximumEntryLength = 1_000): string[] {
   if (!Array.isArray(value) || value.length === 0 || value.length > 20
-      || value.some((entry) => typeof entry !== "string" || !entry.trim() || entry.length > 1_000)) {
+      || value.some((entry) => typeof entry !== "string" || !entry.trim() || entry.length > maximumEntryLength)) {
     throw new MissionError(422, "malformed_review", `${label} must contain 1-20 bounded entries`);
   }
   return value.map((entry) => entry.trim());
@@ -390,7 +392,7 @@ function recordedVerdict(input: N2DecisionInput): N2Verdict {
     actorAgentId: input.actorAgentId,
     runId: input.runId,
     criteria: boundedList(input.criteria, "criteria"),
-    reasons: boundedList(input.reasons, "reasons"),
+    reasons: boundedList(input.reasons, "reasons", MAX_JUSTIFICATION_LENGTH),
     receiptState: input.receipt.state,
     nativeStatus: input.receipt.nativeObservation?.status ?? null,
     decidedAt: input.at ?? new Date().toISOString(),
@@ -1453,7 +1455,7 @@ function preparedDecisionFromIntent(intent: Record<string, unknown>): N2Prepared
     actorAgentId: runtimeUuid(decision.actorAgentId, "actorAgentId"),
     runId: runtimeUuid(decision.runId, "runId"),
     resultReference: runtimeString(decision.resultReference, "resultReference", 2_048),
-    justification: runtimeString(decision.justification, "justification", 8_000),
+    justification: runtimeString(decision.justification, "justification", MAX_JUSTIFICATION_LENGTH),
     submissionId: runtimeUuid(intent.submissionId, "submissionId"),
     decisionHash: runtimeString(intent.decisionHash, "decisionHash", 64),
     settlementCommandId: runtimeUuid(intent.settlementCommandId, "settlementCommandId"),

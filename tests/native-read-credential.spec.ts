@@ -11,6 +11,16 @@ function fixture() {
   return { ctx: ctx as never, resolve, fetch, change: () => { config = { ...config, councilApiKey: { ...config.councilApiKey, secretId: "secret-2" } }; } };
 }
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+it.each([
+  ["/api/issues/issue1", { offset: 0, limitBytes: 1024 }, "GET"],
+  ["/api/heartbeat-runs/run1/log", { offset: -1, limitBytes: 1024 }, "GET"],
+  ["/api/heartbeat-runs/run1/log", { offset: 0, limitBytes: 131073 }, "GET"],
+  ["/api/heartbeat-runs/run1/log", { offset: 0, limitBytes: 1024 }, "POST"],
+] as const)("restricts log windows to bounded read-only native log requests", async (resource, logRead, method) => {
+  const { ctx, fetch } = fixture();
+  await expect(councilNativeRequest(ctx, "company-1", resource, { logRead, method })).rejects.toThrow(/Invalid Council native log window/);
+  expect(fetch).not.toHaveBeenCalled();
+});
 it("reuses only the credential for five seconds while every run read reaches the host", async () => {
   vi.useFakeTimers(); const { ctx, resolve, fetch } = fixture();
   await councilNativeRequest(ctx, "company-1", path);
