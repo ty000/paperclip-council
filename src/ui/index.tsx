@@ -1,5 +1,7 @@
 import type { inspectN3 } from "../n3-state.js";
+import { projectCoordinationPresentation } from "../coordination-presentation.js";
 import { projectDeliveryPresentation, type DeliveryPresentation } from "../delivery-presentation.js";
+import { CoordinationPanel } from "./coordination-panel.js";
 import { CouncilDecisionReceipts } from "./decision-receipts.js";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import {
@@ -66,6 +68,7 @@ type MissionInspection = {
     };
   };
   nextAction: string;
+  n6: Parameters<typeof projectCoordinationPresentation>[0];
   n1: null | {
     participants: Array<{
       contributionId: string; title: string; assigneeAgentId: string; ownedPaths: string[];
@@ -715,6 +718,7 @@ export function CouncilMissionsPage({ context }: PluginPageProps) {
   const selected = !loading && !error && loadedCompanyId === companyId
     ? missions.find((item) => item.mission.missionId === selectedId) ?? null
     : null;
+  const missionLink = (missionId: string) => "?missionId=" + encodeURIComponent(missionId);
   const issueLink = (issueId: string) => "/" + (context.companyPrefix ? context.companyPrefix + "/" : "") + "issues/" + encodeURIComponent(issueId);
   return (
     <main style={{ ...stack, padding: "1.5rem", maxWidth: "75rem", margin: "0 auto" }}>
@@ -797,6 +801,11 @@ export function CouncilMissionsPage({ context }: PluginPageProps) {
         <p><a href={issueLink(selected.mission.rootIssueId) + "#attachment-" + encodeURIComponent(selected.n1.candidate.candidate.attachmentId)}>Open candidate attachment</a></p>
         <ul>{selected.n1.candidate.checks.map((check) => <li key={check.name}>{check.name}: {check.status} — {check.detail}</li>)}</ul>
       </section>}
+      {selected && <CoordinationPanel
+        presentation={projectCoordinationPresentation(selected.n6)}
+        missionLink={missionLink}
+        issueLink={issueLink}
+      />}
       {selected && <DeliveryPanel inspection={selected.n5} rootIssueId={selected.mission.rootIssueId} issueLink={issueLink} />}
       {selected?.n3 && <section style={card} aria-label="Specialist opinions">
         <h2>Specialist opinions</h2>
