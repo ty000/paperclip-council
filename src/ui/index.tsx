@@ -221,6 +221,52 @@ const deliveryToneStyles: Record<DeliveryPresentation["status"]["tone"], CSSProp
   success: { borderColor: "#15803d", color: "#15803d" },
 };
 
+function DeliveryReferences({
+  references: { plan, pullRequest },
+  rootIssueId,
+  issueLink,
+}: {
+  references: DeliveryPresentation["references"];
+  rootIssueId: string;
+  issueLink(issueId: string): string;
+}) {
+  return (
+    <div style={row} aria-label="Delivery references">
+      {plan ? (
+        <a href={issueLink(rootIssueId) + "#document-" + encodeURIComponent(plan.documentId)}>
+          Open native plan
+        </a>
+      ) : <span>Native plan not bound</span>}
+      {plan && <span>Bound revision: <code>{plan.revisionId}</code></span>}
+      {pullRequest ? (
+        <a href={pullRequest.url}>
+          {pullRequest.state === "closed" ? "View closed pull request" : `Open pull request (${pullRequest.state})`}
+        </a>
+      ) : <span>Pull request not observed</span>}
+    </div>
+  );
+}
+
+function DeliveryDetails({ details }: { details: DeliveryPresentation["details"] }) {
+  return (
+    <details style={{ marginTop: "1rem" }}>
+      <summary>Technical delivery details</summary>
+      <dl style={{ overflowWrap: "anywhere" }}>
+        <dt>Accepted candidate commit</dt>
+        <dd><code>{details.acceptedCandidateCommit ?? "Not recorded"}</code></dd>
+        <dt>Observed PR head</dt>
+        <dd><code>{details.observedHeadSha ?? "Not observed"}</code></dd>
+        <dt>Checks</dt>
+        <dd>{details.checksState ?? "Not reported"}</dd>
+        <dt>Review</dt>
+        <dd>{details.reviewsState ?? "Not reported"}</dd>
+        <dt>Native PR readback</dt>
+        <dd>{details.nativeReadbackFresh ? "Fresh" : "Missing or stale"}</dd>
+      </dl>
+    </details>
+  );
+}
+
 function DeliveryPanel({
   inspection,
   rootIssueId,
@@ -231,8 +277,6 @@ function DeliveryPanel({
   issueLink(issueId: string): string;
 }) {
   const delivery = projectDeliveryPresentation(inspection);
-  const plan = delivery.references.plan;
-  const pullRequest = delivery.references.pullRequest;
   const announcementRole = delivery.status.tone === "danger" ? "alert" : "status";
 
   return (
@@ -262,35 +306,8 @@ function DeliveryPanel({
         {delivery.nextAction.actorId && <> <span>— actor {delivery.nextAction.actorId}</span></>}
       </p>
 
-      <div style={row} aria-label="Delivery references">
-        {plan ? (
-          <a href={issueLink(rootIssueId) + "#document-" + encodeURIComponent(plan.documentId)}>
-            Open native plan
-          </a>
-        ) : <span>Native plan not bound</span>}
-        {plan && <span>Bound revision: <code>{plan.revisionId}</code></span>}
-        {pullRequest ? (
-          <a href={pullRequest.url}>
-            {pullRequest.state === "closed" ? "View closed pull request" : `Open pull request (${pullRequest.state})`}
-          </a>
-        ) : <span>Pull request not observed</span>}
-      </div>
-
-      <details style={{ marginTop: "1rem" }}>
-        <summary>Technical delivery details</summary>
-        <dl style={{ overflowWrap: "anywhere" }}>
-          <dt>Accepted candidate commit</dt>
-          <dd><code>{delivery.details.acceptedCandidateCommit ?? "Not recorded"}</code></dd>
-          <dt>Observed PR head</dt>
-          <dd><code>{delivery.details.observedHeadSha ?? "Not observed"}</code></dd>
-          <dt>Checks</dt>
-          <dd>{delivery.details.checksState ?? "Not reported"}</dd>
-          <dt>Review</dt>
-          <dd>{delivery.details.reviewsState ?? "Not reported"}</dd>
-          <dt>Native PR readback</dt>
-          <dd>{delivery.details.nativeReadbackFresh ? "Fresh" : "Missing or stale"}</dd>
-        </dl>
-      </details>
+      <DeliveryReferences references={delivery.references} rootIssueId={rootIssueId} issueLink={issueLink} />
+      <DeliveryDetails details={delivery.details} />
     </section>
   );
 }
