@@ -6,7 +6,7 @@ export type DeliveryPresentation = {
   nextAction: { actorId: string | null; label: string };
   references: {
     plan: { documentId: string; revisionId: string } | null;
-    pullRequest: { url: string; state: "draft" | "open" | "ready" } | null;
+    pullRequest: { url: string; state: "draft" | "open" | "ready" | "closed" } | null;
   };
   details: {
     acceptedCandidateCommit: string | null;
@@ -133,7 +133,13 @@ export function projectDeliveryPresentation(n5: DeliveryInspection | null | unde
       plan,
       pullRequest: url ? {
         url,
-        state: current.key === "ready" ? "ready" : observation?.draft === true ? "draft" : "open",
+        state: observation?.state !== "open"
+          ? "closed"
+          : current.key === "ready"
+            ? "ready"
+            : observation.draft === true
+              ? "draft"
+              : "open",
       } : null,
     },
     details: { acceptedCandidateCommit, observedHeadSha, checksState, reviewsState, nativeReadbackFresh },

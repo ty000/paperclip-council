@@ -270,7 +270,9 @@ function DeliveryPanel({
         ) : <span>Native plan not bound</span>}
         {plan && <span>Bound revision: <code>{plan.revisionId}</code></span>}
         {pullRequest ? (
-          <a href={pullRequest.url}>Open pull request ({pullRequest.state})</a>
+          <a href={pullRequest.url}>
+            {pullRequest.state === "closed" ? "View closed pull request" : `Open pull request (${pullRequest.state})`}
+          </a>
         ) : <span>Pull request not observed</span>}
       </div>
 

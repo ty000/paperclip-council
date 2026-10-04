@@ -81,7 +81,12 @@ describe("projectDeliveryPresentation", () => {
     input.nativeReadbackFresh = false;
     input.publication.checks.state = "failed";
     input.publication.reviews.state = "changes_requested";
-    expect(projectDeliveryPresentation(input).status.key).toBe("pull_request_not_open");
+    expect(projectDeliveryPresentation(input)).toMatchObject({
+      status: { key: "pull_request_not_open" },
+      references: {
+        pullRequest: { url: "https://github.com/example/repo/pull/7", state: "closed" },
+      },
+    });
     input.publication.observation.state = "open";
     expect(projectDeliveryPresentation(input).status.key).toBe("pull_request_draft");
     expect(projectDeliveryPresentation(input).references.pullRequest?.state).toBe("draft");
