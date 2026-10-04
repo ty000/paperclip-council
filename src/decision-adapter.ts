@@ -129,13 +129,22 @@ export async function councilNativeRequest(
   ctx: PluginContext,
   companyId: string,
   path: string,
-  options: { method?: "GET" | "POST"; runId?: string; body?: unknown } = {},
+  options: { method?: "GET" | "POST"; runId?: string; body?: unknown; logRead?: { offset: number; limitBytes: number } } = {},
 ): Promise<{ status: number; body: unknown }> {
   const config = parseCouncilConfig(await ctx.config.get(companyId));
   if (!/^\/api\/(heartbeat-runs|issues)\/[a-zA-Z0-9/-]+$/.test(path)) throw new Error("Invalid Council native resource path");
+  let query = "";
+  if (options.logRead) {
+    const { offset, limitBytes } = options.logRead;
+    if ((options.method ?? "GET") !== "GET" || !/^\/api\/heartbeat-runs\/[a-zA-Z0-9-]+\/log$/.test(path)
+        || !Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limitBytes) || limitBytes < 1 || limitBytes > 131072) {
+      throw new Error("Invalid Council native log window");
+    }
+    query = `?offset=${offset}&limitBytes=${limitBytes}`;
+  }
   const apiKey = !options.method || options.method === "GET" ? await nativeReadCredential(ctx, companyId, config)
     : await ctx.secrets.resolve(config.councilApiKey, { companyId, configPath: "councilApiKey" });
-  const response = await fetch(`${config.apiBaseUrl}${path}`, {
+  const response = await fetch(`${config.apiBaseUrl}${path}${query}`, {
     method: options.method ?? "GET",
     headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json",
       ...(options.runId ? { "x-paperclip-run-id": options.runId } : {}) },

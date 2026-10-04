@@ -4,7 +4,10 @@ import type { CouncilDecisionInput } from "../src/contracts.js";
 import {
   executeCouncilDecision,
   recordDecisionHumanDisposition,
+  recordCouncilOrdinaryReadback,
 } from "../src/decision-receipts.js";
+import { canonicalPayloadHash } from "../src/missions.js";
+import type { OrdinaryReport } from "../src/n2-ordinary-state.js";
 
 type Row = Record<string, any>;
 
@@ -109,6 +112,25 @@ function nativeIssue(decision: CouncilDecisionInput, status = "in_progress") {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("durable council decision receipts", () => {
+  it("records the same exact report from a truncated terminal run's public log", async () => {
+    const h = harness(); const decision = input();
+    h.ctx.config = { get: async () => config } as never;
+    const report = { schema: "council-ordinary-result-v1", verdict: decision.verdict, rationale: "reviewed ".repeat(100) } as OrdinaryReport;
+    const summary = JSON.stringify(report);
+    const content = JSON.stringify({ stream: "stdout", chunk: JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: summary } }) + "\n"
+      + JSON.stringify({ type: "turn.completed" }) + "\n" }) + "\n";
+    const run = { id: decision.runId, companyId: decision.companyId, agentId: decision.actorAgentId, nativeIssueId: null,
+      contextSnapshot: { issueId: "council-task" }, status: "succeeded", finishedAt: "2026-10-04T17:38:24Z", logBytes: Buffer.byteLength(content),
+      resultJson: { summary: summary.slice(0, 500), truncated: true, truncationReason: "oversized_result_json" }, usageJson: { usageSource: "per_run", inputTokens: 12, outputTokens: 3 } };
+    const fetch = vi.fn(async (url: string, _options?: RequestInit) => new Response(JSON.stringify(url.includes("/log?") ? { runId: run.id, content } : run), { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    const result = await recordCouncilOrdinaryReadback(h.ctx, decision, { issueId: "council-task", report,
+      requestBody: { provenance: "ordinary-task-terminal-readback-v1", reportHash: canonicalPayloadHash(report), runId: run.id, issueId: "council-task" } });
+    expect(result.state).toBe("native_observed");
+    expect(result.nativeObservation?.body).toMatchObject({ report, runId: run.id, issueId: "council-task" });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls.every(([, init]) => !init || (init as RequestInit).method === "GET")).toBe(true);
+  });
   it.each([false, true])("binds native review receipts to their exact source run (mismatch=%s)", async (mismatch) => {
     const h = harness();
     const decision = input({ nativeReview: { interactionId: "card", decisionId: "decision", sourceRunId: "transmission" } });

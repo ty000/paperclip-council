@@ -12,6 +12,7 @@ import { n3Round, type N3NativeRound } from "./n3-state.js";
 import type { N3OpinionSlot } from "./n3-opinions.js";
 import { currentOrdinaryTask, freshOrdinary, ordinaryReceiptSubject, ordinaryTask, saveOrdinaryTask, validateOrdinaryReport,
   type OrdinaryTask } from "./n2-ordinary-state.js";
+import { readOrdinaryRunSummary } from "./n2-ordinary-report.js";
 
 function ordinaryRound(mission: MissionRecord, submission: Parameters<typeof freshN3Round>[1], slots: N3OpinionSlot[]): N3NativeRound {
   const { transmission: _unused, ...round } = freshN3Round(mission, submission, slots);
@@ -102,7 +103,7 @@ async function settleTask(ctx: PluginContext, initial: MissionRecord, task: Ordi
   await settleOrdinaryRunUsage(ctx, { ...identity, commandId: task.settlementCommandId, reservationId: task.reservationId,
     periodKey: profile.periodKey, expectedVersion: envelope.version });
   if (run.status !== "succeeded") throw new MissionError(409, "ordinary_run_failed", "Terminal costs are recorded, but unsuccessful work cannot advance the mission");
-  if (task.kind === "council") validateOrdinaryReport(mission, task, run.resultJson?.summary);
+  if (task.kind === "council") validateOrdinaryReport(mission, task, await readOrdinaryRunSummary(ctx, run));
   mission = await freshOrdinary(ctx, mission); task = currentOrdinaryTask(mission, task.taskId);
   const settledAt = new Date().toISOString();
   const state = mission.aggregate.n2!; const n3 = mission.aggregate.n3!;

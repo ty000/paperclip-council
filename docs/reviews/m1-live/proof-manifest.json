@@ -1,0 +1,59 @@
+{
+  "schema_version": "proof-manifest.v1",
+  "proof_id": "council-m1-live-dd6e4a3-20261004",
+  "subject": "One real ordinary-cli-v1 Delivery UI mission through Council terminal readback",
+  "status": "partial",
+  "summary": "Six real model runs succeeded and settled; actual V1 code exists. Council verdict application is blocked by the host-truncated result summary. No correction, PR, accepted build or browser observation occurred.",
+  "categories": [
+    "functional",
+    "operations"
+  ],
+  "evidence": [
+    {
+      "id": "runtime",
+      "category": "functional",
+      "kind": "runtime-observation",
+      "location": "docs/reviews/m1-live/observation.json",
+      "replayable": true,
+      "notes": "Read-only comparison of recorded exact terminal report and public log; includes N3 and six per_run usages."
+    },
+    {
+      "id": "git",
+      "category": "functional",
+      "kind": "command-output",
+      "location": "artifacts/ordinary-campaign-m1-v1.bundle",
+      "replayable": true,
+      "notes": "Actual three-commit candidate preserved outside deleted runtime; hash in observation."
+    },
+    {
+      "id": "cleanup",
+      "category": "operations",
+      "kind": "runtime-observation",
+      "location": "artifacts/ordinary-campaign-session-dd6e4a388bb13ef432daa7071ceeb47d5a895a3b.json",
+      "replayable": true,
+      "notes": "Seven agents paused, six terminal runs; stop exit0 and ownedRuntimeRemoved true. Private DB/storage backup preserved before cleanup; restore not tested."
+    }
+  ],
+  "replay": {
+    "preconditions": [
+      "Use recorded artifacts locally; do not relaunch a provider or restore/activate a session without fresh authorization."
+    ],
+    "steps": [
+      "python3 docs/reviews/m1-live/verify-observation.py",
+      "git bundle verify artifacts/ordinary-campaign-m1-v1.bundle"
+    ],
+    "expected_artifacts": [
+      "docs/reviews/m1-live/observation.json",
+      "artifacts/ordinary-campaign-m1-v1.bundle"
+    ]
+  },
+  "closure": {
+    "decision": "keep-open",
+    "rationale": "Real implementation and attributable opinions exist, but no applicable Council decision, accepted candidate, publication or browser result.",
+    "next_required_actions": [
+      "Fix the terminal-report consumer using exact attributed complete public evidence when summary is truncated; provider-free regression first.",
+      "Qualify a paused native restore before any explicitly authorized continuation; preserve existing six runs, admission and single correction allowance."
+    ]
+  },
+  "generated_at": "2026-10-04T17:45:13.662513+00:00"
+}
