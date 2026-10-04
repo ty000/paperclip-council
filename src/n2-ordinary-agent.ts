@@ -7,6 +7,14 @@ import { n3Round, inspectN3 } from "./n3-state.js";
 import { recordN3Opinion, synthesizeN3Review } from "./n3-opinions.js";
 import { currentOrdinaryTask, saveOrdinaryTask, type OrdinaryReport, type OrdinaryTask } from "./n2-ordinary-state.js";
 
+function assertOwnerResume(mission: MissionRecord, task: OrdinaryTask, run: Awaited<ReturnType<typeof readOrdinaryRun>>) {
+  const continuation = mission.aggregate.n5?.continuation;
+  if (!task.runId && task.kind === "correction" && continuation
+      && (run.contextSnapshot.resumeIntent !== true || Date.parse(run.startedAt!) < Date.parse(continuation.requestedAt))) {
+    throw new MissionError(409, "ordinary_owner_resume_required", "The reserved post-publication correction must bind the owner's explicit root resume run");
+  }
+}
+
 async function bindActor(ctx: PluginContext, mission: MissionRecord, input: PluginApiRequestInput) {
   const task = mission.aggregate.n2!.ordinary!.tasks.find(item => item.issueId === input.params.issueId
     && item.submissionId === mission.aggregate.n2!.activeSubmissionId && !item.settledAt);
@@ -14,6 +22,7 @@ async function bindActor(ctx: PluginContext, mission: MissionRecord, input: Plug
       || task.runId && task.runId !== input.actor.runId) throw new MissionError(403, "ordinary_actor_binding", "Exact admitted task, actor and run required");
   const run = await readOrdinaryRun(ctx, { companyId: mission.companyId, issueId: task.issueId!, agentId: task.agentId, runId: input.actor.runId });
   if (run.status !== "running" || !run.startedAt || run.finishedAt) throw new MissionError(409, "ordinary_run_inactive", "Command requires its active CLI run");
+  assertOwnerResume(mission, task, run);
   if (!task.runId) mission = await saveOrdinaryTask(ctx, mission, { ...task, runId: run.id });
   const state = mission.aggregate.n2!;
   if (task.kind === "council" && state.status === "review_handoff") {

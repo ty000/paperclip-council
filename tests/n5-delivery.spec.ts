@@ -127,3 +127,25 @@ it("revalidates a preauthorized ordinary publisher before any publication claim 
   await expect(startN5Publication(ctx as never, f.mission)).rejects.toMatchObject({ code: "ordinary_cli_required" });
   expect(create).not.toHaveBeenCalled(); expect(execute).not.toHaveBeenCalled();
 });
+
+it("requires ordinary publisher terminal settlement even when its exact PR and checks are already observed", () => {
+  const f = fixture(); const p = f.mission.aggregate.n5!.publication!;
+  f.mission.aggregate.n2!.ordinary = { protocol: "ordinary-cli-v1", tasks: [] };
+  p.observation = correlateN5Readback(f.mission, f.document, f.products, f.objects);
+  const attributed = { headSha: p.submission.candidateCommit, evidenceRefs: ["fixture:exact-head"], observedAt: new Date().toISOString(), agentId: randomUUID(), runId: p.runId! };
+  p.checks = { ...attributed, state: "passed" }; p.reviews = { ...attributed, state: "approved" };
+  expect(inspectN5(f.mission)?.ready).toBe(false);
+  p.settledAt = new Date().toISOString(); expect(inspectN5(f.mission)?.ready).toBe(true);
+});
+it("reserves the ordinary owner-resume task on the same root without inventing a native release or resetting acceptance", async () => {
+  const { prepareN5Continuation } = await import("../src/n5-continuation.js");
+  const m = acceptedFixture(); m.rootIssueId = randomUUID(); delete m.aggregate.n2!.native;
+  const submissionId = m.aggregate.n2!.activeSubmissionId;
+  m.aggregate.n2!.ordinary = { protocol: "ordinary-cli-v1", tasks: [{ kind: "council", submissionId, settledAt: "then", receiptRecordedAt: "then", report: { verdict: "approved" } } as never] };
+  const before = structuredClone(m.aggregate); const requestId = randomUUID(); const reservationId = randomUUID();
+  const next = prepareN5Continuation(m, { requestId, reservationId, reason: "Bounded post-publication correction", criteria: ["new marker"], actorId: randomUUID(), periodKey: "same" });
+  expect(next.n2.native).toBeUndefined(); expect(next.n2.correctionsUsed).toBe(1);
+  expect(next.n2.ordinary!.tasks.at(-1)).toMatchObject({ taskId: requestId, reservationId, kind: "correction", issueId: m.rootIssueId,
+    agentId: m.aggregate.responsibilities.integrationLeadAgentId, creation: "confirmed", wake: "claimed", runId: null });
+  expect(next.n2.rounds).toEqual(before.n2!.rounds); expect(m.aggregate).toEqual(before);
+});

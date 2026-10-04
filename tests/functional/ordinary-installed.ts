@@ -5,6 +5,7 @@ import { access, chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 
 import { createServer } from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { installOrdinaryGitHubTransport, prepareOrdinaryDelivery } from "./ordinary-delivery-scenario.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repository = resolve(here, "../..");
@@ -13,21 +14,26 @@ const gitAt = (cwd: string, ...args: string[]) => execFileSync("git", args, { cw
 const hostSha = "61b3fd57a695614dc4a37e2303f426a34a9795cf";
 assert.equal(gitAt(host, "rev-parse", "HEAD"), hostSha);
 assert.equal(gitAt(host, "status", "--porcelain", "--untracked-files=no"), "");
+const deliveryMode = process.env.COUNCIL_ORDINARY_DELIVERY === "1";
+const success = deliveryMode ? "INSTALLED ORDINARY DELIVERY PROVIDER-FREE VALIDATED" : "INSTALLED ORDINARY COUNCIL PROVIDER-FREE VALIDATED";
+const artifactPrefix = deliveryMode ? "n5-ordinary-installed-" : "n2-ordinary-installed-";
 const runtime = await mkdtemp("/tmp/council-ordinary-installed-");
-const output = resolve(repository, process.argv[2] ?? `artifacts/n2-ordinary-installed-${Date.now()}.json`);
-assert(output.startsWith(resolve(repository, "artifacts/n2-ordinary-installed-")));
+const output = resolve(repository, process.argv[2] ?? `artifacts/${artifactPrefix}${Date.now()}.json`);
+assert(output.startsWith(resolve(repository, `artifacts/${artifactPrefix}`)));
 await mkdir(dirname(output), { recursive: true });
 await access(output).then(() => { throw new Error("Evidence output already exists"); }, () => undefined);
 const fixture = resolve(here, "ordinary-cli-fixture.mjs");
 const proof: any = { schema: "council-ordinary-installed-v1", outcome: "RUNNING", startedAt: new Date().toISOString(),
   head: gitAt(repository, "rev-parse", "HEAD"), hostSha, runtime, timeline: [], checks: {},
   boundary: "Installed Council owns N2/N3 state, admission, dispatch and reconciliation. Only CLI model/content/usage are deterministic. Owner prepares N1 and closes finished N1 children with lead demand wakes disabled.",
-  source: Object.fromEntries(await Promise.all([...new Set([fixture, fileURLToPath(import.meta.url), resolve(repository, "dist/worker.js"),
+  source: Object.fromEntries(await Promise.all([...new Set([fixture, fileURLToPath(import.meta.url), resolve(here, "ordinary-delivery-fixture.mjs"), resolve(here, "ordinary-delivery-scenario.ts"), resolve(repository, "dist/worker.js"),
     ...gitAt(repository, "ls-files", "src").split("\n").map(path => resolve(repository, path)),
     ...gitAt(repository, "ls-files", "--others", "--exclude-standard", "src").split("\n").filter(Boolean).map(path => resolve(repository, path))])].map(async p => [p, createHash("sha256").update(await readFile(p)).digest("hex")]))) };
 const record = (event: string, details: any = {}) => proof.timeline.push({ ordinal: proof.timeline.length + 1, at: new Date().toISOString(), event, ...details });
 const save = () => writeFile(output, `${JSON.stringify(proof, null, 2)}\n`);
 await save();
+const restoreFetch = deliveryMode ? await installOrdinaryGitHubTransport(runtime, proof) : undefined;
+if (deliveryMode) proof.boundary += " N5 uses real plugin APIs, owner resume, Git, documents, work products and native GitHub refresh; GitHub publication and HTTP response content alone are simulated. Owner waits the native refresh backoff then reconciles without another run.";
 Object.assign(process.env, { PAPERCLIP_HOME: runtime, PAPERCLIP_INSTANCE_ID: "n2-intermediate", PAPERCLIP_CONFIG: resolve(runtime, "config.json"),
   PAPERCLIP_AGENT_JWT_SECRET: randomBytes(32).toString("hex"),
   PAPERCLIP_SECRETS_MASTER_KEY_FILE: resolve(runtime, "master.key"), PAPERCLIP_TELEMETRY_ENABLED: "false", PAPERCLIP_LOG_LEVEL: "warn",
@@ -96,7 +102,7 @@ try {
   await chmod(fixture, 0o755);
   const fixtureConfig = resolve(runtime, "fixture.json");
   const actors: Record<string, string> = {};
-  for (const name of ["lead", "alpha", "beta", "product", "quality", "council"]) {
+  for (const name of ["lead", "alpha", "beta", "product", "quality", "council", ...deliveryMode ? ["publisher"] : []]) {
     const agent = await api("POST", `/api/companies/${companyId}/agents`, { name: `Ordinary ${name}`, role: "engineer", adapterType: "codex_local",
       adapterConfig: { engine: "cli", command: fixture, model: "fixture-no-provider", cwd: repoPath,
         env: { CODEX_HOME: resolve(runtime, `codex-${name}`), COUNCIL_ORDINARY_FIXTURE: fixtureConfig }, timeoutSec: 120 },
@@ -147,9 +153,9 @@ try {
   const missionPath = `${missions}/${missionId}`;
   const created = await api("POST", missions, { companyId, command: "create", commandId: randomUUID(), missionId, rootIssueId: root.id, projectId,
     teamRosterId: team.head.rosterId, teamRevision: pair.team.revision.revision, councilRosterId: council.head.rosterId, councilRevision: pair.council.revision.revision,
-    mandate: { objective: "Two contributions and independent Council correction", acceptanceCriteria: ["Alpha must contain corrected marker", "Two attributed contributions"],
+    mandate: { objective: "Two contributions and independent Council correction", acceptanceCriteria: deliveryMode ? ["Two attributed contributions", "Bounded post-publication correction remains within mandate"] : ["Alpha must contain corrected marker", "Two attributed contributions"],
       commitments: ["Provider-free CLI fixture", "One correction maximum"], limits: { taskPolicy: "1000 tokens reserved", periodPolicy: "20000 token envelope", correctionLimit: 1, elapsedMinutes: 30 } } });
-  await writeFile(fixtureConfig, JSON.stringify({ pluginId, companyId, projectId, missionId, rootIssueId: root.id, repoPath, runtime, actors, baseCommit }));
+  await writeFile(fixtureConfig, JSON.stringify({ pluginId, companyId, projectId, missionId, rootIssueId: root.id, repoPath, runtime, actors, baseCommit, delivery: deliveryMode }));
   const activate = await api("POST", `${missionPath}/commands`, { companyId, command: "activate", commandId: randomUUID(), expectedVersion: created.mission.version,
     periodKey: profile.periodKey, reservationId: randomUUID(), requestedUnits: 1000 });
   const started = await api("POST", `${missionPath}/commands`, { companyId, command: "start-lead", commandId: randomUUID(), expectedVersion: activate.mission.version });
@@ -181,6 +187,8 @@ try {
   assert.equal(mission.aggregate.phase, "ready_for_review");
   proof.prerequisite = mission;
   await api("PATCH", `/api/agents/${actors.lead}`, { runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: true, maxConcurrentRuns: 1 } } });
+  const delivery = deliveryMode ? await prepareOrdinaryDelivery({ api, companyId, actors, rootIssueId: root.id, missionPath, runtime, proof, save }) : undefined;
+  mission = (await api("GET", `${missionPath}?companyId=${companyId}`)).mission;
   const n3Slots = ["product", "quality"].map(perspective => ({ slotId: randomUUID(), perspective, specialistAgentId: actors[perspective], required: true, question: `${perspective} review of the exact candidate and alpha correction marker` }));
   const reviewBody = { companyId, command: "start-review", commandId: randomUUID(), expectedVersion: mission.version, submissionId: randomUUID(), n3Slots };
   await api("POST", `${missionPath}/commands`, reviewBody);
@@ -201,8 +209,10 @@ try {
       }
     }
     proof.latest = value;
+    await delivery?.advance(value);
     return value;
-  }, value => value.aggregate.n2?.status === "accepted", 120000);
+  }, value => delivery ? delivery.complete(value) : value.aggregate.n2?.status === "accepted", 120000);
+  await delivery?.finish();
   await api("POST", `${missionPath}/commands`, { companyId, command: "reconcile-ordinary-n2" });
   const replay = await api("POST", `${missionPath}/commands`, reviewBody);
   assert.equal(replay.outcome, "replayed");
@@ -210,11 +220,11 @@ try {
   proof.mission = after.mission;
   proof.runs = await api("GET", `/api/companies/${companyId}/heartbeat-runs`);
   proof.admission = (await api("GET", `${admissionPath}?companyId=${companyId}&periodKey=${profile.periodKey}`)).envelope;
-  assert.equal(proof.runs.length, 10);
+  assert.equal(proof.runs.length, deliveryMode ? 12 : 10);
   assert(proof.runs.every((run: any) => run.status === "succeeded"));
   assert.equal(proof.mission.aggregate.n2.ordinary.tasks.length, 7);
   assert(proof.admission.reservations.every((item: any) => item.status === "settled"));
-  assert.equal(proof.admission.allowance.knownUsageUnits, 1500);
+  assert.equal(proof.admission.allowance.knownUsageUnits, deliveryMode ? 1800 : 1500);
   const { acceptedN5Submission } = await import("../../src/n5-preflight.js");
   proof.n5Handoff = acceptedN5Submission(proof.mission);
   const n2 = proof.mission.aggregate.n2;
@@ -227,8 +237,8 @@ try {
   proof.issues = await Promise.all([...new Set(proof.mission.aggregate.n2.ordinary.tasks.map((task: any) => task.issueId))].map(id => api("GET", `/api/issues/${id}`)));
   assert(proof.issues.every((issue: any) => issue.status === "done" && !issue.executionPolicy && !issue.executionState));
   assert(proof.issues.filter((issue: any) => issue.id !== root.id).every((issue: any) => !issue.parentId));
-  proof.checks = { exactAgentApiBindings: "PASS", reportWhileRunningDoesNotAdmit: "PASS", realN1Prerequisite: "PASS", installedOrdinaryN2N3: "PASS", tenExpectedCliRunsSucceeded: "PASS", replayNoExtraRun: "PASS", allReservationsSettled: "PASS", n5Handoff: "PASS" };
-  proof.outcome = "INSTALLED ORDINARY COUNCIL PROVIDER-FREE VALIDATED";
+  proof.checks = { exactAgentApiBindings: "PASS", reportWhileRunningDoesNotAdmit: "PASS", realN1Prerequisite: "PASS", installedOrdinaryN2N3: "PASS", expectedCliRunsSucceeded: "PASS", replayNoExtraRun: "PASS", allReservationsSettled: "PASS", n5Handoff: "PASS" };
+  proof.outcome = success;
 } catch (error) {
   proof.outcome = "BLOCKED"; proof.error = { message: String(error), stack: error instanceof Error ? error.stack : undefined };
 } finally {
@@ -253,5 +263,6 @@ try {
   proof.hostTrackedUnchanged = gitAt(host, "status", "--porcelain", "--untracked-files=no") === "";
   proof.finishedAt = new Date().toISOString(); await save();
   console.log(JSON.stringify({ outcome: proof.outcome, output, error: proof.error, cleanup: proof.cleanup }));
-  process.exit(proof.outcome === "INSTALLED ORDINARY COUNCIL PROVIDER-FREE VALIDATED" ? 0 : 1);
+  restoreFetch?.();
+  process.exit(proof.outcome === success ? 0 : 1);
 }
