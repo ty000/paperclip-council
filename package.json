@@ -39,7 +39,8 @@
     "qualification:live:n2": "node scripts/qualification/run-live-n2.mjs",
     "qualification:live:n2:isolated": "node scripts/qualification/run-live-n2-isolated.mjs",
     "test:receipts": "tsx tests/receipts/run.ts",
-    "qualification:prepare:n45": "node scripts/qualification/run-n45-campaign.mjs prepare"
+    "qualification:prepare:n45": "node scripts/qualification/run-n45-campaign.mjs prepare",
+    "qualification:ordinary": "node scripts/qualification/run-ordinary-campaign.mjs"
   },
   "dependencies": {
     "@paperclipai/plugin-sdk": "2026.916.1"

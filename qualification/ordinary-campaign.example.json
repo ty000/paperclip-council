@@ -1,0 +1,14 @@
+{
+  "candidateSha": "REPLACE_WITH_EXACT_CLEAN_COUNCIL_COMMIT",
+  "repository": "ty000/paperclip-council",
+  "baseRef": "main",
+  "headRef": "codex/council-delivery-ui-m1",
+  "model": "gpt-5.6-sol",
+  "effort": "medium",
+  "nominalRuns": 7,
+  "maxRuns": 12,
+  "runUnits": 2000000,
+  "periodUnits": 24000000,
+  "providerAuthorized": false,
+  "githubPublicationAuthorized": false
+}
