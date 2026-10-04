@@ -209,23 +209,36 @@ describe("N2 ordinary correction and confirmed acceptance", () => {
     expect(inspectN2State(persisted)).toMatchObject({ blockage: { code: "application_unknown" } });
   });
 
-  it("accepts a conforming initial candidate without manufacturing a correction", () => {
+  it.each(["No correction is needed", "r".repeat(1_455), "r".repeat(8_000)])("accepts a conforming candidate with the complete bounded justification", reason => {
     const { source, reviewing } = reviewingRound1();
     const accepted = applyN2Decision(reviewing, source, {
       submissionId: ids.submission1, actorAgentId: ids.reviewer, runId: ids.reviewerRun1,
-      operationId: ids.operation1, verdict: "approved", criteria: ["V1 conforms"], reasons: ["No correction is needed"],
+      operationId: ids.operation1, verdict: "approved", criteria: ["V1 conforms"], reasons: [reason],
       receipt: observedReceipt({ operationId: ids.operation1, verdict: "approved", runId: ids.reviewerRun1 }),
     });
     expect(accepted).toMatchObject({
       status: "accepted", correctionsUsed: 0,
       application: { state: "observed", submissionId: ids.submission1, receiptState: "native_observed" },
     });
+    expect(accepted.rounds[0]!.verdict!.reasons).toEqual([reason]);
     accepted.rounds[0]!.handoff.usageSettledAt = "2026-10-01T00:00:00.000Z";
     const persisted = mission(); persisted.aggregate.n2 = accepted; persisted.aggregate.phase = "accepted";
     expect(inspectN2State(persisted)).toMatchObject({
       submission: { ordinal: 1, submissionId: ids.submission1 },
       nextAction: { label: expect.stringContaining("active reviewed submission") },
     });
+  });
+
+  it.each([
+    { criteria: ["Criterion"], reasons: ["r".repeat(8_001)] },
+    { criteria: ["c".repeat(1_001)], reasons: ["Valid reason"] },
+  ])("retains separate reason and criterion limits", lists => {
+    const { source, reviewing } = reviewingRound1();
+    expect(() => applyN2Decision(reviewing, source, {
+      submissionId: ids.submission1, actorAgentId: ids.reviewer, runId: ids.reviewerRun1,
+      operationId: ids.operation1, verdict: "approved", ...lists,
+      receipt: observedReceipt({ operationId: ids.operation1, verdict: "approved", runId: ids.reviewerRun1 }),
+    })).toThrow(/bounded entries/);
   });
 
   it("requires the exact correction run and a changed verified V2 candidate", () => {
