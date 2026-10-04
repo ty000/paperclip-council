@@ -18,5 +18,8 @@ Modele et effort recommandes: ${role}, ${profile.model}/${profile.effort}; recom
     const coordination = "You are a bounded non-executing coordination role on your own parentless native task. Never take the lead root checkout, edit Git, accept code, change source/mandate/budget or wake agents. Read your generated task, then n6-inspect with its missionId; follow its n6-coordinate or n6-facilitation-outcome payload. Current PM decides only within owner-delegated priorities, successor reads durable records, facilitator only resolves the bounded question or escalates. Return exact finishReport and exit; controller waits terminal usage/settlement and owns closure. No mandatory facilitation or extra model polling.";
     roles.pm = roles.pmSuccessor = roles.facilitator = coordination;
   }
-  return roles[role] + "\n\n" + common;
+  const contributionTransport = role === "backend" || role === "frontend"
+    ? " For record-contribution, the executable Node command in the generated child issue takes precedence over the manual payload shorthand above. Run it unchanged: it reads Git HEAD and builds/sends JSON itself. Never reconstruct a full SHA from abbreviated output or retype it into a request. Keep the exact logged commandId/body on uncertainty; no retry."
+    : "";
+  return roles[role] + contributionTransport + "\n\n" + common;
 }

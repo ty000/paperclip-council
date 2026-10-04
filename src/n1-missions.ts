@@ -18,6 +18,7 @@ import {
   type MissionReceipt,
 } from "./missions.js";
 import { createContributionIssueEffect, type ContributionIssueIntent } from "./contribution-effects.js";
+import { contributionCommand } from "./contribution-command.js";
 import {
   assertNativeConfigurationRequest,
   assertNativeEnvelope,
@@ -26,7 +27,7 @@ import {
   readNativeG4Profile,
   settleNativeRunUsage,
 } from "./g4-native.js";
-import { verifyIntegratedCandidate, type IntegratedCandidateVerification } from "./integration.js";
+import { verifyIntegratedCandidate, type IntegratedCandidateInput, type IntegratedCandidateVerification } from "./integration.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const COMMIT = /^[a-f0-9]{40}$/;
@@ -47,6 +48,7 @@ type Slot = {
   dispatchUsageBaselineUnits?: number;
   commit?: string;
   authorRunId?: string;
+  referenceRecovery?: { previousCommit: string; actorUserId: string; commandId: string };
 };
 
 type N1State = {
@@ -295,8 +297,11 @@ export function contributionDescription(input: {
     `Contribution ID: ${input.contributionId}`,
     `Owned paths: ${input.ownedPaths.join(", ")}`,
     "Do not modify files outside the owned paths. Commit the completed change on the current shared branch.",
-    `Use the authenticated endpoint /api/plugins/private.paperclip-council/api/issues/<this-child-issue-id>/council/commands. The first request body is exactly {"command":"inspect","missionId":"${input.missionId}"}. Read body.version, then send command=record-contribution with missionId, a fresh commandId, that expectedVersion, the contributionId, and the 40-character commit SHA.`,
-    `For every fresh commandId, run this exact command once and separately: node -e "console.log(require('node:crypto').randomUUID())". Never invent, partially copy, or manually edit a UUID.`,
+    `The command below first sends {"command":"inspect","missionId":"${input.missionId}"}, then records the contribution through the authenticated Council endpoint.`,
+    "After committing, run this complete command unchanged from your repository. It reads the full SHA directly from Git and constructs the UUID/payload itself. Never expand an abbreviated SHA, copy a SHA into JSON, or replace this with a handwritten record-contribution request. It sends no retries; retain its printed request for any uncertain-effect readback.",
+    "```sh",
+    contributionCommand(input.missionId, input.contributionId),
+    "```",
     "Mark this Paperclip child issue done only after record-contribution succeeds.",
     "For any non-2xx response, preserve the HTTP status and sanitized JSON response body in your final report without exposing credentials.",
     "",
@@ -376,6 +381,100 @@ async function reconcileContributionUsage(
   });
 }
 
+async function assertRecoverySettled(ctx: PluginContext, mission: MissionRecord, state: N1State) {
+  const envelope = await readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
+  const bindings = [
+    { issueId: mission.rootIssueId, runId: state.rootDispatchRunId, reservationId: state.activationReservationId },
+    ...state.contributions.map(slot => ({ issueId: slot.childIssueId, runId: slot.dispatchRunId, reservationId: slot.dispatchReservationId })),
+  ];
+  for (const binding of bindings) await assertSettledRecoveryRun(ctx, mission, envelope, binding);
+}
+
+async function assertSettledRecoveryRun(
+  ctx: PluginContext, mission: MissionRecord, envelope: Awaited<ReturnType<typeof readAdmission>>,
+  binding: { issueId?: string; runId?: string | null; reservationId?: string },
+) {
+  const reservation = envelope?.reservations.find(item => item.reservationId === binding.reservationId);
+  if (!binding.issueId || !binding.runId || reservation?.missionId !== mission.missionId
+      || reservation.status !== "settled" || reservation.usage?.status !== "known"
+      || reservation.remainingExposure.status !== "known" || reservation.remainingExposure.units !== 0) {
+    throw new MissionError(409, "recovery_usage_unsettled", "Recovery requires all original runs settled without exposure");
+  }
+  const summary = await ctx.issues.summaries.getOrchestration({ companyId: mission.companyId, issueId: binding.issueId, includeSubtree: false });
+  if (summary.runs.length !== 1 || summary.runs[0].id !== binding.runId || summary.runs[0].status !== "succeeded") {
+    throw new MissionError(409, "recovery_run_not_terminal", "Recovery requires each exact original run succeeded, without a replacement run");
+  }
+}
+
+function requireRecoveryState(mission: MissionRecord): N1State {
+  const state = n1State(mission);
+  if (!state || state.candidate || mission.aggregate.n2 || mission.aggregate.n5
+      || !["executing", "integrating"].includes(mission.aggregate.phase)
+      || mission.aggregate.control.status !== "active" || state.rootDispatchMode !== "native"
+      || state.rootDispatchState !== "requested" || state.contributions.length !== 2) {
+    throw new MissionError(409, "recovery_unavailable", "Only a native mission stopped before its first candidate may recover");
+  }
+  return state;
+}
+
+async function assertRecoveryChildren(ctx: PluginContext, mission: MissionRecord, state: N1State) {
+  for (const contribution of state.contributions) await assertRecoveryChild(ctx, mission, contribution);
+}
+
+async function assertRecoveryChild(ctx: PluginContext, mission: MissionRecord, contribution: Slot) {
+  const child = contribution.childIssueId ? await ctx.issues.get(contribution.childIssueId, mission.companyId) : null;
+  if (!contribution.commit || !contribution.authorRunId || contribution.authorRunId !== contribution.dispatchRunId
+    || contribution.dispatchState !== "requested" || contribution.issueState !== "confirmed" || child?.status !== "done"
+    || child.companyId !== mission.companyId || child.projectId !== mission.projectId || child.parentId !== mission.rootIssueId
+    || child.assigneeAgentId !== contribution.assigneeAgentId) {
+    throw new MissionError(409, "recovery_child_incomplete", "Recovery retains two attributed, completed native children");
+  }
+}
+
+async function recoverIntegration(ctx: PluginContext, mission: MissionRecord, body: Record<string, unknown>, actorUserId: string) {
+  const state = requireRecoveryState(mission);
+  const contributionId = uuid(body.contributionId, "contributionId");
+  const previousCommit = boundedString(body.previousCommit, "previousCommit", 40);
+  const replacementCommit = boundedString(body.replacementCommit, "replacementCommit", 40);
+  const reason = boundedString(body.reason, "reason", 1000);
+  const slot = state.contributions.find(item => item.contributionId === contributionId);
+  if (!COMMIT.test(previousCommit) || !COMMIT.test(replacementCommit) || previousCommit === replacementCommit
+      || !slot || slot.commit !== previousCommit) {
+    throw new MissionError(409, "recovery_reference_mismatch", "Recovery must name the exact recorded erroneous SHA and one replacement");
+  }
+  await assertRecoveryChildren(ctx, mission, state);
+  await assertRecoverySettled(ctx, mission, state);
+  const baseCommit = boundedString(body.baseCommit, "baseCommit", 40);
+  if (mission.aggregate.n6 && baseCommit !== mission.aggregate.n6.expectedResult.candidateCommit) {
+    throw new MissionError(409, "recovery_source_mismatch", "Dependent recovery must retain its accepted source base");
+  }
+  const contributions = state.contributions.map(item => item.contributionId === contributionId
+    ? { ...item, commit: replacementCommit, referenceRecovery: { previousCommit, actorUserId, commandId: uuid(body.commandId, "commandId") } }
+    : item);
+  let candidate: IntegratedCandidateVerification;
+  try {
+    candidate = await verifyIntegratedCandidate(ctx, {
+      companyId: mission.companyId, issueId: mission.rootIssueId,
+      attachmentId: uuid(body.attachmentId, "attachmentId"),
+      expectedSha256: boundedString(body.expectedSha256, "expectedSha256", 64),
+      baseCommit, candidateCommit: boundedString(body.candidateCommit, "candidateCommit", 40),
+      contributions: contributions.map(item => ({ contributionId: item.contributionId, commit: item.commit!, ownedPaths: item.ownedPaths })) as IntegratedCandidateInput["contributions"],
+      missingReference: previousCommit,
+    });
+  } catch (error) {
+    throw new MissionError(422, "recovery_git_verification_failed", error instanceof Error ? error.message : "Recovery Git proof failed");
+  }
+  return commandCas(ctx, mission, body, "user", actorUserId, {
+    ...mission.aggregate,
+    phase: "ready_for_review", control: { status: "inactive", reason: "candidate_ready_for_review" },
+    n1: { ...state, contributions, candidate, candidateRecordedVersion: mission.version + 1, lastIntegrationFailure: undefined },
+    journal: [...mission.aggregate.journal, {
+      action: "owner_recovered_integration", actorUserId, contributionId, previousCommit, replacementCommit,
+      reason, candidate: candidate.candidate, originalAuthorRunId: slot.authorRunId, at: new Date().toISOString(),
+    }],
+  });
+}
+
 export async function executeN1BoardCommand(ctx: PluginContext, input: {
   companyId: string;
   missionId: string;
@@ -385,6 +484,13 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
   const mission = await getMission(ctx, input.companyId, input.missionId);
   if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
   await owner(ctx, mission, input.actorUserId);
+  if (input.body.command === "recover-integration") {
+    const commandId = uuid(input.body.commandId, "commandId");
+    const replay = receipt(mission, commandId, input.actorUserId!, canonicalPayloadHash(input.body));
+    if (replay) return { outcome: "replayed" as const, mission, receipt: replay };
+    requireFreshCommand(mission, input.body);
+    return recoverIntegration(ctx, mission, input.body, input.actorUserId!);
+  }
   if (input.body.command === "reconcile-contribution-usage") {
     const result = await reconcileContributionUsage(ctx, mission, {
       commandId: uuid(input.body.commandId, "commandId"),
