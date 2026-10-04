@@ -1,4 +1,5 @@
 import type { inspectN3 } from "../n3-state.js";
+import { projectDeliveryPresentation, type DeliveryPresentation } from "../delivery-presentation.js";
 import { CouncilDecisionReceipts } from "./decision-receipts.js";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import {
@@ -78,6 +79,7 @@ type MissionInspection = {
     blocker: string | null;
   };
   n3?: ReturnType<typeof inspectN3>;
+  n5: Parameters<typeof projectDeliveryPresentation>[0];
   n2: null | {
     submission: null | {
       submissionId: string; ordinal: 1 | 2; predecessorSubmissionId: string | null;
@@ -209,6 +211,104 @@ function Status({ value }: { value: string }) {
     <span style={{ border: "1px solid var(--border)", borderRadius: "999px", padding: "0.15rem 0.5rem", fontSize: "0.8rem" }}>
       Status: {value}
     </span>
+  );
+}
+
+const deliveryToneStyles: Record<DeliveryPresentation["status"]["tone"], CSSProperties> = {
+  neutral: { borderColor: "var(--border)", color: "inherit" },
+  attention: { borderColor: "#a16207", color: "#a16207" },
+  danger: { borderColor: "var(--destructive, #dc2626)", color: "var(--destructive, #dc2626)" },
+  success: { borderColor: "#15803d", color: "#15803d" },
+};
+
+function DeliveryReferences({
+  references: { plan, pullRequest },
+  rootIssueId,
+  issueLink,
+}: {
+  references: DeliveryPresentation["references"];
+  rootIssueId: string;
+  issueLink(issueId: string): string;
+}) {
+  return (
+    <div style={row} aria-label="Delivery references">
+      {plan ? (
+        <a href={issueLink(rootIssueId) + "#document-" + encodeURIComponent(plan.documentId)}>
+          Open native plan
+        </a>
+      ) : <span>Native plan not bound</span>}
+      {plan && <span>Bound revision: <code>{plan.revisionId}</code></span>}
+      {pullRequest ? (
+        <a href={pullRequest.url}>
+          {pullRequest.state === "closed" ? "View closed pull request" : `Open pull request (${pullRequest.state})`}
+        </a>
+      ) : <span>Pull request not observed</span>}
+    </div>
+  );
+}
+
+function DeliveryDetails({ details }: { details: DeliveryPresentation["details"] }) {
+  return (
+    <details style={{ marginTop: "1rem" }}>
+      <summary>Technical delivery details</summary>
+      <dl style={{ overflowWrap: "anywhere" }}>
+        <dt>Accepted candidate commit</dt>
+        <dd><code>{details.acceptedCandidateCommit ?? "Not recorded"}</code></dd>
+        <dt>Observed PR head</dt>
+        <dd><code>{details.observedHeadSha ?? "Not observed"}</code></dd>
+        <dt>Checks</dt>
+        <dd>{details.checksState ?? "Not reported"}</dd>
+        <dt>Review</dt>
+        <dd>{details.reviewsState ?? "Not reported"}</dd>
+        <dt>Native PR readback</dt>
+        <dd>{details.nativeReadbackFresh ? "Fresh" : "Missing or stale"}</dd>
+      </dl>
+    </details>
+  );
+}
+
+function DeliveryPanel({
+  inspection,
+  rootIssueId,
+  issueLink,
+}: {
+  inspection: MissionInspection["n5"];
+  rootIssueId: string;
+  issueLink(issueId: string): string;
+}) {
+  const delivery = projectDeliveryPresentation(inspection);
+  const announcementRole = delivery.status.tone === "danger" ? "alert" : "status";
+
+  return (
+    <section style={card} aria-labelledby="delivery-title">
+      <div style={{ ...row, justifyContent: "space-between" }}>
+        <div>
+          <h2 id="delivery-title" style={{ marginTop: 0, marginBottom: "0.25rem" }}>Delivery</h2>
+          <p style={{ marginTop: 0 }}>Authoritative publication and handoff state for the accepted candidate.</p>
+        </div>
+        <span
+          style={{
+            border: "1px solid",
+            borderRadius: "999px",
+            padding: "0.2rem 0.65rem",
+            fontSize: "0.85rem",
+            fontWeight: 600,
+            ...deliveryToneStyles[delivery.status.tone],
+          }}
+        >
+          Delivery status: {delivery.status.label}
+        </span>
+      </div>
+
+      {delivery.waitingReason && <p role={announcementRole}><strong>Waiting:</strong> {delivery.waitingReason}</p>}
+      <p>
+        <strong>Next action:</strong> {delivery.nextAction.label}
+        {delivery.nextAction.actorId && <> <span>— actor {delivery.nextAction.actorId}</span></>}
+      </p>
+
+      <DeliveryReferences references={delivery.references} rootIssueId={rootIssueId} issueLink={issueLink} />
+      <DeliveryDetails details={delivery.details} />
+    </section>
   );
 }
 
@@ -697,6 +797,7 @@ export function CouncilMissionsPage({ context }: PluginPageProps) {
         <p><a href={issueLink(selected.mission.rootIssueId) + "#attachment-" + encodeURIComponent(selected.n1.candidate.candidate.attachmentId)}>Open candidate attachment</a></p>
         <ul>{selected.n1.candidate.checks.map((check) => <li key={check.name}>{check.name}: {check.status} — {check.detail}</li>)}</ul>
       </section>}
+      {selected && <DeliveryPanel inspection={selected.n5} rootIssueId={selected.mission.rootIssueId} issueLink={issueLink} />}
       {selected?.n3 && <section style={card} aria-label="Specialist opinions">
         <h2>Specialist opinions</h2>
         <p>Submission {selected.n3.review.subject.submissionId} · commit {selected.n3.review.subject.candidateCommit}</p>
