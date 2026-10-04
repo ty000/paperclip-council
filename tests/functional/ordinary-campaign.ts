@@ -56,6 +56,8 @@ async function keepSession(input: any, c: any, proof: any) {
 
 export async function runOrdinaryCampaignPreparation(input: any, profile: any) {
   const c = await prepareN45(input, profile);
+  const configuredCompanies = await input.db.select({ companyId: input.tables.pluginConfig.companyId }).from(input.tables.pluginConfig).where(input.eq(input.tables.pluginConfig.pluginId, input.pluginId));
+  assert.deepEqual(configuredCompanies, [{ companyId: c.companyId }], "Single-tenant worker must have only the campaign company configuration");
   const plugin = await c.api("GET", `/api/plugins/${input.pluginId}`);
   assert.equal(plugin.packagePath, c.repository, "Installed path must be the exact mission workspace for future accepted UI upgrade");
   const before = await c.api("GET", `${c.missionPath}?companyId=${c.companyId}`);
@@ -76,7 +78,7 @@ export async function runOrdinaryCampaignPreparation(input: any, profile: any) {
   const runs = await c.api("GET", `/api/companies/${c.companyId}/heartbeat-runs`); assert.equal(runs.length, 0);
   const wakes = await input.db.select({ id: input.tables.agentWakeupRequests.id }).from(input.tables.agentWakeupRequests).where(input.eq(input.tables.agentWakeupRequests.companyId, c.companyId)); assert.equal(wakes.length, 0);
   const proof = input.evidence.ordinaryCampaign = { profile, workspace: input.workspaceProof, handoff: ordinaryCampaignHandoff(c, input, profile),
-    agents: readbacks, installedBefore: plugin, installedAfter: afterPlugin, mission: after.mission,
+    agents: readbacks, configuredCompanies, installedBefore: plugin, installedAfter: afterPlugin, mission: after.mission,
     configuration: await c.api("GET", `/api/plugins/${input.pluginId}/config?companyId=${c.companyId}`),
     admission: await c.api("GET", `${c.admissionPath}?companyId=${c.companyId}&periodKey=${c.operatingProfile.periodKey}`),
     runCountAtPreparation: 0, wakeupCountAtPreparation: 0, providerInvocationCountAtPreparation: 0, githubWriteCountAtPreparation: 0, modelAvailabilityObserved: false,

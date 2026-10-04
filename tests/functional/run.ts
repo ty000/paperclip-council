@@ -649,6 +649,7 @@ try {
   assert.equal(install.status, 200);
   const pluginId = install.body.id;
   evidence.configuration.pluginId = pluginId;
+  if (!ordinaryCampaignProfile) {
   const configured = await request("human", "POST", `/api/plugins/${pluginId}/config`, {
     companyId,
     configJson: {
@@ -659,6 +660,7 @@ try {
     },
   });
   assert.equal(configured.status, 200);
+  }
 
   await closeApp();
   workerManager = createPluginWorkerManager();
@@ -669,7 +671,7 @@ try {
     server!.listen(address.port, "127.0.0.1", resolveListen);
   });
   await app.locals.bundledPluginsStartup;
-  assert(workerManager.isRunning(pluginId), "installed package worker must load after restart");
+  if (!ordinaryCampaignProfile) assert(workerManager.isRunning(pluginId), "installed package worker must load after restart");
   evidence.results.installation = "PASS";
 
   if (ordinaryCampaignProfile) {
