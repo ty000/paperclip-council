@@ -74,6 +74,7 @@ export function CoordinationPanel({
   const titleId = useId();
   const announcementRole = presentation.status.tone === "danger" ? "alert" : "status";
   const publication = presentation.boundaries.publicationRequired;
+  const isWaiting = presentation.status.tone === "attention" || presentation.status.tone === "danger";
 
   return (
     <section style={panel} aria-labelledby={titleId}>
@@ -103,7 +104,7 @@ export function CoordinationPanel({
 
       {presentation.waitingReason && (
         <p>
-          <strong>Waiting:</strong> {presentation.waitingReason}
+          <strong>{isWaiting ? "Waiting" : "Coordination reason"}:</strong> {presentation.waitingReason}
         </p>
       )}
 

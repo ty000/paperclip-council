@@ -134,6 +134,8 @@ type MissionLookupContext = {
   refreshKey: number;
 };
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const stack: CSSProperties = { display: "grid", gap: "1rem" };
 const card: CSSProperties = {
   border: "1px solid var(--border)",
@@ -634,8 +636,10 @@ export function CouncilMissionsPage({ context }: PluginPageProps) {
       return;
     }
     const controller = new AbortController();
+    const queryMissionId = new URLSearchParams(globalThis.location.search).get("missionId")?.trim() ?? "";
     setLoading(true);
     setError(null);
+    if (queryMissionId) setLookupId(queryMissionId);
     const path = "/api/plugins/private.paperclip-council/api/companies/" +
       encodeURIComponent(companyId) + "/missions?companyId=" + encodeURIComponent(companyId);
     void fetch(path, { credentials: "same-origin", signal: controller.signal })
@@ -644,11 +648,31 @@ export function CouncilMissionsPage({ context }: PluginPageProps) {
         if (!response.ok) throw new Error(body.error ?? "Mission inspection failed");
         return body.missions ?? [];
       })
-      .then((items) => {
-        setMissions(items);
+      .then(async (items) => {
+        let loadedItems = items;
+        let nextSelectedId = items[0]?.mission.missionId ?? null;
+        if (queryMissionId && !UUID.test(queryMissionId)) {
+          setLookupError("The missionId query must be an exact UUID.");
+        } else if (queryMissionId) {
+          nextSelectedId = queryMissionId;
+          if (!items.some((item) => item.mission.missionId === queryMissionId)) {
+            try {
+              const inspected = await requestMissionInspection(
+                { companyId, refreshKey },
+                queryMissionId,
+                controller.signal,
+              );
+              loadedItems = mergeMissionInspection(items, inspected);
+            } catch (cause: unknown) {
+              if (controller.signal.aborted) throw cause;
+              setLookupError(message(cause));
+              nextSelectedId = items[0]?.mission.missionId ?? null;
+            }
+          }
+        }
+        setMissions(loadedItems);
         setLoadedCompanyId(companyId);
-        setSelectedId((current) => current && items.some((item) => item.mission.missionId === current)
-          ? current : items[0]?.mission.missionId ?? null);
+        setSelectedId(nextSelectedId);
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) setError(message(cause));
