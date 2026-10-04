@@ -1,3 +1,4 @@
+import { replaceMissingOpinion } from "./n2-ordinary-replacement.js";
 import { ordinaryTaskInstructions } from "./n2-ordinary-instructions.js";
 import { randomUUID } from "node:crypto";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
@@ -39,6 +40,7 @@ async function assertRootIdle(ctx: PluginContext, mission: MissionRecord) {
 }
 export async function executeOrdinaryN2Board(ctx: PluginContext, mission: MissionRecord, input: { actorUserId: string | null; body: Record<string, unknown> }) {
   const body = input.body;
+  if (body.command === "replace-missing-opinion") return replaceMissingOpinion(ctx, mission, input.actorUserId!, body);
   if (body.command === "reconcile-ordinary-n2") {
     await reconcileOrdinaryN2(ctx, mission);
     return { outcome: "reconciled", mission: await freshOrdinary(ctx, mission) };
@@ -80,7 +82,8 @@ async function dispatchTask(ctx: PluginContext, initial: MissionRecord, initialT
     mission = await saveOrdinaryTask(ctx, mission, task);
   }
   if (task.wake === "claimed") throw new MissionError(409, "ordinary_effect_unknown", "Wake already claimed; an unbound outcome cannot authorize another wake");
-  await reserveN2Run(ctx, mission, { reservationId: task.reservationId, effectId: task.taskId, kind: task.kind === "correction" ? "correction" : "initial" });
+  await reserveN2Run(ctx, mission, { reservationId: task.reservationId, effectId: task.taskId, kind: task.replacementOf ? "resume" : task.kind === "correction" ? "correction" : "initial",
+    ownerReplacementCommandId: task.replacementOf ? mission.aggregate.n2!.ordinary!.missingOpinionReplacement!.commandId : undefined });
   task = { ...task, wake: "claimed" };
   mission = await saveOrdinaryTask(ctx, mission, task);
   if (task.kind === "correction") {
@@ -148,6 +151,11 @@ export async function reconcileOrdinaryN2(ctx: PluginContext, initial: MissionRe
     const state = mission.aggregate.n2!;
     const task = state.ordinary!.tasks.find(item => !item.closedAt);
     if (!task) return mission;
+    if (task.replacedBy) {
+      await ctx.issues.update(task.issueId!, { status: "cancelled" }, mission.companyId);
+      mission = await saveOrdinaryTask(ctx, mission, { ...task, closedAt: new Date().toISOString() });
+      continue;
+    }
     if (!task.runId) return dispatchTask(ctx, mission, task);
     if (!task.settledAt) {
       const settled = await settleTask(ctx, mission, task);

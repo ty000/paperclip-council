@@ -55,3 +55,28 @@ Observed result: candidate `654048e902709893cdb3ae22e5715b0d0782a276`, 15 Git ch
 3. Only then proceed with authorized B review/acceptance and its single cumulative PR. Confirm an active admission period and a concrete remaining run/token budget before any model call. The original fixed period ends **2026-10-04 23:05:00.481 UTC**; historical reservations prevent reconfiguring/resetting it. If expired, stop before requesting a run and prepare explicit period rollover separately; this command deliberately does not silently extend the budget.
 
 No re-execution of A, contributors, PM or facilitator is needed to prepare this candidate. No merge or production deployment is included.
+
+## One explicit missing-opinion replacement
+
+After the known restored-URL error, the settled Development run submitted no opinion. An owner may now prepare **one** replacement per mission using `replace-missing-opinion` on the same owner commands route:
+
+```json
+{
+  "companyId": "<exact company>",
+  "command": "replace-missing-opinion",
+  "commandId": "<generate once>",
+  "expectedVersion": 37,
+  "taskId": "<first unclosed specialist task>",
+  "runId": "<its exact succeeded run>",
+  "submissionId": "<current submission>",
+  "candidateCommit": "<current exact candidate>",
+  "authorizeOneReplacement": true,
+  "reason": "<explicit owner authorization and observed cause>"
+}
+```
+
+Read the actual current version and copy IDs directly from inspection. This is a bounded manual exception, not an automatic retry: the command requires no opinion for that slot, public exact terminal per-run usage matching the existing settled reservation, and the unchanged candidate. One CAS preserves the old task/run/receipts and journals the owner grant while inserting its replacement before the next specialist. The command creates no issue, reservation or wake; replaying its identical key/body has no additional effect.
+
+`reconcile-ordinary-n2` cancels the old issue (its run was already terminal), preserves its explicit absence of opinion, then uses the existing dispatcher. The new reservation is recorded as `resume` ordinal1 with the owner grant identity. Admission re-reads the persisted grant, owner, subject, old settled reservation and exact new task/reservation, rejecting a fabricated exception. The global `maxRetries:0`, elapsed period, concurrency and cumulative token budget remain unchanged. No second replacement is available and no native resume/reassignment can substitute for this command. A replacement opinion is still followed by Quality and the independent Council verdict; a local source review is never accepted as their output.
+
+Before any restored-session wake, update/read back the full plugin configuration with its actual `apiBaseUrl`, preserving secret references and original period. Preparing this command itself exercises the configured Council credential and exact historical run identity through public readback, without a provider or invented run. Keep all agents paused during that preflight/preparation, then require the concrete campaign authorization before the separate reconciliation dispatch. The two known local UI findings are evidence for the native reviewers, not permission to modify the active candidate outside its correction workflow.

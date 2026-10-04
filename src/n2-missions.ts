@@ -872,7 +872,7 @@ export async function nativeN2Profile(ctx: PluginContext, mission: MissionRecord
 export async function reserveN2Run(
   ctx: PluginContext,
   mission: MissionRecord,
-  input: { reservationId: string; effectId: string; kind: "initial" | "correction" },
+  input: { reservationId: string; effectId: string; kind: "initial" | "correction" | "resume"; ownerReplacementCommandId?: string },
 ) {
   const { profile, envelope } = await nativeN2Profile(ctx, mission);
   const result = await reserveAdmission(ctx, {
@@ -883,6 +883,7 @@ export async function reserveN2Run(
     effectId: input.effectId,
     requestedUnits: profile.runReservationUnits,
     attempt: { kind: input.kind, ordinal: input.kind === "initial" ? 0 : 1 },
+    ownerReplacementCommandId: input.ownerReplacementCommandId,
     expectedVersion: envelope.version,
   });
   if (!result.reservation) throw new MissionError(409, "g4_reservation_unavailable", "N2 run reservation is unavailable");
