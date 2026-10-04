@@ -1,0 +1,57 @@
+{
+  "schema_version": "proof-manifest.v1",
+  "proof_id": "council-m2-live-01dabaa-20261004",
+  "subject": "One real coordinated M2 campaign with accepted A and blocked B",
+  "status": "partial",
+  "summary": "Accepted A and exact delegated handoff observed; B blocked on immutable recorded SHA mismatch; ten real runs settled, no PR or UI claim.",
+  "categories": [
+    "functional",
+    "operations"
+  ],
+  "evidence": [
+    {
+      "id": "native-runtime",
+      "category": "functional",
+      "kind": "runtime-observation",
+      "location": "docs/reviews/m2-live/observation.json",
+      "replayable": true,
+      "notes": "36 artifact hashes bind public mission/run/usage readbacks, source, A acceptance, delegation and exact known B mismatch."
+    },
+    {
+      "id": "git-preservation",
+      "category": "operations",
+      "kind": "command-output",
+      "location": "artifacts/ordinary-campaign-m2-partial-B.bundle",
+      "replayable": true,
+      "notes": "Complete Git history contains accepted A and actual B commits; recorded erroneous SHA absent."
+    },
+    {
+      "id": "cleanup",
+      "category": "operations",
+      "kind": "runtime-observation",
+      "location": "artifacts/ordinary-campaign-m2-cleanup.json",
+      "replayable": true,
+      "notes": "Private native backup inventories/hashes retained; owned runtime and DB removed; no provider credentials copied."
+    }
+  ],
+  "replay": {
+    "preconditions": [
+      "Retained local artifacts indexed by observation.json are present; Python3 and Git available. No provider or live runtime required."
+    ],
+    "steps": [
+      "python3 docs/reviews/m2-live/verify.py",
+      "python3 /home/davy-lp/.codex/plugins/cache/home-local/proof-gates/0.1.1/skills/proofGateReplayable/scripts/proof_manifest_check.py --manifest docs/reviews/m2-live/proof-manifest.json"
+    ],
+    "expected_artifacts": [
+      "Verifier exit0; manifest partial/closure not allowed exit1."
+    ]
+  },
+  "closure": {
+    "decision": "keep-open",
+    "rationale": "No B integrated candidate, review, acceptance, PR or accepted-build UI observation. Owner assistance and PM factual error remain explicit; static wrapper pass does not mean raw clean.",
+    "next_required_actions": [
+      "Bound deterministic Git-identifier transport and explicitly authorized same-record recovery without replaying accepted A or starting a new campaign implicitly."
+    ]
+  },
+  "generated_at": "2026-10-04T21:18:58.859738+00:00"
+}
