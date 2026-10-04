@@ -39,7 +39,7 @@ export type MissionReceipt = {
   commandId: string;
   command: "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "fixture-bind-contribution-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish"
     | "start-review" | "confirm-review-handoff" | "start-correction" | "prepare-resubmission"
-    | "start-resubmitted-review" | "settle-n2-usage" | "attest-transmission" | "reconcile-native-n2" | "release-native-correction";
+    | "start-resubmitted-review" | "settle-n2-usage" | "attest-transmission" | "reconcile-native-n2" | "release-native-correction" | "reconcile-ordinary-n2" | "ordinary-verdict";
   actorType: "user" | "agent";
   actorId: string;
   payloadHash: string;
@@ -354,6 +354,15 @@ export async function listMissions(ctx: PluginContext, companyId: string): Promi
   return rows.map(parseMissionRow);
 }
 
+/** Exact persisted task lookup; parentless tasks cannot use issue ancestry. */
+export async function getMissionByOrdinaryIssue(ctx: PluginContext, companyId: string, issueId: string): Promise<MissionRecord | null> {
+  const rows = await ctx.db.query<MissionRow>(`SELECT ${selectColumns} FROM ${table(ctx)} WHERE company_id = $1
+    AND aggregate->'n2'->'ordinary' IS NOT NULL
+    AND (aggregate->'n2'->'ordinary'->'tasks' @> $2::jsonb OR aggregate->'n5'->'publication'->>'issueId' = $3) LIMIT 2`, [companyId, JSON.stringify([{ issueId }]), issueId]);
+  if (rows.length > 1) throw new MissionError(409, "ordinary_task_ambiguous", "Task is bound to multiple Council missions");
+  return rows[0] ? parseMissionRow(rows[0]) : null;
+}
+
 function pinRoster(roster: RosterSnapshot): PinnedRoster {
   return {
     rosterId: roster.head.rosterId,
@@ -653,7 +662,7 @@ export async function handleMissionApi(input: PluginApiRequestInput, ctx: Plugin
       const result = N1_BOARD_COMMANDS.has(String(body.command)) && missionId
         ? await executeN1BoardCommand(ctx, { companyId, missionId, actorUserId, body })
         : (body.command === "start-review" || body.command === "start-correction"
-          || body.command === "start-resubmitted-review" || body.command === "settle-n2-usage" || body.command === "reconcile-native-n2" || body.command === "release-native-correction") && missionId
+          || body.command === "start-resubmitted-review" || body.command === "settle-n2-usage" || body.command === "reconcile-native-n2" || body.command === "release-native-correction" || body.command === "reconcile-ordinary-n2") && missionId
           ? await executeN2BoardCommand(ctx, { companyId, missionId, actorUserId, body })
         : await executeMissionCommand(ctx, {
         companyId,

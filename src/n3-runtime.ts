@@ -10,7 +10,7 @@ import { recordN3Opinion, startN3ReviewRound, synthesizeN3Review, type N3Candida
 const execution = (): Execution => ({ reservationId: randomUUID(), settlementCommandId: randomUUID(), runId: null, wake: "pending" });
 export const n3Subject = (submission: N2Submission): N3CandidateSubject => ({ submissionId: submission.submissionId, candidateCommit: submission.candidateCommit, bundleSha256: submission.sha256, evidenceRevision: submission.evidenceRevision, mandateHash: submission.mandateHash });
 
-export function freshN3Round(mission: MissionRecord, submission: N2Submission, slots: N3OpinionSlot[]): N3NativeRound {
+export function freshN3Round(mission: MissionRecord, submission: N2Submission, slots: N3OpinionSlot[]): N3NativeRound & { transmission: Execution } {
   const contributors = (mission.aggregate.n1 as { contributions?: Array<{ assigneeAgentId: string }> })?.contributions ?? [];
   const authors = [...new Set([mission.aggregate.responsibilities.integrationLeadAgentId, ...contributors.map(entry => entry.assigneeAgentId)])];
   return { review: startN3ReviewRound({ subject: n3Subject(submission), slots, authorAgentIds: authors, finalReviewerAgentId: mission.aggregate.responsibilities.finalReviewerAgentId }),
@@ -35,10 +35,10 @@ async function saveRound(ctx: PluginContext, mission: MissionRecord, round: N3Na
 }
 function requireRound(mission: MissionRecord) {
   const round = n3Round(mission);
-  if (!round) throw new MissionError(409, "n3_round_missing", "An active N3 round is required");
+  if (!round?.transmission) throw new MissionError(409, "n3_round_missing", "An active N3 round is required");
   const submission = storedN2(mission).submissions.find(entry => entry.submissionId === storedN2(mission).activeSubmissionId)!;
   if (canonicalPayloadHash(round.review.subject) !== canonicalPayloadHash(n3Subject(submission))) throw new MissionError(409, "stale_n3_subject", "N3 round differs from the immutable N2 submission");
-  return round;
+  return { ...round, transmission: round.transmission };
 }
 /** Called in the verified source run; finish must report the actual dependency block. */
 export async function prepareN3Collection(ctx: PluginContext, initial: MissionRecord) {
@@ -129,7 +129,7 @@ export async function reconcileN3(ctx: PluginContext, initial: MissionRecord) {
 
 export async function bindN3Transmission(ctx: PluginContext, mission: MissionRecord, input: PluginApiRequestInput): Promise<MissionRecord | null> {
   const round = n3Round(mission);
-  if (!round || round.transmission.wake !== "claimed" || round.attestedAt) return null;
+  if (!round?.transmission || round.transmission.wake !== "claimed" || round.attestedAt) return null;
   const lead = mission.aggregate.responsibilities.integrationLeadAgentId;
   if (input.actor.actorType !== "agent" || input.actor.agentId !== lead || !input.actor.runId) return null;
   const run = await readNativeRun(ctx, { companyId: mission.companyId, issueId: mission.rootIssueId, agentId: lead, runId: input.actor.runId });

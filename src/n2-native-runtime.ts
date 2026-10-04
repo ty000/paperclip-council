@@ -118,7 +118,7 @@ async function reviewBinding(ctx: PluginContext, mission: MissionRecord, input: 
   const native = requireNative(mission);
   const round = state.rounds.at(-1)!;
   const n3 = n3Round(mission);
-  const sourceRunId = n3 ? n3.transmission.runId : round.round === 1 ? native.transmission.runId : state.correction?.runId;
+  const sourceRunId = n3 ? n3.transmission?.runId : round.round === 1 ? native.transmission.runId : state.correction?.runId;
   const interactionId = run.contextSnapshot.nativeReviewInteractionId;
   const decisionId = run.contextSnapshot.nativeReviewDecisionId;
   const card = (await ctx.issues.listInteractions(mission.rootIssueId, mission.companyId)).find(entry => entry.id === interactionId);
@@ -301,7 +301,7 @@ export async function reconcileNativeVerdict(ctx: PluginContext, mission: Missio
   const observation = validateNativeReviewOutcome(mission, identity); const { report } = observation;
   const native = requireNative(mission); const n3 = n3Round(mission);
   if (!native.transmission.settledAt || state.correction?.runId && !state.correction.usageSettledAt
-      || n3 && (!n3.transmission.settledAt || !n3.specialists.every(item => item.settledAt))) {
+      || n3 && (!n3.transmission?.settledAt || !n3.specialists.every(item => item.settledAt))) {
     throw new MissionError(409, "native_review_usage_pending", "Every admitted source, correction and specialist run must settle before Council validation");
   }
   mission = await persistNativeReviewObservation(ctx, mission, observation);

@@ -59,7 +59,7 @@ export async function freezeNativeReviewPacket(ctx: PluginContext, initial: Miss
   const packet: NativeReviewPacket = { schema: "council-native-review-v1", missionId: m.missionId, companyId: m.companyId,
     issueId: m.rootIssueId, reviewerAgentId: m.aggregate.responsibilities.finalReviewerAgentId, sourceRunId,
     submission, mandate: m.aggregate.mandate, opinions: n3?.review ?? null };
-  if (n3 && (!n3.attestedAt || n3.transmission.runId !== sourceRunId || !n3.specialists.every(s => s.settledAt))) fail("Settled opinions and attested final transmission required");
+  if (n3 && (!n3.attestedAt || n3.transmission?.runId !== sourceRunId || !n3.specialists.every(s => s.settledAt))) fail("Settled opinions and attested final transmission required");
   const hash = canonicalPayloadHash(packet);
   let record = state.native.reviewPackets?.find(r => r.packet.submission.submissionId === submission.submissionId);
   if (record && record.hash !== hash) fail("Review packet is already frozen for different content");
@@ -149,6 +149,6 @@ function synthesizeFrozenOpinions(m: MissionRecord, p: NativeReviewPacket, repor
   }
   if (!current) return fail("Frozen N3 round missing");
   const sameInput = canonicalPayloadHash({ ...current.review, synthesis: null, status: p.opinions.status }) === canonicalPayloadHash(p.opinions);
-  if (!sameInput || !current.specialists.every(s => s.settledAt) || !current.transmission.settledAt) fail("Frozen N3 opinions or terminal settlements differ");
+  if (!sameInput || !current.specialists.every(s => s.settledAt) || !current.transmission?.settledAt) fail("Frozen N3 opinions or terminal settlements differ");
   return synthesizeN3Review(p.opinions, { ...report, authenticatedAgentId: p.reviewerAgentId, authenticatedRunId: runId });
 }

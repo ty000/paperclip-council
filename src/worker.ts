@@ -19,7 +19,7 @@ import {
 } from "./decision-receipts.js";
 import { ApprovalPreflightError, verifyApprovalCandidate } from "./delivery-manifest.js";
 import { handleFoundationProbe } from "./foundation-probe.js";
-import { getMissionByRootIssue, handleMissionApi, MissionError } from "./missions.js";
+import { getMissionByOrdinaryIssue, getMissionByRootIssue, handleMissionApi, MissionError } from "./missions.js";
 import { handleN1AdmissionApi, handleN1AgentApi } from "./n1-missions.js";
 import { handleN2AgentApi, prepareN2Decision, recordN2Decision } from "./n2-missions.js";
 import { registerN2FinishedEventHandler } from "./n2-finished-event.js";
@@ -81,6 +81,8 @@ export async function handleDecision(
   input: PluginApiRequestInput,
   context: PluginContext = ctx,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
+  const ordinary = await getMissionByOrdinaryIssue(context, input.companyId, input.params.issueId);
+  if (ordinary?.aggregate.n2?.ordinary) return { status: 409, body: { code: "ordinary_verdict_required", error: "Use ordinary-verdict on the admitted Council task; no live issue PATCH is a verdict" } };
   let decision;
   try {
     decision = parseBody(input.body);
@@ -197,6 +199,8 @@ async function handleMissionAgentCommand(input: PluginApiRequestInput, context: 
   const command = input.body && typeof input.body === "object" && !Array.isArray(input.body)
     ? (input.body as Record<string, unknown>).command : null;
   if (typeof command === "string" && command.startsWith("n5-")) return handleN5Agent(context, input);
+  const ordinary = await getMissionByOrdinaryIssue(context, input.companyId, input.params.issueId);
+  if (ordinary) return handleN2AgentApi(input, context);
   if (command === "n3-inspect" || command === "n3-opinion") {
     try { return { status: 200, body: await handleN3Specialist(context, input) }; }
     catch (error) {
@@ -209,7 +213,7 @@ async function handleMissionAgentCommand(input: PluginApiRequestInput, context: 
     const mission = await getMissionByRootIssue(context, input.companyId, input.params.issueId);
     if (mission?.aggregate.n2) return handleN2AgentApi(input, context);
   }
-  if (command === "confirm-review-handoff" || command === "prepare-resubmission" || command === "attest-transmission" || command === "attest-n3-transmission" || command === "n3-synthesize") {
+  if (command === "ordinary-inspect" || command === "ordinary-verdict" || command === "confirm-review-handoff" || command === "prepare-resubmission" || command === "attest-transmission" || command === "attest-n3-transmission" || command === "n3-synthesize") {
     return handleN2AgentApi(input, context);
   }
   return handleN1AgentApi(input, context);

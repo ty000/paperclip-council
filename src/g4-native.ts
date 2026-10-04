@@ -18,7 +18,7 @@ const TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed", "cancelled", "time
 export type NativeRunReadback = {
   id: string; companyId: string; agentId: string; status: string; nativeIssueId: string;
   startedAt: string | null; finishedAt: string | null;
-  resultJson?: { nativeResult?: { summary?: unknown } };
+  resultJson?: { summary?: unknown; nativeResult?: { summary?: unknown } };
   contextSnapshot: Record<string, unknown>; usageJson: Record<string, unknown> | null;
 };
 
@@ -35,12 +35,39 @@ export async function readNativeRun(ctx: PluginContext, input: {
   return run;
 }
 
+/** CLI task identity is its persisted context; no native runner card is implied. */
+export async function readOrdinaryRun(ctx: PluginContext, input: {
+  companyId: string; issueId: string; runId: string; agentId: string;
+}): Promise<NativeRunReadback> {
+  const response = await councilNativeRequest(ctx, input.companyId, `/api/heartbeat-runs/${input.runId}`);
+  const run = response.body as NativeRunReadback | null;
+  if (response.status !== 200 || !run || run.id !== input.runId || run.companyId !== input.companyId
+      || run.agentId !== input.agentId || run.contextSnapshot?.issueId !== input.issueId
+      || run.nativeIssueId != null || run.contextSnapshot.nativeReviewInteractionId) {
+    throw new AdmissionError(409, "g4_run_identity_unqualified", "Public CLI run identity differs from its admitted ordinary task");
+  }
+  return run;
+}
+
+export async function settleOrdinaryRunUsage(ctx: PluginContext, input: {
+  commandId: string; companyId: string; issueId: string; runId: string; agentId: string;
+  periodKey: string; reservationId: string; expectedVersion: number;
+}): Promise<AdmissionResult> {
+  return settleExactUsage(ctx, input, await readOrdinaryRun(ctx, input));
+}
+
 /** Independent reservations permit native reviewer admission before source cost persistence. */
 export async function settleNativeExactRunUsage(ctx: PluginContext, input: {
   commandId: string; companyId: string; issueId: string; runId: string; agentId: string;
   periodKey: string; reservationId: string; expectedVersion: number;
 }): Promise<AdmissionResult> {
-  const run = await readNativeRun(ctx, input);
+  return settleExactUsage(ctx, input, await readNativeRun(ctx, input));
+}
+
+async function settleExactUsage(ctx: PluginContext, input: {
+  commandId: string; companyId: string; issueId: string; runId: string; agentId: string;
+  periodKey: string; reservationId: string; expectedVersion: number;
+}, run: NativeRunReadback): Promise<AdmissionResult> {
   if (!TERMINAL_RUN_STATUSES.has(run.status) || !run.startedAt || !run.finishedAt) {
     throw new AdmissionError(409, "g4_run_not_terminal", "Exact native run must have started and reached its terminal state");
   }

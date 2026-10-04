@@ -117,3 +117,13 @@ it("consumes the sole correction while retaining historical independent acceptan
   m.aggregate.n2!.correctionsUsed = 1;
   expect(() => prepareN5Continuation(m, { requestId: randomUUID(), reservationId: randomUUID(), reason: "More", criteria: ["More"], actorId: randomUUID(), periodKey: "same-period" })).toThrow(/already consumed/);
 });
+
+it("revalidates a preauthorized ordinary publisher before any publication claim or admission", async () => {
+  const f = fixture(); delete f.mission.aggregate.n5!.publication;
+  f.mission.aggregate.n2!.ordinary = { protocol: "ordinary-cli-v1", tasks: [] };
+  const create = vi.fn(); const execute = vi.fn();
+  const ctx = { agents: { get: vi.fn().mockResolvedValue({ adapterType: "codex_local", adapterConfig: { engine: "paperclip_runner" }, status: "idle" }) },
+    issues: { create }, db: { execute } };
+  await expect(startN5Publication(ctx as never, f.mission)).rejects.toMatchObject({ code: "ordinary_cli_required" });
+  expect(create).not.toHaveBeenCalled(); expect(execute).not.toHaveBeenCalled();
+});

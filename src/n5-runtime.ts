@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { AdmissionError } from "./admission.js";
 import { createContributionIssueEffect } from "./contribution-effects.js";
-import { readNativeRun, settleNativeExactRunUsage } from "./g4-native.js";
+import { readNativeRun, readOrdinaryRun, settleNativeExactRunUsage, settleOrdinaryRunUsage } from "./g4-native.js";
 import { canonicalPayloadHash, getMission, MissionError, type MissionRecord } from "./missions.js";
 import { n2Cas, n2CommandCas, nativeN2Profile, reserveN2Run, runtimeReceipt, runtimeUuid } from "./n2-missions.js";
 import { assertCurrentN5Plan, observeN5Native, readN5Plan } from "./n5-native.js";
@@ -21,6 +21,7 @@ async function authorize(ctx: PluginContext, m: MissionRecord, body: Record<stri
   const publisherAgentId = runtimeUuid(body.publisherAgentId, "publisherAgentId");
   const agent = await ctx.agents.get(publisherAgentId, m.companyId);
   if (!agent || ["paused", "terminated", "pending_approval"].includes(agent.status)) throw new MissionError(422, "n5_publisher_unavailable", "Available publisher required");
+  if (m.aggregate.n2?.ordinary && (agent.adapterType !== "codex_local" || agent.adapterConfig?.engine !== "cli")) throw new MissionError(422, "ordinary_cli_required", "Ordinary delivery requires an explicit CLI publisher");
   const repository = text(body.repository, "repository");
   const baseRef = text(body.baseRef, "baseRef"); const headRef = text(body.headRef, "headRef");
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) || baseRef === headRef
@@ -38,6 +39,13 @@ export async function startN5Publication(ctx: PluginContext, initial: MissionRec
   const updating = Boolean(continuation && !continuation.updateAdmitted && n5.publication?.settledAt
     && m.aggregate.n2?.status === "accepted" && m.aggregate.n2.activeSubmissionId !== continuation.previousPublication.submission.submissionId);
   if (n5.publication && !updating) return m;
+  if (m.aggregate.n2?.ordinary) {
+    const publisher = await ctx.agents.get(n5.authority.publisherAgentId, m.companyId);
+    if (!publisher || publisher.adapterType !== "codex_local" || publisher.adapterConfig?.engine !== "cli"
+        || ["paused", "terminated", "pending_approval"].includes(publisher.status)) {
+      throw new MissionError(422, "ordinary_cli_required", "Ordinary delivery requires an available explicit CLI publisher before admission");
+    }
+  }
   const submission = acceptedN5Submission(m);
   await assertCurrentN5Plan(ctx, m);
   if (m.aggregate.n2?.native?.reviewProtocol && n5.authority.publisherAgentId === m.aggregate.responsibilities.integrationLeadAgentId) {
@@ -75,7 +83,7 @@ export async function reconcileN5(ctx: PluginContext, initial: MissionRecord) {
   if (!p.settledAt) {
     const { profile, envelope } = await nativeN2Profile(ctx, m);
     if (!envelope.reservations.find(r => r.reservationId === p.reservationId)?.settlementReceipts.some(r => r.commandId === p.settlementCommandId)) {
-      await settleNativeExactRunUsage(ctx, { companyId: m.companyId, issueId: p.issueId, agentId: m.aggregate.n5.authority.publisherAgentId,
+      await (m.aggregate.n2?.ordinary ? settleOrdinaryRunUsage : settleNativeExactRunUsage)(ctx, { companyId: m.companyId, issueId: p.issueId, agentId: m.aggregate.n5.authority.publisherAgentId,
         runId: p.runId, reservationId: p.reservationId, commandId: p.settlementCommandId, periodKey: profile.periodKey, expectedVersion: envelope.version });
     }
     m = await fresh(ctx, m); p = m.aggregate.n5!.publication!;
@@ -106,7 +114,7 @@ async function bindPublisher(ctx: PluginContext, m: MissionRecord, input: Plugin
   if (!n5 || !p || !p.issueId || input.params.issueId !== p.issueId || input.actor.actorType !== "agent"
       || input.actor.agentId !== n5.authority.publisherAgentId || !input.actor.runId || p.wake !== "claimed"
       || p.runId && p.runId !== input.actor.runId) throw new MissionError(403, "n5_publisher_binding", "Exact authorized publisher child and reserved run required");
-  const run = await readNativeRun(ctx, { companyId: m.companyId, issueId: p.issueId, runId: input.actor.runId, agentId: input.actor.agentId });
+  const run = await (m.aggregate.n2?.ordinary ? readOrdinaryRun : readNativeRun)(ctx, { companyId: m.companyId, issueId: p.issueId, runId: input.actor.runId, agentId: input.actor.agentId });
   if (run.status !== "running" || !run.startedAt || run.finishedAt) throw new MissionError(409, "n5_publisher_not_running", "Publisher run must be active");
   return p.runId ? m : save(ctx, m, { ...n5, publication: { ...p, runId: input.actor.runId } });
 }

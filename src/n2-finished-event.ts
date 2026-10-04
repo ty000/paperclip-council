@@ -6,7 +6,7 @@ import {
   DecisionReceiptError,
   executeCouncilDecision,
 } from "./decision-receipts.js";
-import { getMissionByRootIssue, MissionError } from "./missions.js";
+import { getMissionByOrdinaryIssue, getMissionByRootIssue, MissionError } from "./missions.js";
 import {
   findPreparedN2Decision,
   recordN2Decision,
@@ -63,7 +63,30 @@ export async function handleN2RunFinished(
     throw new Error("Invalid bounded N2 finished-event observation profile");
   }
 
-  let mission = await getMissionByRootIssue(ctx, event.companyId, run.issueId);
+  let mission = await getMissionByOrdinaryIssue(ctx, event.companyId, run.issueId);
+  if (mission?.aggregate.n2?.ordinary) {
+    if (mission.aggregate.n5?.publication?.issueId === run.issueId) {
+      if (mission.aggregate.n5.publication.runId !== run.runId || mission.aggregate.n5.authority.publisherAgentId !== run.agentId) return { outcome: "ignored", reason: "n5_child_unbound" };
+      await reconcileN5(ctx, mission); return { outcome: "reconciled" };
+    }
+    const task = mission.aggregate.n2.ordinary.tasks.find(task => task.issueId === run.issueId && task.runId === run.runId && task.agentId === run.agentId);
+    if (!task) return { outcome: "ignored", reason: "ordinary_task_unbound" };
+    const { reconcileOrdinaryN2 } = await import("./n2-ordinary-runtime.js");
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try { const latest = await reconcileOrdinaryN2(ctx, mission);
+        if (latest.aggregate.n5 && latest.aggregate.n2?.status === "accepted") await reconcileN5(ctx, latest);
+        return { outcome: "reconciled" }; }
+      catch (error) {
+        const retryable = error instanceof AdmissionError && ["g4_usage_unavailable", "g4_run_not_terminal", "version_conflict"].includes(error.code)
+          || error instanceof MissionError && error.code === "version_conflict";
+        if (!retryable) throw error;
+        if (attempt === attempts) return { outcome: "prepared", reason: "usage_not_ready", attempts };
+        await pause(delayMs);
+        mission = (await getMissionByOrdinaryIssue(ctx, event.companyId, run.issueId))!;
+      }
+    }
+  }
+  mission = await getMissionByRootIssue(ctx, event.companyId, run.issueId);
   if (!mission) {
     const issue = await ctx.issues.get(run.issueId, event.companyId);
     if (issue?.parentId) mission = await getMissionByRootIssue(ctx, event.companyId, issue.parentId);
