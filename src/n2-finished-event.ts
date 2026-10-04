@@ -1,3 +1,4 @@
+import { reconcileN6 } from "./n6-runtime.js";
 import { reconcileN5 } from "./n5-runtime.js";
 import type { PluginContext, PluginEvent } from "@paperclipai/plugin-sdk";
 import { AdmissionError } from "./admission.js";
@@ -6,7 +7,7 @@ import {
   DecisionReceiptError,
   executeCouncilDecision,
 } from "./decision-receipts.js";
-import { getMissionByOrdinaryIssue, getMissionByRootIssue, MissionError } from "./missions.js";
+import { getMissionByOrdinaryIssue, getMissionByRootIssue, getMissionsDependingOn, MissionError } from "./missions.js";
 import {
   findPreparedN2Decision,
   recordN2Decision,
@@ -174,5 +175,10 @@ export async function handleN2RunFinished(
 export function registerN2FinishedEventHandler(ctx: PluginContext) {
   return ctx.events.on("agent.run.finished", async (event) => {
     await handleN2RunFinished(ctx, event);
+    const run = finishedRun(event);
+    if (!run) return;
+    const source = await getMissionByOrdinaryIssue(ctx, event.companyId, run.issueId)
+      ?? await getMissionByRootIssue(ctx, event.companyId, run.issueId);
+    if (source) for (const target of await getMissionsDependingOn(ctx, source.companyId, source.missionId)) await reconcileN6(ctx, target);
   });
 }

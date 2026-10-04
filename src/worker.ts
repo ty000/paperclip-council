@@ -1,3 +1,4 @@
+import { handleN6Board } from "./n6-runtime.js";
 import { handleN5Agent, handleN5Board } from "./n5-runtime.js";
 import { handleN3Specialist } from "./n3-runtime.js";
 import { N3OpinionError } from "./n3-opinions.js";
@@ -220,6 +221,7 @@ async function handleMissionAgentCommand(input: PluginApiRequestInput, context: 
 }
 
 export async function handlePluginRequest(input: PluginApiRequestInput, context: PluginContext = ctx) {
+  if (input.routeKey === "mission-command" && ["configure-result-dependency", "reconcile-result-dependency"].includes(String((input.body as { command?: string })?.command))) return handleN6Board(context, input);
   if (input.routeKey === "decision") return handleDecision(input, context);
   if (input.routeKey.startsWith("council-decision")) return handleDecisionReceiptApi(input, context);
   if (input.routeKey === "admission-read" || input.routeKey === "admission-command") return handleN1AdmissionApi(input, context);

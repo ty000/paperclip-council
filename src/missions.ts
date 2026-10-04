@@ -1,3 +1,4 @@
+import { inspectN6 } from "./n6-state.js";
 import { inspectN5 } from "./n5-state.js";
 import { inspectN3 } from "./n3-state.js";
 import { createHash } from "node:crypto";
@@ -81,6 +82,7 @@ export type MissionAggregate = {
   n2?: N2State;
   n3?: import("./n3-state.js").N3State;
   n5?: import("./n5-state.js").N5State;
+  n6?: import("./n6-state.js").N6Dependency;
 };
 
 export type PinnedRoster = {
@@ -344,6 +346,15 @@ export async function getMissionByRootIssue(
     [companyId, rootIssueId],
   );
   return rows[0] ? parseMissionRow(rows[0]) : null;
+}
+
+/** Exact source lookup for event recovery; no bounded dashboard list or new scheduler. */
+export async function getMissionsDependingOn(ctx: PluginContext, companyId: string, sourceMissionId: string): Promise<MissionRecord[]> {
+  const rows = await ctx.db.query<MissionRow>(
+    `SELECT ${selectColumns} FROM ${table(ctx)} WHERE company_id = $1 AND aggregate->'n6'->>'sourceMissionId' = $2`,
+    [companyId, sourceMissionId],
+  );
+  return rows.map(parseMissionRow);
 }
 
 export async function listMissions(ctx: PluginContext, companyId: string): Promise<MissionRecord[]> {
@@ -628,11 +639,12 @@ export function inspectMission(mission: MissionRecord) {
       executable: mission.aggregate.control.status === "active",
     },
     prerequisites: n1?.prerequisites ?? mission.aggregate.readiness.blockers,
-    nextAction: n2?.nextAction.label ?? n1?.nextAction ?? "Resolve and qualify G4 before adding any dispatch or activation command.",
+    nextAction: (mission.aggregate.n6 && !mission.aggregate.n1?.rootDispatchState ? inspectN6(mission)?.nextAction : undefined) ?? n2?.nextAction.label ?? n1?.nextAction ?? "Resolve and qualify G4 before adding any dispatch or activation command.",
     n1,
     n2,
     n3: inspectN3(mission),
     n5: inspectN5(mission),
+    n6: inspectN6(mission),
   };
 }
 

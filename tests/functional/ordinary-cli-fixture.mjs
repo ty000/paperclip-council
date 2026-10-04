@@ -23,7 +23,7 @@ async function api(method, path, body, expected) {
   return value;
 }
 const route = `/api/plugins/private.paperclip-council/api/issues/${issueId}/council/commands`;
-const call = body => api("POST", route, { missionId: config.missionId, ...body });
+const call = body => api("POST", route, { missionId: issueId === config.n6RootIssueId ? config.n6MissionId : config.missionId, ...body });
 const pause = () => new Promise(r => setTimeout(r, 150));
 async function observe(read, ok, label) {
   const end = Date.now() + 45000;
@@ -53,7 +53,15 @@ async function uploadCandidate() {
   return { attachmentId: attached.id, candidateCommit, baseCommit: config.baseCommit, expectedSha256 };
 }
 let summary;
-if (agentId === config.actors.publisher) summary = await publishDelivery({ api, call, config, issueId, runId, git });
+if (issueId === config.n6RootIssueId) {
+  // This bounded fixture proves dispatch/inspection, not a completed B implementation.
+  await writeFile(resolve(config.runtime, "n6-downstream-running"), JSON.stringify({ runId, issueId, missionId: config.n6MissionId, inspection }));
+  await observe(async () => {
+    try { await readFile(resolve(config.runtime, "n6-finish")); return true; } catch { return false; }
+  }, Boolean, "owner bounded downstream observation complete");
+  summary = { fixture: "N6 downstream N1 launch", missionId: config.n6MissionId, runId, issueId, inspected: inspection.missionId };
+}
+else if (agentId === config.actors.publisher) summary = await publishDelivery({ api, call, config, issueId, runId, git });
 else if (inspection.task) {
   inspection = await call({ command: "ordinary-inspect" });
   await writeFile(resolve(config.runtime, `api-${runId}.json`), JSON.stringify({ runId, issueId, agentId, taskId: inspection.task.taskId }));
@@ -88,6 +96,9 @@ else if (inspection.task) {
     summary = prepared.finishReport;
     // Report exists during a running CLI process; product must not accept or launch correction yet.
     await writeFile(resolve(config.runtime, `council-${task.taskId}.prepared.json`), JSON.stringify({ runId, issueId, summary }));
+    if (config.n6 && summary.verdict === "approved") await observe(async () => {
+      try { await readFile(resolve(config.runtime, "n6-gate-configured")); return true; } catch { return false; }
+    }, Boolean, "N6 downstream durable wait prepared");
     await new Promise(r => setTimeout(r, 400));
   } else {
     assert.equal(task.kind, "correction");
