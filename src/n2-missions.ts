@@ -346,16 +346,18 @@ function nativeReceiptSubjectMatches(mission: MissionRecord, submission: N2Submi
       && observation.report.subject.submissionId === submission.submissionId && observation.report.subject.candidateCommit === submission.candidateCommit);
 }
 
+function ordinaryReceiptSubjectMatches(mission: MissionRecord, submission: N2Submission, input: N2DecisionInput): boolean {
+  const task = mission.aggregate.n2!.ordinary!.tasks.find(task => task.kind === "council" && task.submissionId === submission.submissionId);
+  const body = input.receipt.requestBody;
+  return Boolean(task?.report && task.settledAt && task.runId === input.runId && task.agentId === input.actorAgentId
+    && body.provenance === "ordinary-task-terminal-readback-v1" && body.method === "GET"
+    && body.issueId === task.issueId && body.runId === task.runId && body.reportHash === canonicalPayloadHash(task.report)
+    && body.subjectHash === canonicalPayloadHash(task.report.subject) && task.report.subject.candidateCommit === submission.candidateCommit
+    && task.report.subject.submissionId === submission.submissionId && task.report.verdict === input.verdict);
+}
+
 function decisionReceiptSubjectMatches(mission: MissionRecord, submission: N2Submission, input: N2DecisionInput): boolean {
-  if (mission.aggregate.n2?.ordinary) {
-    const task = mission.aggregate.n2.ordinary.tasks.find(task => task.kind === "council" && task.submissionId === submission.submissionId);
-    const body = input.receipt.requestBody;
-    return Boolean(task?.report && task.settledAt && task.runId === input.runId && task.agentId === input.actorAgentId
-      && body.provenance === "ordinary-task-terminal-readback-v1" && body.method === "GET"
-      && body.issueId === task.issueId && body.runId === task.runId && body.reportHash === canonicalPayloadHash(task.report)
-      && body.subjectHash === canonicalPayloadHash(task.report.subject) && task.report.subject.candidateCommit === submission.candidateCommit
-      && task.report.subject.submissionId === submission.submissionId && task.report.verdict === input.verdict);
-  }
+  if (mission.aggregate.n2?.ordinary) return ordinaryReceiptSubjectMatches(mission, submission, input);
   if (mission.aggregate.n2?.native?.reviewProtocol === "native-verdict-readback-v1") {
     return nativeReceiptSubjectMatches(mission, submission, input);
   }
@@ -629,17 +631,19 @@ function nativeN2NextAction(state: N2State) {
   return null;
 }
 
+function ordinaryN2NextAction(state: N2State, round: N2ReviewRound | null) {
+  const task = state.ordinary!.tasks.find(item => !item.closedAt);
+  if (!task) return { actorKind: "operator" as const, actorId: null, label: "Exact candidate accepted after Council terminal report and all admitted usage settled." };
+  if (n2Blockage(state, round)) return { actorKind: "operator" as const, actorId: null, label: "Inspect the claimed ordinary effect; do not dispatch a replacement." };
+  return { actorKind: "agent" as const, actorId: task.agentId, label: task.settledAt
+    ? "Council controller reconciles the settled task before admitting the next action."
+    : task.kind === "specialist" ? "Submit this candidate's N3 opinion, then finish the CLI run."
+    : task.kind === "council" ? "Submit ordinary-verdict, then finish with the exact returned finishReport JSON. Acceptance waits for terminal usage."
+    : "Amend the integration commit, verify and prepare V2, then finish the admitted correction run." };
+}
+
 function n2NextAction(state: N2State, round: N2ReviewRound | null) {
-  if (state.ordinary) {
-    const task = state.ordinary.tasks.find(item => !item.closedAt);
-    if (!task) return { actorKind: "operator" as const, actorId: null, label: "Exact candidate accepted after Council terminal report and all admitted usage settled." };
-    if (n2Blockage(state, round)) return { actorKind: "operator" as const, actorId: null, label: "Inspect the claimed ordinary effect; do not dispatch a replacement." };
-    return { actorKind: "agent" as const, actorId: task.agentId, label: task.settledAt
-      ? "Council controller reconciles the settled task before admitting the next action."
-      : task.kind === "specialist" ? "Submit this candidate's N3 opinion, then finish the CLI run."
-      : task.kind === "council" ? "Submit ordinary-verdict, then finish with the exact returned finishReport JSON. Acceptance waits for terminal usage."
-      : "Amend the integration commit, verify and prepare V2, then finish the admitted correction run." };
-  }
+  if (state.ordinary) return ordinaryN2NextAction(state, round);
   const nativeAction = nativeN2NextAction(state);
   if (nativeAction) return nativeAction;
   if (round?.handoff.state === "unknown") {

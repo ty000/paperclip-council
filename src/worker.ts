@@ -201,7 +201,7 @@ async function handleMissionAgentCommand(input: PluginApiRequestInput, context: 
   if (typeof command === "string" && command.startsWith("n5-")) return handleN5Agent(context, input);
   const ordinary = await getMissionByOrdinaryIssue(context, input.companyId, input.params.issueId);
   if (ordinary) return handleN2AgentApi(input, context);
-  if (command === "n3-inspect" || command === "n3-opinion") {
+  if (["n3-inspect", "n3-opinion"].includes(command as string)) {
     try { return { status: 200, body: await handleN3Specialist(context, input) }; }
     catch (error) {
       if (error instanceof N3OpinionError) return { status: 409, body: { code: error.code, error: error.message } };
@@ -213,7 +213,7 @@ async function handleMissionAgentCommand(input: PluginApiRequestInput, context: 
     const mission = await getMissionByRootIssue(context, input.companyId, input.params.issueId);
     if (mission?.aggregate.n2) return handleN2AgentApi(input, context);
   }
-  if (command === "ordinary-inspect" || command === "ordinary-verdict" || command === "confirm-review-handoff" || command === "prepare-resubmission" || command === "attest-transmission" || command === "attest-n3-transmission" || command === "n3-synthesize") {
+  if (["ordinary-inspect", "ordinary-verdict", "confirm-review-handoff", "prepare-resubmission", "attest-transmission", "attest-n3-transmission", "n3-synthesize"].includes(command as string)) {
     return handleN2AgentApi(input, context);
   }
   return handleN1AgentApi(input, context);
