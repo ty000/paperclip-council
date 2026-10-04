@@ -871,7 +871,8 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       }
       return {
         status: 200,
-        body: { missionId: mission.missionId, version: mission.version, phase: mission.aggregate.phase, n1: inspectN1State(mission) },
+        body: { missionId: mission.missionId, version: mission.version, phase: mission.aggregate.phase, n1: inspectN1State(mission),
+          ...(mission.aggregate.n6 ? { n6Handoff: await (await import("./n6-guards.js")).readN6Handoff(ctx, mission) } : {}) },
       };
     }
     const commandId = uuid(body.commandId, "commandId");

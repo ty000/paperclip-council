@@ -13,13 +13,14 @@ export async function assertN6SourceAccounting(ctx: PluginContext, source: Missi
   }
   const periods = new Set([n1.periodKey, profile.periodKey]);
   if (source.aggregate.n5?.continuation) periods.add(source.aggregate.n5.continuation.periodKey);
+  if (source.aggregate.n6?.coordination) periods.add(source.aggregate.n6.coordination.periodKey);
   const envelopes = await Promise.all([...periods].map(periodKey => readAdmission(ctx, { companyId: source.companyId, periodKey })));
   const reservations = envelopes.flatMap(e => e?.reservations.filter(r => r.missionId === source.missionId) ?? []);
   const contributions = n1.contributions as Array<{ dispatchReservationId?: string }> | undefined;
   const n5 = source.aggregate.n5;
   const required = [n1.activationReservationId, ...contributions?.map(c => c.dispatchReservationId) ?? [],
     ...ordinary.tasks.map(task => task.reservationId), n5?.publication?.reservationId,
-    n5?.continuation?.previousPublication.reservationId].filter((id): id is string => typeof id === "string");
+    n5?.continuation?.previousPublication.reservationId, ...source.aggregate.n6?.coordination?.tasks.map(t => t.reservationId) ?? []].filter((id): id is string => typeof id === "string");
   if (!reservations.length || required.some(id => !reservations.some(r => r.reservationId === id))
       || reservations.some(r => r.status !== "settled" || r.usage?.status !== "known"
         || r.remainingExposure.status !== "known" || r.remainingExposure.units !== 0)) {

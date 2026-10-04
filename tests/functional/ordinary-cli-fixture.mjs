@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { coordinateFixture } from "./n6-coordination-fixture.mjs";
 // Sole model seam: deterministic CLI output and content; all business calls use installed APIs.
 import { publishDelivery, rebindDeliveryPlan } from "./ordinary-delivery-fixture.mjs";
 import assert from "node:assert/strict";
@@ -23,7 +24,8 @@ async function api(method, path, body, expected) {
   return value;
 }
 const route = `/api/plugins/private.paperclip-council/api/issues/${issueId}/council/commands`;
-const call = body => api("POST", route, { missionId: issueId === config.n6RootIssueId ? config.n6MissionId : config.missionId, ...body });
+const coordinationActor = [config.actors.pm, config.actors.pmSuccessor, config.actors.facilitator].includes(agentId);
+const call = body => api("POST", route, { missionId: coordinationActor || issueId === config.n6RootIssueId ? config.n6MissionId : config.missionId, ...body });
 const pause = () => new Promise(r => setTimeout(r, 150));
 async function observe(read, ok, label) {
   const end = Date.now() + 45000;
@@ -35,7 +37,7 @@ async function observe(read, ok, label) {
 }
 const git = (...args) => execFileSync("git", args, { cwd: config.repoPath, encoding: "utf8" }).trim();
 await api("POST", `/api/issues/${issueId}/checkout`, { agentId, expectedStatuses: ["todo", "in_progress"] });
-const inspectCommand = agentId === config.actors.publisher ? "n5-inspect" : "inspect";
+const inspectCommand = coordinationActor ? "n6-inspect" : agentId === config.actors.publisher ? "n5-inspect" : "inspect";
 let inspection = await observe(async () => { try { return await call({ command: inspectCommand }); }
   catch (e) { if (["root_dispatch_run_mismatch", "dispatch_run_mismatch"].includes(e.response?.code)) return null; throw e; } }, Boolean, "dispatch binding");
 async function command(command, extra = {}) {
@@ -53,7 +55,13 @@ async function uploadCandidate() {
   return { attachmentId: attached.id, candidateCommit, baseCommit: config.baseCommit, expectedSha256 };
 }
 let summary;
-if (issueId === config.n6RootIssueId) {
+if (coordinationActor) summary = await coordinateFixture({ api, call, config, runId, issueId, agentId, observe });
+else if (issueId === config.n6RootIssueId) {
+  // Prove B obtains A through its real authenticated API, not hidden fixture candidate IDs.
+  const handoff = inspection.n6Handoff; assert(handoff);
+  const response = await fetch(`${base}${handoff.downloadPath}`, { headers }); assert(response.ok);
+  const bytes = Buffer.from(await response.arrayBuffer()); assert.equal(createHash("sha256").update(bytes).digest("hex"), handoff.sha256);
+  assert.equal(handoff.candidateCommit, inspection.n6Handoff.expectedResult.candidateCommit);
   // This bounded fixture proves dispatch/inspection, not a completed B implementation.
   await writeFile(resolve(config.runtime, "n6-downstream-running"), JSON.stringify({ runId, issueId, missionId: config.n6MissionId, inspection }));
   await observe(async () => {
@@ -96,7 +104,7 @@ else if (inspection.task) {
     summary = prepared.finishReport;
     // Report exists during a running CLI process; product must not accept or launch correction yet.
     await writeFile(resolve(config.runtime, `council-${task.taskId}.prepared.json`), JSON.stringify({ runId, issueId, summary }));
-    if (config.n6 && summary.verdict === "approved") await observe(async () => {
+    if (config.n6 && (summary.verdict === "approved" || config.coordination)) await observe(async () => {
       try { await readFile(resolve(config.runtime, "n6-gate-configured")); return true; } catch { return false; }
     }, Boolean, "N6 downstream durable wait prepared");
     await new Promise(r => setTimeout(r, 400));

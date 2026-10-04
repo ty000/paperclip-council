@@ -1,3 +1,4 @@
+import { getMissionByN6WorkIssue } from "./missions.js";
 import { reconcileN6 } from "./n6-runtime.js";
 import { reconcileN5 } from "./n5-runtime.js";
 import type { PluginContext, PluginEvent } from "@paperclipai/plugin-sdk";
@@ -174,9 +175,11 @@ export async function handleN2RunFinished(
 
 export function registerN2FinishedEventHandler(ctx: PluginContext) {
   return ctx.events.on("agent.run.finished", async (event) => {
-    await handleN2RunFinished(ctx, event);
     const run = finishedRun(event);
     if (!run) return;
+    const coordination = await getMissionByN6WorkIssue(ctx, event.companyId, run.issueId);
+    if (coordination) { await reconcileN6(ctx, coordination); return; }
+    await handleN2RunFinished(ctx, event);
     const source = await getMissionByOrdinaryIssue(ctx, event.companyId, run.issueId)
       ?? await getMissionByRootIssue(ctx, event.companyId, run.issueId);
     if (source) for (const target of await getMissionsDependingOn(ctx, source.companyId, source.missionId)) await reconcileN6(ctx, target);

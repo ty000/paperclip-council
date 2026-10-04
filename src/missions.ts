@@ -365,6 +365,14 @@ export async function listMissions(ctx: PluginContext, companyId: string): Promi
   return rows.map(parseMissionRow);
 }
 
+/** Coordination roles own separate parentless tasks; resolve their exact persisted binding. */
+export async function getMissionByN6WorkIssue(ctx: PluginContext, companyId: string, issueId: string): Promise<MissionRecord | null> {
+  const rows = await ctx.db.query<MissionRow>(`SELECT ${selectColumns} FROM ${table(ctx)} WHERE company_id = $1
+    AND aggregate->'n6'->'coordination'->'tasks' @> $2::jsonb LIMIT 2`, [companyId, JSON.stringify([{ issueId }])]);
+  if (rows.length > 1) throw new MissionError(409, "n6_work_ambiguous", "Coordination task must belong to one mission");
+  return rows[0] ? parseMissionRow(rows[0]) : null;
+}
+
 /** Exact persisted task lookup; parentless tasks cannot use issue ancestry. */
 export async function getMissionByOrdinaryIssue(ctx: PluginContext, companyId: string, issueId: string): Promise<MissionRecord | null> {
   const rows = await ctx.db.query<MissionRow>(`SELECT ${selectColumns} FROM ${table(ctx)} WHERE company_id = $1

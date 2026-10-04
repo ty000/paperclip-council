@@ -1,3 +1,8 @@
+import { syncN6HandoffContext } from "./n6-context.js";
+import { rebindN6Result } from "./n6-rebind.js";
+import { coordinationMandate } from "./n6-coordination-state.js";
+import { reconcileCoordination } from "./n6-work-runtime.js";
+import { transferCoordinator, resolveCoordination } from "./n6-work-api.js";
 import { randomUUID } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { AdmissionError } from "./admission.js";
@@ -5,7 +10,7 @@ import { canonicalPayloadHash, getMission, MissionError, type MissionRecord } fr
 import { executeN1BoardCommand } from "./n1-missions.js";
 import { n2Cas, n2CommandCas, runtimeReceipt, runtimeUuid } from "./n2-missions.js";
 import type { N3CandidateSubject } from "./n3-opinions.js";
-import { assertN6AcceptedSource, assertN6Acyclic, assertN6Owner, guardOriginId, N6_GUARD_ORIGIN, readN6Guard, readN6Source } from "./n6-guards.js";
+import { assertN6AcceptedSource, assertN6Acyclic, assertN6Owner, guardOriginId, N6_GUARD_ORIGIN, readN6Guard, readN6Source, readN6Handoff } from "./n6-guards.js";
 import type { N6Dependency } from "./n6-state.js";
 
 const fresh = async (ctx: PluginContext, m: MissionRecord) => (await getMission(ctx, m.companyId, m.missionId))!;
@@ -51,6 +56,7 @@ async function configure(ctx: PluginContext, m: MissionRecord, body: Record<stri
     expectedResult: subject(body.expectedResult), authorizedBy: actorId, authorizedAt: new Date().toISOString(),
     intentId: randomUUID(), guardIssueId: null, guardCreation: "claimed", relationConfirmed: false,
     ...admission, reservationId: randomUUID(), activationCommandId: randomUUID(), startCommandId: randomUUID() };
+  if (body.coordination) dep.coordination = await coordinationMandate(ctx, { ...m, aggregate: { ...m.aggregate, n6: dep } }, body.coordination as Record<string, unknown>);
   const claim = await n2CommandCas(ctx, m, body, "user", actorId, { ...m.aggregate, n6: dep,
     journal: [...m.aggregate.journal, { action: "result_dependency_authorized", sourceMissionId: source.missionId,
       expectedResult: dep.expectedResult, authorizedBy: actorId, at: dep.authorizedAt }] });
@@ -84,7 +90,7 @@ async function attachGate(ctx: PluginContext, initial: MissionRecord) {
     const root = await idleRoot(ctx, m);
     const route = `/api/plugins/private.paperclip-council/api/issues/${m.rootIssueId}/council/commands`;
     const inspect = JSON.stringify({ command: "inspect", missionId: m.missionId });
-    const description = `${root.description ?? ""}\n\nCouncil downstream mission ${m.missionId}. Result dependency: source mission ${dep.sourceMissionId}, root ${dep.sourceRootIssueId}.\nExpected accepted result: ${JSON.stringify(dep.expectedResult)}.\nWait for the native result gate; issue done alone is insufficient. After admitted dispatch, POST $PAPERCLIP_API_URL${route} with JSON ${inspect}, Authorization: Bearer $PAPERCLIP_API_KEY and X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID. Consume this exact source result; do not substitute main or a PR branch. Owner ${dep.authorizedBy} authorized the bounded N1 launch.\n`;
+    const description = `${root.description ?? ""}\n\nCouncil downstream mission ${m.missionId}. Result dependency: source mission ${dep.sourceMissionId}, root ${dep.sourceRootIssueId}.\nExpected accepted result: ${JSON.stringify(dep.expectedResult)}.\nWait for the native result gate; issue done alone is insufficient. This initial tuple may be superseded only by an explicit owner rebind; the current authenticated inspect handoff is authoritative. After admitted dispatch, POST $PAPERCLIP_API_URL${route} with JSON ${inspect}, Authorization: Bearer $PAPERCLIP_API_KEY and X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID. Consume this exact source result; do not substitute main or a PR branch. Owner ${dep.authorizedBy} authorized the bounded N1 launch.\n`;
     await ctx.issues.update(m.rootIssueId, { status: "blocked", description }, m.companyId, { actorUserId: dep.authorizedBy });
     m = await save(ctx, m, { ...dep, guardCreation: "confirmed", relationConfirmed: true });
   }
@@ -114,17 +120,23 @@ export async function reconcileN6(ctx: PluginContext, initial: MissionRecord): P
   if (!m.aggregate.n6 || m.aggregate.n1?.rootDispatchState) return m;
   await assertN6Owner(ctx, m, m.aggregate.n6.authorizedBy);
   m = await attachGate(ctx, m);
+  if (m.aggregate.n6!.coordination) {
+    m = await reconcileCoordination(ctx, m);
+    if (m.aggregate.n6!.coordination!.state !== "released") return m;
+  }
   try { await assertN6AcceptedSource(ctx, m); }
   catch (error) {
     if (!(error instanceof MissionError)) throw error;
     return m.aggregate.n6!.blockage === error.code ? m : save(ctx, m, { ...m.aggregate.n6!, blockage: error.code });
   }
   if (!m.aggregate.n6!.verifiedAt) {
+    const artifact = await readN6Handoff(ctx, m);
     const at = new Date().toISOString();
-    m = await n2Cas(ctx, m, { ...m.aggregate, n6: { ...m.aggregate.n6!, verifiedAt: at, blockage: undefined },
+    m = await n2Cas(ctx, m, { ...m.aggregate, n6: { ...m.aggregate.n6!, verifiedAt: at, verifiedArtifact: artifact, blockage: undefined },
       journal: [...m.aggregate.journal, { action: "result_dependency_verified", actorType: "automation", authorizedBy: m.aggregate.n6!.authorizedBy,
         sourceMissionId: m.aggregate.n6!.sourceMissionId, expectedResult: m.aggregate.n6!.expectedResult, at }] });
   }
+  await syncN6HandoffContext(ctx, m);
   const guard = await readN6Guard(ctx, m);
   if (guard.status !== "done") await ctx.issues.update(guard.id, { status: "done" }, m.companyId, { actorUserId: m.aggregate.n6!.authorizedBy });
   return dispatchReady(ctx, m);
@@ -139,7 +151,16 @@ export async function handleN6Board(ctx: PluginContext, input: PluginApiRequestI
     await assertN6Owner(ctx, m, actorId);
     if (body.command === "reconcile-result-dependency") return { status: 200, body: { outcome: "reconciled", mission: await reconcileN6(ctx, m) } };
     const prior = runtimeReceipt(m, runtimeUuid(body.commandId, "commandId"), actorId!, canonicalPayloadHash(body));
-    if (prior) return { status: 200, body: { outcome: "replayed", mission: m, receipt: prior } };
+    if (prior) {
+      if (body.command === "rebind-result-dependency") await syncN6HandoffContext(ctx, m);
+      return { status: 200, body: { outcome: "replayed", mission: m, receipt: prior } };
+    }
+    if (body.command === "resolve-result-coordination") {
+      const result = await resolveCoordination(ctx, m, body, actorId!);
+      return { status: 200, body: { ...result, mission: await reconcileN6(ctx, result.mission) } };
+    }
+    if (body.command === "rebind-result-dependency") return { status: 200, body: await rebindN6Result(ctx, m, body, actorId!) };
+    if (body.command === "transfer-result-coordinator") return { status: 200, body: await transferCoordinator(ctx, m, body, actorId!) };
     return { status: 200, body: await configure(ctx, m, body, actorId!) };
   } catch (error) {
     if (error instanceof MissionError || error instanceof AdmissionError) return { status: error.status, body: { error: error.message, code: error.code } };

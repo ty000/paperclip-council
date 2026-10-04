@@ -1,3 +1,5 @@
+import { handleN6WorkAgent } from "./n6-work-api.js";
+import { getMissionByN6WorkIssue } from "./missions.js";
 import { handleN6Board } from "./n6-runtime.js";
 import { handleN5Agent, handleN5Board } from "./n5-runtime.js";
 import { handleN3Specialist } from "./n3-runtime.js";
@@ -199,6 +201,7 @@ export async function handleDecision(
 async function handleMissionAgentCommand(input: PluginApiRequestInput, context: PluginContext) {
   const command = input.body && typeof input.body === "object" && !Array.isArray(input.body)
     ? (input.body as Record<string, unknown>).command : null;
+  if (String(command).startsWith("n6-") || await getMissionByN6WorkIssue(context, input.companyId, input.params.issueId)) return handleN6WorkAgent(context, input);
   if (typeof command === "string" && command.startsWith("n5-")) return handleN5Agent(context, input);
   const ordinary = await getMissionByOrdinaryIssue(context, input.companyId, input.params.issueId);
   if (ordinary) return handleN2AgentApi(input, context);
@@ -221,7 +224,7 @@ async function handleMissionAgentCommand(input: PluginApiRequestInput, context: 
 }
 
 export async function handlePluginRequest(input: PluginApiRequestInput, context: PluginContext = ctx) {
-  if (input.routeKey === "mission-command" && ["configure-result-dependency", "reconcile-result-dependency"].includes(String((input.body as { command?: string })?.command))) return handleN6Board(context, input);
+  if (input.routeKey === "mission-command" && ["configure-result-dependency", "reconcile-result-dependency", "transfer-result-coordinator", "rebind-result-dependency", "resolve-result-coordination"].includes(String((input.body as { command?: string })?.command))) return handleN6Board(context, input);
   if (input.routeKey === "decision") return handleDecision(input, context);
   if (input.routeKey.startsWith("council-decision")) return handleDecisionReceiptApi(input, context);
   if (input.routeKey === "admission-read" || input.routeKey === "admission-command") return handleN1AdmissionApi(input, context);

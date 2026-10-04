@@ -19,12 +19,12 @@ beforeEach(() => vi.resetAllMocks());
 function fixture() {
   const id = randomUUID();
   let target = { companyId: "company", projectId: "project", missionId: "B", rootIssueId: "rootB", ownerUserId: "owner", version: 1,
-    aggregate: { schemaVersion: 1, commandReceipts: [], journal: [], n6: { protocol: "accepted-result-v1", sourceMissionId: "A", sourceRootIssueId: "rootA", expectedResult: {
+    aggregate: { schemaVersion: 1, commandReceipts: [], journal: [], responsibilities: { integrationLeadAgentId: "lead" }, n6: { protocol: "accepted-result-v1", sourceMissionId: "A", sourceRootIssueId: "rootA", expectedResult: {
       submissionId: id, candidateCommit: "a".repeat(40), bundleSha256: "b".repeat(64), evidenceRevision: 1, mandateHash: "c".repeat(64) },
     authorizedBy: "owner", authorizedAt: "now", intentId: "intent", guardIssueId: "gate", guardCreation: "confirmed", relationConfirmed: true,
     periodKey: "period", requestedUnits: 1000, reservationId: "reservation", activationCommandId: "activate", startCommandId: "start" } } } as unknown as MissionRecord;
   const source = { companyId: "company", projectId: "project", missionId: "A", rootIssueId: "rootA", version: 1, aggregate: { schemaVersion: 1, commandReceipts: [], n1: { periodKey: "period" }, n2: { ordinary: { tasks: [] } } } } as unknown as MissionRecord;
-  const accepted = { ...target.aggregate.n6!.expectedResult, sha256: "b".repeat(64) };
+  const accepted = { ...target.aggregate.n6!.expectedResult, sha256: "b".repeat(64), attachmentId: "attachment", byteSize: 100 };
   vi.mocked(acceptedN5Submission).mockReturnValue(accepted as never);
   vi.mocked(readNativeG4Profile).mockResolvedValue({ periodKey: "period" } as never);
   const reservations = [{ missionId: "A", status: "settled", usage: { status: "known", units: 150 }, remainingExposure: { status: "known", units: 0 } }];
@@ -36,9 +36,10 @@ function fixture() {
     return [{ company_id: m.companyId, project_id: m.projectId, mission_id: m.missionId, root_issue_id: m.rootIssueId,
       owner_user_id: m.ownerUserId, version: m.version, aggregate: m.aggregate, created_at: new Date(), updated_at: new Date() }];
   }) }, companies: { get: vi.fn().mockResolvedValue({ defaultResponsibleUserId: "owner" }) }, issues: {
+    listAttachments: vi.fn().mockResolvedValue([{ id: "attachment", companyId: "company", issueId: "rootA", sha256: "b".repeat(64), byteSize: 100 }]),
     get: vi.fn().mockResolvedValue(gate), list: vi.fn().mockResolvedValue([gate]), create: vi.fn(),
     relations: { get: vi.fn().mockImplementation(async () => ({ blockedBy })), addBlockers: vi.fn() },
-    update: vi.fn().mockImplementation(async (_id, body) => { effects.push(`gate:${body.status}`); Object.assign(gate, body); }),
+    update: vi.fn().mockImplementation(async (_id, body) => { if (body.status) effects.push(`gate:${body.status}`); Object.assign(gate, body); }),
   } };
   vi.mocked(n2Cas).mockImplementation(async (_c, _m, aggregate) => { target = { ...target, version: target.version + 1, aggregate }; return target; });
   vi.mocked(executeN1BoardCommand).mockImplementation(async (_c, input) => {
@@ -77,6 +78,7 @@ it("rejects cross-project source and a simple result-dependency cycle", async ()
 it("uses one gate completion then persisted N1 activation/start, and replay adds no wake", async () => {
   const f = fixture(); const m = await reconcileN6(f.ctx, f.target);
   expect(f.effects).toEqual(["gate:done", "activate", "start-lead"]);
+  expect(inspectN6(m)?.nextActor).toBe("lead");
   const calls = vi.mocked(executeN1BoardCommand).mock.calls.map(([, input]) => input.body);
   expect(calls[0]).toEqual(m.aggregate.n6!.activationBody); expect(calls[1]).toEqual(m.aggregate.n6!.startBody);
   expect(m.aggregate.journal).toContainEqual(expect.objectContaining({ actorType: "automation", authorizedBy: "owner" }));

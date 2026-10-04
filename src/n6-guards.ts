@@ -65,6 +65,9 @@ export async function assertN6LaunchReady(ctx: PluginContext, m: MissionRecord, 
   if (!authorized || canonicalPayloadHash(body) !== canonicalPayloadHash(authorized)) {
     throw new MissionError(409, "n6_launch_authority", "N6 activation and dispatch must use the exact persisted owner-authorized commands");
   }
+  if (dep.coordination && (dep.coordination.state !== "released" || dep.coordination.tasks.some(t => !t.closedAt || !t.settledAt))) {
+    throw new MissionError(409, "n6_coordination_pending", "Delegated coordination must release B after all work settles");
+  }
   await assertN6AcceptedSource(ctx, m);
   const guard = await readN6Guard(ctx, m);
   const relations = await ctx.issues.relations.get(m.rootIssueId, m.companyId);
@@ -73,4 +76,19 @@ export async function assertN6LaunchReady(ctx: PluginContext, m: MissionRecord, 
       || relations.blockedBy.some(issue => issue.status !== "done")) {
     throw new MissionError(409, "n6_gate_pending", "Exact verified native gate and all blockers must be done before admission/dispatch");
   }
+}
+
+/** Exact accepted attachment is accessible to the authenticated downstream lead; no floating Git ref. */
+export async function readN6Handoff(ctx: PluginContext, m: MissionRecord) {
+  const source = await assertN6AcceptedSource(ctx, m);
+  const accepted = acceptedN5Submission(source);
+  const attachment = (await ctx.issues.listAttachments(source.rootIssueId, source.companyId)).find(a => a.id === accepted.attachmentId);
+  if (!attachment || attachment.companyId !== source.companyId || attachment.issueId !== source.rootIssueId
+      || attachment.sha256 !== accepted.sha256 || attachment.byteSize !== accepted.byteSize) {
+    throw new MissionError(409, "n6_attachment_mismatch", "Exact accepted source attachment must remain available and unchanged");
+  }
+  return { sourceMissionId: source.missionId, sourceRootIssueId: source.rootIssueId, expectedResult: m.aggregate.n6!.expectedResult,
+    attachmentId: accepted.attachmentId, downloadPath: `/api/attachments/${accepted.attachmentId}/content`,
+    sha256: accepted.sha256, byteSize: accepted.byteSize, baseCommit: accepted.baseCommit, candidateCommit: accepted.candidateCommit,
+    instruction: "Download with injected Bearer auth; verify SHA256, Git bundle and exact candidate before consuming. Never substitute main or a branch." };
 }

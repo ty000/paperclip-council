@@ -3,9 +3,9 @@ import { missionToolDeclaration } from "./manifest.js";
 import { councilNativeRequest } from "./decision-adapter.js";
 import { readNativeRun, readOrdinaryRun } from "./g4-native.js";
 import { AdmissionError } from "./admission.js";
-import { getMissionByOrdinaryIssue, MissionError } from "./missions.js";
+import { getMissionByOrdinaryIssue, getMissionByN6WorkIssue, MissionError } from "./missions.js";
 
-const agentCommands = new Set(["inspect", "plan", "materialize", "dispatch", "reconcile-usage", "record-contribution", "publish",
+const agentCommands = new Set(["n6-inspect", "n6-coordinate", "n6-facilitation-outcome", "inspect", "plan", "materialize", "dispatch", "reconcile-usage", "record-contribution", "publish",
   "ordinary-inspect", "ordinary-verdict",
   "confirm-review-handoff", "prepare-resubmission", "attest-transmission", "attest-n3-transmission", "n3-inspect", "n3-opinion", "n3-synthesize",
   "n5-inspect", "n5-rebind-plan", "n5-claim-publication", "n5-observe-delivery"]);
@@ -26,7 +26,7 @@ export async function missionToolRequest(ctx: PluginContext, value: unknown, run
   const publicRun = response.body as { nativeIssueId?: string; contextSnapshot?: { issueId?: string } } | null;
   const issueId = publicRun?.nativeIssueId ?? publicRun?.contextSnapshot?.issueId;
   if (response.status !== 200 || !issueId) throw new MissionError(409, "mission_tool_issue", "Native run must identify its issue");
-  const ordinary = publicRun?.nativeIssueId ? null : await getMissionByOrdinaryIssue(ctx, runCtx.companyId, issueId);
+  const ordinary = publicRun?.nativeIssueId ? null : (await getMissionByOrdinaryIssue(ctx, runCtx.companyId, issueId) ?? await getMissionByN6WorkIssue(ctx, runCtx.companyId, issueId));
   const run = await (ordinary ? readOrdinaryRun : readNativeRun)(ctx, { ...runCtx, issueId });
   if (run.status !== "running" || !run.startedAt || run.finishedAt) throw new MissionError(409, "mission_tool_inactive", "Exact native run must be active");
   const issue = await ctx.issues.get(issueId, runCtx.companyId);

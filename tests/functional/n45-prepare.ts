@@ -1,3 +1,4 @@
+import { m2MissionSpecs } from "./m2-campaign-spec.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -11,8 +12,8 @@ const runnerConfig = (profile: any) => ({ provider: "codex", model: profile.mode
 function campaignProtocol(profile: any) {
   if (profile.runtimeProfile === "ordinary-cli-v1") return {
     ordinary: true, instructions: ordinaryCampaignInstructions,
-    roles: ["lead", "backend", "frontend", "development", "quality", "reviewer", "publisher"], experimental: {},
-    runtimeProfile: "ordinary-cli-v1", periodLabel: "nominal7/max12", qaRole: "quality", nativeCommands: ordinaryCampaignInstructions("lead", profile),
+    roles: [...profile.campaign === "m2-coordination-v1" ? ["pm", "pmSuccessor", "facilitator"] : [], "lead", "backend", "frontend", "development", "quality", "reviewer", "publisher"], experimental: {},
+    runtimeProfile: "ordinary-cli-v1", periodLabel: `nominal${profile.nominalRuns}/max${profile.maxRuns}`, qaRole: "quality", nativeCommands: ordinaryCampaignInstructions("lead", profile),
   };
   return { ordinary: false, instructions: n45Instructions,
     roles: ["lead", "backend", "frontend", "development", "quality", "reviewer"], experimental: { enableNativeRunner: true },
@@ -33,8 +34,9 @@ async function campaignAgents(api: any, companyId: string, repository: string, p
   const agents: any = {};
   for (const role of protocol.roles) {
     const cli = protocol.ordinary || ["lead", "backend", "frontend"].includes(role);
-    const created = await api("POST", `/api/companies/${companyId}/agents`, { name: `Delivery ${role}`, role: role === "reviewer" ? "qa" : "engineer",
+    const created = await api("POST", `/api/companies/${companyId}/agents`, { name: `Delivery ${role}`, role: ["pm", "pmSuccessor"].includes(role) ? "pm" : role === "facilitator" ? "general" : role === "reviewer" ? "qa" : "engineer",
       adapterType: cli ? "codex_local" : "paperclip_runner", adapterConfig: cli ? n1DeliveryAdapterConfig({ model: profile.model, effort: profile.effort, repository }) : runnerConfig(profile),
+      ...agents.pm && role !== "pm" ? { reportsTo: agents.pm.id } : {},
       instructionsBundle: { entryFile: "AGENTS.md", files: { "AGENTS.md": protocol.instructions(role, profile) } },
       runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: false, maxConcurrentRuns: 1 } }, budgetMonthlyCents: 0 });
     agents[role] = await api("GET", `/api/agents/${created.id}`);
@@ -85,22 +87,32 @@ export async function prepareN45(input: any, profile: any) {
     periodStart: operatingProfile.periodStart, periodEnd: operatingProfile.periodEnd, measurement: { status: "known", source: "paperclip:issues.summaries.getOrchestration:terminal-token-ledger", unit: "tokens" },
     allowance: { status: "known", source, periodUnits: profile.periodUnits, taskUnits: profile.runUnits, knownUsageUnits: 0 }, exposure: { status: "known", source, units: 0 },
     limits: { maxConcurrent: 2, maxRetries: 0, maxCorrections: 1 } } });
-  const root = await api("POST", `/api/companies/${companyId}/issues`, { title: "Implement the Council Missions Delivery panel", projectId: project.id, status: "backlog", assigneeAgentId: agents.lead.id });
-  const missionId = randomUUID(); const missionBase = `/api/plugins/${input.pluginId}/api/companies/${companyId}/missions`;
-  const created = await api("POST", missionBase, { companyId, command: "create", commandId: randomUUID(), missionId, rootIssueId: root.id, projectId: project.id,
+  const common = { api, toolProfile, companyId, projectId: project.id, admissionPath, agents, repository, operatingProfile, pair, pluginId: input.pluginId };
+  const primary = await prepareCampaignMission(common, profile, protocol, profile.campaign === "m2-coordination-v1" ? m2MissionSpecs[0] : undefined);
+  const secondMission = profile.campaign === "m2-coordination-v1" ? await prepareCampaignMission(common, profile, protocol, m2MissionSpecs[1]) : undefined;
+  return { ...common, ...primary, secondMission };
+}
+
+async function prepareCampaignMission(common: any, profile: any, protocol: ReturnType<typeof campaignProtocol>, specification?: typeof m2MissionSpecs[number]) {
+  const { api, companyId, projectId, agents, pair, pluginId } = common;
+  const criteria = specification?.acceptanceCriteria ?? deliveryCriteria;
+  const selectedWork = specification?.work ?? deliveryWork;
+  const root = await api("POST", `/api/companies/${companyId}/issues`, { title: specification?.title ?? "Implement the Council Missions Delivery panel", projectId, status: "backlog", assigneeAgentId: agents.lead.id });
+  const missionId = randomUUID(); const missionBase = `/api/plugins/${pluginId}/api/companies/${companyId}/missions`;
+  const created = await api("POST", missionBase, { companyId, command: "create", commandId: randomUUID(), missionId, rootIssueId: root.id, projectId,
     teamRosterId: pair.team.head.rosterId, teamRevision: pair.team.revision.revision, councilRosterId: pair.council.head.rosterId, councilRevision: pair.council.revision.revision,
-    mandate: { objective: "Make Council delivery status and next useful action visible in the Missions page", acceptanceCriteria: deliveryCriteria,
+    mandate: { objective: specification?.objective ?? "Make Council delivery status and next useful action visible in the Missions page", acceptanceCriteria: criteria,
       commitments: ["Separate complementary ownership; serialize backend then frontend", "Independent N2/N3 acceptance before same-PR publication", "No artificial correction; no host/core/dependency changes"],
       limits: { taskPolicy: `${profile.runUnits} reserved units per run; not a provider hard cap`, periodPolicy: `${profile.periodUnits} token allowance, ${protocol.periodLabel} runs`, correctionLimit: 1, elapsedMinutes: 150 } } });
-  const work = deliveryWork.map(w => ({ ...w, contributionId: randomUUID(), assigneeAgentId: agents[w.key].id, sourceRefs: ["src/ui/index.tsx", "src/n5-state.ts"], dependencies: w.key === "frontend" ? ["backend presentation contract"] : [],
-    evidenceRefs: [], skills: ["native-git", "paperclip"], interface: "Lead confirms the pure delivery presentation contract before backend dispatch; frontend consumes it" }));
+  const work = selectedWork.map(w => ({ ...w, contributionId: randomUUID(), assigneeAgentId: agents[w.key].id, sourceRefs: specification ? ["src/n6-state.ts", "docs/n6/RESULT-DEPENDENCIES.md"] : ["src/ui/index.tsx", "src/n5-state.ts"], dependencies: w.key === "frontend" ? ["backend presentation contract"] : [],
+    evidenceRefs: [], skills: specification ? [] : ["native-git", "paperclip"], interface: "Lead confirms the current mission interface before sequential contribution dispatch; second contribution consumes the first" }));
   const plan = { missionId, mandateHash: canonicalPayloadHash(created.mission.aggregate.mandate), plannerAgentId: agents.lead.id, orchestratorAgentId: agents.lead.id,
     integrationLeadAgentId: agents.lead.id, qaAgentId: agents[protocol.qaRole].id, work };
-  const document = await api("PUT", `/api/issues/${root.id}/documents/plan`, { format: "markdown", title: "Delivery operational plan; lead refines inside mandate", body: JSON.stringify(plan) });
-  await api("PATCH", `/api/issues/${root.id}`, { description: JSON.stringify({ missionId, companyId, pluginId: input.pluginId, baseCommit: profile.candidateSha, work, runUnits: profile.runUnits,
+  const document = await api("PUT", `/api/issues/${root.id}/documents/plan`, { format: "markdown", title: `${specification?.key ?? "Delivery"} operational plan; lead refines inside mandate`, body: JSON.stringify(plan) });
+  await api("PATCH", `/api/issues/${root.id}`, { description: JSON.stringify({ missionId, companyId, pluginId, baseCommit: specification?.key === "B" ? "READ_N6_HANDOFF_CANDIDATE" : profile.candidateSha, work, runUnits: profile.runUnits,
     n1Commands: "inspect; plan contributions; materialize each; dispatch/reconcile-usage sequentially; publish exact bundle; finish normally without closing root. Each mutation uses fresh commandId and inspected expectedVersion.",
-    nativeCommands: protocol.nativeCommands, acceptanceCriteria: deliveryCriteria }) });
+    nativeCommands: protocol.nativeCommands, acceptanceCriteria: criteria }) });
   const missionPath = `${missionBase}/${missionId}`;
   const n3Slots = ["development", "quality"].map(role => ({ slotId: randomUUID(), perspective: role, specialistAgentId: agents[role].id, required: true, question: role === "development" ? "Is the integrated implementation correct and scoped?" : "Do observations substantiate each user-visible acceptance criterion?" }));
-  return { api, toolProfile, companyId, projectId: project.id, rootIssueId: root.id, missionId, missionPath, admissionPath, agents, repository, planRevisionId: document.latestRevisionId, operatingProfile, n3Slots, work };
+  return { key: specification?.key, rootIssueId: root.id, missionId, missionPath, planRevisionId: document.latestRevisionId, n3Slots, work };
 }
