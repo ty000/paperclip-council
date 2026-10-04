@@ -1,0 +1,188 @@
+(node:347955) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +63
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+   ╭──────────────────────────────────────────────────────────────────╮
+   │                                                                  │
+   │                Update available! 9.15.4 → 12.9.1.                │
+   │   Changelog: https://github.com/pnpm/pnpm/releases/tag/v12.9.1   │
+   │         Run "corepack install -g pnpm@12.9.1" to update.         │
+   │                                                                  │
+   ╰──────────────────────────────────────────────────────────────────╯
+
+Progress: resolved 63, reused 0, downloaded 61, added 61
+Progress: resolved 63, reused 0, downloaded 63, added 63, done
+.../esbuild@0.28.2/node_modules/esbuild postinstall$ node install.js
+.../esbuild@0.28.2/node_modules/esbuild postinstall: Done
+
+dependencies:
++ @paperclipai/plugin-sdk 2026.916.1
++ react 19.3.0
+
+devDependencies:
++ @paperclipai/shared 2026.916.1
++ @types/node 24.19.0
++ @types/react 19.3.0
++ esbuild 0.28.2
++ fallow 3.23.0
++ tsx 4.23.15
++ typescript 7.0.2
++ vitest 4.1.11
+
+Done in 2.1s
+
+> @paperclipai/plugin-council@0.6.0 build /tmp/paperclip-council-package-wNPMV2/candidate
+> tsc && node ./esbuild.config.mjs
+
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Already on 'contribution-a'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Already on 'contribution-a'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Already on 'contribution-a'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Already on 'contribution-a'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Already on 'contribution-a'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'contribution-b-side'
+[test] Switched to branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Automatic merge went well; stopped before committing as requested
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Automatic merge went well; stopped before committing as requested
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Automatic merge went well; stopped before committing as requested
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Switched to a new branch 'contribution-a'
+[test] Switched to branch 'main'
+[test] Switched to a new branch 'contribution-b'
+[test] Switched to a new branch 'candidate'
+[test] Cloning into '/tmp/paperclip-owned-root-qm5hNM/paperclip'...
+[test] done.
+[test] HEAD is now at 5b034e8 fixture
+[test] fatal: repository '/tmp/paperclip-host-fixture-k6KDx7/missing-source' does not exist
+[test] Cloning into '/tmp/paperclip-owned-root-J3D8dJ/paperclip'...
+[test] done.
+[test] HEAD is now at 5b034e8 fixture
+[test] Cloning into '/tmp/paperclip-owned-root-O1ImuV/paperclip'...
+[test] done.
+[test] HEAD is now at 5b034e8 fixture
+[test] Cloning into '/tmp/paperclip-owned-root-3gcjro/paperclip'...
+[test] done.
+[test] HEAD is now at 5b034e8 fixture
+[test] kill: (348787): No such process
+[test] Cloning into '/tmp/paperclip-owned-root-cI8meu/paperclip'...
+[test] done.
+[test] HEAD is now at 5b034e8 fixture
+[test] fatal: Not a valid object name 9195047f2670911450d9de353b037fbab18d5762^{commit}
+{
+  severity_local: 'NOTICE',
+  severity: 'NOTICE',
+  code: '42P06',
+  message: 'schema "plugin_private_paperclip_council_270061461e" already exists, skipping',
+  file: 'schemacmds.c',
+  line: '135',
+  routine: 'CreateSchemaCommand'
+}
+strict mode: missing type "number,string" for keyword "format" at "#/properties/councilApiKey" (strictTypes)
+[19:00:56] [33mWARN[39m: [36msetPluginEventBus called more than once, replacing existing bus[39m
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - `__dirname` (vite.config.ts:15:30). Use `import.meta.dirname` instead
+  - import "./src/lib/vite-watch" without a file extension (vite.config.ts:5:41). Add the file extension
+  - import "./src/lib/vite-api-proxy" without a file extension (vite.config.ts:6:32). Add the file extension
+  - import "./src/lib/vite-sw-build-id" without a file extension (vite.config.ts:7:44). Add the file extension
+  - import "./src/lib/vite-build-commit" without a file extension (vite.config.ts:8:40). Add the file extension
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+`server.hmr.protocol/host/port/path/clientPort/timeout/server` is deprecated. Use `server.ws.*` instead. Note that this option may be set by a plugin. Set VITE_DEPRECATION_TRACE=1 to see where it is called.
+{
+  severity_local: 'NOTICE',
+  severity: 'NOTICE',
+  code: '42P06',
+  message: 'schema "plugin_private_paperclip_council_270061461e" already exists, skipping',
+  file: 'schemacmds.c',
+  line: '135',
+  routine: 'CreateSchemaCommand'
+}
+strict mode: missing type "number,string" for keyword "format" at "#/properties/councilApiKey" (strictTypes)
+{
+  severity_local: 'NOTICE',
+  severity: 'NOTICE',
+  code: '42P06',
+  message: 'schema "plugin_private_paperclip_council_270061461e" already exists, skipping',
+  file: 'schemacmds.c',
+  line: '135',
+  routine: 'CreateSchemaCommand'
+}
+[19:00:58] [33mWARN[39m: [36mplugin-loader: startup config delivery rejected — single-tenant plugin configured for multiple companies[39m [90m{"service":"plugin-loader","pluginId":"04d899c0-2911-4c2e-ab22-3c2e34707bca","pluginKey":"private.paperclip-council","companyId":"f4310900-c108-4478-a047-f410ed0e7777","code":-32006}[39m
+    err: "configChanged: refusing to overwrite configuration for company \"6c1db472-b3db-45d5-884b-71acbb58a8fe\" with a different configuration for company \"f4310900-c108-4478-a047-f410ed0e7777\". This plugin is single-tenant and cannot safely serve multiple companies from one worker. If multi-company support is intended, set multiCompanyConfig: true on the plugin definition and key per-company state on context.companyId."
+{"outcome":"ORDINARY CAMPAIGN PREPARATION OBSERVED","evidence":"/home/davy-lp/.codex/worktrees/council-n5/paperclip-council/artifacts/ordinary-campaign-prepare-21f6f80bd7bb882cdb796b48824f2060e6e09f5b.json","results":{"installation":"PASS"}}
+Ordinary prepare completed: /home/davy-lp/.codex/worktrees/council-n5/paperclip-council/artifacts/ordinary-campaign-prepare-21f6f80bd7bb882cdb796b48824f2060e6e09f5b.json

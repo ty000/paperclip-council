@@ -1,0 +1,33 @@
+[typecheck] START pnpm typecheck
+[test] START pnpm test -- --maxWorkers=2
+[build] START pnpm build
+[typecheck] 
+[typecheck] > @paperclipai/plugin-council@0.6.0 typecheck /tmp/paperclip-council-package-wNPMV2/candidate
+[typecheck] > tsc --noEmit && tsc --noEmit -p tsconfig.test.json
+[typecheck] 
+[build] 
+[build] > @paperclipai/plugin-council@0.6.0 build /tmp/paperclip-council-package-wNPMV2/candidate
+[build] > tsc && node ./esbuild.config.mjs
+[build] 
+[test] 
+[test] > @paperclipai/plugin-council@0.6.0 test /tmp/paperclip-council-package-wNPMV2/candidate
+[test] > vitest run --config ./vitest.config.ts "--maxWorkers=2"
+[test] 
+[test] 
+[test]  RUN  v4.1.11 /tmp/paperclip-council-package-wNPMV2/candidate
+[test] 
+[build] PASS duration=0.736s exit=0 signal=none
+[typecheck] PASS duration=1.005s exit=0 signal=none
+[test] 
+[test]  Test Files  35 passed (35)
+[test]       Tests  375 passed (375)
+[test]    Start at  19:00:35
+[test]    Duration  8.54s (transform 921ms, setup 0ms, import 2.35s, tests 11.46s, environment 2ms)
+[test] 
+[test] PASS duration=9.077s exit=0 signal=none
+
+Check summary:
+- typecheck: PASS (1.005s, exit=0, signal=none)
+- test: PASS (9.077s, exit=0, signal=none)
+- build: PASS (0.736s, exit=0, signal=none)
+- total wall time: 9.081s

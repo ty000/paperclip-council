@@ -1,0 +1,14 @@
+{
+  "scope": "Local disposable Git transport preflight only; no GitHub/provider effect",
+  "councilSource": "76cd747e90e12704c232c95d8b785eb8e9fa151b",
+  "startedAt": "2026-10-04T16:36:55.488432+00:00",
+  "base": "38fcf22a32a82bf180f604cc1ac8aacd8a00b61b",
+  "v1": "f1d7d81c5856816cf71fc4ebc0d2b5e15955a7fd",
+  "v2": "76bdec5d778f85a5fe746427ffcdaa486f8d0fc2",
+  "ordinaryPushRejected": true,
+  "WrongExpectedHeadLeaseRejected": true,
+  "ExactV1LeaseUpdatedSameBranchToV2": true,
+  "remoteKind": "temporary local bare repository",
+  "ownedTemporaryRepositoriesRemoved": true,
+  "finishedAt": "2026-10-04T16:36:55.601299+00:00"
+}

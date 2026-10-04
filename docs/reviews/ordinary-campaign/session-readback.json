@@ -1,0 +1,22 @@
+{
+  "source": "bbde20f6ea481b0416c5223c1b3a3bb50c975791",
+  "sessionId": "fb078374-a190-4ccf-9fe9-7d9692caf15f",
+  "ownerAuthenticatedMissionRead": "PASS",
+  "missionId": "3ad8c401-f207-485f-aa20-22cf54917d11",
+  "sevenCliAgentsDisabled": true,
+  "ownerSecretFilesMode": "0600",
+  "packagePathEqualsWorkspace": true,
+  "configurationCompanies": [
+    {
+      "companyId": "b4cc5f54-948c-46d4-b3c9-927cd4fa27ba"
+    }
+  ],
+  "noProvider": true,
+  "sessionStopped": true,
+  "finalRunCount": 0,
+  "ownedRuntimeRemoved": true,
+  "sourceArchiveVerified": true,
+  "distBuildHashesAgree": true,
+  "freshPlanPlaceholder": true,
+  "secretPatternScan": "PASS"
+}

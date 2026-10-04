@@ -1,5 +1,7 @@
 # Council Delivery campaign preparation — historical runner recipe
 
+The executable current preparation/session/stop path is [Ordinary Delivery campaign](ORDINARY-CAMPAIGN.md). It uses seven roles and the new explicit 7 nominal / 12 maximum / 24M proposal, without authorizing LIVE. The historical launcher below stays unchanged.
+
 The current path is `ordinary-cli-v1`, documented in [ordinary review](../n3/ORDINARY-CLI-REVIEW.md) and [N5 delivery](NATIVE-DELIVERY.md). Keep the lead and all review/publisher agents on `codex_local` with explicit `engine: cli`; use authenticated plugin APIs. The provider-free ordinary nominal has twelve runs for V1 acceptance → publisher → one owner-resumed correction → V2 acceptance → same-PR update. This is not a new LIVE budget or publication authorization. The `run-n45-campaign.mjs` launcher below remains the historical runner preparation; it has not been ported by the ordinary lot. The runner switch, gateway/projected-sandbox prerequisites and old 9/15-run estimates below apply only to that historical recipe.
 
 This lot prepares an isolated instance and six disabled identities for the representative Council Missions Delivery panel. It does not implement that panel or authorize provider/GitHub effects. `prepare` uses the existing qualification host/bootstrap and cleans its temporary database, instance and clone at exit. Its company/agent/plan IDs are evidence, not reusable live IDs. `launch` deliberately directs the operator to this recipe; it does not start a partial automatic campaign.

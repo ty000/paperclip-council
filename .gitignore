@@ -33,3 +33,6 @@ artifacts/n5-continuation-native-lifecycle-*.log
 
 artifacts/n45-*.json
 artifacts/n45-*.log
+
+artifacts/ordinary-campaign-*.json
+artifacts/ordinary-campaign-*.log

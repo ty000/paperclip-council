@@ -1,0 +1,113 @@
+{
+  "claim": "Provider-free ordinary Delivery campaign preparation with seven disabled CLI roles, same-workspace install/upgrade, authenticated retained owner session and owned stop; no model or GitHub execution",
+  "sourceCommit": "bbde20f6ea481b0416c5223c1b3a3bb50c975791",
+  "canonicalChecksCommit": "21f6f80bd7bb882cdb796b48824f2060e6e09f5b",
+  "baseCommit": "35252e66071526d41e935ef8fddb51281a73586f",
+  "hostCommit": "61b3fd57a695614dc4a37e2303f426a34a9795cf",
+  "evidence": [
+    {
+      "type": "automated-test",
+      "result": "pass",
+      "description": "Canonical375/typecheck/build in isolated source21f6 workspace; final delta only bootstrap configuration",
+      "command": "node scripts/ci/run-checks.mjs",
+      "path": "docs/reviews/ordinary-campaign/canonical-checks-21f6f80.log"
+    },
+    {
+      "type": "runtime-observation",
+      "result": "pass",
+      "description": "Exactbbde20f session preparation, authenticated owner readback and explicit owned stop, all agents disabled",
+      "steps": [
+        "Set candidateSha to clean exactHEAD in qualification/ordinary-campaign.example.json copied outside tracked source",
+        "PAPERCLIP_TEST_HOST_ROOT=<cleanhost> pnpm qualification:ordinary session <profile.json>",
+        "Use mode0600 owner curl config for real GET mission/agents, with no wake",
+        "pnpm qualification:ordinary stop artifacts/ordinary-campaign-session-bbde20f6ea481b0416c5223c1b3a3bb50c975791.json",
+        "Observe original session exit0 and cleanup"
+      ],
+      "path": "artifacts/ordinary-campaign-session-bbde20f6ea481b0416c5223c1b3a3bb50c975791.json"
+    },
+    {
+      "type": "command-output",
+      "result": "pass",
+      "description": "Raw Fallow WARN/exit0 at exact bbde20f: nonblocking harness duplication, no introduced dead-code or complexity; result pass means successful bounded audit, not raw-clean",
+      "command": "FALLOW_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 node_modules/.bin/fallow audit --base 35252e66071526d41e935ef8fddb51281a73586f --format json --quiet",
+      "path": "docs/reviews/ordinary-campaign/static-audit-raw.json"
+    },
+    {
+      "type": "command-output",
+      "result": "pass",
+      "description": "Normalized static audit wrapper at exactbbde20f",
+      "command": "node scripts/ci/run-static-audit.mjs --base-ref 35252e66071526d41e935ef8fddb51281a73586f",
+      "path": "docs/reviews/ordinary-campaign/static-audit-wrapper.json"
+    }
+  ],
+  "residual_risk": "Raw Fallow WARN/exit0 (two nonblocking harness duplication groups); wrapper PASS. Preparation is not provider/model/sandbox/GitHub access or execution. No UI implementation or N6. N1, owner resume and refresh assistance remain explicit. 21f6 prepare label exited0 but loader rejected one of two company configs: partial runtime evidence, fixed and requalified bybbde session. Proposed7/12runs2M/24M is not authorization or hard provider cap. Historical bareGit lease proof is not an external push.",
+  "artifacts": {
+    "partialPrepare": {
+      "path": "artifacts/ordinary-campaign-prepare-21f6f80bd7bb882cdb796b48824f2060e6e09f5b.json",
+      "sha256": "5fa8c3166b0968c45e92fdcdaef20a93752dd8005e9aca3ccaab64f84213c9ca",
+      "exitCode": 0,
+      "qualification": "partial due to initial multi-company loader warning"
+    },
+    "finalSession": {
+      "path": "artifacts/ordinary-campaign-session-bbde20f6ea481b0416c5223c1b3a3bb50c975791.json",
+      "sha256": "4f5d05a57e7349129431c402d85ee16d3d1b5777c9405d760c1dba9496c69c6b",
+      "exitCode": 0,
+      "qualification": "pass",
+      "finalRuns": 0,
+      "cleanup": "pass"
+    }
+  },
+  "review": {
+    "kind": "independent local source and session review",
+    "status": "no material finding",
+    "notGitHubReview": true
+  },
+  "proposedCampaign": {
+    "nominalRuns": 7,
+    "maxRuns": 12,
+    "runUnits": 2000000,
+    "periodUnits": 24000000,
+    "maxCorrections": 1,
+    "maxRetries": 0,
+    "model": "gpt-5.6-sol",
+    "effort": "medium",
+    "modelAvailabilityObserved": false,
+    "providerAuthorized": false,
+    "githubPublicationAuthorized": false
+  },
+  "files": {
+    "docs/reviews/ordinary-campaign/session-readback.json": "cc72c421073238e009617ae16e1cc4c1bc3703ef65731038a72a7c295414eb7b",
+    "docs/reviews/ordinary-campaign/static-audit-wrapper-precommit.json": "6f0411468508e2616c0df962a52bd8759e362aa3295daaeb4831bd0521f498d1",
+    "docs/reviews/ordinary-campaign/static-audit-wrapper-before.json": "49b1123b32e43717c63fd9ae44affad27fd1af71c3e4c46b0d4dd51a9f8dd563",
+    "docs/reviews/ordinary-campaign/static-audit-wrapper.json": "8e9fb872ce7facb9eb708b3517f4b3a9eca34e92a09622529626b521c341fe0c",
+    "docs/reviews/ordinary-campaign/static-audit-raw-extraction.json": "60f6906412eb4ab79a38a38a129bf1aea94412ec7c71a66854c74a64315c3a43",
+    "docs/reviews/ordinary-campaign/ordinary-campaign-session-bbde20f.log": "f1952ce35431573f1f716620c9103846c24343ca27d1ed92e5f350c58119ba1d",
+    "docs/reviews/ordinary-campaign/static-audit-raw-before.json": "b462a026051d2a0b224c1b2d70773551be3e7d9a44f0c161fd2e4a679b56fca4",
+    "docs/reviews/ordinary-campaign/static-audit-wrapper-extraction.json": "8a2989c1fa9490c5b1196b3d35ffc4715985c76af4b73391a3bc381523d966e6",
+    "docs/reviews/ordinary-campaign/REPORT.md": "2ba41ef544e9000402f5ead161a2309e862293b3b3275f9e4e502c17a3efcbf5",
+    "docs/reviews/ordinary-campaign/static-audit-raw.json": "a62a70d3d10bf651ac5dc3ff4e21d94af35d817235de12c01bc58e3ed4944f83",
+    "docs/reviews/ordinary-campaign/git-publication-preflight.json": "97a55ce170c5c4a9de45c7e5eac5461a08f34c660d48e8be26bd5c6b07f0ba76",
+    "docs/reviews/ordinary-campaign/ordinary-campaign-prepare-21f6f80.log": "60df018b688770cd2e49a079e10c3a24e35de54a82086c4b380ea20ebbf4d785",
+    "docs/reviews/ordinary-campaign/static-audit-raw-precommit.json": "0e770bb4619f8e89d815c9a9612f9ca1ce70fe40f33e59764368df5f5ed8046c",
+    "docs/reviews/ordinary-campaign/canonical-checks-21f6f80.log": "db4eb0cf0e9ca0b9ad17cf49632a0664e46e182089f19a863e02aede55ba8298"
+  },
+  "staticAudit": {
+    "rawVerdict": "warn",
+    "rawExitCode": 0,
+    "wrapperStatus": "pass",
+    "wrapperExitCode": 0,
+    "introduced": {
+      "gate": "new-only",
+      "dead_code_introduced": 0,
+      "dead_code_inherited": 0,
+      "complexity_introduced": 0,
+      "complexity_inherited": 4,
+      "duplication_introduced": 2,
+      "duplication_inherited": 4,
+      "styling_introduced": 0,
+      "styling_inherited": 0,
+      "duplication_demoted": 3
+    },
+    "disposition": "Two introduced harness duplication groups, nonblocking; raw WARN is not raw cleanliness."
+  }
+}

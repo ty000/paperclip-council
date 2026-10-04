@@ -12,6 +12,10 @@ import { nativeRunEvidence, runLiveN1 } from "./n1-live.js";
 import { runLiveN2 } from "./n2-live.js";
 import { prepareN2Prerequisite } from "./n2-prerequisite.js";
 import { runN2NativeLifecycle } from "./n2-native-lifecycle.js";
+import { runOrdinaryCampaignPreparation } from "./ordinary-campaign.js";
+import { prepareOrdinaryWorkspace } from "./ordinary-campaign-workspace.js";
+// @ts-expect-error Qualification contracts are plain ESM.
+import { ordinaryCampaignProfile as validateOrdinaryCampaignProfile } from "../../scripts/qualification/ordinary-campaign-contract.mjs";
 import { runN45Preparation } from "./n45-campaign.js";
 // @ts-expect-error Qualification contracts are plain ESM.
 import { n45Profile as validateN45Profile } from "../../scripts/qualification/n45-contract.mjs";
@@ -40,6 +44,7 @@ const candidateBranch = execFileSync("git", ["branch", "--show-current"], {
   cwd: packageRoot,
   encoding: "utf8",
 }).trim();
+const ordinaryCampaignProfile = process.env.COUNCIL_ORDINARY_CAMPAIGN_PROFILE ? validateOrdinaryCampaignProfile(JSON.parse(process.env.COUNCIL_ORDINARY_CAMPAIGN_PROFILE), JSON.parse(process.env.COUNCIL_ORDINARY_CAMPAIGN_PROFILE).mode, candidateCommit) : null;
 const n45Profile = process.env.COUNCIL_N45_PROFILE ? validateN45Profile(JSON.parse(process.env.COUNCIL_N45_PROFILE), "prepare", candidateCommit) : null;
 const liveN1Authorized = process.env.COUNCIL_N1_LIVE_AUTHORIZED === "1";
 const liveN2Authorized = process.env.COUNCIL_N2_LIVE_AUTHORIZED === "1";
@@ -52,6 +57,7 @@ assert(!(n2PrerequisiteMode && (liveN1Authorized || liveN2Authorized || isolated
   "The provider-free N2 prerequisite cannot run inside a LIVE campaign");
 assert(!(n2NativeLifecycleMode && (n2PrerequisiteMode || liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized)), "Native deterministic qualification excludes every LIVE mode");
 assert(!(n45Profile && (n2NativeLifecycleMode || n2PrerequisiteMode || liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized)), "N45 preparation excludes every execution mode");
+assert(!(ordinaryCampaignProfile && (n45Profile || n2NativeLifecycleMode || n2PrerequisiteMode || liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized)), "Ordinary preparation excludes execution modes");
 const liveNativeAuthorized = liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized;
 const liveN2Campaign = liveN2Authorized || isolatedLiveN2Authorized;
 const liveEnvironmentPrefix = isolatedLiveN2Authorized
@@ -97,8 +103,10 @@ assert.equal(dirname(runtime), resolve(tmpdir()), "qualification runtime must be
 assert(basename(runtime).startsWith("paperclip-council-package-"), "qualification runtime must use the owned prefix");
 const runtimeCleanup = createFunctionalRuntimeCleanup({ runtime, parentOwned: Boolean(suppliedRuntime) });
 let runtimeCleanupHandled = false;
+let ordinaryPreparationSucceeded = false;
 try {
 const preparedCandidate = await prepareCandidatePackage(packageRoot, candidateCommit, runtime);
+const ordinaryWorkspaceProof = ordinaryCampaignProfile ? await prepareOrdinaryWorkspace(preparedCandidate.packageRoot, packageRoot, ordinaryCampaignProfile) : undefined;
 const evidencePath = process.env.COUNCIL_PACKAGE_EVIDENCE_PATH
   ?? resolve(packageRoot, "artifacts", "functional.json");
 await mkdir(dirname(evidencePath), { recursive: true });
@@ -132,7 +140,7 @@ const requireServer = createRequire(resolve(root, "server/package.json"));
 const { eq, inArray, sql } = requireServer("drizzle-orm");
 const evidence: Record<string, any> = {
   schemaVersion: 1,
-  proofId: n45Profile ? "paperclip-council-n45-provider-free-preparation-v1" : n2NativeLifecycleMode ? `paperclip-council-${process.env.COUNCIL_N5_CONTINUATION === "1" ? "n5-continuation" : process.env.COUNCIL_N5_NATIVE_LIFECYCLE === "1" ? "n5" : process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1" ? "n3" : "n2"}-native-deterministic-lifecycle-v1` : n2PrerequisiteMode
+  proofId: ordinaryCampaignProfile ? "paperclip-council-ordinary-campaign-preparation-v1" : n45Profile ? "paperclip-council-n45-provider-free-preparation-v1" : n2NativeLifecycleMode ? `paperclip-council-${process.env.COUNCIL_N5_CONTINUATION === "1" ? "n5-continuation" : process.env.COUNCIL_N5_NATIVE_LIFECYCLE === "1" ? "n5" : process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1" ? "n3" : "n2"}-native-deterministic-lifecycle-v1` : n2PrerequisiteMode
     ? "paperclip-council-n2-native-stage-prerequisite-v1"
     : isolatedLiveN2Authorized
     ? "paperclip-council-n2-isolated-observable-native-qualification-v1"
@@ -146,7 +154,7 @@ const evidence: Record<string, any> = {
   hostTrackedFilesClean: hostStatus === "",
   branch: execFileSync("git", ["branch", "--show-current"], { cwd: root, encoding: "utf8" }).trim(),
   node: process.version,
-  command: n45Profile ? "node scripts/qualification/run-n45-campaign.mjs prepare <exact-profile.json>" : n2NativeLifecycleMode
+  command: ordinaryCampaignProfile ? "node scripts/qualification/run-ordinary-campaign.mjs prepare|session <exact-profile.json>" : n45Profile ? "node scripts/qualification/run-n45-campaign.mjs prepare <exact-profile.json>" : n2NativeLifecycleMode
     ? `${process.env.COUNCIL_N5_CONTINUATION === "1" ? "COUNCIL_N5_CONTINUATION=1 COUNCIL_N5_NATIVE_LIFECYCLE=1 " : process.env.COUNCIL_N5_NATIVE_LIFECYCLE === "1" ? "COUNCIL_N5_NATIVE_LIFECYCLE=1 " : ""}${process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1" ? "COUNCIL_N3_NATIVE_LIFECYCLE=1 " : ""}PAPERCLIP_TEST_HOST_ROOT=<clean-host> COUNCIL_N2_NATIVE_HOST_COMMIT=<exact-host-sha> pnpm qualification:native:n2`
     : liveN2Authorized
     ? "COUNCIL_N2_LIVE_AUTHORIZED=1 COUNCIL_N2_LIVE_MODEL=gpt-5.6-sol COUNCIL_N2_LIVE_EFFORT=high COUNCIL_N2_LIVE_RUN_UNITS=<positive> COUNCIL_N2_LIVE_PERIOD_UNITS=<exactly-6x-run> pnpm qualification:live:n2"
@@ -547,7 +555,7 @@ try {
     hostVersion: "0.3.1",
     localPluginDir: resolve(runtime, "plugins"),
     pluginWorkerManager: workerManager,
-    ...(n45Profile ? {} : { decisionServiceOptions: { wakeOriginAgent: async () => undefined } }),
+    ...(n45Profile || ordinaryCampaignProfile ? {} : { decisionServiceOptions: { wakeOriginAgent: async () => undefined } }),
     betterAuthHandler: createBetterAuthHandler(auth),
     resolveSession: (req: any) => resolveBetterAuthSession(auth, req),
   });
@@ -641,6 +649,7 @@ try {
   assert.equal(install.status, 200);
   const pluginId = install.body.id;
   evidence.configuration.pluginId = pluginId;
+  if (!ordinaryCampaignProfile) {
   const configured = await request("human", "POST", `/api/plugins/${pluginId}/config`, {
     companyId,
     configJson: {
@@ -651,6 +660,7 @@ try {
     },
   });
   assert.equal(configured.status, 200);
+  }
 
   await closeApp();
   workerManager = createPluginWorkerManager();
@@ -661,10 +671,12 @@ try {
     server!.listen(address.port, "127.0.0.1", resolveListen);
   });
   await app.locals.bundledPluginsStartup;
-  assert(workerManager.isRunning(pluginId), "installed package worker must load after restart");
+  if (!ordinaryCampaignProfile) assert(workerManager.isRunning(pluginId), "installed package worker must load after restart");
   evidence.results.installation = "PASS";
 
-  if (n45Profile) {
+  if (ordinaryCampaignProfile) {
+    await runOrdinaryCampaignPreparation({ request, pluginId, baseUrl, cookie, runtime, ownerUserId: userId, ownerPassword: password, packageRoot, missionWorkspace: preparedCandidate.packageRoot, workspaceProof: ordinaryWorkspaceProof, hostImport, evidence, save, db, tables, eq }, ordinaryCampaignProfile);
+  } else if (n45Profile) {
     await runN45Preparation({ request, pluginId, baseUrl, cookie, runtime, ownerUserId: userId, packageRoot, hostImport, evidence, save, db, tables, eq }, n45Profile);
   } else if (n2NativeLifecycleMode) {
     await runN2NativeLifecycle({ request, pluginId, baseUrl, cookie, runtime, ownerUserId: userId,
@@ -2244,6 +2256,7 @@ try {
     assert(!serializedEvidence.includes(credential.token), "evidence must not contain an agent token");
   }
   await save();
+  ordinaryPreparationSucceeded = evidence.outcome === "ORDINARY CAMPAIGN PREPARATION OBSERVED" && !evidence.cleanupError && !evidence.databaseCleanupError && !evidence.runtimeCleanupError;
   console.log(JSON.stringify({
     outcome: evidence.outcome,
     evidence: evidencePath,
@@ -2257,3 +2270,5 @@ try {
     if (earlyCleanup.error) throw earlyCleanup.error;
   }
 }
+
+if (ordinaryCampaignProfile) process.exit(ordinaryPreparationSucceeded ? 0 : 1);
