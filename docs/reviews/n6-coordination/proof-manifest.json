@@ -1,0 +1,163 @@
+{
+  "schema": "council-n6-coordination-m2-preparation-proof-v1",
+  "claim": "Bounded delegated PM/facilitator coordination, owner transfer and same-source accepted correction rebind work through installed native APIs/G4 before one downstream N1 launch; M2 session preparation supplies two inactive missions and ten disabled CLI roles with actionable handoff, then stops cleanly. No real M2/provider/publication qualification.",
+  "status": "functional-pass-with-static-reservations",
+  "sourceCommit": "e58aaa797f34b6e2f35e8211ec65fe368e17c3a3",
+  "deltaBaseCommit": "6bfe025e737da92c245a55e86e842ed1eecec486",
+  "auditBaseCommit": "a6176cd5c81b5e8fabbd5d02aa8f9db6c8bf7f4b",
+  "hostCommit": "61b3fd57a695614dc4a37e2303f426a34a9795cf",
+  "evidence": [
+    {
+      "type": "automated-test",
+      "result": "pass",
+      "description": "Canonical typecheck/build/436 tests in 40 files on final source bytes before source commit",
+      "command": "node scripts/ci/run-checks.mjs",
+      "exitCode": 0
+    },
+    {
+      "type": "runtime-observation",
+      "result": "pass",
+      "description": "Installed exact-source provider-free coordination, 14 succeeded/settled, 2100 synthetic units, zero exposure",
+      "command": "COUNCIL_N6_DEPENDENCIES=1 COUNCIL_N6_COORDINATION=1 node_modules/.bin/tsx tests/functional/ordinary-installed.ts artifacts/n6-installed-coordination-replay-$(date +%s).json",
+      "executedCommand": "COUNCIL_N6_DEPENDENCIES=1 COUNCIL_N6_COORDINATION=1 node_modules/.bin/tsx tests/functional/ordinary-installed.ts artifacts/n6-installed-coordination-e58aaa7.json",
+      "exitCode": 0
+    },
+    {
+      "type": "runtime-observation",
+      "result": "pass",
+      "description": "M2 prepare/session and explicit stop on exact source; two drafts/ten disabled roles/zero runs and wakes; owned cleanup",
+      "steps": [
+        "Generate exact clean profile using docs/n6/M2-CAMPAIGN.md and qualification/ordinary-m2.example.json",
+        "PAPERCLIP_TEST_HOST_ROOT=\"$PWD/.paperclip/qualification/paperclip\" node scripts/qualification/run-ordinary-campaign.mjs session /tmp/council-m2-e58aaa7-profile.json",
+        "Read preparation evidence and private owner-file permissions without printing credentials",
+        "node scripts/qualification/run-ordinary-campaign.mjs stop artifacts/ordinary-campaign-session-e58aaa797f34b6e2f35e8211ec65fe368e17c3a3.json",
+        "Wait for launcher exit0, stopped state, zero final runs and runtime removal"
+      ],
+      "exitCode": 0
+    },
+    {
+      "type": "command-output",
+      "result": "pass",
+      "description": "Normalized wrapper diff-gate only; raw FAIL is separately retained and manually disposed",
+      "command": "node scripts/ci/run-static-audit.mjs --base-ref origin/main",
+      "exitCode": 0
+    }
+  ],
+  "coordination": {
+    "artifact": "artifacts/n6-installed-coordination-e58aaa7.json",
+    "sourceHashCount": 54,
+    "companyId": "cb514bb7-c997-407a-bce9-cf1cdbcd667b",
+    "sourceMissionId": "4962dc0b-1ee4-4a01-a3ed-7d20a67de64d",
+    "downstreamMissionId": "38cac16f-eb71-4ada-ab7e-2d325e06ba0a",
+    "runs": 14,
+    "settledReservations": 14,
+    "knownUnits": 2100,
+    "exposure": 0,
+    "coordinatorTransfer": true,
+    "restartSameTaskIdentities": true,
+    "sameSourceRebind": true,
+    "rootSupersessionObserved": true,
+    "authenticatedBArtifactDownload": true,
+    "cleanup": {
+      "databaseCleaned": true,
+      "serverStopped": true,
+      "runtimeRemoved": true
+    }
+  },
+  "preparation": {
+    "artifact": "artifacts/ordinary-campaign-session-e58aaa797f34b6e2f35e8211ec65fe368e17c3a3.json",
+    "sourceArchiveSha256": "e5b90e69f6f70ebba05f0fd3ef607c354a3c2cddca9bb428d972a16efaa97799",
+    "distSha256": "22564b38a3e98580b04398084eaa5f5f294fd6cb39efb90904d1fd285d7ba498",
+    "roles": 10,
+    "missionCount": 2,
+    "runCountAtPreparation": 0,
+    "wakeupCountAtPreparation": 0,
+    "finalSessionRunCount": 0,
+    "sessionState": "stopped",
+    "packagePathEqualsWorkspace": true,
+    "samePathUpgradeObserved": true,
+    "ownerPrivateFilesMode": "0600 before stop; removed with owned runtime",
+    "providerAuthorized": false,
+    "githubPublicationAuthorized": false,
+    "modelAvailabilityObserved": false,
+    "cleanup": {
+      "runtimePath": "/tmp/paperclip-council-package-KDeRzD",
+      "ownedRuntimeRemoved": true
+    }
+  },
+  "staticAudit": {
+    "rawVerdict": "fail",
+    "rawExitCode": 1,
+    "wrapperStatus": "pass",
+    "wrapperExitCode": 0,
+    "head": "e58aaa797f34b6e2f35e8211ec65fe368e17c3a3",
+    "introduced": {
+      "gate": "new-only",
+      "dead_code_introduced": 3,
+      "dead_code_inherited": 11,
+      "complexity_introduced": 10,
+      "complexity_inherited": 19,
+      "duplication_introduced": 2,
+      "duplication_inherited": 28,
+      "styling_introduced": 0,
+      "styling_inherited": 0,
+      "duplication_demoted": 0
+    },
+    "disposition": "No introduced high/critical product complexity. Product coordinationReport CC16/cognitive18, bind CC13 and inspectMission CC11 are moderate. High harness prepareCampaignMission CC14 and terminalDownstream CC9 use estimated coverage; installed execution is separately proven. Other harness findings moderate. Three cycles share dynamic N1->n6-guards imports (no top-level await); two bootstrap clones with historical probe. No suppressions, graph rewrite or new remediation pass; raw FAIL remains visible."
+  },
+  "review": {
+    "kind": "independent local source, runtime evidence and static-residual review",
+    "status": "PASS-bounded-no-material-nominal-finding",
+    "notGitHubReview": true,
+    "parentVerification": "54 source/build hashes; 14 succeeded/settled; zero exposure; M2 ten roles/two drafts/zero final runs; private/runtime cleanup; nine historical evidence hashes unchanged"
+  },
+  "residual_risk": "Coordination reports/content/usage are synthetic CLI fixture output, not real PM/facilitator judgment. B is qualified through admitted launch, authenticated inspect/download and owner-held termination, not a deliverable. Source N1 and final B fixture closure retain explicit owner assistance. Real M2 roles/model/subprocess credentials/browser/publication remain unexecuted. M2 envelope16/25 and50M is a proposal, not spending authority. One finite two-mission handoff, no general scheduler/graph/resource manager or autonomy claim. Raw Fallow FAIL residuals retained.",
+  "artifacts": [
+    {
+      "path": "artifacts/n6-installed-coordination-e58aaa7.json",
+      "sha256": "02a4a66d5a523300aa1ac189d69510edc5b235af8b872658c6c477403177847f",
+      "tracked": false
+    },
+    {
+      "path": "artifacts/n6-installed-coordination-e58aaa7.log",
+      "sha256": "ac61704fe1b3e24d55cce76fa3b66ee81694f6dce9cbb1d417a98c94942f6410",
+      "tracked": false
+    },
+    {
+      "path": "artifacts/ordinary-campaign-session-e58aaa797f34b6e2f35e8211ec65fe368e17c3a3.json",
+      "sha256": "e1bba4cd765486823e23e9169de5962085cc5c04ea38782669a0cc4c5122d3ac",
+      "tracked": false
+    },
+    {
+      "path": ".runtime/n6-coordination/m2-session-e58aaa7.log",
+      "sha256": "50b937ebe3b9d11e6eadfd82a8405f64db72c033f46fb37ccb3d6bf506612aab",
+      "tracked": false
+    },
+    {
+      "path": ".runtime/n6-coordination/canonical.log",
+      "sha256": "8a494b659184a532f7defad63b3f50d2ddd422ae8381851a78295216feb490c7",
+      "tracked": false
+    },
+    {
+      "path": ".runtime/n6-coordination/static-raw-before.json",
+      "sha256": "5db373c17159b7dd69fb732997b68b586fad15df886e078ee22295e12d8ac55a",
+      "tracked": false
+    },
+    {
+      "path": ".runtime/n6-coordination/static-wrapper-before.json",
+      "sha256": "38a75c7cec5f9c291cc47ca947b89c4751b1d1efbd7162c783672a9eff548c83",
+      "tracked": false
+    },
+    {
+      "path": ".runtime/n6-coordination/static-raw-final.json",
+      "sha256": "4f892451fa55da18d46edb628cfb01d8bfbd695ae1183cf1802dff99f8167724",
+      "tracked": false
+    },
+    {
+      "path": ".runtime/n6-coordination/static-wrapper-final.json",
+      "sha256": "e9fbe53f5081546bd30714bd417b0779458a1d4209f8fc017e27c103d9f0b6aa",
+      "tracked": false
+    }
+  ],
+  "historicalEvidence": "docs/reviews/n6-dependencies/ and its nine indexed evidence files remain immutable. Development coordination-1 failed because of fixture shebang placement, preserved with cleanup; coordination-2 passed before final review corrections. Final exact-source replay is separate."
+}
