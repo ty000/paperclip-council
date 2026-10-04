@@ -1,3 +1,4 @@
+import { ownerReplacementAdmissionFailure } from "./admission-owner-replacement.js";
 import { createHash } from "node:crypto";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 
@@ -59,6 +60,7 @@ export type AdmissionReservation = {
   requestedUnits: number;
   attempt: AdmissionAttempt;
   bindingHash: string;
+  ownerReplacementCommandId?: string;
   status: "reserved" | "unsettled" | "settled";
   reservedAt: string;
   updatedAt: string;
@@ -131,6 +133,7 @@ export type AdmissionConfigureInput = {
 };
 
 export type AdmissionReserveInput = {
+  ownerReplacementCommandId?: string;
   companyId: string;
   periodKey: string;
   reservationId: string;
@@ -549,6 +552,7 @@ function reservationBinding(input: AdmissionReserveInput) {
     effectId: uuid(input.effectId, "effectId"),
     requestedUnits: units(input.requestedUnits, "requestedUnits", false),
     attempt: parseAttempt(input.attempt),
+    ...(input.ownerReplacementCommandId ? { ownerReplacementCommandId: uuid(input.ownerReplacementCommandId, "ownerReplacementCommandId") } : {}),
   };
 }
 
@@ -593,7 +597,11 @@ export async function reserveAdmission(ctx: PluginContext, input: AdmissionReser
   if (binding.requestedUnits > current.allowance.taskUnits) {
     throw new AdmissionError(422, "task_allowance_exceeded", "Requested units exceed the configured task allowance");
   }
-  assertAttemptWithinLimits(binding.attempt, current.limits);
+  if (binding.ownerReplacementCommandId) {
+    const failure = await ownerReplacementAdmissionFailure(ctx, current, binding);
+    if (failure) throw new AdmissionError(409, failure, "Exact unused owner grant and settled original reservation required");
+  }
+  else assertAttemptWithinLimits(binding.attempt, current.limits);
   if (current.accountedUnits === null || current.accountedUnits + binding.requestedUnits > current.allowance.periodUnits) {
     throw new AdmissionError(422, "period_allowance_exceeded", "Requested units exceed the available period allowance");
   }

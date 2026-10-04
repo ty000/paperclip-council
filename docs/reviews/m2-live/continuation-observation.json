@@ -1,0 +1,193 @@
+{
+  "status": "partial-native-recovery-applied-review-blocked",
+  "controllerSha": "5940f7872daf46ec53b384c17078e2c508237c49",
+  "hostSha": "61b3fd57a695614dc4a37e2303f426a34a9795cf",
+  "candidateCommit": "654048e902709893cdb3ae22e5715b0d0782a276",
+  "companyId": "44709406-df4a-4d4c-acb3-571821a8b593",
+  "missionId": "43b96da1-11fe-4c46-8ec2-6415ac29dc8b",
+  "version": 37,
+  "reviewRunId": "5c4a4ee3-bc80-4583-b926-c22d73dc546f",
+  "nativeOpinions": 0,
+  "runs": 11,
+  "settled": 11,
+  "knownTokenUnits": 9418107,
+  "remainingExposure": 0,
+  "runtime": "stopped",
+  "privateBackupManifest": "artifacts/ordinary-campaign-m2-continuation-private/backup-manifest.json",
+  "localReview": {
+    "kind": "independent local source review; not native N3/Council",
+    "candidateCommit": "654048e902709893cdb3ae22e5715b0d0782a276",
+    "findings": [
+      {
+        "priority": "P2",
+        "surface": "B src/ui/index.tsx:721 and loading:621-663",
+        "finding": "Generated source-mission link carries missionId but loading does not consume it; link does not select the source mission."
+      },
+      {
+        "priority": "P2",
+        "surface": "A src/coordination-presentation.ts:123; B src/ui/coordination-panel.tsx:104-108",
+        "finding": "waitingReason uses blockage ?? coordination.reason and remains populated after released/started; panel can show Waiting after B launch."
+      }
+    ],
+    "checks": {
+      "typecheck": "PASS per independent reviewer",
+      "build": "PASS per independent reviewer",
+      "focusedTests": "8 PASS per independent reviewer"
+    },
+    "sourceEdited": false
+  },
+  "evidence": [
+    {
+      "path": "artifacts/ordinary-campaign-m2-continuation-restore.json",
+      "bytes": 17933,
+      "sha256": "452c194d2ffe021e238e0c7b0577466b7584a818170125d7ba676ac0275f551f"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-continuation-before-recovery.json",
+      "bytes": 245026,
+      "sha256": "1a3762e4dcba1df16677fec645d6ee0955dd67019ab634dc376a84ce4d086bd0"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-continuation-recovery-request.json",
+      "bytes": 753,
+      "sha256": "358695e131dfd7f03ba753fa2e6975c6cba5c246d1df4fd482bd48c9dd0975f1"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-continuation-recovery-response.json",
+      "bytes": 116148,
+      "sha256": "d5be987e20c42df927dd4bb4ef4616f19ad127af1a6c8addcf70af584110c770"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-continuation-after-recovery.json",
+      "bytes": 255727,
+      "sha256": "005e0796120be7616a1733944782edede20d108dd15b9c215b01f174a447fc17"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-continuation-start-review.json",
+      "bytes": 138939,
+      "sha256": "0610b0ac48797e231c1b2c8c6da1fdc49ec0615b9346480c4b7d284d794d7ba3"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-continuation-run-5c4a4ee3-bc80-4583-b926-c22d73dc546f.json",
+      "bytes": 179314,
+      "sha256": "98c588fb0868078d18129f8c00a71aa097a118141129d4ecceec8f6510545954"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-continuation-config-before.json",
+      "bytes": 1069,
+      "sha256": "4ef89ab040e811715d7d0994860aa71f0a97187ad702a8f9086e2e34edaab909"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-continuation-config-readback.json",
+      "bytes": 1069,
+      "sha256": "e7ed768816b3284a2992b9f9eae17bd24ada07ca25fb0376ca10b1383f9d3a38"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-continuation-settled-blocked.json",
+      "bytes": 282585,
+      "sha256": "afcae8aaeab690831655c17b84c9360f48bf2e5f19f9828cfaeecca7c7ce6bc5"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-continuation-runtime-readback.json",
+      "bytes": 14858,
+      "sha256": "34b1db2ebb90afbf270cec1b5e1a7d0b99501c18fb1df6ef788f85fa70d13577"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-continuation-restored-path-readback.json",
+      "bytes": 49460,
+      "sha256": "a059a0c85518845889230aa93321aec4ebfb8ac7e93b683ac618f2cffda49ce1"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-continuation-operator.jsonl",
+      "bytes": 240743,
+      "sha256": "e2478276fde81210fc5d57bbb96b9e9f400f9972f32b7c1c3752652f60336676"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-continuation-watch.log",
+      "bytes": 1206,
+      "sha256": "847d33110264bb1f6e1a36f68c5c56260f6a976f0f6d7a579debd72a4efa63ed"
+    },
+    {
+      "path": "artifacts/m2-recovery-654048e902709893cdb3ae22e5715b0d0782a276.bundle",
+      "bytes": 1431897,
+      "sha256": "11e238165dea943168e4d5cba52cb452a39b5fc360e8d7627ef6279836fc423d"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-continuation-cleanup.json",
+      "bytes": 267,
+      "sha256": "f0a29b10bfb6cc15d901004b925fd563d11a6c5e03f8ad941966ebb0461c8119"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-continuation-final-paused.json",
+      "bytes": 282585,
+      "sha256": "311a34dbd9a710a791b94131ec96172f028f807adad27c6db530953bb56efd8f"
+    },
+    {
+      "path": "artifacts/ordinary-campaign-m2-continuation-final-agents.json",
+      "bytes": 31296,
+      "sha256": "eb31c073031a5180ed752e48cd09c569aa0384e74f065ea86328ece9670e1e2d"
+    }
+  ],
+  "cleanup": {
+    "at": "2026-10-04T22:09:27.621486+00:00",
+    "runtimeRemoved": true,
+    "ownerAuthFileRemoved": true,
+    "databaseRuntimeRemoved": true,
+    "processesAbsent": {
+      "886565": true,
+      "887369": true
+    },
+    "portsClosed": {
+      "39987": true,
+      "37441": true
+    }
+  },
+  "launcherExitCode": 0,
+  "historicalEvidence": {
+    "files": 36,
+    "hashesUnchanged": true
+  },
+  "privateBackup": {
+    "sourceRuntime": "/tmp/paperclip-council-package-wt7tHX",
+    "controllerSha": "5940f7872daf46ec53b384c17078e2c508237c49",
+    "candidateCommit": "654048e902709893cdb3ae22e5715b0d0782a276",
+    "missionVersions": {
+      "A": 43,
+      "B": 37
+    },
+    "runs": 11,
+    "tokens": 9418107,
+    "providerAuthRows": 0,
+    "excluded": [
+      "public.session",
+      "public.account",
+      "public.verification",
+      "public.adapter_auth_sessions",
+      "public.cli_auth_challenges",
+      "public.board_api_keys",
+      "codex-home",
+      "global-auth",
+      "github-auth",
+      "dependencies",
+      "temporary owner token/curl",
+      "database connection file"
+    ],
+    "files": [
+      {
+        "file": "database-result.json",
+        "bytes": 4123,
+        "sha256": "ee543cf74f887ed041580d7e0f589656a95aa6c5c764e79199c2fade8cce119f"
+      },
+      {
+        "file": "native-paused-continuation-20261005-000628.sql.gz",
+        "bytes": 908527,
+        "sha256": "a67c59149f6cef92f2a4ec76a8caf151fdec214ebeb2dc93aeb86bf45390d1df"
+      },
+      {
+        "file": "native-storage-and-instructions.tar.gz",
+        "bytes": 3372158,
+        "sha256": "d9dce583f1c6e7504c9717bd289858d564e6b66ddf690e94749ffe440d9d0763"
+      }
+    ]
+  }
+}
