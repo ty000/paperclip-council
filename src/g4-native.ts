@@ -18,7 +18,8 @@ const TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed", "cancelled", "time
 export type NativeRunReadback = {
   id: string; companyId: string; agentId: string; status: string; nativeIssueId: string;
   startedAt: string | null; finishedAt: string | null;
-  resultJson?: { summary?: unknown; nativeResult?: { summary?: unknown } };
+  logBytes?: number | null;
+  resultJson?: { summary?: unknown; truncated?: boolean; truncationReason?: string; nativeResult?: { summary?: unknown } };
   contextSnapshot: Record<string, unknown>; usageJson: Record<string, unknown> | null;
 };
 

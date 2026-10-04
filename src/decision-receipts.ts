@@ -1,4 +1,5 @@
 import { readOrdinaryRun } from "./g4-native.js";
+import { readOrdinaryRunSummary } from "./n2-ordinary-report.js";
 import { canonicalPayloadHash } from "./missions.js";
 import type { OrdinaryReport } from "./n2-ordinary-state.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -481,8 +482,9 @@ export async function recordCouncilOrdinaryReadback(ctx: PluginContext, input: C
   issueId: string; report: OrdinaryReport; requestBody: Record<string, unknown>;
 }): Promise<DecisionReceipt> {
   const run = await readOrdinaryRun(ctx, { companyId: input.companyId, issueId: evidence.issueId, agentId: input.actorAgentId, runId: input.runId });
+  const summary = await readOrdinaryRunSummary(ctx, run);
   let report: unknown;
-  try { report = JSON.parse(String(run.resultJson?.summary)); } catch { report = null; }
+  try { report = JSON.parse(String(summary)); } catch { report = null; }
   if (run.status !== "succeeded" || !run.finishedAt || !report || canonicalPayloadHash(report) !== canonicalPayloadHash(evidence.report)
       || input.verdict !== evidence.report.verdict || evidence.requestBody.provenance !== "ordinary-task-terminal-readback-v1"
       || evidence.requestBody.reportHash !== canonicalPayloadHash(report) || evidence.requestBody.runId !== run.id
