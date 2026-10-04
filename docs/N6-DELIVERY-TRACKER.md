@@ -1,5 +1,22 @@
 # Nominal delivery checkpoint
 
+## October 5 delivery update
+
+The [M2 coordination UI delivery and acceptance-environment plan](n6/M2-DELIVERY.md)
+supersedes the next-action queue below. Source work now includes A's accepted
+projection/tests and B's corrected/refactored panel, with local checks and an
+owner-authorized GitHub publication. This is assisted delivery, not a native
+acceptance of the new commit: the preserved B mission remains `reviewing` v91
+after its final `changes_requested` report and exhausted correction allowance.
+All 18 campaign runs are settled, with 13,863,240 tokens and zero exposure.
+
+Next: finish this source publication, then select and prepare a persistent local
+acceptance environment, verify its installed build/UI without model calls, and
+only then propose one useful bounded mission. Do not replay the old campaign or
+start a generic recovery framework to erase its historical partial result.
+
+## Historical checkpoint before the real campaigns
+
 Current N6 entry: [exact accepted-result dependency contract and provider-free qualification](n6/RESULT-DEPENDENCIES.md). M1 history is preserved separately; this tranche does not qualify a real M2 campaign.
 
 Objective: a useful Council mission reaches its exact accepted candidate and observed PR (M1), then two missions demonstrate an accepted-result dependency and useful coordination (N6/M2). This is narrower than full V1 and nine-profile evaluation. Executive remains paused.
