@@ -1,4 +1,4 @@
-import { useId, type CSSProperties } from "react";
+import { Fragment, useId, type CSSProperties } from "react";
 import type {
   CoordinationCandidateIdentity,
   CoordinationPresentation,
@@ -47,21 +47,111 @@ function CandidateIdentity({
 }) {
   if (!hasCandidateIdentity(candidate)) return <p>{label}: not recorded</p>;
 
+  const fields = [
+    { label: "Submission", value: candidate.submissionId, code: true },
+    { label: "Candidate commit", value: candidate.candidateCommit, code: true },
+    { label: "Bundle SHA-256", value: candidate.bundleSha256, code: true },
+    { label: "Evidence revision", value: candidate.evidenceRevision, code: false },
+    { label: "Mandate hash", value: candidate.mandateHash, code: true },
+  ];
+
   return (
     <div>
       <h4 style={{ marginBottom: "0.35rem" }}>{label}</h4>
       <dl style={{ marginTop: 0, overflowWrap: "anywhere" }}>
-        <dt>Submission</dt>
-        <dd><code>{candidate.submissionId ?? "Not recorded"}</code></dd>
-        <dt>Candidate commit</dt>
-        <dd><code>{candidate.candidateCommit ?? "Not recorded"}</code></dd>
-        <dt>Bundle SHA-256</dt>
-        <dd><code>{candidate.bundleSha256 ?? "Not recorded"}</code></dd>
-        <dt>Evidence revision</dt>
-        <dd>{candidate.evidenceRevision ?? "Not recorded"}</dd>
-        <dt>Mandate hash</dt>
-        <dd><code>{candidate.mandateHash ?? "Not recorded"}</code></dd>
+        {fields.map(field => {
+          const value = field.value ?? "Not recorded";
+          return (
+            <Fragment key={field.label}>
+              <dt>{field.label}</dt>
+              <dd>{field.code ? <code>{value}</code> : value}</dd>
+            </Fragment>
+          );
+        })}
       </dl>
+    </div>
+  );
+}
+
+function CoordinationHeader({ titleId, status }: {
+  titleId: string;
+  status: CoordinationPresentation["status"];
+}) {
+  return (
+    <div style={{ ...row, justifyContent: "space-between" }}>
+      <div>
+        <h2 id={titleId} style={{ marginTop: 0, marginBottom: "0.25rem" }}>
+          Coordination
+        </h2>
+        <p style={{ marginTop: 0 }}>
+          Authoritative predecessor handoff and downstream coordination state.
+        </p>
+      </div>
+      <span
+        role={status.tone === "danger" ? "alert" : "status"}
+        style={{
+          border: "1px solid",
+          borderRadius: "999px",
+          padding: "0.2rem 0.65rem",
+          fontSize: "0.85rem",
+          fontWeight: 600,
+          ...toneStyles[status.tone],
+        }}
+      >
+        Coordination status: {status.label}
+      </span>
+    </div>
+  );
+}
+
+function SourceReferences({ source, missionLink, issueLink }: {
+  source: CoordinationPresentation["source"];
+  missionLink: CoordinationPanelProps["missionLink"];
+  issueLink: CoordinationPanelProps["issueLink"];
+}) {
+  return (
+    <div style={row} aria-label="Coordination source references">
+      {source.sourceMissionId ? (
+        <a href={missionLink(source.sourceMissionId)}>Open source mission</a>
+      ) : (
+        <span>Source mission not recorded</span>
+      )}
+      {source.sourceRootIssueId ? (
+        <a href={issueLink(source.sourceRootIssueId)}>Open source root issue</a>
+      ) : (
+        <span>Source root issue not recorded</span>
+      )}
+    </div>
+  );
+}
+
+function DelegationDetails({ delegation }: { delegation: CoordinationPresentation["delegation"] }) {
+  return (
+    <dl style={{ overflowWrap: "anywhere" }}>
+      <dt>Coordination state</dt>
+      <dd>{delegation.state ?? "Not recorded"}</dd>
+      <dt>Coordinator</dt>
+      <dd>{delegation.coordinatorAgentId ?? "Not recorded"}</dd>
+      <dt>Priority</dt>
+      <dd>{delegation.priority ?? "Not recorded"}</dd>
+      <dt>Coordination reason</dt>
+      <dd>{delegation.reason ?? "Not recorded"}</dd>
+    </dl>
+  );
+}
+
+function RequiredGates({ boundaries }: { boundaries: CoordinationPresentation["boundaries"] }) {
+  const publication = boundaries.publicationRequired;
+  return (
+    <div aria-label="Coordination safety boundaries">
+      <h3>Required gates</h3>
+      <ul>
+        <li>{boundaries.acceptedResult}</li>
+        <li>{boundaries.settledUsage}</li>
+        <li>
+          Publication required: {publication === null ? "Not recorded" : publication ? "Yes" : "No"}
+        </li>
+      </ul>
     </div>
   );
 }
@@ -72,35 +162,11 @@ export function CoordinationPanel({
   issueLink,
 }: CoordinationPanelProps) {
   const titleId = useId();
-  const announcementRole = presentation.status.tone === "danger" ? "alert" : "status";
-  const publication = presentation.boundaries.publicationRequired;
   const isWaiting = presentation.status.tone === "attention" || presentation.status.tone === "danger";
 
   return (
     <section style={panel} aria-labelledby={titleId}>
-      <div style={{ ...row, justifyContent: "space-between" }}>
-        <div>
-          <h2 id={titleId} style={{ marginTop: 0, marginBottom: "0.25rem" }}>
-            Coordination
-          </h2>
-          <p style={{ marginTop: 0 }}>
-            Authoritative predecessor handoff and downstream coordination state.
-          </p>
-        </div>
-        <span
-          role={announcementRole}
-          style={{
-            border: "1px solid",
-            borderRadius: "999px",
-            padding: "0.2rem 0.65rem",
-            fontSize: "0.85rem",
-            fontWeight: 600,
-            ...toneStyles[presentation.status.tone],
-          }}
-        >
-          Coordination status: {presentation.status.label}
-        </span>
-      </div>
+      <CoordinationHeader titleId={titleId} status={presentation.status} />
 
       {presentation.waitingReason && (
         <p>
@@ -115,40 +181,9 @@ export function CoordinationPanel({
         )}
       </p>
 
-      <div style={row} aria-label="Coordination source references">
-        {presentation.source.sourceMissionId ? (
-          <a href={missionLink(presentation.source.sourceMissionId)}>Open source mission</a>
-        ) : (
-          <span>Source mission not recorded</span>
-        )}
-        {presentation.source.sourceRootIssueId ? (
-          <a href={issueLink(presentation.source.sourceRootIssueId)}>Open source root issue</a>
-        ) : (
-          <span>Source root issue not recorded</span>
-        )}
-      </div>
-
-      <dl style={{ overflowWrap: "anywhere" }}>
-        <dt>Coordination state</dt>
-        <dd>{presentation.delegation.state ?? "Not recorded"}</dd>
-        <dt>Coordinator</dt>
-        <dd>{presentation.delegation.coordinatorAgentId ?? "Not recorded"}</dd>
-        <dt>Priority</dt>
-        <dd>{presentation.delegation.priority ?? "Not recorded"}</dd>
-        <dt>Coordination reason</dt>
-        <dd>{presentation.delegation.reason ?? "Not recorded"}</dd>
-      </dl>
-
-      <div aria-label="Coordination safety boundaries">
-        <h3>Required gates</h3>
-        <ul>
-          <li>{presentation.boundaries.acceptedResult}</li>
-          <li>{presentation.boundaries.settledUsage}</li>
-          <li>
-            Publication required: {publication === null ? "Not recorded" : publication ? "Yes" : "No"}
-          </li>
-        </ul>
-      </div>
+      <SourceReferences source={presentation.source} missionLink={missionLink} issueLink={issueLink} />
+      <DelegationDetails delegation={presentation.delegation} />
+      <RequiredGates boundaries={presentation.boundaries} />
 
       <details>
         <summary>Source candidate identities</summary>
