@@ -221,12 +221,13 @@ try {
   assert.notEqual(n2.submissions[0].candidateCommit, n2.submissions[1].candidateCommit);
   proof.candidateDiff = gitAt(repoPath, "diff", n2.submissions[0].candidateCommit, n2.submissions[1].candidateCommit);
   assert.equal(Object.keys(proof.runningReportObservations ?? {}).length, 2);
-  proof.gatewayReadbacks = await Promise.all((await readdir(runtime)).filter(name => name.startsWith("gateway-")).map(async name => JSON.parse(await readFile(resolve(runtime, name), "utf8"))));
-  assert.equal(proof.gatewayReadbacks.length, 7);
+  proof.agentApiReadbacks = await Promise.all((await readdir(runtime)).filter(name => name.startsWith("api-")).map(async name => JSON.parse(await readFile(resolve(runtime, name), "utf8"))));
+  assert.equal(proof.agentApiReadbacks.length, 7);
+  proof.gatewayRefusal = JSON.parse(await readFile(resolve(runtime, "gateway-refusal.json"), "utf8"));
   proof.issues = await Promise.all([...new Set(proof.mission.aggregate.n2.ordinary.tasks.map((task: any) => task.issueId))].map(id => api("GET", `/api/issues/${id}`)));
   assert(proof.issues.every((issue: any) => issue.status === "done" && !issue.executionPolicy && !issue.executionState));
   assert(proof.issues.filter((issue: any) => issue.id !== root.id).every((issue: any) => !issue.parentId));
-  proof.checks = { exactGatewayBindings: "PASS", reportWhileRunningDoesNotAdmit: "PASS", realN1Prerequisite: "PASS", installedOrdinaryN2N3: "PASS", tenExpectedCliRunsSucceeded: "PASS", replayNoExtraRun: "PASS", allReservationsSettled: "PASS", n5Handoff: "PASS" };
+  proof.checks = { exactAgentApiBindings: "PASS", reportWhileRunningDoesNotAdmit: "PASS", realN1Prerequisite: "PASS", installedOrdinaryN2N3: "PASS", tenExpectedCliRunsSucceeded: "PASS", replayNoExtraRun: "PASS", allReservationsSettled: "PASS", n5Handoff: "PASS" };
   proof.outcome = "INSTALLED ORDINARY COUNCIL PROVIDER-FREE VALIDATED";
 } catch (error) {
   proof.outcome = "BLOCKED"; proof.error = { message: String(error), stack: error instanceof Error ? error.stack : undefined };
@@ -252,5 +253,5 @@ try {
   proof.hostTrackedUnchanged = gitAt(host, "status", "--porcelain", "--untracked-files=no") === "";
   proof.finishedAt = new Date().toISOString(); await save();
   console.log(JSON.stringify({ outcome: proof.outcome, output, error: proof.error, cleanup: proof.cleanup }));
-  process.exitCode = proof.outcome === "INSTALLED ORDINARY COUNCIL PROVIDER-FREE VALIDATED" ? 0 : 1;
+  process.exit(proof.outcome === "INSTALLED ORDINARY COUNCIL PROVIDER-FREE VALIDATED" ? 0 : 1);
 }

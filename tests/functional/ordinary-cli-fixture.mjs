@@ -21,17 +21,8 @@ async function api(method, path, body, expected) {
   else if (!response.ok) throw Object.assign(new Error(`${response.status} ${JSON.stringify(value)}`), { response: value });
   return value;
 }
-const route = `/api/plugins/${config.pluginId}/api/issues/${issueId}/council/commands`;
-let ordinaryGateway = false;
-const call = async body => {
-  const payload = { missionId: config.missionId, ...body };
-  if (!ordinaryGateway) return api("POST", route, payload);
-  const result = await api("POST", "/api/plugins/tools/execute", { tool: "private.paperclip-council:mission-command",
-    runContext: { companyId: config.companyId, projectId: config.projectId, agentId, runId },
-    parameters: { operation: "command", body: payload } });
-  if (result.data.status >= 400) throw Object.assign(new Error(JSON.stringify(result.data.body)), { response: result.data.body });
-  return result.data.body;
-};
+const route = `/api/plugins/private.paperclip-council/api/issues/${issueId}/council/commands`;
+const call = body => api("POST", route, { missionId: config.missionId, ...body });
 const pause = () => new Promise(r => setTimeout(r, 150));
 async function observe(read, ok, label) {
   const end = Date.now() + 45000;
@@ -61,10 +52,15 @@ async function uploadCandidate() {
 }
 let summary;
 if (inspection.task) {
-  ordinaryGateway = true;
   inspection = await call({ command: "ordinary-inspect" });
-  await writeFile(resolve(config.runtime, `gateway-${runId}.json`), JSON.stringify({ runId, issueId, agentId, taskId: inspection.task.taskId }));
+  await writeFile(resolve(config.runtime, `api-${runId}.json`), JSON.stringify({ runId, issueId, agentId, taskId: inspection.task.taskId }));
   const task = inspection.task;
+  if (task.kind === "specialist" && inspection.n2.submissions.length === 1 && agentId === config.actors.product) {
+    const refusal = await api("POST", "/api/plugins/tools/execute", { tool: "private.paperclip-council:mission-command",
+      runContext: { companyId: config.companyId, projectId: config.projectId, agentId, runId },
+      parameters: { operation: "command", body: { missionId: config.missionId, command: "ordinary-inspect" } } }, 403);
+    await writeFile(resolve(config.runtime, "gateway-refusal.json"), JSON.stringify({ runId, issueId, refusal }));
+  }
   if (task.kind === "specialist") {
     const review = inspection.n3.review;
     const slot = review.slots.find(slot => slot.slotId === task.slotId);
