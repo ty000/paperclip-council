@@ -1,0 +1,123 @@
+{
+  "schema": "council-n6-result-dependency-proof-v1",
+  "claim": "Provider-free installed A exact accepted result gates one admitted B N1 run and authenticated inspection; same persisted identities survive plugin restart and replay. B deliverable/M2 LIVE are not qualified.",
+  "status": "functional-pass-with-static-reservations",
+  "sourceCommit": "618e8b3eb79c5c010f9286a9bdde6ccc62d61228",
+  "baseCommit": "a6176cd5c81b5e8fabbd5d02aa8f9db6c8bf7f4b",
+  "hostCommit": "61b3fd57a695614dc4a37e2303f426a34a9795cf",
+  "branch": "codex/council-n6-dependencies",
+  "evidence": [
+    {
+      "type": "automated-test",
+      "result": "pass",
+      "description": "Canonical typecheck/build/428 tests in 38 files on final source bytes before source commit",
+      "command": "node scripts/ci/run-checks.mjs",
+      "exitCode": 0
+    },
+    {
+      "type": "runtime-observation",
+      "result": "pass",
+      "description": "Installed provider-free exact source replay, 11 succeeded runs / 11 settled reservations / 1650 synthetic units / zero exposure",
+      "command": "COUNCIL_N6_DEPENDENCIES=1 node_modules/.bin/tsx tests/functional/ordinary-installed.ts artifacts/n6-installed-replay-$(date +%s).json",
+      "executedOutput": "artifacts/n6-installed-618e8b3.json",
+      "exitCode": 0,
+      "executedCommand": "COUNCIL_N6_DEPENDENCIES=1 node_modules/.bin/tsx tests/functional/ordinary-installed.ts artifacts/n6-installed-618e8b3.json"
+    },
+    {
+      "type": "command-output",
+      "result": "pass",
+      "description": "Normalized wrapper gate only; raw Fallow FAIL remains separately disclosed and manually disposed",
+      "command": "node scripts/ci/run-static-audit.mjs --base-ref origin/main",
+      "exitCode": 0
+    }
+  ],
+  "installed": {
+    "outcome": "INSTALLED N6 DEPENDENCY PROVIDER-FREE VALIDATED",
+    "sourceHashCount": 47,
+    "companyId": "933e7cac-3dbe-43aa-91f0-c5f392cd7009",
+    "sourceMissionId": "56441291-409d-46b0-90aa-543874c43909",
+    "downstreamMissionId": "8524ab7a-764a-46a9-81b6-6ead2123a417",
+    "downstreamRunId": "a6dea687-3ce5-4e16-a275-592677c77637",
+    "reservedAt": "2026-10-04T19:44:58.729Z",
+    "runStartedAt": "2026-10-04T19:44:58.872Z",
+    "ownerStoppedWakesAt": "2026-10-04T19:44:59.376Z",
+    "runFinishedAt": "2026-10-04T19:44:59.496Z",
+    "runs": 11,
+    "settledReservations": 11,
+    "knownUnits": 1650,
+    "exposure": 0,
+    "cleanup": {
+      "databaseCleaned": true,
+      "serverStopped": true,
+      "runtimeRemoved": true
+    }
+  },
+  "staticAudit": {
+    "rawVerdict": "fail",
+    "rawExitCode": 1,
+    "wrapperStatus": "pass",
+    "wrapperExitCode": 0,
+    "finalHead": "618e8b3eb79c5c010f9286a9bdde6ccc62d61228",
+    "introduced": {
+      "cycles": 3,
+      "complexity": 3,
+      "duplication": 2
+    },
+    "disposition": "Three cycles share dynamic N1 import of n6-guards inside command handlers, no top-level await: coupling debt, no initialization blocker demonstrated. Product inspectMission moderate CC11. Harness terminalDownstream high CC9/CRAP90 and releaseInspectedRun moderate CC5/CRAP30 use estimated coverage despite installed execution. Two bootstrap clones with historical probe (7/12 lines). No introduced product high/critical remains after one bounded extraction. Raw FAIL is not raw-clean."
+  },
+  "review": {
+    "kind": "independent local agent source/artifact review",
+    "status": "PASS-bounded-no-material-nominal-finding",
+    "notGitHubReview": true,
+    "scope": "Independent local source, exact installed artifact and static-residual disposition review; parent also verified 47 hashes, chronology and cleanup."
+  },
+  "residual_risk": "No Codex/provider, publication, UI or real M2 execution. A content, opinions, verdicts and per_run usage are deterministic CLI fixtures. B stops after authenticated inspection: owner explicitly disables demand wakes while B runs, then releases fixture, settles and closes issue. Source N1 child closure remains owner-assisted. Only ordinary sources and referenced known accounting periods are supported. No general wake deduplication, graph, priority/coordinator changes or global autonomy claim. Raw Fallow FAIL retained with manual residual dispositions.",
+  "artifacts": [
+    {
+      "path": "artifacts/n6-installed-618e8b3.json",
+      "sha256": "465765e930d5e191b91106b41505586406ab729d5fde3cab0331a9a69e826526",
+      "tracked": false
+    },
+    {
+      "path": "artifacts/n6-installed-618e8b3.log",
+      "sha256": "3a5643800ce68bc1d8983faa8a6c77a3957669dfa4ebf9a30bbaadb7529c9deb",
+      "tracked": false
+    },
+    {
+      "path": ".runtime/n6-dependencies/targeted.log",
+      "sha256": "593354f73577a3dadee1644db185090c64f033dea3b4992152e7d18808bc6d25",
+      "tracked": false
+    },
+    {
+      "path": ".runtime/n6-dependencies/canonical.log",
+      "sha256": "3c86d2e9763260846feca4b6bff554470e6ce774ee98a113dd7560d1c6b0e0c0",
+      "tracked": false
+    },
+    {
+      "path": ".runtime/n6-dependencies/static-raw-before.json",
+      "sha256": "979858cb9b310c619935894bc3dcf84554e80cfbc5d3f689d592e21a8a861708",
+      "tracked": false
+    },
+    {
+      "path": ".runtime/n6-dependencies/static-raw-after.json",
+      "sha256": "7bec240038b92ba299e6f1b0d4fca58c0661067d23874829c4b5e4a7638ae976",
+      "tracked": false
+    },
+    {
+      "path": ".runtime/n6-dependencies/static-wrapper.json",
+      "sha256": "e6bf7793c0bc6e8e615d3e0c3f438ece3a106ab6c3631829dd5c1da3d1d45bbb",
+      "tracked": false
+    },
+    {
+      "path": ".runtime/n6-dependencies/static-raw-final.json",
+      "sha256": "39ef3179c081749c3d25f4bd8beee7ac4143a1de60b1d59544d7255d413f87d0",
+      "tracked": false
+    },
+    {
+      "path": ".runtime/n6-dependencies/static-wrapper-final.json",
+      "sha256": "dfcdcef12aa3e2d738757b97dc0215f68cc94cddb4bfa279228a125a8427719d",
+      "tracked": false
+    }
+  ],
+  "developmentEvidence": "artifacts/n6-installed-development-{1..6}.{json,log} preserved locally and ignored; development 1-5 failed and 6 passed. Source commit followed the passing development run."
+}

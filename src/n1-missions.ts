@@ -493,6 +493,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     return commandCas(ctx, mission, input.body, "user", input.actorUserId!, next);
   }
   if (input.body.command === "start-lead") {
+    if (mission.aggregate.n6) await (await import("./n6-guards.js")).assertN6LaunchReady(ctx, mission, input.body);
     const fixtureRuntime = await isOwnedFixtureRuntime(ctx, mission.companyId);
     const nativeProfile = fixtureRuntime ? null : await readNativeG4Profile(ctx, mission.companyId);
     if (!fixtureRuntime && !nativeProfile) {
@@ -527,7 +528,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     const leadAgentId = mission.aggregate.responsibilities.integrationLeadAgentId;
     const leadAgent = await ctx.agents.get(leadAgentId, mission.companyId);
     if (!root || root.companyId !== mission.companyId || root.projectId !== mission.projectId
-        || root.assigneeAgentId !== leadAgentId || !["backlog", "todo"].includes(root.status)
+        || root.assigneeAgentId !== leadAgentId || !["backlog", "todo", ...(mission.aggregate.n6 ? ["blocked"] : [])].includes(root.status)
         || !leadAgent || leadAgent.companyId !== mission.companyId
         || !["active", "idle", "running"].includes(leadAgent.status)) {
       throw new MissionError(409, "root_dispatch_ineligible", "Root issue or lead is no longer eligible");
@@ -552,7 +553,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     if (claim.outcome !== "applied") return claim;
     let wake: { queued: boolean; runId: string | null } | null = null;
     try {
-      if (root.status === "backlog") {
+      if (root.status === "backlog" || root.status === "blocked" && mission.aggregate.n6) {
         await ctx.issues.update(mission.rootIssueId, { status: "todo" }, mission.companyId, { actorUserId: input.actorUserId! });
       }
       wake = await ctx.issues.requestWakeup(mission.rootIssueId, mission.companyId, {
@@ -664,10 +665,11 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
   if (eligibleTeam.length < 2) {
     throw new MissionError(422, "two_contributors_required", "Pinned team needs two contributors in addition to the lead");
   }
+  if (mission.aggregate.n6) await (await import("./n6-guards.js")).assertN6LaunchReady(ctx, mission, input.body);
   const root = await ctx.issues.get(mission.rootIssueId, mission.companyId);
   if (!root || root.companyId !== mission.companyId || root.projectId !== mission.projectId
       || root.assigneeAgentId !== mission.aggregate.responsibilities.integrationLeadAgentId
-      || !["backlog", "todo"].includes(root.status)) {
+      || !["backlog", "todo", ...(mission.aggregate.n6 ? ["blocked"] : [])].includes(root.status)) {
     throw new MissionError(409, "root_ownership_changed",
       "Root issue must be assigned to the integration lead and not already running");
   }
@@ -869,7 +871,8 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       }
       return {
         status: 200,
-        body: { missionId: mission.missionId, version: mission.version, phase: mission.aggregate.phase, n1: inspectN1State(mission) },
+        body: { missionId: mission.missionId, version: mission.version, phase: mission.aggregate.phase, n1: inspectN1State(mission),
+          ...(mission.aggregate.n6 ? { n6Handoff: await (await import("./n6-guards.js")).readN6Handoff(ctx, mission) } : {}) },
       };
     }
     const commandId = uuid(body.commandId, "commandId");

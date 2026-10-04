@@ -1,0 +1,13 @@
+import type { MissionRecord } from "./missions.js";
+import type { CoordinationTask } from "./n6-coordination-state.js";
+
+export function coordinationInstructions(m: MissionRecord, task: CoordinationTask) {
+  const c = m.aggregate.n6!.coordination!;
+  return `You are the ${task.kind} for downstream mission ${m.missionId}, project ${m.projectId}.
+Owner mandate: ${c.mandate}. Source mission ${m.aggregate.n6!.sourceMissionId}, exact result ${JSON.stringify(m.aggregate.n6!.expectedResult)}.
+Keep the lead's root assignment/checkout untouched. Use only your assigned native task; do not edit Git or accept code, change source/candidate/mandate/budget, or wake any agent.
+API: POST $PAPERCLIP_API_URL/api/plugins/private.paperclip-council/api/issues/$PAPERCLIP_TASK_ID/council/commands with Authorization: Bearer $PAPERCLIP_API_KEY, X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID and application/json.
+First payload {"command":"n6-inspect","missionId":"${m.missionId}"}. Use returned version, generate a fresh UUID commandId, and retain the identical body for replay.
+${task.kind === "coordinator" ? `Send {command:"n6-coordinate",missionId:"${m.missionId}",commandId:"<UUID>",expectedVersion:<inspect.version>,action:"release|hold|facilitate|escalate",reason:"<bounded justification>",priority:"<optional one of ${c.allowedPriorities.join(",")}>"}. Priority concerns B only; A remains prerequisite. Release permits existing N1 only after exact acceptance/accounting and your terminal settlement. Hold records an explained wait; escalate routes reserved changes to owner. To facilitate, additionally send question, expectedOutcome and participants (agent UUIDs drawn from ${JSON.stringify(c.participantAgentIds)}). At most one facilitation and two PM runs; use it only for an actual unresolved handoff. Read any earlier outcome before deciding.` : `Bounded question/participants/expected outcome: ${JSON.stringify(task.request)}. Read participants' existing native evidence; clarify the handoff with attributed references. Do not claim consensus from silence. Send {command:"n6-facilitation-outcome",missionId:"${m.missionId}",commandId:"<UUID>",expectedVersion:<inspect.version>,action:"resolved|escalate",reason:"<outcome, evidence and any uncertainty>"}. Resolved returns to the coordinator; escalate returns to owner. Neither changes priority nor authorizes B.`}
+After HTTP 200, return finishReport as the exact final JSON message and exit normally. NEVER PATCH done, reassign, or request wake. The controller blocks your issue, waits for real terminal/per_run accounting, then closes it. Unknown effects/usage stay held. No automatic model retry. Native API credentials are injected; do not copy or print them.\n`;
+}

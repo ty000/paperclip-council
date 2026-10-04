@@ -34,3 +34,14 @@ it("requires current mission and plan revisions at execution rather than replayi
   expect(payload.configureDelivery.body.planRevisionId).toBe("READ_CURRENT_PLAN_REVISION");
   expect(payload.configureDelivery.body.expectedVersion).toBe("READ_CURRENT_MISSION_VERSION");
 });
+
+it("prepares the separate M2 envelope without inheriting M1 execution authority", () => {
+  const m2 = { ...profile, campaign: "m2-coordination-v1", nominalRuns: 16, maxRuns: 25, periodUnits: 50_000_000 };
+  expect(ordinaryCampaignProfile(m2, "session", sha)).toMatchObject({ campaign: "m2-coordination-v1", providerAuthorized: false, maxRetries: 0 });
+  expect(() => ordinaryCampaignProfile({ ...m2, periodUnits: 24_000_000 }, "session", sha)).toThrow();
+  for (const role of ["pm", "pmSuccessor", "facilitator", "backend", "frontend", "lead"]) {
+    const text = ordinaryCampaignInstructions(role, m2); expect(text).not.toContain("undefined"); expect(text).toContain("PAPERCLIP_API_KEY");
+  }
+  expect(ordinaryCampaignInstructions("backend", m2)).not.toContain("src/delivery-presentation.ts");
+  expect(ordinaryCampaignInstructions("lead", m2)).toContain("n6Handoff");
+});

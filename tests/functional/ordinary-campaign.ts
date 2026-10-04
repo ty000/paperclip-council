@@ -1,3 +1,4 @@
+import { m2CampaignHandoff } from "./m2-campaign-handoff.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile, stat } from "node:fs/promises";
@@ -77,7 +78,15 @@ export async function runOrdinaryCampaignPreparation(input: any, profile: any) {
   }
   const runs = await c.api("GET", `/api/companies/${c.companyId}/heartbeat-runs`); assert.equal(runs.length, 0);
   const wakes = await input.db.select({ id: input.tables.agentWakeupRequests.id }).from(input.tables.agentWakeupRequests).where(input.eq(input.tables.agentWakeupRequests.companyId, c.companyId)); assert.equal(wakes.length, 0);
-  const proof = input.evidence.ordinaryCampaign = { profile, workspace: input.workspaceProof, handoff: ordinaryCampaignHandoff(c, input, profile),
+  const primaryHandoff = ordinaryCampaignHandoff(c, input, profile);
+  const handoff = c.secondMission ? m2CampaignHandoff(c, primaryHandoff, ordinaryCampaignHandoff({ ...c, ...c.secondMission }, input, profile)) : primaryHandoff;
+  const secondMission = c.secondMission ? await c.api("GET", `${c.secondMission.missionPath}?companyId=${c.companyId}`) : undefined;
+  if (secondMission) {
+    assert.equal(secondMission.mission.aggregate.control.status, "inactive");
+    assert.equal(secondMission.mission.aggregate.n1, undefined); assert.equal(secondMission.mission.aggregate.n6, undefined);
+    assert.equal(readbacks.length, 10);
+  }
+  const proof = input.evidence.ordinaryCampaign = { profile, workspace: input.workspaceProof, handoff, secondMission,
     agents: readbacks, configuredCompanies, installedBefore: plugin, installedAfter: afterPlugin, mission: after.mission,
     configuration: await c.api("GET", `/api/plugins/${input.pluginId}/config?companyId=${c.companyId}`),
     admission: await c.api("GET", `${c.admissionPath}?companyId=${c.companyId}&periodKey=${c.operatingProfile.periodKey}`),

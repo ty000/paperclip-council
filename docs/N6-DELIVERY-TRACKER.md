@@ -1,5 +1,7 @@
 # Nominal delivery checkpoint
 
+Current N6 entry: [exact accepted-result dependency contract and provider-free qualification](n6/RESULT-DEPENDENCIES.md). M1 history is preserved separately; this tranche does not qualify a real M2 campaign.
+
 Objective: a useful Council mission reaches its exact accepted candidate and observed PR (M1), then two missions demonstrate an accepted-result dependency and useful coordination (N6/M2). This is narrower than full V1 and nine-profile evaluation. Executive remains paused.
 
 | Surface | Current state |
