@@ -185,7 +185,7 @@ installation is not a first-class Paperclip workflow.
 
 The `Council CI` check runs on every branch push and pull request. It installs
 the frozen pnpm lockfile, then runs typechecking, unit tests (with at most two
-Vitest workers), and the package build concurrently in one Linux job. Each
+Vitest workers), Python operator tests, and the package build concurrently in one Linux job. Each
 command reports its own status and duration, and any failure fails the job.
 
 This fast check does not run `pnpm test:functional`. The functional replay needs

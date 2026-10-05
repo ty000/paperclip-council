@@ -287,7 +287,7 @@ def audit_sessions(
                 _issue(issues, "malformed_usage", source_index, line_number, error)
                 continue
             session_id = record.get("session_id") or session_meta_id
-            thread_id = record.get("thread_id") or session_id
+            thread_id = record.get("thread_id")
             response_id = record.get("response_id")
             turn_id = record.get("turn_id")
             if not all(isinstance(value, str) and value for value in (thread_id, session_id, response_id)):

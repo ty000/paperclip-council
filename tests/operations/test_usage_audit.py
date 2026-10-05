@@ -177,6 +177,35 @@ class UsageAuditTests(unittest.TestCase):
         self.assertEqual(len(authoritative["threads"]), 2)
         self.assertEqual(len(authoritative["turns"]), 2)
 
+    def test_missing_or_empty_thread_identity_is_excluded_and_marks_partial(self) -> None:
+        for label in ("missing", "empty"):
+            with self.subTest(thread_id=label):
+                unknown = record("unknown-thread", usage(100, 40, 20), thread="")
+                if label == "missing":
+                    del unknown["payload"]["thread_id"]
+                valid = record("valid", usage(7, 2, 1), thread="thread-valid")
+                path = self.write(f"{label}-thread.jsonl", [meta(), unknown, valid])
+
+                report = self.audit(path)
+                authoritative = report["authoritative_usage"]
+
+                self.assertEqual(authoritative["status"], "partial")
+                self.assertEqual(authoritative["unique_response_count"], 1)
+                self.assertEqual(authoritative["totals"], usage(7, 2, 1))
+                self.assertEqual(
+                    authoritative["threads"],
+                    [{
+                        "thread_id": "thread-valid",
+                        "session_id": "session-1",
+                        "response_count": 1,
+                        "usage": usage(7, 2, 1),
+                    }],
+                )
+                self.assertEqual(
+                    report["issues"]["by_code"],
+                    {"unknown_usage_identity": 1},
+                )
+
     def test_compacted_duplicate_count_is_independent_of_source_order(self) -> None:
         normal = record("r1", usage(9, 3, 2), turn="turn-a")
         compact = compacted(normal["payload"])

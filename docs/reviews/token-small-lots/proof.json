@@ -1,18 +1,18 @@
 {
   "schema": "council-token-small-lots-proof.v1",
-  "recorded_at": "2026-10-05T15:31:24.442271+00:00",
+  "recorded_at": "2026-10-05T15:51:56.744160+00:00",
   "base_commit": "51589d79393b93826433c94f9cb1d1585de3bb99",
   "scope": "local implementation and provider-free verification",
   "source_sha256": {
     "scripts/operations/context_packet.py": "29960dce284232468477b8bfb292f4646b905481822e096e96d6f0d29c306a7f",
     "scripts/operations/mission_watch.py": "f119d63af0a108b49d748037105a01cc4446c85aa09d26326835ffe470d971b0",
-    "scripts/operations/observation.py": "eab067bdac8b931dbc4cc9f64785b376a59a27e773c2ed0ad6da2b679b0d3512",
+    "scripts/operations/observation.py": "fff4ec34afff46495a270a31a007d5509b931bcf1f34168207d840491dc1e2f8",
     "scripts/operations/transfer_preflight.py": "ee61ec93bc5d2a89bb45df613232517b3e205ef15b1e280eed96ca658ee3ce42",
-    "scripts/operations/usage_audit.py": "05728300e408286e1b0b87af95708d16c25d3e2ac3cec90bec2b75f2e59a6e62",
+    "scripts/operations/usage_audit.py": "0a89837609e68e67e8012d9f5f41c3f593cc0146eb08a6abc943725bec7c2036",
     "tests/operations/test_context_packet.py": "4c59f850a06a39ab7cefc4e685c843e0d1128d4aaa8b328355c001c94c10562c",
-    "tests/operations/test_observation.py": "970c365344f63103efc02eeaacdfd2c08de6a368e93e1959d1905bf936a196a9",
+    "tests/operations/test_observation.py": "06040bc67bf0a4009097a0479fc85393f30d93c44b3156e78b115d7b9f3781bb",
     "tests/operations/test_transfer_preflight.py": "122838313407be9ee44d96d7180eacb5f8d1a9f7b3e054825e66cc885b0e12b0",
-    "tests/operations/test_usage_audit.py": "667cd793e6f66c72260f1e31d94cccdbecff9d2b8bc2a421e71dad83de28c38a",
+    "tests/operations/test_usage_audit.py": "4f4e6be0eb8158da12347e4785ec30eb248ec740294bb9078e89002089966374",
     "scripts/ci/run-checks.mjs": "b6385ff1aae67a3980a0c722f8cad57d3578f466d5c956b9f22ec7c79fbb545f",
     ".gitignore": "517d9fa11f1b270093109872609f706ab5cdda8ee88fbab5b2aaf174ed7f1f18"
   },
@@ -21,7 +21,7 @@
       "command": "node scripts/ci/run-checks.mjs",
       "result": "pass",
       "application_tests": 474,
-      "operations_tests": 46,
+      "operations_tests": 49,
       "typecheck": "pass",
       "build": "pass"
     },
@@ -62,7 +62,7 @@
     "visible_events": 1,
     "unchanged_polls_suppressed": 100,
     "exit_code": 0,
-    "event_bytes": 2127,
+    "event_bytes": 2368,
     "full_snapshot_bytes_if_returned_each_poll": 50089,
     "limitations": [
       "Byte counts are not model tokens",

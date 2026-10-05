@@ -80,6 +80,7 @@ def project(snapshot: dict, mission_id: str) -> dict:
     current_round = next((r for r in rounds if mapping(mapping(r.get("review")).get("subject")).get("submissionId") == active), n3)
     current_round = {**current_round, **mapping(snapshot.get("n3"))}
     review = mapping(current_round.get("review"))
+    synthesis = mapping(review.get("synthesis"))
     publication = mapping(n5.get("publication"))
     tasks = records(n2.get("ordinaryTasks", mapping(n2.get("ordinary")).get("tasks", snapshot.get("tasks"))), "tasks")
     correction = mapping(n2.get("correction"))
@@ -114,11 +115,14 @@ def project(snapshot: dict, mission_id: str) -> dict:
                          "reviews": sorted_records([settlement(x) for x in records(n2_usage.get("reviews"), "review usage")]),
                          "correction": settlement(n2_usage.get("correction"))}},
         "candidate": fields(subject, ("submissionId", "candidateCommit", "sha256", "evidenceRevision", "mandateHash", "baseCommit")),
-        "reviewSubject": fields(review.get("subject"), ("submissionId", "candidateCommit", "evidenceRevision", "mandateHash")),
+        "reviewSubject": fields(review.get("subject"), ("submissionId", "candidateCommit", "bundleSha256", "evidenceRevision", "mandateHash")),
         "opinions": sorted_records([fields(x, ("opinionId", "slotId", "outcome")) for x in records(review.get("opinions"), "opinions")]),
         "n3": {**fields(current_round, ("released", "nextActor", "missing", "usageUnknown")),
                "attested": bool(current_round.get("attestedAt")),
-               "transmission": settlement(current_round.get("transmission"))},
+               "transmission": settlement(current_round.get("transmission")),
+               "reviewStatus": fields(review, ("status",))["status"],
+               "synthesis": {**fields(synthesis, ("verdict", "finalReviewerAgentId", "finalReviewerRunId")),
+                             "subject": fields(synthesis.get("subject"), ("submissionId", "candidateCommit", "bundleSha256", "evidenceRevision", "mandateHash"))}},
         "specialists": sorted_records([settlement(x) for x in records(current_round.get("specialists"), "specialists")]),
         "publication": {**fields(n5, ("ready", "nativeReadbackFresh")),
                         **fields(publication, ("intentId", "issueId", "runId", "state", "readbackUnavailable", "creation", "wake")),

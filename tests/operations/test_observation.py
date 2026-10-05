@@ -84,6 +84,36 @@ class ObservationTests(unittest.TestCase):
         del source["runs"]
         self.assertEqual(project(source, "mission-1")["coverage"]["runs"], "not_requested")
 
+    def test_n3_subject_bundle_change_notifies(self):
+        source = snapshot()
+        aggregate = source["mission"]["aggregate"]
+        aggregate["n3"] = {"rounds": [{"review": {
+            "subject": {"submissionId": "s1", "candidateCommit": "a" * 40,
+                        "bundleSha256": "b" * 64, "evidenceRevision": 1, "mandateHash": "c" * 64},
+            "status": "ready_for_synthesis", "opinions": [], "synthesis": None}}]}
+        before = meaningful(project(source, "mission-1"))
+        aggregate["n3"]["rounds"][0]["review"]["subject"]["bundleSha256"] = "d" * 64
+        self.assertNotEqual(before, meaningful(project(source, "mission-1")))
+
+    def test_n3_synthesis_status_verdict_and_identity_notify(self):
+        source = snapshot()
+        aggregate = source["mission"]["aggregate"]
+        subject = {"submissionId": "s1", "candidateCommit": "a" * 40,
+                   "bundleSha256": "b" * 64, "evidenceRevision": 1, "mandateHash": "c" * 64}
+        aggregate["n3"] = {"rounds": [{"review": {
+            "subject": subject, "status": "ready_for_synthesis", "opinions": [], "synthesis": None}}]}
+        before = meaningful(project(source, "mission-1"))
+        aggregate["n3"]["rounds"][0]["review"].update({
+            "status": "synthesized",
+            "synthesis": {"verdict": "approved", "finalReviewerAgentId": "reviewer-1",
+                          "finalReviewerRunId": "run-1", "subject": copy.deepcopy(subject)},
+        })
+        after = meaningful(project(source, "mission-1"))
+        self.assertNotEqual(before, after)
+        self.assertEqual(after["n3"]["reviewStatus"], "synthesized")
+        self.assertEqual(after["n3"]["synthesis"]["verdict"], "approved")
+        self.assertEqual(after["n3"]["synthesis"]["finalReviewerRunId"], "run-1")
+
     def test_endpoint_boundaries(self):
         validate_urls(["http://127.0.0.1:3100/api/mission", "http://127.0.0.1:3100/api/run"])
         validate_urls(["http://127.0.0.1:3100/api/admission?periodKey=period-1"])
