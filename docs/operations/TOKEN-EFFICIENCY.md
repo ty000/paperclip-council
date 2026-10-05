@@ -352,7 +352,9 @@ destinations, symlinks and the input path are refused.
 `usage_compare.py` accepts two **full** `council-usage-audit.v1` reports written
 by `usage_audit.py --output`. Its compact stdout alone is not a report input.
 The comparator never reads session directories or uses cumulative fallback
-snapshots. Each report is limited to 4 MiB and the comparison manifest to 64 KiB.
+snapshots. Keep `usage_audit.py` beside `usage_compare.py`: it supplies the
+authoritative issue-code contract. Issue items must reconcile with their code
+counts, and an `exact` report carrying an authoritative issue is rejected. Each report is limited to 4 MiB and the comparison manifest to 64 KiB.
 
 ```sh
 python3 scripts/operations/usage_compare.py \

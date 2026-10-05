@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import collections
 import hashlib
+import importlib.util
 import json
 import math
 import os
@@ -41,6 +43,22 @@ METRIC_KEYS = (
 
 class CompareError(ValueError):
     """A bounded, user-actionable comparison failure."""
+
+
+def _authoritative_issue_codes() -> frozenset[str]:
+    path = Path(__file__).with_name("usage_audit.py")
+    spec = importlib.util.spec_from_file_location("_usage_audit_contract", path)
+    if spec is None or spec.loader is None:
+        raise CompareError("cannot load usage audit issue contract")
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+        value = module.AUTHORITATIVE_ISSUE_CODES
+    except (OSError, AttributeError) as exc:
+        raise CompareError("cannot load usage audit issue contract") from exc
+    if not isinstance(value, set) or not all(isinstance(item, str) for item in value):
+        raise CompareError("usage audit issue contract is invalid")
+    return frozenset(value)
 
 
 def _bounded_text(value: str, label: str) -> str:
@@ -224,12 +242,20 @@ def _report_summary(value: dict[str, Any], raw: bytes, path: Path, label: str) -
     issue_count = _nonnegative_int(issues.get("count"), f"{label}.issues.count")
     if issue_count != len(issues["items"]):
         raise CompareError(f"{label}.issues.count does not match items")
-    counted_issues = 0
+    item_counts: collections.Counter[str] = collections.Counter()
+    for index, item in enumerate(issues["items"]):
+        if not isinstance(item, dict):
+            raise CompareError(f"{label}.issues.items[{index}] must be an object")
+        code = _bounded_text(item.get("code"), f"{label}.issues.items[{index}].code")
+        item_counts[code] += 1
+    declared_counts: dict[str, int] = {}
     for code, count in issues["by_code"].items():
         _bounded_text(code, f"{label}.issues.by_code key")
-        counted_issues += _nonnegative_int(count, f"{label}.issues.by_code.{code}")
-    if counted_issues != issue_count:
-        raise CompareError(f"{label}.issues.by_code does not reconcile with count")
+        declared_counts[code] = _nonnegative_int(count, f"{label}.issues.by_code.{code}")
+    if dict(item_counts) != declared_counts:
+        raise CompareError(f"{label}.issues.items does not reconcile with by_code")
+    if status == "exact" and set(item_counts).intersection(_authoritative_issue_codes()):
+        raise CompareError(f"{label} exact status contains an authoritative usage issue")
 
     metrics = None
     if totals is not None:

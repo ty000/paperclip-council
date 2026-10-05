@@ -35,8 +35,10 @@ Its dated recette claims apply to the five PR #38 lots, not these new utilities.
 ## Verification
 
 **Complete for local implementation and review.** Both workers froze their
-Python source and tests before the final canonical check. An independent
-reviewer revalidated the corrected candidates and reported no remaining finding.
+Python source and tests before each canonical check. Initial independent review
+passed; publication review then found the R2 status/issue contradiction recorded
+below. The correction is tested locally; the final exact-head review and CI
+results are recorded on [PR #40](https://github.com/ty000/paperclip-council/pull/40).
 The acceptance rows above are covered by the local tests, subject to the
 adoption and assertion boundaries below.
 
@@ -48,13 +50,13 @@ COREPACK_HOME="$PWD/.runtime/token-r1-r2/corepack" node scripts/ci/run-checks.mj
 
 | Check | Final result |
 | --- | --- |
-| Operations | 75 tests passed, including 15 R1 and 11 R2 tests |
+| Operations | 78 tests passed, including 15 R1 and 14 R2 tests |
 | Application suite | 632 passed, 1 skipped; 54 files passed |
 | Typecheck | Passed |
 | Build | Passed |
-| Independent targeted replay | 26 R1/R2 tests passed; source/test hashes unchanged |
+| Initial independent targeted replay | 26 R1/R2 tests passed before the publication correction |
 
-The final canonical log is `.runtime/token-r1-r2/canonical-final.log` in
+The final canonical log is `.runtime/token-r1-r2/canonical-publication.log` in
 `/home/davy-lp/.codex/worktrees/council-token-r1-r2/paperclip-council`.
 The [evidence register](evidence.json) records exact file and log hashes.
 No JavaScript/TypeScript implementation changed; the canonical checks verify
@@ -68,8 +70,9 @@ these results on the newer PR #39 base.
 | --- | --- |
 | R1: root `hasMore=false` hid nested `page.hasMore=true` | Aggregate upstream hints; contradictory/invalid metadata yields `needs_inspection`. Dedicated regression passed. |
 | R2: duplicate quality keys could override a failure; unused overflowing numbers were accepted | Reject duplicate JSON keys and recursively reject nonfinite numbers. Dedicated regressions passed. |
+| R2 publication review: `exact` could coexist with an authoritative issue | Reconcile issue items with code counts and reject exact status carrying an authoritative issue, using the colocated audit contract. Three regressions cover the contradiction, count mismatch and legitimate warning-only reports. |
 
-The final review also checked nonscalar quality statuses, the JSON depth limit,
+The initial review also checked nonscalar quality statuses, the JSON depth limit,
 and stdout's byte cap including its newline before any optional output file is
 created. The operator guide was checked against the reviewed behavior.
 

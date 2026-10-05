@@ -255,6 +255,72 @@ class UsageCompareTests(unittest.TestCase):
         self.assertTrue(after.exists())
         self.assertTrue(manifest.exists())
 
+    def test_exact_report_with_authoritative_issue_is_rejected_before_output(self) -> None:
+        before = self.audit_report("before", [usage(10, 4, 3)])
+        after = self.audit_report("after", [usage(8, 3, 2)])
+        changed = json.loads(after.read_text(encoding="utf-8"))
+        issue = {
+            "code": "conflicting_usage",
+            "source_index": 0,
+            "line": 2,
+            "detail": "same identity has different usage or turn",
+        }
+        changed["issues"] = {
+            "count": 1,
+            "by_code": {"conflicting_usage": 1},
+            "items": [issue],
+        }
+        after.write_text(json.dumps(changed, sort_keys=True) + "\n", encoding="utf-8")
+        manifest = self.write_manifest(self.manifest(before, after))
+        output = self.root / "must-not-exist.json"
+
+        code, stdout, stderr = self.run_cli(before, after, manifest, output)
+
+        self.assertEqual(code, 2)
+        self.assertEqual(stdout, "")
+        self.assertIn("exact status contains an authoritative usage issue", stderr)
+        self.assertFalse(output.exists())
+
+    def test_issue_items_must_reconcile_exactly_with_by_code(self) -> None:
+        before = self.audit_report("before", [usage(10, 4, 3)])
+        after = self.audit_report("after", [usage(8, 3, 2)])
+        changed = json.loads(after.read_text(encoding="utf-8"))
+        changed["issues"] = {
+            "count": 1,
+            "by_code": {"blank_line": 1},
+            "items": [{"code": "malformed_token_count", "source_index": 0, "line": 2, "detail": "invalid"}],
+        }
+        after.write_text(json.dumps(changed, sort_keys=True) + "\n", encoding="utf-8")
+
+        code, stdout, stderr = self.run_cli(before, after)
+
+        self.assertEqual(code, 2)
+        self.assertEqual(stdout, "")
+        self.assertIn("issues.items does not reconcile with by_code", stderr)
+
+    def test_exact_report_keeps_non_authoritative_warning(self) -> None:
+        before = self.audit_report("before", [usage(10, 4, 3)])
+        after = self.audit_report("after", [usage(8, 3, 2)])
+        changed = json.loads(after.read_text(encoding="utf-8"))
+        warning = {
+            "code": "malformed_token_count",
+            "source_index": 0,
+            "line": 2,
+            "detail": "fallback snapshot is invalid",
+        }
+        changed["issues"] = {
+            "count": 1,
+            "by_code": {"malformed_token_count": 1},
+            "items": [warning],
+        }
+        after.write_text(json.dumps(changed, sort_keys=True) + "\n", encoding="utf-8")
+        manifest = self.write_manifest(self.manifest(before, after))
+
+        code, stdout, stderr = self.run_cli(before, after, manifest)
+
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(json.loads(stdout)["status"], "conclusive")
+
     def test_bool_negative_and_nonfinite_numbers_are_rejected(self) -> None:
         before = self.audit_report("before", [usage(10, 4, 3)])
         original = json.loads(before.read_text(encoding="utf-8"))

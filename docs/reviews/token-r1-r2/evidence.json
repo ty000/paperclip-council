@@ -17,16 +17,21 @@
     },
     {
       "path": "scripts/operations/usage_compare.py",
-      "sha256": "cf7b18b3ec15ae035b71e0bf0478e1118959bdf9acd65a0baa32e52e80011b68",
-      "bytes": 22573
+      "sha256": "73ce203f53f24de474c2b5bcf5be3b47cf90816659c6965166d37f0cd3883728",
+      "bytes": 23938
     },
     {
       "path": "tests/operations/test_usage_compare.py",
-      "sha256": "9a391366e8c765ee92cc5817a0187700b21250d5df988cb8a0e6c92f066c1891",
-      "bytes": 16410
+      "sha256": "5d5c26328d121605f43fe9c32acdea7ce6a490c1fa150e2a31b71877841d4614",
+      "bytes": 19219
     }
   ],
   "logs": [
+    {
+      "path": "/home/davy-lp/.codex/worktrees/council-token-r1-r2/paperclip-council/.runtime/token-r1-r2/canonical-publication.log",
+      "sha256": "0924d7963c06982ec94303e1cf3742c4488744ec7f3d091d5839d8366724573c",
+      "bytes": 7301
+    },
     {
       "path": "/home/davy-lp/.codex/worktrees/council-token-r1-r2/paperclip-council/.runtime/token-r1-r2/canonical-final.log",
       "sha256": "73a895ef1b1331a5b1ff9cc2fc41b4a9882b45da8ae183e6618c46764c127786",
@@ -55,23 +60,31 @@
   ],
   "checks": {
     "canonical_exit_code": 0,
-    "operations_passed": 75,
+    "operations_passed": 78,
     "application_passed": 632,
     "application_skipped": 1,
     "application_files_passed": 54,
     "typecheck": "pass",
-    "build": "pass"
-  },
-  "independent_review": {
-    "reviewer": "/root/review_transfer_install",
-    "targeted_tests_passed": 26,
-    "remaining_findings": 0,
-    "subject": "four file hashes listed above"
+    "build": "pass",
+    "log": "canonical-publication.log"
   },
   "limitations": [
     "Not a native proof-manifest or deployment receipt.",
     "Cohort and quality metadata are operator assertions, not independently verified.",
     "No real token savings measured; no new provider campaign.",
     "Earlier manual smoke logs validate fixtures; final canonical and independent checks validate the frozen hashes."
-  ]
+  ],
+  "initial_review": {
+    "reviewer": "/root/review_transfer_install",
+    "targeted_tests_passed": 26,
+    "remaining_findings": 0,
+    "subject": "Initial R1/R2 file hashes at PR head 1f82119dd3bfd35c1bc5ffc5225e8755fdf1fa2d; superseded R2 hashes are in that commit."
+  },
+  "publication_review": {
+    "pr": "https://github.com/ty000/paperclip-council/pull/40",
+    "finding": "R2-ISSUE-STATUS-01",
+    "correction": "Exact report issue/status consistency; canonical audit issue-code contract reused.",
+    "initial_head": "1f82119dd3bfd35c1bc5ffc5225e8755fdf1fa2d",
+    "final_verdict_location": "PR exact-head review summary after publishing this correction"
+  }
 }

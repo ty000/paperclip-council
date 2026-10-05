@@ -39,11 +39,11 @@ Preuve d'installation : [rapport de recette](/home/davy-lp/.local/share/papercli
 
 ## R1/R2 réalisés localement
 
-Deux workers ont implémenté des fichiers distincts, puis un reviewer indépendant a revu les deux outils. Les défauts de pagination contradictoire et de JSON ambigu relevés en revue sont corrigés et leurs régressions testées. Aucun finding ne reste sur les quatre fichiers Python figés.
+Deux workers ont implémenté des fichiers distincts, puis un reviewer indépendant a revu les deux outils. Les défauts de pagination contradictoire et de JSON ambigu sont corrigés. La revue de publication a ensuite relevé une contradiction possible entre statut exact et issues comptables : elle est corrigée avec trois régressions. Le verdict final sur le commit publié est enregistré dans la [PR #40](https://github.com/ty000/paperclip-council/pull/40).
 
 - **R1 — `compact_output.py`** : un helper avec trois modes pour fichiers explicites de chats, inspections et logs. Sortie totale bornée à 16 Kio par défaut, pagination, signaux critiques hors page, statut d'incomplétude, références et hash de source. Le détail reste sur disque. L'outil est à appeler avant d'injecter la sortie dans le contexte ; il n'intercepte pas automatiquement les appels Codex/MCP.
 - **R2 — `usage_compare.py`** : comparaison de deux rapports complets existants, avec compteurs séparés et assertions de cohorte/qualité liées aux hashes des rapports. Données partielles, qualité absente ou périmètres incompatibles donnent une comparaison non concluante, sans pourcentage. Le comparateur ne vérifie pas lui-même les preuves de qualité référencées.
-- **Validation finale** : 75 tests opérateur, 632 tests applicatifs réussis et un ignoré ; typecheck et build réussis. Parmi les tests opérateur, 26 couvrent les nouveaux outils et ont été rejoués par le reviewer indépendant.
+- **Validation locale après correction de publication** : 78 tests opérateur, 632 tests applicatifs réussis et un ignoré ; typecheck et build réussis. Parmi les tests opérateur, 29 couvrent les nouveaux outils ; la revue indépendante initiale avait rejoué les 26 tests précédant cette correction.
 - **Limite de cette preuve** : implémentation locale et documentation. L'installation locale ultérieure des deux nouvelles commandes exige son propre reçu ; le skill de recette des cinq lots S ne contient pas R1/R2. Adoption réelle et économies de tokens restent à mesurer.
 
 Détail : [rapport R1/R2](../reviews/token-r1-r2/REPORT.md), [registre des fichiers et checks](../reviews/token-r1-r2/evidence.json), [guide opérateur](TOKEN-EFFICIENCY.md#operational-boundary).
