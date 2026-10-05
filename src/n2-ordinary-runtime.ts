@@ -52,7 +52,9 @@ async function assertRootIdle(ctx: PluginContext, mission: MissionRecord) {
 }
 export async function executeOrdinaryN2Board(ctx: PluginContext, mission: MissionRecord, input: { actorUserId: string | null; body: Record<string, unknown> }) {
   const body = input.body;
-  if (body.command === "replace-missing-opinion") return replaceMissingOpinion(ctx, mission, input.actorUserId!, body);
+  if (["replace-missing-opinion", "replace-missing-verdict"].includes(String(body.command))) {
+    return replaceMissingOpinion(ctx, mission, input.actorUserId!, body);
+  }
   if (body.command === "recover-terminal-resubmission") return recoverTerminalResubmission(ctx, mission, input.actorUserId!, body);
   if (body.command === "reconcile-ordinary-n2") {
     await reconcileOrdinaryN2(ctx, mission);

@@ -350,7 +350,8 @@ function nativeReceiptSubjectMatches(mission: MissionRecord, submission: N2Submi
 }
 
 function ordinaryReceiptSubjectMatches(mission: MissionRecord, submission: N2Submission, input: N2DecisionInput): boolean {
-  const task = mission.aggregate.n2!.ordinary!.tasks.find(task => task.kind === "council" && task.submissionId === submission.submissionId);
+  const task = mission.aggregate.n2!.ordinary!.tasks.find(task => task.kind === "council" && task.submissionId === submission.submissionId
+    && task.taskId === input.operationId && task.runId === input.runId);
   const body = input.receipt.requestBody;
   return Boolean(task?.report && task.settledAt && task.runId === input.runId && isLogicalActor(mission, task.agentId, input.actorAgentId, input.runId)
     && body.provenance === "ordinary-task-terminal-readback-v1" && body.method === "GET"

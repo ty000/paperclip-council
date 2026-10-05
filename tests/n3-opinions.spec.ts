@@ -198,6 +198,42 @@ describe("N3 attributed specialist opinions", () => {
       dispositions: [{ findingId: objection.findingId, disposition: "upheld_with_correction" }],
     });
   });
+
+  it("uses only current material findings, excluding a historical objection and current deferrable improvement", () => {
+    const historicalFinding = finding();
+    const historicalProduct = addProductOpinion(round(subject("a".repeat(40), 11)));
+    const historical = recordN3Opinion(historicalProduct, {
+      subject: historicalProduct.subject, slotId: ids.securitySlot, authenticatedAgentId: ids.security,
+      authenticatedRunId: randomUUID(), opinionId: randomUUID(), outcome: "changes_requested",
+      rationale: "The prior candidate retained a blocking authorization defect.", findings: [historicalFinding], unresolvedQuestions: [],
+    });
+    expect(synthesizeN3Review(historical, {
+      subject: historical.subject, authenticatedAgentId: ids.finalReviewer, authenticatedRunId: randomUUID(),
+      verdict: "changes_requested", rationale: "The historical defect required correction.",
+      dispositions: [{ findingId: historicalFinding.findingId, disposition: "upheld_with_correction", reason: "Correct the prior defect", evidenceRefs: [] }],
+    }).status).toBe("synthesized");
+
+    const currentProduct = addProductOpinion(round(subject("b".repeat(40), 12)));
+    const deferrable = { ...finding(), classification: "deferrable_improvement" as const };
+    const current = recordN3Opinion(currentProduct, {
+      subject: currentProduct.subject, slotId: ids.securitySlot, authenticatedAgentId: ids.security,
+      authenticatedRunId: randomUUID(), opinionId: randomUUID(), outcome: "support",
+      rationale: "The corrected candidate resolves the material defect.", findings: [deferrable], unresolvedQuestions: [],
+    });
+    try {
+      synthesizeN3Review(current, { subject: current.subject, authenticatedAgentId: ids.finalReviewer,
+        authenticatedRunId: randomUUID(), verdict: "approved", rationale: "The correction is sufficient.",
+        dispositions: [{ findingId: historicalFinding.findingId, disposition: "resolved_by_evidence", reason: "Historical fix", evidenceRefs: ["current:test"] }] });
+      throw new Error("Expected the historical disposition to be refused");
+    } catch (error) {
+      expect(error).toMatchObject({ code: "material_objection_undisposed",
+        details: { requiredCurrentMaterialFindingIds: [], receivedDispositionCount: 1 } });
+    }
+    expect(synthesizeN3Review(current, { subject: current.subject, authenticatedAgentId: ids.finalReviewer,
+      authenticatedRunId: randomUUID(), verdict: "approved",
+      rationale: "The rationale may explain the historical correction; the current deferrable item does not require disposition.",
+      dispositions: [] }).synthesis).toMatchObject({ verdict: "approved", dispositions: [] });
+  });
 });
 
 function allSupport() {
