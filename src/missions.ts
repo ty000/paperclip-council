@@ -28,6 +28,17 @@ const N1_BOARD_COMMANDS = new Set([
   "recover-integration",
   "recover-candidate",
 ]);
+const N2_BOARD_COMMANDS = new Set([
+  "start-review",
+  "start-correction",
+  "start-resubmitted-review",
+  "settle-n2-usage",
+  "reconcile-native-n2",
+  "release-native-correction",
+  "reconcile-ordinary-n2",
+  "replace-missing-opinion",
+  "recover-terminal-resubmission",
+]);
 
 export type MissionMandate = {
   objective: string;
@@ -45,7 +56,7 @@ export type MissionReceipt = {
   commandId: string;
   command: "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "fixture-bind-contribution-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish" | "recover-integration" | "recover-candidate"
     | "start-review" | "confirm-review-handoff" | "start-correction" | "prepare-resubmission"
-    | "start-resubmitted-review" | "settle-n2-usage" | "attest-transmission" | "reconcile-native-n2" | "release-native-correction" | "reconcile-ordinary-n2" | "replace-missing-opinion" | "ordinary-verdict";
+    | "start-resubmitted-review" | "settle-n2-usage" | "attest-transmission" | "reconcile-native-n2" | "release-native-correction" | "reconcile-ordinary-n2" | "replace-missing-opinion" | "recover-terminal-resubmission" | "ordinary-verdict";
   actorType: "user" | "agent";
   actorId: string;
   payloadHash: string;
@@ -686,6 +697,24 @@ async function inspectMissionWithAdmission(ctx: PluginContext, mission: MissionR
   return { ...inspectMission(mission), admission: await readN1AdmissionForMission(ctx, mission) };
 }
 
+async function executeMissionRouteCommand(
+  ctx: PluginContext,
+  input: PluginApiRequestInput,
+  companyId: string,
+  actorUserId: string | null,
+  body: Record<string, unknown>,
+  missionId: string | undefined,
+) {
+  const command = String(body.command);
+  if (missionId && N1_BOARD_COMMANDS.has(command)) {
+    return executeN1BoardCommand(ctx, { companyId, missionId, actorUserId, body });
+  }
+  if (missionId && N2_BOARD_COMMANDS.has(command)) {
+    return executeN2BoardCommand(ctx, { companyId, missionId, actorUserId, body });
+  }
+  return executeMissionCommand(ctx, { companyId, missionId, actorUserId, body: input.body });
+}
+
 export async function handleMissionApi(input: PluginApiRequestInput, ctx: PluginContext) {
   try {
     const companyId = companyIdFromRequest(input);
@@ -705,17 +734,7 @@ export async function handleMissionApi(input: PluginApiRequestInput, ctx: Plugin
     if (input.routeKey === "missions-command" || input.routeKey === "mission-command") {
       const body = asRecord(input.body);
       const missionId = input.params.missionId ? uuid(input.params.missionId, "missionId") : undefined;
-      const result = N1_BOARD_COMMANDS.has(String(body.command)) && missionId
-        ? await executeN1BoardCommand(ctx, { companyId, missionId, actorUserId, body })
-        : (body.command === "start-review" || body.command === "start-correction"
-          || body.command === "start-resubmitted-review" || body.command === "settle-n2-usage" || body.command === "reconcile-native-n2" || body.command === "release-native-correction" || body.command === "reconcile-ordinary-n2" || body.command === "replace-missing-opinion") && missionId
-          ? await executeN2BoardCommand(ctx, { companyId, missionId, actorUserId, body })
-        : await executeMissionCommand(ctx, {
-        companyId,
-        missionId,
-        actorUserId,
-        body: input.body,
-      });
+      const result = await executeMissionRouteCommand(ctx, input, companyId, actorUserId, body, missionId);
       const creating = input.routeKey === "missions-command" && asRecord(input.body).command === "create";
       return { status: creating && result.outcome === "applied" ? 201 : 200, body: { ...result, inspection: await inspectMissionWithAdmission(ctx, result.mission) } };
     }

@@ -1327,6 +1327,30 @@ export async function prepareResubmissionCommand(
   }
   const state = storedN2(mission);
   if (state.correction?.runId !== input.actor.runId) throw new MissionError(409, "correction_run_required", "The bound correction run must resubmit V2");
+  return prepareResubmission(ctx, mission, body, {
+    actorType: "agent",
+    actorId: input.actor.agentId!,
+    executorAgentId: input.actor.agentId!,
+    runId: input.actor.runId,
+    journalAction: "n2_resubmission_prepared",
+  });
+}
+
+export async function prepareResubmission(
+  ctx: PluginContext,
+  mission: MissionRecord,
+  body: Record<string, unknown>,
+  authority: {
+    actorType: "user" | "agent";
+    actorId: string;
+    executorAgentId: string;
+    logicalExecutorAgentId?: string;
+    runId: string;
+    journalAction: "n2_resubmission_prepared" | "owner_recovered_terminal_resubmission";
+    correctionTaskId?: string;
+  },
+) {
+  const state = storedN2(mission);
   const n1 = mission.aggregate.n1 as { candidate?: IntegratedCandidateVerification; contributions?: Array<{ contributionId?: string; commit?: string; ownedPaths?: string[] }> } | undefined;
   if (!n1?.contributions || n1.contributions.length !== 2 || n1.contributions.some((entry) => !entry.contributionId || !entry.commit || !entry.ownedPaths)) {
     throw new MissionError(409, "n1_evidence_unavailable", "N1 contribution evidence is unavailable for V2 verification");
@@ -1362,8 +1386,8 @@ export async function prepareResubmissionCommand(
   });
   const submissionId = runtimeUuid(body.submissionId, "submissionId");
   const nextState = prepareN2Resubmission(state, mission, {
-    actorAgentId: input.actor.agentId!,
-    runId: input.actor.runId,
+    actorAgentId: authority.executorAgentId,
+    runId: authority.runId,
     candidate: verified,
     evidenceRevision: mission.version + 1,
     correctedPaths,
@@ -1374,11 +1398,14 @@ export async function prepareResubmissionCommand(
     phase: "correcting",
     n2: nextState,
     journal: [...mission.aggregate.journal, {
-      action: "n2_resubmission_prepared", submissionId, candidate: verified.candidate,
-      correctedPaths, actorAgentId: input.actor.agentId!, runId: input.actor.runId, at: new Date().toISOString(),
+      action: authority.journalAction, submissionId, candidate: verified.candidate,
+      correctedPaths, executorAgentId: authority.executorAgentId, runId: authority.runId,
+      ...(authority.logicalExecutorAgentId ? { logicalExecutorAgentId: authority.logicalExecutorAgentId } : {}),
+      ...(authority.actorType === "agent" ? { actorAgentId: authority.actorId } : { actorUserId: authority.actorId }),
+      ...(authority.correctionTaskId ? { correctionTaskId: authority.correctionTaskId } : {}), at: new Date().toISOString(),
     }],
   };
-  return n2CommandCas(ctx, mission, body, "agent", input.actor.agentId!, aggregate);
+  return n2CommandCas(ctx, mission, body, authority.actorType, authority.actorId, aggregate);
 }
 
 export async function handleN2AgentApi(input: PluginApiRequestInput, ctx: PluginContext) {

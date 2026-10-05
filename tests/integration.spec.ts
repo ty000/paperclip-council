@@ -33,6 +33,7 @@ type FixtureOptions = {
   whitespaceError?: boolean;
   directoryAlpha?: boolean;
   ownerIntegrationAdjustments?: boolean;
+  ownerScopedCorrection?: boolean;
 };
 
 function currentCommit(repository: string): string {
@@ -54,7 +55,7 @@ async function createAlphaContribution(repository: string, options: FixtureOptio
     execFileSync("git", ["commit", "-m", "unowned historical change"], { cwd: repository });
   }
   const alphaPath = options.directoryAlpha ? "app/alpha.txt" : options.literalPathspecAlpha ? ":(exclude)*" : "alpha.txt";
-  if (options.directoryAlpha) await mkdir(resolve(repository, "app"));
+  if (options.directoryAlpha) await mkdir(resolve(repository, "app"), { recursive: true });
   await writeFile(
     resolve(repository, alphaPath),
     options.oversizedObject
@@ -129,6 +130,12 @@ async function createCandidate(repository: string, options: FixtureOptions): Pro
     execFileSync("git", ["add", "alpha.txt", "integration.md"], { cwd: repository });
     execFileSync("git", ["commit", "--amend", "--no-edit"], { cwd: repository });
   }
+  if (options.ownerScopedCorrection) {
+    await writeFile(resolve(repository, "app/existing.txt"), "corrected existing file\n");
+    await writeFile(resolve(repository, "app/new.txt"), "new correction file\n");
+    execFileSync("git", ["add", "app/existing.txt", "app/new.txt"], { cwd: repository });
+    execFileSync("git", ["commit", "--amend", "--no-edit"], { cwd: repository });
+  }
   return currentCommit(repository);
 }
 
@@ -140,7 +147,11 @@ async function fixture(options: FixtureOptions = {}) {
   execFileSync("git", ["config", "user.email", "council@example.test"], { cwd: repository });
   execFileSync("git", ["config", "user.name", "Council Test"], { cwd: repository });
   await writeFile(resolve(repository, "README.md"), "base\n");
-  execFileSync("git", ["add", "README.md"], { cwd: repository });
+  if (options.ownerScopedCorrection) {
+    await mkdir(resolve(repository, "app"));
+    await writeFile(resolve(repository, "app/existing.txt"), "base existing file\n");
+  }
+  execFileSync("git", ["add", "README.md", ...(options.ownerScopedCorrection ? ["app/existing.txt"] : [])], { cwd: repository });
   execFileSync("git", ["commit", "-m", "base"], { cwd: repository });
   const baseCommit = currentCommit(repository);
   const alphaCommit = await createAlphaContribution(repository, options);
@@ -188,6 +199,31 @@ async function fixture(options: FixtureOptions = {}) {
 }
 
 describe("integrated Git candidate verification", () => {
+  it("accepts exact added and pre-existing corrected files within contribution ownership while preserving attribution", async () => {
+    const { ctx, input } = await fixture({ directoryAlpha: true, ownerScopedCorrection: true });
+    input.correctedPaths = ["app/existing.txt", "app/new.txt"];
+
+    const result = await verifyIntegratedCandidate(ctx, input);
+
+    expect(result.contributions.map(({ contributionId, commit, changedPaths }) => ({ contributionId, commit, changedPaths })))
+      .toEqual(input.contributions.map((entry, index) => ({
+        contributionId: entry.contributionId,
+        commit: entry.commit,
+        changedPaths: index === 0 ? ["app/alpha.txt"] : ["beta.txt"],
+      })));
+    expect(result.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "bounded-material-correction" }),
+      expect.objectContaining({ name: "contribution-tree-preservation" }),
+    ]));
+
+    input.correctedPaths = ["app/existing.txt"];
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow("unattributed path app/new.txt");
+    input.correctedPaths = ["app/existing.txt", "app/new.txt", "outside.txt"];
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow("outside N1 contribution ownership: outside.txt");
+    input.correctedPaths = ["app/existing.txt", "app/new.txt", "app/unchanged.txt"];
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow("unchanged from its attributed source: app/unchanged.txt");
+  });
+
   it("retains original Git attribution while requiring every owner-declared assembly adjustment", async () => {
     const { ctx, input } = await fixture({ ownerIntegrationAdjustments: true });
     await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow("contribution-tree-preservation");
@@ -387,7 +423,7 @@ describe("integrated Git candidate verification", () => {
     expect(result.checks).toContainEqual({
       name: "bounded-material-correction",
       status: "passed",
-      detail: "changed attributed paths: alpha.txt",
+      detail: "changed paths within attributed ownership: alpha.txt",
     });
   });
 
@@ -396,7 +432,7 @@ describe("integrated Git candidate verification", () => {
     input.correctedPaths = ["README.md"];
 
     await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow(
-      "Corrected path is not attributed to an N1 contribution: README.md",
+      "Corrected path is outside N1 contribution ownership: README.md",
     );
   });
 

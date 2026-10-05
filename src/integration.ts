@@ -470,23 +470,26 @@ function correctedPaths(
   }
   const parsed = input.correctedPaths.map((path, index) => ownedPath(path, `correctedPaths[${index}]`));
   if (new Set(parsed).size !== parsed.length) throw new Error("correctedPaths contains duplicates");
-  const attributed = new Set(contributions.flatMap((contribution) => contribution.changedPaths));
-  const outsideAttribution = parsed.find((path) => !attributed.has(path));
-  if (outsideAttribution) throw new Error(`Corrected path is not attributed to an N1 contribution: ${outsideAttribution}`);
+  const outsideOwnership = parsed.find((path) => !contributions.some((contribution) => (
+    contribution.ownedPaths.some((declared) => pathIsOwned(declared, path))
+  )));
+  if (outsideOwnership) throw new Error(`Corrected path is outside N1 contribution ownership: ${outsideOwnership}`);
   return parsed;
 }
 
 async function verifyMaterialCorrection(
   contributions: IntegratedCandidateVerification["contributions"],
   correctionPaths: string[],
+  baseCommit: string,
   candidateCommit: string,
   repositoryPath: string,
 ): Promise<void> {
   for (const path of correctionPaths) {
-    const contribution = contributions.find((entry) => entry.changedPaths.includes(path));
-    if (!contribution) throw new Error(`Corrected path has no attributed contribution: ${path}`);
-    const changed = await changedPathsBetween(contribution.commit, candidateCommit, repositoryPath);
-    if (!changed.includes(path)) throw new Error(`Corrected path is unchanged from its attributed contribution: ${path}`);
+    const contribution = contributions.find((entry) => entry.ownedPaths.some((declared) => pathIsOwned(declared, path)));
+    if (!contribution) throw new Error(`Corrected path is outside N1 contribution ownership: ${path}`);
+    const source = contribution.changedPaths.includes(path) ? contribution.commit : baseCommit;
+    const changed = await changedPathsBetween(source, candidateCommit, repositoryPath);
+    if (!changed.includes(path)) throw new Error(`Corrected path is unchanged from its attributed source: ${path}`);
   }
 }
 
@@ -496,10 +499,12 @@ async function verifyCandidateDelta(
   candidateCommit: string,
   repositoryPath: string,
   integrationAdjustedPaths: string[] = [],
+  correctionPaths: string[] = [],
 ): Promise<void> {
   const attributedPaths = new Set(verifiedContributions.flatMap((contribution) => contribution.changedPaths));
   const candidateChangedPaths = await changedPathsBetween(baseCommit, candidateCommit, repositoryPath);
-  const unattributedPath = candidateChangedPaths.find((path) => !attributedPaths.has(path) && !integrationAdjustedPaths.includes(path));
+  const unattributedPath = candidateChangedPaths.find((path) => !attributedPaths.has(path)
+    && !integrationAdjustedPaths.includes(path) && !correctionPaths.includes(path));
   if (unattributedPath) {
     throw new Error(`Candidate changed unattributed path ${unattributedPath}`);
   }
@@ -611,22 +616,23 @@ export async function verifyIntegratedCandidate(
       ? "contribution paths outside the explicit adjustments survive in the candidate tree"
       : "both contributions survive in the candidate tree" });
     if (correctionPaths.length > 0) {
-      await verifyMaterialCorrection(verifiedContributions, correctionPaths, candidateCommit, repositoryPath);
+      await verifyMaterialCorrection(verifiedContributions, correctionPaths, baseCommit, candidateCommit, repositoryPath);
       checks.push({
         name: "bounded-material-correction",
         status: "passed",
-        detail: `changed attributed paths: ${correctionPaths.join(", ")}`,
+        detail: `changed paths within attributed ownership: ${correctionPaths.join(", ")}`,
       });
     }
 
     if (integrationPaths.length) checks.push({ name: "explicit-integration-adjustments", status: "passed",
       detail: `owner-declared changed paths: ${integrationPaths.join(", ")}` });
-    await verifyCandidateDelta(verifiedContributions, baseCommit, candidateCommit, repositoryPath, integrationPaths);
+    await verifyCandidateDelta(verifiedContributions, baseCommit, candidateCommit, repositoryPath, integrationPaths, correctionPaths);
     checks.push({
       name: "candidate-delta-attribution",
-      status: "passed",
-      detail: integrationPaths.length ? "candidate delta is attributed to original contributions and explicit integration adjustments"
-        : "complete candidate delta equals the union of attributed contribution deltas",
+      status: "passed", detail: correctionPaths.length
+        ? "candidate delta is attributed to original contributions, explicit corrections within their ownership, and integration adjustments"
+        : integrationPaths.length ? "candidate delta is attributed to original contributions and explicit integration adjustments"
+          : "complete candidate delta equals the union of attributed contribution deltas",
     });
 
     await verifyCandidateOnlyHistory(contributions, baseCommit, candidateCommit, repositoryPath);
