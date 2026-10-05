@@ -190,7 +190,9 @@ function normalizeDispositions(
   requiredFindingIds: Set<string>,
 ): N3ObjectionDisposition[] {
   if (!Array.isArray(values) || values.length !== requiredFindingIds.size) {
-    throw new N3OpinionError("material_objection_undisposed", "Every material objection requires exactly one disposition");
+    throw new N3OpinionError("material_objection_undisposed",
+      "Dispositions must cover exactly the current round's blocking_defect and decisive_uncertainty findings; use [] when there are none and exclude deferrable or historical findings",
+      { requiredCurrentMaterialFindingIds: [...requiredFindingIds], receivedDispositionCount: Array.isArray(values) ? values.length : null });
   }
   const allowed = new Set<N3ObjectionDisposition["disposition"]>([
     "upheld_with_correction", "resolved_by_evidence", "rejected_with_reason", "escalated",
@@ -212,7 +214,9 @@ function normalizeDispositions(
   const dispositionIds = dispositions.map((disposition) => disposition.findingId);
   if (new Set(dispositionIds).size !== dispositionIds.length
       || dispositionIds.some((findingId) => !requiredFindingIds.has(findingId))) {
-    throw new N3OpinionError("material_objection_undisposed", "Dispositions must cover only the material objections exactly once");
+    throw new N3OpinionError("material_objection_undisposed",
+      "Dispositions must cover only the current round's material findings exactly once; exclude deferrable or historical findings",
+      { requiredCurrentMaterialFindingIds: [...requiredFindingIds], receivedFindingIds: dispositionIds });
   }
   return dispositions;
 }

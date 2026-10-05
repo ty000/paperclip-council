@@ -104,9 +104,16 @@ function harness() {
   const verdictBody = () => ({ command: "ordinary-verdict", commandId: randomUUID(), expectedVersion: mission.version,
     synthesis: { subject: n3Subject(submission), verdict: "approved", rationale: "The exact candidate satisfies the independent review criteria", dispositions: [] } });
   return { ids, ctx, execute, fetch, update, request, verdictBody, task, submission, current: () => structuredClone(mission),
+    addReplacedTaskHistory() {
+      const active = mission.aggregate.n2!.ordinary!.tasks.find((item) => item.taskId === task.taskId)!;
+      const prior = { ...active, taskId: randomUUID(), reservationId: randomUUID(), settlementCommandId: randomUUID(),
+        runId: randomUUID(), issueId: randomUUID(), closedAt: now, replacedBy: active.taskId };
+      active.replacementOf = prior.taskId;
+      mission.aggregate.n2!.ordinary!.tasks = [prior, active];
+    },
     finish(report: OrdinaryReport, agentId = ids.variant) {
       // Usage settlement is a separate gate; seed its durable result for the decision-authority test.
-      mission.aggregate.n2!.ordinary!.tasks[0]!.settledAt = now;
+      mission.aggregate.n2!.ordinary!.tasks.find((item) => item.taskId === task.taskId)!.settledAt = now;
       run = { ...run, agentId, status: "succeeded", finishedAt: now, resultJson: { summary: JSON.stringify(report) },
         usageJson: { usageSource: "per_run", inputTokens: 12, outputTokens: 3 } };
     } };
@@ -126,9 +133,10 @@ describe("ordinary N2 physical variant authority", () => {
 
   it("accepts the exact physical reviewer through native readback and decision receipt while retaining logical roles", async () => {
     const h = harness(); const roles = h.current().aggregate.responsibilities; const roster = h.current().aggregate.compositions;
+    h.addReplacedTaskHistory();
     const result = await executeOrdinaryN2Agent(h.ctx, h.current(), h.request(), h.verdictBody());
     expect(result).toMatchObject({ outcome: "applied" });
-    const report = h.current().aggregate.n2!.ordinary!.tasks[0]!.report!;
+    const report = h.current().aggregate.n2!.ordinary!.tasks.find((item) => item.taskId === h.task.taskId)!.report!;
     expect(report).toMatchObject({ taskId: h.task.taskId, subject: n3Subject(h.submission), verdict: "approved" });
     expect(h.current().aggregate.n3!.rounds[0]!.review.synthesis).toMatchObject({ finalReviewerAgentId: h.ids.reviewer, finalReviewerRunId: h.ids.run });
     h.finish(report);
@@ -139,7 +147,7 @@ describe("ordinary N2 physical variant authority", () => {
       .rejects.toMatchObject({ code: "n2_decision_target_mismatch" });
     await prepareN2Decision(h.ctx, h.current(), decision);
     const receipt = await recordCouncilOrdinaryReadback(h.ctx, decision, { issueId: h.ids.reviewIssue, report,
-      requestBody: ordinaryReceiptSubject(h.submission, h.current().aggregate.n2!.ordinary!.tasks[0]!) });
+      requestBody: ordinaryReceiptSubject(h.submission, h.current().aggregate.n2!.ordinary!.tasks.find((item) => item.taskId === h.task.taskId)!) });
     expect(receipt).toMatchObject({ actorAgentId: h.ids.variant, runId: h.ids.run, state: "native_observed",
       nativeObservation: { usable: true, body: { agentId: h.ids.variant, issueId: h.ids.reviewIssue, runId: h.ids.run, report } } });
     expect(() => applyN2Decision(h.current().aggregate.n2!, h.current(), { submissionId: h.ids.submission, actorAgentId: h.ids.variant,
@@ -148,7 +156,11 @@ describe("ordinary N2 physical variant authority", () => {
     const accepted = await recordN2Decision(h.ctx, h.ids.mission, decision, receipt);
     expect(accepted.aggregate.n2).toMatchObject({ status: "accepted", correctionsUsed: 0, rounds: [{ reviewerAgentId: h.ids.reviewer,
       verdict: { actorAgentId: h.ids.variant, runId: h.ids.run, receiptState: "native_observed" } }] });
-    expect(accepted.aggregate.n2!.ordinary!.tasks[0]).toMatchObject({ agentId: h.ids.reviewer, reservationId: h.task.reservationId, taskId: h.task.taskId });
+    expect(accepted.aggregate.n2!.ordinary!.tasks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ replacedBy: h.task.taskId }),
+      expect.objectContaining({ agentId: h.ids.reviewer, reservationId: h.task.reservationId, taskId: h.task.taskId,
+        replacementOf: expect.any(String) }),
+    ]));
     expect(accepted.aggregate.responsibilities).toEqual(roles); expect(accepted.aggregate.compositions).toEqual(roster);
     expect(accepted.aggregate.modelSelection!.tasks[0]!.launches).toHaveLength(1);
     expect(accepted.aggregate.journal.at(-1)).toMatchObject({ actorAgentId: h.ids.variant, runId: h.ids.run });

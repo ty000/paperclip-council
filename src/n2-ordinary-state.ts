@@ -11,7 +11,7 @@ export type OrdinaryTask = { taskId: string; kind: "specialist" | "council" | "c
   agentId: string; slotId?: string; issueId: string | null; creation: "pending" | "claimed" | "confirmed";
   reservationId: string; settlementCommandId: string; runId: string | null; wake: "pending" | "claimed";
   replacementOf?: string; replacedBy?: string; settledAt?: string; report?: OrdinaryReport; receiptRecordedAt?: string; closedAt?: string };
-export type OrdinaryN2State = { protocol: "ordinary-cli-v1"; tasks: OrdinaryTask[]; missingOpinionReplacement?: { commandId: string; authorizedBy: string; authorizedAt: string; reason: string; priorTaskId: string; priorRunId: string; priorReservationId: string; replacementTaskId: string; reservationId: string; submissionId: string; candidateCommit: string; subject: N3CandidateSubject } };
+export type OrdinaryN2State = { protocol: "ordinary-cli-v1"; tasks: OrdinaryTask[]; missingOpinionReplacement?: { commandId: string; authorizedBy: string; authorizedAt: string; reason: string; missingOutput?: "opinion" | "verdict"; taskKind?: "specialist" | "council"; priorTaskId: string; priorRunId: string; priorReservationId: string; replacementTaskId: string; reservationId: string; submissionId: string; candidateCommit: string; subject: N3CandidateSubject } };
 
 export function ordinaryTask(kind: OrdinaryTask["kind"], submissionId: string, agentId: string, slotId?: string): OrdinaryTask {
   return { taskId: randomUUID(), kind, submissionId, agentId, slotId, issueId: null, creation: "pending",
