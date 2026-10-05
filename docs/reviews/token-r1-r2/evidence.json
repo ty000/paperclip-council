@@ -1,0 +1,90 @@
+{
+  "record_type": "local-evidence-index",
+  "base_commit": "240c08a36bcf16a511bc807b5c2ebd23eab28d15",
+  "branch": "codex/token-output-comparison",
+  "worktree": "/home/davy-lp/.codex/worktrees/council-token-r1-r2/paperclip-council",
+  "delivery_state": "implemented-tested-reviewed-local",
+  "files": [
+    {
+      "path": "scripts/operations/compact_output.py",
+      "sha256": "7b6d548fa1ec2188f5530eed19e873c61bd635230b911dd57ff3ad25684834f8",
+      "bytes": 21194
+    },
+    {
+      "path": "tests/operations/test_compact_output.py",
+      "sha256": "413a6c5efc071200766b5b119ecc564a4849e0e8c66d6bca199dc256c816d36e",
+      "bytes": 17265
+    },
+    {
+      "path": "scripts/operations/usage_compare.py",
+      "sha256": "73ce203f53f24de474c2b5bcf5be3b47cf90816659c6965166d37f0cd3883728",
+      "bytes": 23938
+    },
+    {
+      "path": "tests/operations/test_usage_compare.py",
+      "sha256": "5d5c26328d121605f43fe9c32acdea7ce6a490c1fa150e2a31b71877841d4614",
+      "bytes": 19219
+    }
+  ],
+  "logs": [
+    {
+      "path": "/home/davy-lp/.codex/worktrees/council-token-r1-r2/paperclip-council/.runtime/token-r1-r2/canonical-publication.log",
+      "sha256": "0924d7963c06982ec94303e1cf3742c4488744ec7f3d091d5839d8366724573c",
+      "bytes": 7301
+    },
+    {
+      "path": "/home/davy-lp/.codex/worktrees/council-token-r1-r2/paperclip-council/.runtime/token-r1-r2/canonical-final.log",
+      "sha256": "73a895ef1b1331a5b1ff9cc2fc41b4a9882b45da8ae183e6618c46764c127786",
+      "bytes": 7298
+    },
+    {
+      "path": "/home/davy-lp/.codex/worktrees/council-token-r1-r2/paperclip-council/.runtime/token-r1-r2/r1-review-correction-tests.log",
+      "sha256": "77593cf5e77920575cc8da7ef0be2b9185dd79073e0ce82ccbc4870d51d989d1",
+      "bytes": 114
+    },
+    {
+      "path": "/home/davy-lp/.codex/worktrees/council-token-r1-r2/paperclip-council/.runtime/token-r1-r2/r2-focused-tests.log",
+      "sha256": "c3f6f1f573a8d0949f3c3f43d386b1fb2510bfc9f78d6440123f38c85644e876",
+      "bytes": 122
+    },
+    {
+      "path": "/home/davy-lp/.codex/worktrees/council-token-r1-r2/paperclip-council/.runtime/token-r1-r2/r2-real-report-inconclusive.log",
+      "sha256": "6cc546b186f9f004f5636788cf7309781bef5f179ae68fd0978a9a2622c6403d",
+      "bytes": 1376
+    },
+    {
+      "path": "/home/davy-lp/.codex/worktrees/council-token-r1-r2/paperclip-council/.runtime/token-r1-r2/parent-compact-smoke.json",
+      "sha256": "418cc8112aba54f73590bc6cd16fde829fa4e670755dae44e6d6ec90e13cd22a",
+      "bytes": 379
+    }
+  ],
+  "checks": {
+    "canonical_exit_code": 0,
+    "operations_passed": 78,
+    "application_passed": 632,
+    "application_skipped": 1,
+    "application_files_passed": 54,
+    "typecheck": "pass",
+    "build": "pass",
+    "log": "canonical-publication.log"
+  },
+  "limitations": [
+    "Not a native proof-manifest or deployment receipt.",
+    "Cohort and quality metadata are operator assertions, not independently verified.",
+    "No real token savings measured; no new provider campaign.",
+    "Earlier manual smoke logs validate fixtures; final canonical and independent checks validate the frozen hashes."
+  ],
+  "initial_review": {
+    "reviewer": "/root/review_transfer_install",
+    "targeted_tests_passed": 26,
+    "remaining_findings": 0,
+    "subject": "Initial R1/R2 file hashes at PR head 1f82119dd3bfd35c1bc5ffc5225e8755fdf1fa2d; superseded R2 hashes are in that commit."
+  },
+  "publication_review": {
+    "pr": "https://github.com/ty000/paperclip-council/pull/40",
+    "finding": "R2-ISSUE-STATUS-01",
+    "correction": "Exact report issue/status consistency; canonical audit issue-code contract reused.",
+    "initial_head": "1f82119dd3bfd35c1bc5ffc5225e8755fdf1fa2d",
+    "final_verdict_location": "PR exact-head review summary after publishing this correction"
+  }
+}
