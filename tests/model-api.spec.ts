@@ -61,3 +61,15 @@ it("blocks agent setup and keeps catalogue inspection read-only", async () => {
   expect(await handleModelProfiles(ctx as unknown as PluginContext, read)).toMatchObject({ status: 200, body: { mapping: { families: expect.any(Array) }, availability: "not_validated_live" } });
   expect(setupVariant).not.toHaveBeenCalled(); expect(ctx.db.execute).not.toHaveBeenCalled();
 });
+it.each([
+  ["absent configuration", {}, false],
+  ["missing runtime profile", { modelVariantsEnabled: true }, false],
+  ["experimental runtime", { modelVariantsEnabled: true, n2RuntimeProfile: "paperclip_runner-experimental" }, false],
+  ["ordinary runtime", { modelVariantsEnabled: true, n2RuntimeProfile: "ordinary-cli-v1" }, true],
+  ["disabled flag", { modelVariantsEnabled: false, n2RuntimeProfile: "ordinary-cli-v1" }, false],
+] as const)("reports effective new-mission eligibility for %s", async (_name, config, expected) => {
+  vi.mocked(ctx.config.get).mockResolvedValueOnce(config as never);
+  const read = request(); read.routeKey = "model-profiles-read";
+  const result = await handleModelProfiles(ctx as unknown as PluginContext, read);
+  expect(result.body).toMatchObject({ enabledForNewMissions: expected });
+});

@@ -8,7 +8,7 @@ import { bindVariantIssue, claimVariantWake, observeVariantRun, prepareVariantLa
 import { n2Cas, n2CommandCas, nativeN2Profile, reserveN2Run } from "../src/n2-missions.js";
 import { readAdmission, reserveAdmission } from "../src/admission.js";
 import { readOrdinaryRun, settleOrdinaryRunUsage } from "../src/g4-native.js";
-import { createContributionIssueEffect } from "../src/contribution-effects.js";
+import { createContributionIssueEffect, reconcileContributionIssueEffect } from "../src/contribution-effects.js";
 import { acceptedN5Submission } from "../src/n5-preflight.js";
 import { handleN5Agent, handleN5Board, reconcileN5, startN5Publication } from "../src/n5-runtime.js";
 import { requestN5Correction, rebindN5Plan } from "../src/n5-continuation.js";
@@ -25,7 +25,7 @@ vi.mock("../src/admission.js", async original => ({ ...await original(), readAdm
 vi.mock("../src/g4-native.js", async original => ({ ...await original(), readOrdinaryRun: vi.fn(), settleOrdinaryRunUsage: vi.fn() }));
 vi.mock("../src/n5-native.js", () => ({ assertCurrentN5Plan: vi.fn(), readN5Plan: vi.fn(), observeN5Native: vi.fn() }));
 vi.mock("../src/n5-preflight.js", () => ({ acceptedN5Submission: vi.fn() }));
-vi.mock("../src/contribution-effects.js", async original => ({ ...await original(), createContributionIssueEffect: vi.fn() }));
+vi.mock("../src/contribution-effects.js", async original => ({ ...await original(), createContributionIssueEffect: vi.fn(), reconcileContributionIssueEffect: vi.fn() }));
 
 let current: MissionRecord;
 let physical: string;
@@ -86,6 +86,7 @@ beforeEach(() => {
   vi.mocked(readAdmission).mockResolvedValue({ version: 1 } as never);
   vi.mocked(acceptedN5Submission).mockReturnValue({ submissionId, candidateCommit: "a".repeat(40) } as never);
   vi.mocked(createContributionIssueEffect).mockImplementation(async (_ctx, intent) => ({ state: "confirmed", issue: { id: randomUUID(), assigneeAgentId: intent.assigneeAgentId } }) as never);
+  vi.mocked(reconcileContributionIssueEffect).mockResolvedValue({ state: "absent" } as never);
   vi.mocked(readOrdinaryRun).mockImplementation(async (_ctx, identity) => ({ id: identity.runId, agentId: identity.agentId, status: "running", startedAt: "now", finishedAt: null }) as never);
 });
 function context() {
@@ -118,7 +119,7 @@ function coordination(kind: "coordinator" | "facilitator") {
 
 it("launches and attributes a physical publisher while retaining its logical authority and reservation", async () => {
   const ctx = context(); const publisher = current.aggregate.n5!.authority.publisherAgentId;
-  await startN5Publication(ctx as unknown as PluginContext, current);
+  await reconcileN5(ctx as unknown as PluginContext, current);
   const p = current.aggregate.n5!.publication!;
   expect(createContributionIssueEffect).toHaveBeenCalledWith(ctx, expect.objectContaining({ assigneeAgentId: physical }));
   expect(prepareVariantLaunch).toHaveBeenCalledWith(ctx, expect.anything(), expect.objectContaining({ taskKey: "delivery", interventionKey: "publisher", launchKey: p.reservationId, logicalAgentId: publisher }));
@@ -138,6 +139,61 @@ it("keeps an uncertain publisher wake and never selects or launches a replacemen
   expect(modelLaunch(current, p.reservationId)?.state).toBe("unknown");
   await startN5Publication(ctx as unknown as PluginContext, current);
   expect(prepareVariantLaunch).toHaveBeenCalledTimes(1); expect(ctx.issues.requestWakeup).toHaveBeenCalledTimes(1);
+});
+
+it("reuses the durable publisher identity when selection is interrupted before it records a launch", async () => {
+  const ctx = context(); vi.mocked(prepareVariantLaunch).mockRejectedValueOnce(new Error("selection interrupted"));
+  await expect(startN5Publication(ctx as unknown as PluginContext, current)).rejects.toThrow("selection interrupted");
+  const claimed = current.aggregate.n5!.publication!;
+  expect(claimed).toMatchObject({ creation: "preparing", state: "pending", issueId: null });
+  expect(modelLaunch(current, claimed.reservationId)).toBeUndefined();
+  await reconcileN5(ctx as unknown as PluginContext, current);
+  expect(prepareVariantLaunch).toHaveBeenNthCalledWith(1, ctx, expect.anything(), expect.objectContaining({ launchKey: claimed.reservationId }));
+  expect(prepareVariantLaunch).toHaveBeenNthCalledWith(2, ctx, expect.anything(), expect.objectContaining({ launchKey: claimed.reservationId }));
+  expect(current.aggregate.modelSelection!.tasks.flatMap(task => task.launches)).toHaveLength(1);
+  expect(createContributionIssueEffect).toHaveBeenCalledTimes(1);
+});
+
+it("reuses the selected publisher launch when the pre-create claim CAS fails", async () => {
+  const ctx = context(); const ordinarySave = vi.mocked(n2Cas).getMockImplementation()!; let interrupted = false;
+  vi.mocked(n2Cas).mockImplementation(async (...args) => {
+    const publication = args[2].n5?.publication;
+    if (!interrupted && publication?.creation === "claimed" && !publication.issueId) {
+      interrupted = true; throw new Error("creation claim CAS failed");
+    }
+    return ordinarySave(...args);
+  });
+  await expect(startN5Publication(ctx as unknown as PluginContext, current)).rejects.toThrow("creation claim CAS failed");
+  const claimed = current.aggregate.n5!.publication!;
+  expect(claimed).toMatchObject({ creation: "preparing", state: "pending", issueId: null });
+  expect(modelLaunch(current, claimed.reservationId)).toMatchObject({ state: "selected", launchKey: claimed.reservationId });
+  await startN5Publication(ctx as unknown as PluginContext, current);
+  expect(new Set(vi.mocked(prepareVariantLaunch).mock.calls.map(call => call[2].launchKey))).toEqual(new Set([claimed.reservationId]));
+  expect(current.aggregate.modelSelection!.tasks.flatMap(task => task.launches)).toHaveLength(1);
+  expect(createContributionIssueEffect).toHaveBeenCalledTimes(1);
+});
+
+it("uses correlation readback only after publisher creation becomes unknown", async () => {
+  const ctx = context(); vi.mocked(createContributionIssueEffect).mockResolvedValueOnce({ state: "unknown" } as never);
+  await startN5Publication(ctx as unknown as PluginContext, current);
+  const uncertain = current.aggregate.n5!.publication!;
+  expect(uncertain).toMatchObject({ creation: "claimed", state: "pending", issueId: null });
+  await startN5Publication(ctx as unknown as PluginContext, current);
+  expect(reconcileContributionIssueEffect).toHaveBeenCalledTimes(1);
+  expect(createContributionIssueEffect).toHaveBeenCalledTimes(1);
+  expect(current.aggregate.modelSelection!.tasks.flatMap(task => task.launches)).toHaveLength(1);
+  expect(ctx.issues.requestWakeup).not.toHaveBeenCalled();
+});
+
+it("keeps a historical claimed publisher creation readback-only", async () => {
+  const ctx = context(); const reservationId = randomUUID();
+  current.aggregate.n5!.publication = { intentId: randomUUID(), submission: acceptedN5Submission(current), issueId: null, runId: null,
+    reservationId, settlementCommandId: randomUUID(), createdAt: new Date().toISOString(), creation: "claimed", wake: "pending", state: "pending" };
+  await startN5Publication(ctx as unknown as PluginContext, current);
+  expect(reconcileContributionIssueEffect).toHaveBeenCalledTimes(1);
+  expect(prepareVariantLaunch).not.toHaveBeenCalled();
+  expect(createContributionIssueEffect).not.toHaveBeenCalled();
+  expect(modelLaunch(current, reservationId)).toBeUndefined();
 });
 
 it("resumes the same publisher launch after a pre-wake claim interruption and rejects a premature callback", async () => {

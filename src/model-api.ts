@@ -37,7 +37,8 @@ export async function handleModelProfiles(ctx: PluginContext, input: PluginApiRe
   const mapping = config.modelProfileMapping ?? MODEL_CATALOGUE;
   validateModelCatalogue(mapping);
   if (input.routeKey === "model-profiles-read") return { status: 200, body: {
-    mapping, profiles: MODEL_PROFILES, roles: ROLE_TEMPLATES.map(r => ({ key: r.key, revision: r.revision, title: r.title, families: r.families, allowedProfiles: r.allowedProfiles })), enabledForNewMissions: config.modelVariantsEnabled === true,
+    mapping, profiles: MODEL_PROFILES, roles: ROLE_TEMPLATES.map(r => ({ key: r.key, revision: r.revision, title: r.title, families: r.families, allowedProfiles: r.allowedProfiles })),
+    enabledForNewMissions: config.modelVariantsEnabled === true && config.n2RuntimeProfile === "ordinary-cli-v1",
     availability: "not_validated_live", estimate: "comparable history, otherwise non calibré", estimates: await companyEstimates(ctx, input.companyId),
     variants: await inspectPreparedVariants(ctx, input.companyId) } };
   const body = input.body as Record<string, unknown>;

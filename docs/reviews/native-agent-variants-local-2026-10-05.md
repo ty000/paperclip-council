@@ -80,3 +80,18 @@ passed its 21 controls again, with four nonempty screenshots and no page errors.
 These remain local/simulated execution proofs. Installation and native setup/API/
 browser acceptance are a separate, owner-authorized phase after PR merge;
 provider/model execution is not established by this checkpoint.
+
+
+The second PR correction checkpoint also persists a distinct N5 `preparing`
+identity before selecting a variant. Reconciliation keeps the same reservation
+through interrupted selection or a failed creation-claim CAS. Existing `claimed`
+creations remain readback-only, including historical missions; no replacement
+create is issued after an uncertain effect. The catalogue enablement flag now
+uses the same ordinary CLI eligibility predicate as mission creation.
+
+The updated repository campaign passed **49 Python and 629 TypeScript tests**,
+typecheck/build and the static diff gate. New regressions cover N5 interruption,
+claim loss, unknown creation and historical claims, plus the effective enablement
+configuration matrix. The unchanged rendered component retains the prior browser
+proof. The optional Impeccable local-file check was skipped because its engine
+was not installed; no automated Impeccable design verdict is claimed.
