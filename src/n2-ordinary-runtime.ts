@@ -2,7 +2,7 @@ import { physicalAgent } from "./model-state.js";
 import type { RoleKey } from "./model-catalogue.js";
 import { inspectVariant } from "./model-variants.js";
 import { prepareVariantLaunch, bindVariantIssue, claimVariantWake, recordVariantWake, observeVariantRun } from "./model-runtime.js";
-import { replaceMissingOpinion } from "./n2-ordinary-replacement.js";
+import { reconcileReplacedCouncilSettlement, replaceMissingOpinion } from "./n2-ordinary-replacement.js";
 import { ordinaryTaskInstructions } from "./n2-ordinary-instructions.js";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
@@ -321,6 +321,7 @@ async function applyVerdict(ctx: PluginContext, mission: MissionRecord, task: Or
 /** One durable, sequential dispatcher; explicit owner reconciliation resumes events, never uncertain effects. */
 export async function reconcileOrdinaryN2(ctx: PluginContext, initial: MissionRecord) {
   let mission = await freshOrdinary(ctx, initial);
+  mission = await reconcileReplacedCouncilSettlement(ctx, mission);
   for (let step = 0; step < 12; step++) {
     const state = mission.aggregate.n2!;
     const task = state.ordinary!.tasks.find(item => !item.closedAt);
@@ -354,6 +355,7 @@ export async function reconcileOrdinaryN2(ctx: PluginContext, initial: MissionRe
     await ctx.issues.update(task.issueId!, { status: "done" }, mission.companyId);
     mission = await saveOrdinaryTask(ctx, mission, { ...task, closedAt: new Date().toISOString() });
     if (mission.aggregate.n2!.status === "accepted") {
+      mission = await reconcileReplacedCouncilSettlement(ctx, mission);
       await ctx.issues.update(mission.rootIssueId, { status: "done" }, mission.companyId);
       return mission;
     }
