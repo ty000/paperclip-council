@@ -6,7 +6,7 @@ import { readOrdinaryRunSummary } from "./n2-ordinary-report.js";
 import { coordinationActor, coordinationTask, coordinationTaskAt, saveCoordination, type CoordinationTask } from "./n6-coordination-state.js";
 import { coordinationInstructions } from "./n6-work-instructions.js";
 import { bindVariantIssue, claimVariantWake, observeVariantRun, prepareVariantLaunch, recordVariantWake } from "./model-runtime.js";
-import { physicalAgent } from "./model-state.js";
+import { modelLaunch, physicalAgent } from "./model-state.js";
 
 const fresh = async (ctx: PluginContext, m: MissionRecord) => (await getMission(ctx, m.companyId, m.missionId))!;
 export function saveCoordinationTask(ctx: PluginContext, m: MissionRecord, task: CoordinationTask) {
@@ -15,7 +15,8 @@ export function saveCoordinationTask(ctx: PluginContext, m: MissionRecord, task:
 }
 async function dispatch(ctx: PluginContext, initial: MissionRecord, initialTask: CoordinationTask) {
   let m = initial; let task = initialTask;
-  if (task.wake === "claimed") return m; // An unbound wake is uncertain, never repeated.
+  const prior = modelLaunch(m, task.reservationId);
+  if (task.wake === "claimed" && (!prior || !["selected", "assignment_claimed", "ready"].includes(prior.state))) return m;
   if (!task.issueId && task.creation !== "pending") throw new MissionError(409, "n6_work_effect_unknown", "Creation claimed: retain existing identity; no replacement task");
   await coordinationActor(ctx, m, task.agentId);
   const prepared = await prepareVariantLaunch(ctx, m, { taskKey: "coordination", interventionKey: task.kind, launchKey: task.reservationId,
@@ -35,7 +36,9 @@ async function dispatch(ctx: PluginContext, initial: MissionRecord, initialTask:
   await reserveAdmission(ctx, { companyId: m.companyId, periodKey: c.periodKey, reservationId: task.reservationId, missionId: m.missionId,
     effectId: task.taskId, requestedUnits: c.requestedUnits, attempt: { kind: "initial", ordinal: 0 }, expectedVersion: envelope.version });
   m = await bindVariantIssue(ctx, m, task.reservationId, task.issueId!);
-  task = { ...task, wake: "claimed" }; m = await saveCoordinationTask(ctx, m, task);
+  if (task.wake !== "claimed") {
+    task = { ...task, wake: "claimed" }; m = await saveCoordinationTask(ctx, m, task);
+  }
   m = await claimVariantWake(ctx, m, task.reservationId);
   let wake: { runId: string | null };
   try {

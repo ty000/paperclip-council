@@ -11,7 +11,7 @@ import { n2Cas, n2CommandCas, nativeN2Profile, reserveN2Run, runtimeReceipt, run
 import { assertCurrentN5Plan, observeN5Native, readN5Plan } from "./n5-native.js";
 import { inspectN5, type N5State } from "./n5-state.js";
 import { bindVariantIssue, claimVariantWake, observeVariantRun, prepareVariantLaunch, recordVariantWake } from "./model-runtime.js";
-import { physicalAgent } from "./model-state.js";
+import { modelLaunch, physicalAgent } from "./model-state.js";
 
 const fresh = async (ctx: PluginContext, m: MissionRecord) => (await getMission(ctx, m.companyId, m.missionId))!;
 const save = (ctx: PluginContext, m: MissionRecord, n5: N5State) => n2Cas(ctx, m, { ...m.aggregate, n5 });
@@ -41,7 +41,7 @@ export async function startN5Publication(ctx: PluginContext, initial: MissionRec
   const continuation = n5.continuation;
   const updating = Boolean(continuation && !continuation.updateAdmitted && n5.publication?.settledAt
     && m.aggregate.n2?.status === "accepted" && m.aggregate.n2.activeSubmissionId !== continuation.previousPublication.submission.submissionId);
-  if (n5.publication && !updating) return m;
+  if (n5.publication && !updating) return resumeN5PreWake(ctx, m);
   if (m.aggregate.n2?.ordinary) {
     const publisher = await ctx.agents.get(n5.authority.publisherAgentId, m.companyId);
     if (!publisher || publisher.adapterType !== "codex_local" || publisher.adapterConfig?.engine !== "cli"
@@ -71,20 +71,35 @@ export async function startN5Publication(ctx: PluginContext, initial: MissionRec
       instructions: n5PublisherInstructions(m) }) });
   if (created.state !== "confirmed") return m;
   m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...m.aggregate.n5!.publication!, issueId: created.issue.id, creation: "confirmed" } });
-  await reserveN2Run(ctx, m, { reservationId, effectId: intentId, kind: updating ? "correction" : "initial" });
-  m = await bindVariantIssue(ctx, m, reservationId, created.issue.id);
-  m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...m.aggregate.n5!.publication!, wake: "claimed" } });
-  m = await claimVariantWake(ctx, m, reservationId);
+  return resumeN5PreWake(ctx, m, true);
+}
+
+async function resumeN5PreWake(ctx: PluginContext, initial: MissionRecord, newlyCreated = false) {
+  let m = initial; let p = m.aggregate.n5?.publication;
+  if (!p || p.creation !== "confirmed" || !p.issueId || p.runId || !m.aggregate.modelSelection && !newlyCreated) return m;
+  const prior = m.aggregate.modelSelection ? modelLaunch(m, p.reservationId) : undefined;
+  if (prior && !["selected", "assignment_claimed", "ready"].includes(prior.state)) return m;
+  const issueId = p.issueId;
+  await reserveN2Run(ctx, m, { reservationId: p.reservationId, effectId: p.intentId,
+    kind: p.operation === "update" ? "correction" : "initial" });
+  const prepared = prior || !m.aggregate.modelSelection ? { mission: m, binding: prior ?? null } : await prepareVariantLaunch(ctx, m, { taskKey: "delivery", interventionKey: "publisher", launchKey: p.reservationId,
+    logicalAgentId: m.aggregate.n5!.authority.publisherAgentId, family: "orchestration", issueId, expectedRoles: ["publisher"] });
+  m = await bindVariantIssue(ctx, prepared.mission, p.reservationId, issueId);
+  p = m.aggregate.n5!.publication!;
+  if (p.wake !== "claimed") {
+    m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...p, wake: "claimed" } });
+  }
+  m = await claimVariantWake(ctx, m, p.reservationId);
   let wake: { runId: string | null };
   try {
-    await ctx.issues.update(created.issue.id, { status: "todo" }, m.companyId);
-    wake = await ctx.issues.requestWakeup(created.issue.id, m.companyId, { idempotencyKey: `council:n5:${intentId}`, reason: "council_n5_authorized_delivery", actorUserId: m.ownerUserId });
+    await ctx.issues.update(issueId, { status: "todo" }, m.companyId);
+    wake = await ctx.issues.requestWakeup(issueId, m.companyId, { idempotencyKey: `council:n5:${p.intentId}`, reason: "council_n5_authorized_delivery", actorUserId: m.ownerUserId });
   } catch (error) {
-    await recordVariantWake(ctx, await fresh(ctx, m), reservationId, null);
+    await recordVariantWake(ctx, await fresh(ctx, m), p.reservationId, null);
     throw error;
   }
   m = await fresh(ctx, m);
-  m = await recordVariantWake(ctx, m, reservationId, wake.runId);
+  m = await recordVariantWake(ctx, m, p.reservationId, wake.runId);
   if (!m.aggregate.n5!.publication!.runId && wake.runId) m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...m.aggregate.n5!.publication!, runId: wake.runId } });
   return m;
 }
@@ -95,7 +110,7 @@ export async function reconcileN5(ctx: PluginContext, initial: MissionRecord) {
   if (!m.aggregate.n5.publication || m.aggregate.n5.continuation && !m.aggregate.n5.continuation.updateAdmitted
       && m.aggregate.n2?.status === "accepted" && m.aggregate.n2.activeSubmissionId !== m.aggregate.n5.publication.submission.submissionId) return startN5Publication(ctx, m);
   let p = m.aggregate.n5.publication;
-  if (!p.runId || !p.issueId) return m;
+  if (!p.runId || !p.issueId) return resumeN5PreWake(ctx, m);
   if (!p.settledAt) {
     const { profile, envelope } = await nativeN2Profile(ctx, m);
     if (!envelope.reservations.find(r => r.reservationId === p.reservationId)?.settlementReceipts.some(r => r.commandId === p.settlementCommandId)) {
@@ -130,9 +145,11 @@ async function executeN5Board(ctx: PluginContext, input: { companyId: string; mi
 
 async function bindPublisher(ctx: PluginContext, m: MissionRecord, input: PluginApiRequestInput) {
   const n5 = m.aggregate.n5; const p = n5?.publication;
+  const launch = p ? modelLaunch(m, p.reservationId) : undefined;
   if (!n5 || !p || !p.issueId || input.params.issueId !== p.issueId || input.actor.actorType !== "agent"
       || input.actor.agentId !== physicalAgent(m, n5.authority.publisherAgentId, { launchKey: p.reservationId, issueId: p.issueId })
       || !input.actor.runId || p.wake !== "claimed"
+      || m.aggregate.modelSelection && (!launch || !["wake_claimed", "unknown", "bound"].includes(launch.state))
       || p.runId && p.runId !== input.actor.runId) throw new MissionError(403, "n5_publisher_binding", "Exact authorized publisher child and reserved run required");
   const run = await (m.aggregate.n2?.ordinary ? readOrdinaryRun : readNativeRun)(ctx, { companyId: m.companyId, issueId: p.issueId, runId: input.actor.runId, agentId: input.actor.agentId });
   if (run.status !== "running" || !run.startedAt || run.finishedAt) throw new MissionError(409, "n5_publisher_not_running", "Publisher run must be active");

@@ -12,6 +12,7 @@ import { createContributionIssueEffect } from "../src/contribution-effects.js";
 import { acceptedN5Submission } from "../src/n5-preflight.js";
 import { handleN5Agent, handleN5Board, reconcileN5, startN5Publication } from "../src/n5-runtime.js";
 import { requestN5Correction, rebindN5Plan } from "../src/n5-continuation.js";
+import { executeOrdinaryN2Agent } from "../src/n2-ordinary-agent.js";
 import { readN5Plan } from "../src/n5-native.js";
 import { coordinationTask } from "../src/n6-coordination-state.js";
 import { reconcileCoordination } from "../src/n6-work-runtime.js";
@@ -139,6 +140,21 @@ it("keeps an uncertain publisher wake and never selects or launches a replacemen
   expect(prepareVariantLaunch).toHaveBeenCalledTimes(1); expect(ctx.issues.requestWakeup).toHaveBeenCalledTimes(1);
 });
 
+it("resumes the same publisher launch after a pre-wake claim interruption and rejects a premature callback", async () => {
+  const ctx = context(); vi.mocked(claimVariantWake).mockRejectedValueOnce(new Error("claim interrupted"));
+  await expect(startN5Publication(ctx as unknown as PluginContext, current)).rejects.toThrow("claim interrupted");
+  const p = current.aggregate.n5!.publication!;
+  expect(p).toMatchObject({ creation: "confirmed", wake: "claimed", runId: null });
+  expect(modelLaunch(current, p.reservationId)?.state).toBe("ready");
+  expect((await handleN5Agent(ctx as unknown as PluginContext, request(p.issueId!, physical, randomUUID(), "n5-inspect"))).status).toBe(403);
+  expect(recordVariantWake).not.toHaveBeenCalled();
+  await startN5Publication(ctx as unknown as PluginContext, current);
+  expect(modelLaunch(current, p.reservationId)).toMatchObject({ state: "bound", launchKey: p.reservationId });
+  expect(prepareVariantLaunch).toHaveBeenCalledTimes(1); expect(createContributionIssueEffect).toHaveBeenCalledTimes(1);
+  expect(ctx.issues.requestWakeup).toHaveBeenCalledTimes(1);
+  expect(vi.mocked(reserveN2Run).mock.calls.every(call => call[2].reservationId === p.reservationId)).toBe(true);
+});
+
 it.each(["coordinator", "facilitator"] as const)("binds physical %s commands and keeps the shared logical coordination task", async kind => {
   const task = coordination(kind); const ctx = context(); const logical = task.agentId;
   await reconcileCoordination(ctx as unknown as PluginContext, current);
@@ -158,6 +174,23 @@ it("retains the N6 admission and variant when a wake response is lost", async ()
   expect(modelLaunch(current, task.reservationId)?.state).toBe("unknown");
   await reconcileCoordination(ctx as unknown as PluginContext, current);
   expect(reserveAdmission).toHaveBeenCalledTimes(1); expect(ctx.issues.create).toHaveBeenCalledTimes(1); expect(ctx.issues.requestWakeup).toHaveBeenCalledTimes(1);
+});
+
+it("resumes the same N6 launch after a pre-wake claim interruption and rejects a premature callback", async () => {
+  const task = coordination("coordinator"); const ctx = context();
+  vi.mocked(claimVariantWake).mockRejectedValueOnce(new Error("claim interrupted"));
+  await expect(reconcileCoordination(ctx as unknown as PluginContext, current)).rejects.toThrow("claim interrupted");
+  const interrupted = current.aggregate.n6!.coordination!.tasks[0]!;
+  expect(interrupted).toMatchObject({ taskId: task.taskId, creation: "confirmed", wake: "claimed", runId: null });
+  expect(modelLaunch(current, task.reservationId)?.state).toBe("ready");
+  expect((await handleN6WorkAgent(ctx as unknown as PluginContext,
+    request(interrupted.issueId!, physical, randomUUID(), "n6-inspect"))).status).toBe(403);
+  expect(recordVariantWake).not.toHaveBeenCalled();
+  await reconcileCoordination(ctx as unknown as PluginContext, current);
+  expect(modelLaunch(current, task.reservationId)).toMatchObject({ state: "bound", launchKey: task.reservationId });
+  expect(prepareVariantLaunch).toHaveBeenCalledTimes(2); expect(ctx.issues.create).toHaveBeenCalledTimes(1);
+  expect(ctx.issues.requestWakeup).toHaveBeenCalledTimes(1);
+  expect(vi.mocked(reserveAdmission).mock.calls.every(call => call[1].reservationId === task.reservationId)).toBe(true);
 });
 
 it("prepares the resumed root variant before the one-shot owner handoff and exposes no native action on replay", async () => {
@@ -220,6 +253,21 @@ it.each(["selected", "assignment_claimed", "ready"] as const)("resumes proven pr
   expect(modelLaunch(current, body.reservationId)?.state).toBe("wake_claimed");
   expect(current.aggregate.modelSelection!.tasks.flatMap(task => task.launches)).toHaveLength(1);
   expect(reserveN2Run).toHaveBeenCalledTimes(1); expect(n2CommandCas).toHaveBeenCalledTimes(1);
+});
+
+it("rejects a correction callback before its durable wake claim and then resumes the same owner handoff", async () => {
+  const ctx = context(); const body = correctionBody();
+  vi.mocked(claimVariantWake).mockRejectedValueOnce(new Error("claim interrupted"));
+  await expect(requestN5Correction(ctx as unknown as PluginContext, current, body, current.ownerUserId)).rejects.toThrow("claim interrupted");
+  expect(modelLaunch(current, body.reservationId)?.state).toBe("ready");
+  await expect(executeOrdinaryN2Agent(ctx as unknown as PluginContext, current,
+    request(current.rootIssueId, physical, randomUUID(), "ordinary-inspect"), { command: "ordinary-inspect" }))
+    .rejects.toMatchObject({ code: "ordinary_actor_binding" });
+  expect(recordVariantWake).not.toHaveBeenCalled();
+  const recovered = await requestN5Correction(ctx as unknown as PluginContext, current, body, current.ownerUserId);
+  expect(recovered).toMatchObject({ outcome: "replayed", effectPermission: "execute", nativeAction: { body: { resume: true } } });
+  expect(modelLaunch(current, body.reservationId)?.state).toBe("wake_claimed");
+  expect(prepareVariantLaunch).toHaveBeenCalledTimes(2); expect(reserveN2Run).toHaveBeenCalledTimes(1);
 });
 
 it.each(["wake_claimed", "unknown", "bound"] as const)("never reissues the owner handoff after a %s launch", async state => {

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  MODEL_CATALOGUE, MODEL_PROFILES, ROLE_TEMPLATES, logicalAnchorKey,
+  MODEL_CATALOGUE, MODEL_PROFILE_MAPPING_SCHEMA, MODEL_PROFILES, ROLE_TEMPLATES, logicalAnchorKey,
   managedAgentDeclarations, managedSkillDeclarations, validateModelCatalogue, variantKey,
 } from "../src/model-catalogue.js";
 import { MODEL_CHARTER_SOURCES } from "../src/model-charters.js";
@@ -38,6 +38,29 @@ describe("versioned model catalogue", () => {
   it("accepts an explicit single compatible alternative", () => {
     const value = { ...structuredClone(MODEL_CATALOGUE), unavailabilityAlternatives: { "terra-low": "sol-medium" } };
     expect(validateModelCatalogue(value).unavailabilityAlternatives).toEqual({ "terra-low": "sol-medium" });
+  });
+  it("exports the same seven-family and profile boundary enforced at runtime", () => {
+    expect(MODEL_PROFILE_MAPPING_SCHEMA).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["schemaVersion", "revision", "families"],
+      properties: {
+        schemaVersion: { const: 1 },
+        revision: { type: "string", pattern: "^[1-9][0-9]*$" },
+        variantRevision: { type: "string", pattern: "^[1-9][0-9]*$" },
+        families: { type: "array", minItems: 7, maxItems: 7 },
+        unavailabilityAlternatives: { type: "object", additionalProperties: false },
+      },
+    });
+    const familyBoundary = (MODEL_PROFILE_MAPPING_SCHEMA.properties as any).families.allOf;
+    expect(familyBoundary).toHaveLength(7);
+    expect(familyBoundary.map((rule: any) => rule.contains.oneOf[0].properties.id.const)).toEqual(MODEL_CATALOGUE.families.map(family => family.id));
+    const alternatives = (MODEL_PROFILE_MAPPING_SCHEMA.properties as any).unavailabilityAlternatives.properties;
+    expect(Object.keys(alternatives)).toEqual(Object.keys(MODEL_PROFILES));
+    for (const [profile, rule] of Object.entries(alternatives) as Array<[string, any]>) {
+      expect(rule.enum).not.toContain(profile);
+      expect(rule.enum).toHaveLength(Object.keys(MODEL_PROFILES).length - 1);
+    }
   });
   it("leaves contextual fallback permission to the pinned family and permits a future revision reference", () => {
     const value = { ...structuredClone(MODEL_CATALOGUE), variantRevision: "2", unavailabilityAlternatives: { "sol-medium": "sol-high" } };

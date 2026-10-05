@@ -113,9 +113,9 @@ async function dispatchTask(ctx: PluginContext, initial: MissionRecord, initialT
   await reserveN2Run(ctx, mission, { reservationId: task.reservationId, effectId: task.taskId, kind: task.replacementOf ? "resume" : task.kind === "correction" ? "correction" : "initial",
     ownerReplacementCommandId: task.replacementOf ? mission.aggregate.n2!.ordinary!.missingOpinionReplacement!.commandId : undefined });
   mission = await bindVariantIssue(ctx, mission, task.reservationId, task.issueId!);
-  mission = await claimVariantWake(ctx, mission, task.reservationId);
-  task = { ...task, wake: "claimed" };
-  mission = await saveOrdinaryTask(ctx, mission, task);
+  mission = await claimVariantWake(ctx, mission, task.reservationId, (readyMission, claimedAggregate) =>
+    saveOrdinaryTask(ctx, { ...readyMission, aggregate: claimedAggregate }, { ...task, wake: "claimed" }));
+  task = currentOrdinaryTask(mission, task.taskId);
   if (task.kind === "correction") {
     const root = await ctx.issues.get(task.issueId!, mission.companyId);
     await ctx.issues.update(task.issueId!, { status: "in_progress", description: `${root?.description ?? ""}\n\n${ordinaryTaskInstructions(mission, task)}` }, mission.companyId);

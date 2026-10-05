@@ -105,6 +105,12 @@ retain independent completed work; do not label a partial path complete.
 
 ## Implemented identity and task boundaries
 
+The configuration boundary uses the shared draft-07 catalogue schema, while
+runtime reads retain the same matrix validation. A selected family must belong
+to the resolved role charter; supported multi-family classification remains
+possible. N1 defaults test and design contributors to their corresponding
+families.
+
 The logical identity is the UUID of the managed `sol-medium-v1` anchor for a
 catalogue role. Physical identities are resolved by exact managed resource keys,
 not display names. Lead, contributor-1 and contributor-2 are separate logical
@@ -146,6 +152,11 @@ the binding before native effects. Exact readback can complete a known assignmen
 an uncertain wake cannot be repeated. A pre-wake N5 correction interrupted during
 preparation can resume under its exact command/receipt/reservation; once the
 owner resume action has been handed off, replay grants no second action.
+
+Recovery archives remain internal even when publication fails: every public
+worker response, including errors and the tool gateway, removes `historyArchive`
+without changing the stored recovery snapshot. Company path scope is checked
+before dispatching any public route.
 
 Public APIs do not make assignment, document publication and wake atomic. Council
 serializes its own claims and checks native locks/assignment immediately before

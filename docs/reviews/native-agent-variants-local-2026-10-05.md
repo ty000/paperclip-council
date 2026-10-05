@@ -59,3 +59,24 @@ native qualification. Before enabling any fallback alternative, establish a
 verifiable pre-execution availability signal and qualify that path. Before
 shipping another template revision, retain the old declarations/keys for engaged
 tasks. Neither follow-up is performed by this local implementation lot.
+
+## PR #39 remediation checkpoint — 0.7.0
+
+The contextualized local reviews and GitHub review found additional boundary
+cases after the first implementation checkpoint. The source was corrected before
+merge: shared host configuration schema, role/family compatibility, recovery-only
+archive filtering on all public responses, company-path scope checks, rejection
+of callbacks before a durable wake claim, safe same-key N5/N6 pre-wake recovery,
+and atomic model/workflow wake claims for N1 and ordinary N2. N1 now records its
+variant selection before reserving child admission. The package and manifest
+both identify this additive release as **0.7.0**.
+
+After these corrections, the repository check runner passed **49 Python tests,
+620 TypeScript tests across 54 files, typecheck and build**. The optional mapping
+schema test was run with the actual host Ajv dependency. The Fallow diff gate
+passed against `ef817493bf99606d324cac6ef572c23de839a9ab`. The browser fixture
+passed its 21 controls again, with four nonempty screenshots and no page errors.
+
+These remain local/simulated execution proofs. Installation and native setup/API/
+browser acceptance are a separate, owner-authorized phase after PR merge;
+provider/model execution is not established by this checkpoint.

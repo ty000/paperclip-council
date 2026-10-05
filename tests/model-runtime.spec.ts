@@ -8,7 +8,7 @@ import { inspectVariant } from "../src/model-variants.js";
 import { readOrdinaryRun } from "../src/g4-native.js";
 import { collectInterventionHistory, publishInterventionHistory } from "../src/model-history.js";
 import { MODEL_CATALOGUE } from "../src/model-catalogue.js";
-import { bindVariantIssue, claimVariantWake, prepareVariantLaunch, recordVariantWake, observeVariantRun } from "../src/model-runtime.js";
+import { contributionModelFamily, bindVariantIssue, claimVariantWake, prepareVariantLaunch, recordVariantWake, observeVariantRun } from "../src/model-runtime.js";
 import { modelLaunch, modelMeasurements, physicalAgent } from "../src/model-state.js";
 
 function fixture() {
@@ -43,7 +43,7 @@ function fixture() {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(inspectVariant).mockImplementation(async (_ctx, _company, logical, profile, revision) => ({
-    agentId: `physical-${profile}`, logicalAgentId: logical, roleKey: "lead", profileId: profile, revision: revision!, ready: true, expected: {}, observed: {}, gaps: [],
+    agentId: `physical-${profile}`, logicalAgentId: logical, roleKey: logical === "reviewer" ? "generalist-reviewer" : "lead", profileId: profile, revision: revision!, ready: true, expected: {}, observed: {}, gaps: [],
   }));
   vi.mocked(readOrdinaryRun).mockImplementation(async (_ctx, input) => ({ id: input.runId, companyId: input.companyId, agentId: input.agentId,
     status: "succeeded", nativeIssueId: "", startedAt: "2026-10-05T10:00:00Z", finishedAt: "2026-10-05T10:00:03Z", contextSnapshot: { issueId: input.issueId },
@@ -93,12 +93,12 @@ it("shares one ascent across interventions while allowing another intervention's
   m = (await prepareVariantLaunch(f.ctx, m, { ...f.input, launchKey: "launch-2" })).mission;
   expect(modelLaunch(m, "launch-2")).toMatchObject({ ascent: true, previousLaunchKey: "launch-1" });
   m.aggregate.modelSelection!.choices.push({ taskKey: "root", interventionKey: "reviewer", family: "review", profileId: "sol-high", rationale: "sensitive review", authority: "lead", actorId: "logical", at: "now" });
-  m = (await prepareVariantLaunch(f.ctx, m, { ...f.input, logicalAgentId: "reviewer", interventionKey: "reviewer", launchKey: "review-1" })).mission;
+  m = (await prepareVariantLaunch(f.ctx, m, { ...f.input, logicalAgentId: "reviewer", interventionKey: "reviewer", launchKey: "review-1", expectedRoles: ["generalist-reviewer"] })).mission;
   expect(modelLaunch(m, "review-1")!.ascent).toBe(false);
   const reviewer = modelLaunch(m, "review-1")!; reviewer.state = "bound"; reviewer.runId = "review-run"; reviewer.issueId = "review-issue";
   m.aggregate.modelSelection!.choices.find(c => c.interventionKey === "reviewer")!.profileId = "astra-high";
   m.aggregate.modelSelection!.choices.find(c => c.interventionKey === "reviewer")!.at = "later";
-  await expect(prepareVariantLaunch(f.ctx, m, { ...f.input, logicalAgentId: "reviewer", interventionKey: "reviewer", launchKey: "review-2" })).rejects.toMatchObject({ code: "model_ascent_limit" });
+  await expect(prepareVariantLaunch(f.ctx, m, { ...f.input, logicalAgentId: "reviewer", interventionKey: "reviewer", launchKey: "review-2", expectedRoles: ["generalist-reviewer"] })).rejects.toMatchObject({ code: "model_ascent_limit" });
 });
 it.each(["running", "failed", "cancelled"])("does not ascend after a %s run", async status => {
   const f = fixture(); const m = await start(f);
@@ -172,3 +172,43 @@ it("rejects a ready variant carrying the wrong charter before recording or assig
   await expect(prepareVariantLaunch(f.ctx, f.get(), f.input)).rejects.toMatchObject({ code: "model_role_mismatch" });
   expect(f.mocks.db.execute).not.toHaveBeenCalled(); expect(f.mocks.issues.update).not.toHaveBeenCalled();
 });
+
+it("refuses an external callback before the durable wake claim without changing the launch", async () => {
+  const f = fixture();
+  const prepared = await prepareVariantLaunch(f.ctx, f.get(), f.input);
+  const ready = await bindVariantIssue(f.ctx, prepared.mission, f.input.launchKey, "issue");
+  const writes = f.mocks.db.execute.mock.calls.length;
+  await expect(recordVariantWake(f.ctx, ready, "launch-1", "manually-started-run")).rejects.toMatchObject({ code: "model_launch_not_ready" });
+  expect(modelLaunch(f.get(), "launch-1")).toMatchObject({ state: "ready", runId: null });
+  expect(f.mocks.db.execute).toHaveBeenCalledTimes(writes);
+  const claimed = await claimVariantWake(f.ctx, ready, "launch-1");
+  const bound = await recordVariantWake(f.ctx, claimed, "launch-1", "authorized-run");
+  expect(modelLaunch(bound, "launch-1")).toMatchObject({ state: "bound", runId: "authorized-run" });
+});
+it("rejects a chosen family outside the contributor charter even when its physical profile exists", async () => {
+  const f = fixture();
+  const implementation = f.config.modelProfileMapping.families.find(row => row.id === "implementation")!;
+  implementation.allowedProfiles = ["sol-medium"];
+  f.get().aggregate.modelSelection!.choices.push({ taskKey: "root", interventionKey: "lead", family: "diagnosis", profileId: "sol-high", rationale: "Incorrect classification", authority: "lead", actorId: "lead", at: "now" });
+  vi.mocked(inspectVariant).mockResolvedValue({ ready: true, roleKey: "contributor-1", agentId: "contributor-high", observed: {}, gaps: [] } as never);
+  await expect(prepareVariantLaunch(f.ctx, f.get(), { ...f.input, family: "implementation", expectedRoles: ["contributor-1"] }))
+    .rejects.toMatchObject({ code: "model_role_family_mismatch" });
+  expect(f.mocks.db.execute).not.toHaveBeenCalled(); expect(f.mocks.issues.update).not.toHaveBeenCalled();
+});
+it("permits a supported explicit classification for a multi-family facilitator", async () => {
+  const f = fixture();
+  f.get().aggregate.modelSelection!.choices.push({ taskKey: "root", interventionKey: "lead", family: "synthesis", profileId: "terra-low", rationale: "Bounded synthesis", authority: "lead", actorId: "lead", at: "now" });
+  vi.mocked(inspectVariant).mockResolvedValue({ ready: true, roleKey: "facilitator", agentId: "facilitator-terra", observed: {}, gaps: [] } as never);
+  const result = await prepareVariantLaunch(f.ctx, f.get(), { ...f.input, expectedRoles: ["facilitator"] });
+  expect(result.binding).toMatchObject({ family: "synthesis", profileId: "terra-low", roleKey: "facilitator" });
+});
+it.each([["test", "validation"], ["design", "design"], ["contributor-1", "implementation"], ["executor", "implementation"]] as const)
+  ("defaults N1 role %s to %s through its exact managed anchor", async (roleKey, family) => {
+    const f = fixture();
+    vi.mocked(inspectVariant).mockResolvedValue({ ready: true, roleKey, agentId: "physical", observed: {}, gaps: [] } as never);
+    const selectedFamily = await contributionModelFamily(f.ctx, f.get(), "logical");
+    expect(selectedFamily).toBe(family);
+    expect(inspectVariant).toHaveBeenCalledWith(f.ctx, "company", "logical", "sol-medium", "1");
+    const result = await prepareVariantLaunch(f.ctx, f.get(), { ...f.input, family: selectedFamily, expectedRoles: [roleKey] });
+    expect(result.binding).toMatchObject({ family, profileId: "sol-medium" });
+  });

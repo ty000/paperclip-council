@@ -8,7 +8,7 @@ import { coordinationActor, coordinationText, type CoordinationReport, type Coor
 import { saveCoordinationTask } from "./n6-work-runtime.js";
 import { coordinationInstructions } from "./n6-work-instructions.js";
 import { recordVariantWake } from "./model-runtime.js";
-import { physicalAgent } from "./model-state.js";
+import { modelLaunch, physicalAgent } from "./model-state.js";
 
 function refuseReserved(body: Record<string, unknown>, permitted: string[]) {
   if (Object.keys(body).some(k => !["missionId", "command", "commandId", "expectedVersion", ...permitted].includes(k))) {
@@ -43,8 +43,10 @@ export function coordinationReport(m: MissionRecord, task: CoordinationTask, bod
 }
 async function bind(ctx: PluginContext, m: MissionRecord, input: PluginApiRequestInput) {
   const task = m.aggregate.n6?.coordination?.tasks.find(t => t.issueId === input.params.issueId && !t.closedAt);
+  const launch = task ? modelLaunch(m, task.reservationId) : undefined;
   if (!task || input.actor.actorType !== "agent"
       || input.actor.agentId !== physicalAgent(m, task.agentId, { launchKey: task.reservationId, issueId: task.issueId! }) || !input.actor.runId
+      || m.aggregate.modelSelection && (!launch || !["wake_claimed", "unknown", "bound"].includes(launch.state))
       || task.wake !== "claimed" || task.runId && task.runId !== input.actor.runId) throw new MissionError(403, "n6_work_binding", "Exact admitted role/task/run required");
   const c = m.aggregate.n6!.coordination!;
   if (task.kind === "coordinator" && task.agentId !== c.coordinatorAgentId) throw new MissionError(403, "n6_coordinator_required", "Old coordinator cannot mutate this delegation");

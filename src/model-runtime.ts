@@ -1,6 +1,6 @@
 import type { PluginContext } from "@paperclipai/plugin-sdk";
-import type { MissionRecord } from "./missions.js";
-import { MODEL_CATALOGUE, validateModelCatalogue, type TaskFamily, type ProfileId, type RoleKey } from "./model-catalogue.js";
+import type { MissionAggregate, MissionRecord } from "./missions.js";
+import { MODEL_CATALOGUE, roleTemplate, validateModelCatalogue, type TaskFamily, type ProfileId, type RoleKey } from "./model-catalogue.js";
 import { inspectVariant } from "./model-variants.js";
 import { ModelSelectionError, modelLaunch, type ModelLaunch, type ModelSelectionState, type ModelMeasurement } from "./model-state.js";
 import { readOrdinaryRun } from "./g4-native.js";
@@ -54,6 +54,20 @@ async function selectedVariant(ctx: PluginContext, m: MissionRecord, logicalId: 
   return inspection;
 }
 
+/** N1 accepts execution, test and design charters with distinct default families. */
+export async function contributionModelFamily(ctx: PluginContext, m: MissionRecord, logicalId: string): Promise<TaskFamily> {
+  if (!m.aggregate.modelSelection) return "implementation";
+  const anchor = await inspectVariant(ctx, m.companyId, logicalId, "sol-medium", "1");
+  if (anchor.roleKey === "test") return "validation";
+  return anchor.roleKey === "design" ? "design" : "implementation";
+}
+
+function assertRoleFamily(roleKey: string, revision: string, family: TaskFamily) {
+  if (!roleTemplate(roleKey, revision).families.includes(family)) {
+    throw new ModelSelectionError("model_role_family_mismatch", "Selected family is outside this Council role's charter");
+  }
+}
+
 /** Called only by existing authorized dispatchers. This function never grants another attempt or wakes an agent. */
 export async function prepareVariantLaunch(ctx: PluginContext, initial: MissionRecord, input: LaunchInput) {
   let m = initial; const state = m.aggregate.modelSelection;
@@ -66,6 +80,7 @@ export async function prepareVariantLaunch(ctx: PluginContext, initial: MissionR
     if (["unknown", "wake_claimed"].includes(replay.state)) throw new ModelSelectionError("model_effect_unknown", "Retain the existing uncertain launch; no replacement key");
     const variant = await selectedVariant(ctx, m, replay.logicalAgentId, replay.profileId, replay.variantRevision);
     if (!variant.roleKey || !input.expectedRoles.includes(variant.roleKey)) throw new ModelSelectionError("model_role_mismatch", "Variant charter does not match the required workflow role");
+    assertRoleFamily(variant.roleKey, replay.variantRevision, replay.family);
     return { mission: m, binding: replay };
   }
   const existingTask = state.tasks.find(t => t.taskKey === input.taskKey);
@@ -98,6 +113,7 @@ export async function prepareVariantLaunch(ctx: PluginContext, initial: MissionR
   }
   if (!variant.agentId || !variant.roleKey) throw new ModelSelectionError("model_variant_unavailable", "Variant identity is not proven", variant);
   if (!input.expectedRoles.includes(variant.roleKey)) throw new ModelSelectionError("model_role_mismatch", "Variant charter does not match the required workflow role");
+  assertRoleFamily(variant.roleKey, task.variantRevision, family);
   const binding: ModelLaunch = { ...input, issueId: input.issueId ?? null, agentId: variant.agentId!, roleKey: variant.roleKey!,
     profileId, requestedProfileId, family, rationale: choice?.rationale ?? (previous ? "Conserve le profil de l'intervention autorisée" : "Profil par défaut de la famille"),
     authority: choice?.authority ?? "default", ...(choice ? { choiceAt: choice.at } : {}), mappingRevision: mapping.revision, variantRevision: task.variantRevision,
@@ -168,14 +184,21 @@ export async function bindVariantIssue(ctx: PluginContext, initial: MissionRecor
   return changeLaunch(ctx, m, { ...launch, issueId, state: "ready" });
 }
 
-export async function claimVariantWake(ctx: PluginContext, m: MissionRecord, launchKey: string): Promise<MissionRecord> {
+export function claimVariantWake(ctx: PluginContext, m: MissionRecord, launchKey: string): Promise<MissionRecord>;
+export function claimVariantWake<T>(ctx: PluginContext, m: MissionRecord, launchKey: string,
+  persist: (mission: MissionRecord, aggregate: MissionAggregate) => Promise<T>): Promise<T>;
+export async function claimVariantWake<T>(ctx: PluginContext, m: MissionRecord, launchKey: string,
+  persist?: (mission: MissionRecord, aggregate: MissionAggregate) => Promise<T>): Promise<MissionRecord | T> {
   const launch = modelLaunch(m, launchKey);
-  if (!launch) return m;
+  if (!launch) return persist ? persist(m, m.aggregate) : m;
   if (launch.state !== "ready" || !launch.issueId) throw new ModelSelectionError("model_launch_not_ready", "Persisted assignment and history must be ready before wake");
   await selectedVariant(ctx, m, launch.logicalAgentId, launch.profileId, launch.variantRevision);
   const issue = await idleIssue(ctx, m, launch.issueId);
   if (issue.assigneeAgentId !== launch.agentId) throw new ModelSelectionError("model_assignment_drift", "Issue assignment changed before wake");
-  return changeLaunch(ctx, m, { ...launch, state: "wake_claimed" });
+  const state = m.aggregate.modelSelection!;
+  const aggregate: MissionAggregate = { ...m.aggregate, modelSelection: { ...state, tasks: state.tasks.map(task => ({ ...task,
+    launches: task.launches.map(item => item.launchKey === launchKey ? { ...item, state: "wake_claimed" } : item) })) } };
+  return persist ? persist(m, aggregate) : saveModelState(ctx, m, aggregate.modelSelection!);
 }
 
 export async function recordVariantWake(ctx: PluginContext, m: MissionRecord, launchKey: string, runId: string | null): Promise<MissionRecord> {
@@ -183,6 +206,6 @@ export async function recordVariantWake(ctx: PluginContext, m: MissionRecord, la
   if (!launch) return m;
   if (launch.state === "bound" && (launch.runId === runId || runId === null)) return m;
   if (launch.runId && launch.runId !== runId) throw new ModelSelectionError("model_run_conflict", "A launch cannot bind a replacement native run");
-  if (!["ready", "wake_claimed", "unknown", "bound"].includes(launch.state)) throw new ModelSelectionError("model_launch_not_ready", "Run must belong to the recorded ready launch");
+  if (!["wake_claimed", "unknown", "bound"].includes(launch.state)) throw new ModelSelectionError("model_launch_not_ready", "Run must belong to a durably claimed launch");
   return changeLaunch(ctx, m, { ...launch, state: runId ? "bound" : "unknown", runId });
 }

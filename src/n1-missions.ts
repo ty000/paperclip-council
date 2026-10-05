@@ -1,5 +1,5 @@
 import { physicalAgent, isLogicalActor } from "./model-state.js";
-import { prepareVariantLaunch, bindVariantIssue, claimVariantWake, recordVariantWake, observeVariantRun } from "./model-runtime.js";
+import { contributionModelFamily, prepareVariantLaunch, bindVariantIssue, claimVariantWake, recordVariantWake, observeVariantRun } from "./model-runtime.js";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { randomUUID } from "node:crypto";
 import {
@@ -689,20 +689,23 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     const prepared = await prepareVariantLaunch(ctx, mission, { taskKey: mission.rootIssueId, interventionKey: "lead",
       launchKey: state.activationReservationId, logicalAgentId: leadAgentId, family: "orchestration", issueId: mission.rootIssueId, expectedRoles: ["lead"] });
     mission = await bindVariantIssue(ctx, prepared.mission, state.activationReservationId, mission.rootIssueId);
-    mission = await claimVariantWake(ctx, mission, state.activationReservationId);
-    const next: MissionAggregate = {
-      ...mission.aggregate,
-      n1: { ...state, rootDispatchState: "claimed", rootUsageBaselineUnits },
-      effectIntents: [...mission.aggregate.effectIntents, {
-        kind: "root_wakeup", state: "claimed", reservationId: state.activationReservationId,
-        issueId: mission.rootIssueId, assigneeAgentId: leadAgentId,
-      }],
-      journal: [...mission.aggregate.journal, {
-        action: "root_dispatch_claimed", reservationId: state.activationReservationId,
-        actorUserId: input.actorUserId, at: new Date().toISOString(),
-      }],
-    };
-    const claim = await commandCas(ctx, mission, input.body, "user", input.actorUserId!, next, mission.version);
+    const claim = await claimVariantWake(ctx, mission, state.activationReservationId, async (readyMission, claimedAggregate) => {
+      const readyState = n1State(readyMission);
+      if (!readyState) throw new Error("N1 state disappeared before root dispatch claim");
+      const next: MissionAggregate = {
+        ...claimedAggregate,
+        n1: { ...readyState, rootDispatchState: "claimed", rootUsageBaselineUnits },
+        effectIntents: [...claimedAggregate.effectIntents, {
+          kind: "root_wakeup", state: "claimed", reservationId: state.activationReservationId,
+          issueId: readyMission.rootIssueId, assigneeAgentId: leadAgentId,
+        }],
+        journal: [...claimedAggregate.journal, {
+          action: "root_dispatch_claimed", reservationId: state.activationReservationId,
+          actorUserId: input.actorUserId, at: new Date().toISOString(),
+        }],
+      };
+      return commandCas(ctx, readyMission, input.body, "user", input.actorUserId!, next, readyMission.version);
+    });
     if (claim.outcome !== "applied") return claim;
     let wake: { queued: boolean; runId: string | null } | null = null;
     try {
@@ -1174,6 +1177,9 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
           issueId: slot.childIssueId,
         });
       }
+      const prepared = await prepareVariantLaunch(ctx, mission, { taskKey: contributionId, interventionKey: contributionId,
+        launchKey: reservationId, logicalAgentId: slot.assigneeAgentId, family: await contributionModelFamily(ctx, mission, slot.assigneeAgentId), issueId: slot.childIssueId, expectedRoles: ["executor", "contributor-1", "contributor-2", "test", "design"] });
+      mission = prepared.mission;
       const reserved = await reserveAdmission(ctx, {
         companyId: mission.companyId, periodKey: state.periodKey,
         reservationId, missionId: mission.missionId, effectId: contributionId,
@@ -1182,38 +1188,32 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       if (!reserved.reservation || reserved.reservation.status !== "reserved") {
         throw new MissionError(409, "g4_reservation_unavailable", "Durable child reservation is unavailable");
       }
-      const prepared = await prepareVariantLaunch(ctx, mission, { taskKey: contributionId, interventionKey: contributionId,
-        launchKey: reservationId, logicalAgentId: slot.assigneeAgentId, family: "implementation", issueId: slot.childIssueId, expectedRoles: ["executor", "contributor-1", "contributor-2", "test", "design"] });
-      mission = await bindVariantIssue(ctx, prepared.mission, reservationId, slot.childIssueId);
-      mission = await claimVariantWake(ctx, mission, reservationId);
-      const slots = [...state.contributions];
-      slots[index] = {
-        ...slot,
-        dispatchState: "claimed",
-        dispatchReservationId: reservationId,
-        dispatchUsageBaselineUnits,
-      };
-      const next: MissionAggregate = {
-        ...mission.aggregate,
-        n1: { ...state, contributions: slots },
-        effectIntents: [...mission.aggregate.effectIntents, {
-          kind: "child_wakeup", state: "claimed", reservationId, contributionId,
-          issueId: slot.childIssueId, assigneeAgentId: slot.assigneeAgentId,
-          actorAgentId: actor.agentId, actorRunId: actor.runId,
-        }],
-        journal: [...mission.aggregate.journal, {
-          action: "child_dispatch_claimed", contributionId, reservationId,
-          actorAgentId: actor.agentId, runId: actor.runId, at: new Date().toISOString(),
-        }],
-      };
-      let claim: Awaited<ReturnType<typeof commandCas>>;
-      try {
-        claim = await commandCas(ctx, mission, body, "agent", actor.agentId, next, mission.version);
-      } catch (error) {
-        // A concurrent request can win the mission CAS using this reservation.
-        // Keep the allowance reserved until its actual effect is reconciled.
-        throw error;
-      }
+      mission = await bindVariantIssue(ctx, mission, reservationId, slot.childIssueId);
+      const claim = await claimVariantWake(ctx, mission, reservationId, async (readyMission, claimedAggregate) => {
+        const readyState = n1State(readyMission);
+        if (!readyState) throw new Error("N1 state disappeared before child dispatch claim");
+        const slots = [...readyState.contributions];
+        slots[index] = {
+          ...slots[index]!,
+          dispatchState: "claimed",
+          dispatchReservationId: reservationId,
+          dispatchUsageBaselineUnits,
+        };
+        const next: MissionAggregate = {
+          ...claimedAggregate,
+          n1: { ...readyState, contributions: slots },
+          effectIntents: [...claimedAggregate.effectIntents, {
+            kind: "child_wakeup", state: "claimed", reservationId, contributionId,
+            issueId: slot.childIssueId, assigneeAgentId: slot.assigneeAgentId,
+            actorAgentId: actor.agentId, actorRunId: actor.runId,
+          }],
+          journal: [...claimedAggregate.journal, {
+            action: "child_dispatch_claimed", contributionId, reservationId,
+            actorAgentId: actor.agentId, runId: actor.runId, at: new Date().toISOString(),
+          }],
+        };
+        return commandCas(ctx, readyMission, body, "agent", actor.agentId, next, readyMission.version);
+      });
       if (claim.outcome !== "applied") return { status: 200, body: claim };
       let wake: { queued: boolean; runId: string | null } | null = null;
       try {

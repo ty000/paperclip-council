@@ -1,4 +1,4 @@
-import { managedAgentDeclarations, managedSkillDeclarations } from "./model-catalogue.js";
+import { MODEL_PROFILE_MAPPING_SCHEMA, managedAgentDeclarations, managedSkillDeclarations } from "./model-catalogue.js";
 import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
 
 export const PLUGIN_ID = "private.paperclip-council";
@@ -13,7 +13,7 @@ export const missionToolDeclaration = {
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
-  version: "0.6.1",
+  version: "0.7.0",
   displayName: "Paperclip Council",
   description: "Private Council integration with revisioned rosters, bounded admission and checked candidate preparation.",
   author: "Local Paperclip integration",
@@ -63,7 +63,8 @@ const manifest: PaperclipPluginManifestV1 = {
     required: ["apiBaseUrl", "councilAgentId", "councilApiKey"],
     properties: {
       modelVariantsEnabled: { type: "boolean", default: false, description: "Use prepared fixed-profile Council variants on newly created standard missions only." },
-      modelProfileMapping: { type: "object", description: "Versioned family/profile catalogue. Shared runtime validation applies before selection; existing tasks retain their snapshot." },
+      modelProfileMapping: { ...MODEL_PROFILE_MAPPING_SCHEMA,
+        description: "Versioned family/profile catalogue. Shared runtime validation applies before selection; existing tasks retain their snapshot." },
       apiBaseUrl: {
         type: "string",
         format: "uri",

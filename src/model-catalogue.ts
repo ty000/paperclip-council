@@ -36,6 +36,53 @@ export const MODEL_CATALOGUE: ModelCatalogue = {
   ],
 };
 
+function orderedProfileSubsets(profiles: readonly ProfileId[]): ProfileId[][] {
+  return Array.from({ length: 2 ** profiles.length - 1 }, (_, index) =>
+    profiles.filter((_profile, position) => ((index + 1) & (1 << position)) !== 0));
+}
+
+function familyConfigSchema(family: ModelFamily) {
+  return {
+    oneOf: orderedProfileSubsets(family.allowedProfiles).flatMap(allowedProfiles =>
+      allowedProfiles.map(defaultProfile => ({
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "defaultProfile", "allowedProfiles"],
+        properties: {
+          id: { const: family.id },
+          defaultProfile: { const: defaultProfile },
+          allowedProfiles: { const: allowedProfiles },
+        },
+      }))),
+  };
+}
+
+/** Draft-07 configuration boundary; runtime validation remains authoritative after config read. */
+export const MODEL_PROFILE_MAPPING_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: ["schemaVersion", "revision", "families"],
+  properties: {
+    schemaVersion: { const: 1 },
+    revision: { type: "string", pattern: "^[1-9][0-9]*$" },
+    variantRevision: { type: "string", pattern: "^[1-9][0-9]*$" },
+    families: {
+      type: "array",
+      minItems: MODEL_CATALOGUE.families.length,
+      maxItems: MODEL_CATALOGUE.families.length,
+      allOf: MODEL_CATALOGUE.families.map(family => ({ contains: familyConfigSchema(family) })),
+    },
+    unavailabilityAlternatives: {
+      type: "object",
+      additionalProperties: false,
+      properties: Object.fromEntries(Object.keys(MODEL_PROFILES).map(profile => [profile, {
+        type: "string",
+        enum: Object.keys(MODEL_PROFILES).filter(alternative => alternative !== profile),
+      }])),
+    },
+  },
+};
+
 export function isProfileId(value: unknown): value is ProfileId {
   return typeof value === "string" && Object.hasOwn(MODEL_PROFILES, value);
 }
