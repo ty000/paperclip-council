@@ -157,12 +157,12 @@ export async function runDeliveryCoordinationBrowser(options: {
       await link.click();
       await page.getByRole("heading", { name: source.mission.aggregate.mandate.objective, exact: true }).waitFor();
       assert.equal(new URL(page.url()).searchParams.get("missionId"), sourceId);
-      assert.equal(await page.getByLabel("Select mission", { exact: true }).inputValue(), sourceId);
+      assert.equal(await page.getByLabel("Select mission").inputValue(), sourceId);
       assert.equal(exactSourceReads > readsBefore, !inList, "an absent source must be read through its authenticated exact route");
       await visibleText(page.getByRole("region", { name: "Delivery", exact: true }), "Delivery status: Ready for handoff");
       await page.reload({ waitUntil: "networkidle" });
       await page.getByRole("heading", { name: source.mission.aggregate.mandate.objective, exact: true }).waitFor();
-      assert.equal(await page.getByLabel("Select mission", { exact: true }).inputValue(), sourceId);
+      assert.equal(await page.getByLabel("Select mission").inputValue(), sourceId);
       navigation.push({ sourceInList: inList, sourceSelected: true, reloadPreservedSelection: true, exactSourceReads: exactSourceReads - readsBefore });
     }
     await page.screenshot({ path: resolve(screenshotPath, "source-outside-list.png"), fullPage: true });
