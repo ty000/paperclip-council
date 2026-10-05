@@ -27,7 +27,7 @@ import {
   readNativeG4Profile,
   settleNativeRunUsage,
 } from "./g4-native.js";
-import { verifyIntegratedCandidate, type IntegratedCandidateInput, type IntegratedCandidateVerification } from "./integration.js";
+import { ownershipsOverlap, verifyIntegratedCandidate, type IntegratedCandidateInput, type IntegratedCandidateVerification } from "./integration.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const COMMIT = /^[a-f0-9]{40}$/;
@@ -277,10 +277,7 @@ function readSlotPlan(value: unknown, mission: MissionRecord): Slot[] {
   }
   for (const left of slots[0].ownedPaths) {
     for (const right of slots[1].ownedPaths) {
-      const overlaps = left === right
-        || (left.endsWith("/") && right.startsWith(left))
-        || (right.endsWith("/") && left.startsWith(right));
-      if (overlaps) throw new MissionError(422, "ownership_overlap", "Contribution write ownership overlaps");
+      if (ownershipsOverlap(left, right)) throw new MissionError(422, "ownership_overlap", "Contribution write ownership overlaps");
     }
   }
   return slots;
@@ -475,6 +472,44 @@ async function recoverIntegration(ctx: PluginContext, mission: MissionRecord, bo
   });
 }
 
+async function recoverCandidate(ctx: PluginContext, mission: MissionRecord, body: Record<string, unknown>, actorUserId: string) {
+  const state = requireRecoveryState(mission);
+  const reason = boundedString(body.reason, "reason", 1000);
+  if (body.integrationAdjustedPaths !== undefined && !Array.isArray(body.integrationAdjustedPaths)) {
+    throw new MissionError(400, "malformed_request", "integrationAdjustedPaths must be an explicit list of changed files");
+  }
+  const integrationAdjustedPaths = body.integrationAdjustedPaths as string[] | undefined;
+  await assertRecoveryChildren(ctx, mission, state);
+  await assertRecoverySettled(ctx, mission, state);
+  const baseCommit = boundedString(body.baseCommit, "baseCommit", 40);
+  if (mission.aggregate.n6 && baseCommit !== mission.aggregate.n6.expectedResult.candidateCommit) {
+    throw new MissionError(409, "recovery_source_mismatch", "Dependent recovery must retain its accepted source base");
+  }
+  let candidate: IntegratedCandidateVerification;
+  try {
+    candidate = await verifyIntegratedCandidate(ctx, {
+      companyId: mission.companyId, issueId: mission.rootIssueId,
+      attachmentId: uuid(body.attachmentId, "attachmentId"),
+      expectedSha256: boundedString(body.expectedSha256, "expectedSha256", 64),
+      baseCommit, candidateCommit: boundedString(body.candidateCommit, "candidateCommit", 40),
+      contributions: state.contributions.map(item => ({ contributionId: item.contributionId, commit: item.commit!, ownedPaths: item.ownedPaths })) as IntegratedCandidateInput["contributions"],
+      integrationAdjustedPaths,
+    });
+  } catch (error) {
+    throw new MissionError(422, "recovery_git_verification_failed", error instanceof Error ? error.message : "Recovery Git proof failed");
+  }
+  return commandCas(ctx, mission, body, "user", actorUserId, {
+    ...mission.aggregate,
+    phase: "ready_for_review", control: { status: "inactive", reason: "candidate_ready_for_review" },
+    n1: { ...state, candidate, candidateRecordedVersion: mission.version + 1, lastIntegrationFailure: undefined },
+    journal: [...mission.aggregate.journal, {
+      action: "owner_recovered_candidate", actorUserId, reason, candidate: candidate.candidate,
+      integrationAdjustedPaths: integrationAdjustedPaths ?? [],
+      originalLeadRunId: state.rootDispatchRunId, at: new Date().toISOString(),
+    }],
+  });
+}
+
 export async function executeN1BoardCommand(ctx: PluginContext, input: {
   companyId: string;
   missionId: string;
@@ -484,12 +519,14 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
   const mission = await getMission(ctx, input.companyId, input.missionId);
   if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
   await owner(ctx, mission, input.actorUserId);
-  if (input.body.command === "recover-integration") {
+  if (input.body.command === "recover-integration" || input.body.command === "recover-candidate") {
     const commandId = uuid(input.body.commandId, "commandId");
     const replay = receipt(mission, commandId, input.actorUserId!, canonicalPayloadHash(input.body));
     if (replay) return { outcome: "replayed" as const, mission, receipt: replay };
     requireFreshCommand(mission, input.body);
-    return recoverIntegration(ctx, mission, input.body, input.actorUserId!);
+    return input.body.command === "recover-candidate"
+      ? recoverCandidate(ctx, mission, input.body, input.actorUserId!)
+      : recoverIntegration(ctx, mission, input.body, input.actorUserId!);
   }
   if (input.body.command === "reconcile-contribution-usage") {
     const result = await reconcileContributionUsage(ctx, mission, {

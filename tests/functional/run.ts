@@ -751,7 +751,7 @@ try {
     const source = await readFile(resolve(packageRoot, "migrations", migration.migrationKey), "utf8");
     assert.equal(migration.checksum, createHash("sha256").update(source).digest("hex"));
     assert.equal(migration.status, "applied");
-    assert.equal(migration.pluginVersion, "0.6.0");
+    assert.equal(migration.pluginVersion, JSON.parse(await readFile(resolve(packageRoot, "package.json"), "utf8")).version);
   }
   evidence.migrations = installedMigrations.map((item: any) => ({
     key: item.migrationKey, checksum: item.checksum, status: item.status, pluginVersion: item.pluginVersion,
