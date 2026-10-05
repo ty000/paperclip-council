@@ -1,5 +1,20 @@
 # Nominal delivery checkpoint
 
+## October 5 installed acceptance environment
+
+PR #35 is merged at `a66175afe49c2b044ac5d5b7afe6b687c3861d9a`. Following explicit
+owner authorization, Council 0.6.0 is now installed in persistent `council-local`
+for `e-ty local` (`ETY`). Backup, native lifecycle, unchanged plugin identity and
+existing configuration, worker reload, served bundle and authenticated empty
+Rosters/Missions pages are verified. No model or mission was started.
+
+The [installation report](recette/INSTALLATION-2026-10-05.md) records the exact
+target and limitations. The [test plan to challenge](recette/PLAN-DE-TEST.md)
+keeps technical contracts in synthetic checks and proposes a short usability
+check followed by one useful Content Assistant ticket. Project agents, rosters,
+workspace and admission budget still need preparation. Historical M2 remains
+partial; it is not replayed or retrospectively accepted by this deployment.
+
 ## October 5 delivery update
 
 The [M2 coordination UI delivery and acceptance-environment plan](n6/M2-DELIVERY.md)
