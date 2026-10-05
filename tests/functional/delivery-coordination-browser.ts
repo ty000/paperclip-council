@@ -38,12 +38,18 @@ async function visibleText(region: any, text: string) {
   await region.getByText(text, { exact: true }).waitFor({ state: "visible" });
 }
 
+async function inspectCandidateValues(region: any) {
+  await visibleText(region, accepted.submissionId);
+  await visibleText(region, accepted.candidateCommit);
+  await visibleText(region, accepted.bundleSha256);
+  await visibleText(region, String(accepted.evidenceRevision));
+  await visibleText(region, accepted.mandateHash);
+}
+
 async function inspectCandidateFields(coordination: any) {
   await coordination.getByText("Source candidate identities", { exact: true }).click();
   const expected = coordination.getByRole("heading", { name: "Expected accepted candidate", exact: true }).locator("..");
-  await visibleText(expected, accepted.candidateCommit);
-  await visibleText(expected, accepted.bundleSha256);
-  await visibleText(expected, "0");
+  await inspectCandidateValues(expected);
 }
 
 async function inspectPopulatedPanels(page: any, missionsUrl: string, downstream: any, screenshotPath: string) {
@@ -76,8 +82,7 @@ async function inspectPopulatedPanels(page: any, missionsUrl: string, downstream
   await visibleText(coordination, "Next action: Start the authorized downstream mission — actor synthetic-lead");
   await inspectCandidateFields(coordination);
   const verified = coordination.getByRole("heading", { name: "Verified accepted candidate", exact: true }).locator("..");
-  await visibleText(verified, accepted.candidateCommit);
-  await visibleText(verified, accepted.bundleSha256);
+  await inspectCandidateValues(verified);
   await visibleText(delivery, "Delivery status: Ready for handoff");
   assert.equal(await delivery.getByRole("link", { name: /^Open pull request/ }).getAttribute("href"), prUrl);
   await delivery.getByText("Technical delivery details", { exact: true }).click();
