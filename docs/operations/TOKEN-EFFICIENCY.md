@@ -9,6 +9,32 @@ Use Python 3.10 or newer. The verified local run used Python 3.11.2. Paths and
 identifiers in the examples are placeholders; replace every value under
 `/absolute/path`, every `MISSION_ID`, and every SHA before running them.
 
+## Local command installation
+
+These tools are distributed from the reviewed Git commit; `package.json` does
+not include them in the Council npm package. Install their unchanged source,
+operations tests, and guide in a separate versioned directory, for example
+`~/.local/share/paperclip-council/operations/releases/<merged-commit>`.
+Keep that release when removing a development worktree.
+
+The following commands can be exposed in `~/.local/bin` as thin wrappers that
+execute `python3 <absolute-release>/scripts/operations/<script>` and forward
+all arguments unchanged:
+
+| Local command | Script |
+| --- | --- |
+| `council-usage-audit` | `usage_audit.py` |
+| `council-watch` | `mission_watch.py` |
+| `council-context-packet` | `context_packet.py` |
+| `council-transfer-preflight` | `transfer_preflight.py` |
+
+Before exposing commands, verify each installed file against the exact merged
+commit and run `python3 -m unittest discover -s tests/operations -p 'test_*.py'`
+from that release. Verify each installed command with `--help`, record the
+commit, hashes, and results in an installation receipt, and preserve any
+pre-existing command paths. Installation alone does not start an observer,
+change a Paperclip instance, or schedule a provider run.
+
 ## Manual adoption sequence
 
 1. Run `transfer_preflight.py` before handing off an exact Council candidate
