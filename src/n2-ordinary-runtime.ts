@@ -123,9 +123,15 @@ async function dispatchTask(ctx: PluginContext, initial: MissionRecord, initialT
   const wake = await ctx.issues.requestWakeup(task.issueId!, mission.companyId, { idempotencyKey: `council:ordinary:${task.taskId}`,
     reason: "council_ordinary_admitted", actorUserId: mission.ownerUserId });
   mission = await freshOrdinary(ctx, mission); task = currentOrdinaryTask(mission, task.taskId);
-  mission = await recordVariantWake(ctx, mission, task.reservationId, wake.runId);
-  if (!wake.runId || task.runId && task.runId !== wake.runId) throw new MissionError(409, "ordinary_effect_unknown", "Ordinary dispatch outcome requires exact run readback");
-  return saveOrdinaryTask(ctx, mission, { ...task, runId: wake.runId });
+  mission = await recordVariantWake(ctx, mission, task.reservationId, wake.runId, (before, aggregate, effectiveRunId) => {
+    if (task.runId && effectiveRunId && task.runId !== effectiveRunId) {
+      throw new MissionError(409, "ordinary_effect_unknown", "Ordinary dispatch outcome conflicts with its exact run readback");
+    }
+    return saveOrdinaryTask(ctx, { ...before, aggregate }, { ...task, runId: task.runId ?? effectiveRunId });
+  });
+  task = currentOrdinaryTask(mission, task.taskId);
+  if (!task.runId) throw new MissionError(409, "ordinary_effect_unknown", "Ordinary dispatch outcome requires exact run readback");
+  return mission;
 }
 
 async function settleTask(ctx: PluginContext, initial: MissionRecord, task: OrdinaryTask) {

@@ -27,8 +27,9 @@ async function bindActor(ctx: PluginContext, mission: MissionRecord, input: Plug
   const run = await readOrdinaryRun(ctx, { companyId: mission.companyId, issueId: task.issueId!, agentId: input.actor.agentId, runId: input.actor.runId });
   if (run.status !== "running" || !run.startedAt || run.finishedAt) throw new MissionError(409, "ordinary_run_inactive", "Command requires its active CLI run");
   assertOwnerResume(mission, task, run);
-  mission = await recordVariantWake(ctx, mission, task.reservationId, run.id);
-  if (!task.runId) mission = await saveOrdinaryTask(ctx, mission, { ...task, runId: run.id });
+  mission = task.runId ? await recordVariantWake(ctx, mission, task.reservationId, run.id)
+    : await recordVariantWake(ctx, mission, task.reservationId, run.id, (before, aggregate, effectiveRunId) =>
+      saveOrdinaryTask(ctx, { ...before, aggregate }, { ...task, runId: effectiveRunId }));
   const state = mission.aggregate.n2!;
   if (task.kind === "council" && state.status === "review_handoff") {
     mission = await n2Cas(ctx, mission, { ...mission.aggregate, phase: "reviewing", n2: { ...state, status: "reviewing",

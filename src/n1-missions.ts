@@ -722,19 +722,23 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     }
     let afterClaim = await getMission(ctx, mission.companyId, mission.missionId);
     if (!afterClaim) throw new Error("Mission disappeared after root dispatch effect");
-    afterClaim = await recordVariantWake(ctx, afterClaim, state.activationReservationId, wake?.runId ?? null);
-    const afterState = n1State(afterClaim);
-    if (!afterState) throw new Error("N1 state disappeared after root dispatch effect");
-    const confirmed = Boolean(wake?.queued && wake.runId);
-    const settled: MissionAggregate = {
-      ...afterClaim.aggregate,
-      n1: { ...afterState, rootDispatchState: confirmed ? "requested" : "unknown", rootDispatchRunId: wake?.runId ?? null, rootDispatchMode: "native" },
-      effectIntents: afterClaim.aggregate.effectIntents.map((entry) =>
-        entry.kind === "root_wakeup" && entry.reservationId === state.activationReservationId
-          ? { ...entry, state: confirmed ? "requested" : "unknown", queued: wake?.queued ?? null, runId: wake?.runId ?? null }
-          : entry),
-    };
-    const finalMission = await cas(ctx, afterClaim, settled, afterClaim.version);
+    const finalMission = await recordVariantWake(ctx, afterClaim, state.activationReservationId, wake?.runId ?? null,
+      async (before, aggregate, effectiveRunId) => {
+        const afterState = n1State({ ...before, aggregate });
+        if (!afterState) throw new Error("N1 state disappeared after root dispatch effect");
+        const priorLaunch = before.aggregate.modelSelection && before.aggregate.modelSelection.tasks
+          .flatMap(task => task.launches).find(item => item.launchKey === state.activationReservationId);
+        const confirmed = Boolean(effectiveRunId && (wake?.queued || priorLaunch?.state === "bound" && priorLaunch.runId === effectiveRunId));
+        return cas(ctx, before, {
+          ...aggregate,
+          n1: { ...afterState, rootDispatchState: confirmed ? "requested" : "unknown", rootDispatchRunId: effectiveRunId, rootDispatchMode: "native" },
+          effectIntents: aggregate.effectIntents.map((entry) =>
+            entry.kind === "root_wakeup" && entry.reservationId === state.activationReservationId
+              ? { ...entry, state: confirmed ? "requested" : "unknown", queued: wake?.queued ?? null, runId: effectiveRunId }
+              : entry),
+        }, before.version);
+      });
+    const confirmed = n1State(finalMission)?.rootDispatchState === "requested";
     return { outcome: confirmed ? "requested" as const : "unknown" as const, mission: finalMission, receipt: claim.receipt };
   }
   if (input.body.command === "reconcile-lead-usage") {
@@ -1228,23 +1232,28 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       } catch {
         // Native state may have changed even when the response was lost.
       }
-      const wakeConfirmed = Boolean(wake?.queued && wake.runId);
       let afterClaim = await getMission(ctx, mission.companyId, mission.missionId);
       if (!afterClaim) throw new Error("Mission disappeared after dispatch effect");
-      afterClaim = await recordVariantWake(ctx, afterClaim, reservationId, wake?.runId ?? null);
-      const afterState = n1State(afterClaim);
-      if (!afterState) throw new Error("N1 state disappeared after dispatch effect");
-      const updatedSlots = afterState.contributions.map((entry) => entry.contributionId === contributionId
-        ? { ...entry, dispatchState: wakeConfirmed ? "requested" as const : "unknown" as const, dispatchRunId: wake?.runId ?? null }
-        : entry);
-      const settled: MissionAggregate = {
-        ...afterClaim.aggregate,
-        n1: { ...afterState, contributions: updatedSlots },
-        effectIntents: afterClaim.aggregate.effectIntents.map((entry) => entry.kind === "child_wakeup" && entry.reservationId === reservationId
-          ? { ...entry, state: wakeConfirmed ? "requested" : "unknown", queued: wake?.queued ?? null, runId: wake?.runId ?? null }
-          : entry),
-      };
-      const finalMission = await cas(ctx, afterClaim, settled, afterClaim.version);
+      const finalMission = await recordVariantWake(ctx, afterClaim, reservationId, wake?.runId ?? null,
+        async (before, aggregate, effectiveRunId) => {
+          const afterState = n1State({ ...before, aggregate });
+          if (!afterState) throw new Error("N1 state disappeared after dispatch effect");
+          const priorLaunch = before.aggregate.modelSelection && before.aggregate.modelSelection.tasks
+            .flatMap(task => task.launches).find(item => item.launchKey === reservationId);
+          const wakeConfirmed = Boolean(effectiveRunId && (wake?.queued || priorLaunch?.state === "bound" && priorLaunch.runId === effectiveRunId));
+          const updatedSlots = afterState.contributions.map((entry) => entry.contributionId === contributionId
+            ? { ...entry, dispatchState: wakeConfirmed ? "requested" as const : "unknown" as const, dispatchRunId: effectiveRunId }
+            : entry);
+          return cas(ctx, before, {
+            ...aggregate,
+            n1: { ...afterState, contributions: updatedSlots },
+            effectIntents: aggregate.effectIntents.map((entry) => entry.kind === "child_wakeup" && entry.reservationId === reservationId
+              ? { ...entry, state: wakeConfirmed ? "requested" : "unknown", queued: wake?.queued ?? null, runId: effectiveRunId }
+              : entry),
+          }, before.version);
+        });
+      const finalSlot = n1State(finalMission)?.contributions.find(entry => entry.contributionId === contributionId);
+      const wakeConfirmed = finalSlot?.dispatchState === "requested";
       return { status: wakeConfirmed ? 200 : 202, body: { outcome: wakeConfirmed ? "requested" : "unknown", wake, mission: finalMission } };
     }
     if (body.command === "reconcile-usage") {

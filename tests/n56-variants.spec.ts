@@ -79,8 +79,18 @@ beforeEach(() => {
     expect(modelLaunch(m, key)?.state).toBe("ready");
     return changeLaunch(m, key, { state: "wake_claimed" });
   });
-  vi.mocked(recordVariantWake).mockImplementation(async (_ctx, m, key, runId) => modelLaunch(m, key)?.runId === runId && runId ? m
-    : changeLaunch(m, key, { runId, state: runId ? "bound" : "unknown" }));
+  vi.mocked(recordVariantWake).mockImplementation(async (_ctx, m, key, runId, persistWake) => {
+    const launch = modelLaunch(m, key);
+    const effectiveRunId = launch?.state === "bound" && (runId === null || launch.runId === runId) ? launch.runId : runId;
+    if (launch?.runId && effectiveRunId && launch.runId !== effectiveRunId) throw new Error("model_run_conflict");
+    const aggregate = !launch || launch.state === "bound" && launch.runId === effectiveRunId ? m.aggregate : {
+      ...m.aggregate,
+      modelSelection: { ...m.aggregate.modelSelection!, tasks: m.aggregate.modelSelection!.tasks.map(task => ({ ...task,
+        launches: task.launches.map(item => item.launchKey === key
+          ? { ...item, runId: effectiveRunId, state: effectiveRunId ? "bound" as const : "unknown" as const } : item) })) },
+    };
+    return persistWake ? persistWake(m, aggregate, effectiveRunId) : persist(m, aggregate);
+  });
   vi.mocked(observeVariantRun).mockImplementation(async (_ctx, m) => m);
   vi.mocked(nativeN2Profile).mockResolvedValue({ profile: { periodKey: "period" }, envelope: { version: 1, reservations: [] } } as never);
   vi.mocked(readAdmission).mockResolvedValue({ version: 1 } as never);
@@ -139,6 +149,21 @@ it("keeps an uncertain publisher wake and never selects or launches a replacemen
   expect(modelLaunch(current, p.reservationId)?.state).toBe("unknown");
   await startN5Publication(ctx as unknown as PluginContext, current);
   expect(prepareVariantLaunch).toHaveBeenCalledTimes(1); expect(ctx.issues.requestWakeup).toHaveBeenCalledTimes(1);
+});
+
+it("preserves a historical publisher callback run when the original wake later returns null", async () => {
+  delete current.aggregate.modelSelection;
+  const ctx = context(); const callbackRun = randomUUID();
+  ctx.issues.requestWakeup.mockImplementationOnce(async () => {
+    current = { ...current, version: current.version + 1, aggregate: { ...current.aggregate, n5: { ...current.aggregate.n5!,
+      publication: { ...current.aggregate.n5!.publication!, runId: callbackRun } } } };
+    return { queued: true, runId: null };
+  });
+
+  await startN5Publication(ctx as unknown as PluginContext, current);
+
+  expect(current.aggregate).not.toHaveProperty("modelSelection");
+  expect(current.aggregate.n5!.publication!.runId).toBe(callbackRun);
 });
 
 it("reuses the durable publisher identity when selection is interrupted before it records a launch", async () => {

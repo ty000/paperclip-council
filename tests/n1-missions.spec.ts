@@ -491,6 +491,48 @@ describe("N1 mission transitions", () => {
     expect(h.requestWakeup).not.toHaveBeenCalled();
   });
 
+  it("commits neither the bound model run nor requested workflow state when their shared CAS loses", async () => {
+    const value = activeAggregate();
+    value.modelSelection = { protocol: "native-variants-v1", choices: [], tasks: [] };
+    const state = value.n1!;
+    state.rootDispatchState = undefined; state.rootDispatchRunId = undefined;
+    const h = harness(value);
+    h.issues.set(id.root, nativeIssue({ id: id.root, parentId: null, assigneeAgentId: id.lead, status: "backlog" }));
+    vi.mocked(readAdmission).mockResolvedValue({ version: 4,
+      periodStart: new Date(Date.now() - 60_000).toISOString(), periodEnd: new Date(Date.now() + 60_000).toISOString(),
+      reservations: [{ reservationId: state.activationReservationId, missionId: id.mission, status: "reserved" }] } as never);
+    vi.mocked(inspectVariant).mockResolvedValue({ logicalAgentId: id.lead, agentId: id.lead, roleKey: "lead",
+      profileId: "sol-medium", revision: "1", ready: true, expected: {}, observed: {}, gaps: [] });
+    h.update.mockImplementation(async (...args: unknown[]) => {
+      const issue = h.issues.get(String(args[0])); const patch = args[1] as { description?: string };
+      if (issue && patch.description) Object.assign(issue, { description: patch.description });
+    });
+    h.requestWakeup.mockResolvedValue({ queued: true, runId: id.leadRun });
+    const persist = h.execute.getMockImplementation()!;
+    let rejectedCombinedWake = false;
+    h.execute.mockImplementation(async (...args: Parameters<typeof persist>) => {
+      const aggregate = JSON.parse(String(args[1][0])) as MissionAggregate;
+      const launch = aggregate.modelSelection?.tasks.flatMap(task => task.launches)
+        .find(item => item.launchKey === state.activationReservationId);
+      if (launch?.state === "bound" && aggregate.n1?.rootDispatchState === "requested") {
+        rejectedCombinedWake = true;
+        return { rowCount: 0 };
+      }
+      return persist(...args);
+    });
+
+    await expect(executeN1BoardCommand(h.ctx, { companyId: id.company, missionId: id.mission, actorUserId: id.owner,
+      body: { command: "start-lead", commandId: randomUUID(), expectedVersion: 1 } }))
+      .rejects.toMatchObject({ status: 409, code: "version_conflict" });
+
+    expect(h.requestWakeup).toHaveBeenCalledTimes(1);
+    expect(rejectedCombinedWake).toBe(true);
+    expect(h.row().aggregate.modelSelection!.tasks[0]!.launches[0]).toMatchObject({ state: "wake_claimed", runId: null });
+    expect(h.row().aggregate.n1).toMatchObject({ rootDispatchState: "claimed" });
+    expect(h.row().aggregate.n1).not.toHaveProperty("rootDispatchRunId");
+    expect(h.row().aggregate.effectIntents).toContainEqual(expect.objectContaining({ kind: "root_wakeup", state: "claimed" }));
+  });
+
   it("requires the configured owner and eligible pinned agents before activation, while preserving exact roster revisions", async () => {
     const h = harness();
     const body = {

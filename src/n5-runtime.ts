@@ -120,9 +120,15 @@ async function resumeN5PreWake(ctx: PluginContext, initial: MissionRecord, newly
     throw error;
   }
   m = await fresh(ctx, m);
-  m = await recordVariantWake(ctx, m, p.reservationId, wake.runId);
-  if (!m.aggregate.n5!.publication!.runId && wake.runId) m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...m.aggregate.n5!.publication!, runId: wake.runId } });
-  return m;
+  return recordVariantWake(ctx, m, p.reservationId, wake.runId, (before, aggregate, effectiveRunId) => {
+    const publication = aggregate.n5!.publication!;
+    if (publication.runId && effectiveRunId && publication.runId !== effectiveRunId) {
+      throw new MissionError(409, "n5_publisher_binding", "Publisher wake conflicts with its exact admitted run");
+    }
+    return save(ctx, { ...before, aggregate }, { ...aggregate.n5!, publication: {
+      ...publication, runId: publication.runId ?? effectiveRunId,
+    } });
+  });
 }
 
 export async function reconcileN5(ctx: PluginContext, initial: MissionRecord) {
@@ -174,8 +180,9 @@ async function bindPublisher(ctx: PluginContext, m: MissionRecord, input: Plugin
       || p.runId && p.runId !== input.actor.runId) throw new MissionError(403, "n5_publisher_binding", "Exact authorized publisher child and reserved run required");
   const run = await (m.aggregate.n2?.ordinary ? readOrdinaryRun : readNativeRun)(ctx, { companyId: m.companyId, issueId: p.issueId, runId: input.actor.runId, agentId: input.actor.agentId });
   if (run.status !== "running" || !run.startedAt || run.finishedAt) throw new MissionError(409, "n5_publisher_not_running", "Publisher run must be active");
-  m = await recordVariantWake(ctx, m, p.reservationId, input.actor.runId);
-  return p.runId ? m : save(ctx, m, { ...m.aggregate.n5!, publication: { ...m.aggregate.n5!.publication!, runId: input.actor.runId } });
+  if (p.runId) return recordVariantWake(ctx, m, p.reservationId, input.actor.runId);
+  return recordVariantWake(ctx, m, p.reservationId, input.actor.runId, (before, aggregate, effectiveRunId) => save(ctx,
+    { ...before, aggregate }, { ...aggregate.n5!, publication: { ...aggregate.n5!.publication!, runId: p.runId ?? effectiveRunId } }));
 }
 function attributedObservation(value: unknown, states: string[], actor: PluginApiRequestInput["actor"], headSha: string) {
   const v = value as Record<string, unknown>;

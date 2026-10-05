@@ -201,11 +201,20 @@ export async function claimVariantWake<T>(ctx: PluginContext, m: MissionRecord, 
   return persist ? persist(m, aggregate) : saveModelState(ctx, m, aggregate.modelSelection!);
 }
 
-export async function recordVariantWake(ctx: PluginContext, m: MissionRecord, launchKey: string, runId: string | null): Promise<MissionRecord> {
+export function recordVariantWake(ctx: PluginContext, m: MissionRecord, launchKey: string, runId: string | null): Promise<MissionRecord>;
+export function recordVariantWake<T>(ctx: PluginContext, m: MissionRecord, launchKey: string, runId: string | null,
+  persist: (mission: MissionRecord, aggregate: MissionAggregate, effectiveRunId: string | null) => Promise<T>): Promise<T>;
+export async function recordVariantWake<T>(ctx: PluginContext, m: MissionRecord, launchKey: string, runId: string | null,
+  persist?: (mission: MissionRecord, aggregate: MissionAggregate, effectiveRunId: string | null) => Promise<T>): Promise<MissionRecord | T> {
   const launch = modelLaunch(m, launchKey);
-  if (!launch) return m;
-  if (launch.state === "bound" && (launch.runId === runId || runId === null)) return m;
+  if (!launch) return persist ? persist(m, m.aggregate, runId) : m;
+  if (launch.state === "bound" && (launch.runId === runId || runId === null)) {
+    return persist ? persist(m, m.aggregate, launch.runId) : m;
+  }
   if (launch.runId && launch.runId !== runId) throw new ModelSelectionError("model_run_conflict", "A launch cannot bind a replacement native run");
   if (!["wake_claimed", "unknown", "bound"].includes(launch.state)) throw new ModelSelectionError("model_launch_not_ready", "Run must belong to a durably claimed launch");
-  return changeLaunch(ctx, m, { ...launch, state: runId ? "bound" : "unknown", runId });
+  const aggregate: MissionAggregate = { ...m.aggregate, modelSelection: { ...m.aggregate.modelSelection!,
+    tasks: m.aggregate.modelSelection!.tasks.map(task => ({ ...task, launches: task.launches.map(item =>
+      item.launchKey === launchKey ? { ...item, state: runId ? "bound" : "unknown", runId } : item) })) } };
+  return persist ? persist(m, aggregate, runId) : saveModelState(ctx, m, aggregate.modelSelection!);
 }

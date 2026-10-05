@@ -52,8 +52,9 @@ async function bind(ctx: PluginContext, m: MissionRecord, input: PluginApiReques
   if (task.kind === "coordinator" && task.agentId !== c.coordinatorAgentId) throw new MissionError(403, "n6_coordinator_required", "Old coordinator cannot mutate this delegation");
   const run = await readOrdinaryRun(ctx, { companyId: m.companyId, issueId: task.issueId!, runId: input.actor.runId, agentId: input.actor.agentId });
   if (run.status !== "running" || run.finishedAt) throw new MissionError(409, "n6_work_inactive", "Current active admitted run required");
-  m = await recordVariantWake(ctx, m, task.reservationId, input.actor.runId);
-  if (!task.runId) { m = await saveCoordinationTask(ctx, m, { ...task, runId: run.id }); }
+  m = task.runId ? await recordVariantWake(ctx, m, task.reservationId, input.actor.runId)
+    : await recordVariantWake(ctx, m, task.reservationId, input.actor.runId, (before, aggregate, effectiveRunId) =>
+      saveCoordinationTask(ctx, { ...before, aggregate }, { ...task, runId: effectiveRunId }));
   return { mission: m, task: m.aggregate.n6!.coordination!.tasks.find(t => t.taskId === task.taskId)! };
 }
 export async function handleN6WorkAgent(ctx: PluginContext, input: PluginApiRequestInput) {

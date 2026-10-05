@@ -95,3 +95,14 @@ claim loss, unknown creation and historical claims, plus the effective enablemen
 configuration matrix. The unchanged rendered component retains the prior browser
 proof. The optional Impeccable local-file check was skipped because its engine
 was not installed; no automated Impeccable design verdict is claimed.
+
+
+The third correction checkpoint stores post-wake model bindings and their N1,
+ordinary N2, N5 and N6 workflow run IDs in the same CAS, including agent callbacks.
+A delayed null result retains an already observed run; conflicting non-null IDs
+are refused. Historical missions retain their workflow run and N1 wake confirmation
+semantics. Fault injection proves a failed combined CAS persists neither half.
+The final local campaign passed **49 Python and 633 TypeScript tests**, source/test
+typechecks, build and the static diff gate. A separate transverse reviewer checked
+all preparation, wake-result and callback paths and replayed 105 targeted tests.
+Native installed acceptance and model execution remain distinct from these proofs.

@@ -87,6 +87,21 @@ it("replays bound callbacks without a new version and never degrades known resul
   await expect(recordVariantWake(f.ctx, m, "launch-1", "run-other")).rejects.toMatchObject({ code: "model_run_conflict" });
   expect(f.mocks.db.execute).toHaveBeenCalledTimes(count);
 });
+it("passes the preserved bound run to a delayed null callback while persisting its workflow update once", async () => {
+  const f = fixture(); const m = await start(f); const count = f.mocks.db.execute.mock.calls.length;
+  const recovered = await recordVariantWake(f.ctx, m, "launch-1", null, async (before, aggregate, effectiveRunId) => {
+    expect(effectiveRunId).toBe("run-1");
+    const next = { ...aggregate, journal: [...aggregate.journal, { action: "workflow_run_recovered", runId: effectiveRunId }] };
+    const result = await f.ctx.db.execute(`UPDATE ${f.mocks.db.namespace}.missions SET aggregate = $1::jsonb, version = version + 1
+      WHERE company_id = $2 AND mission_id = $3 AND version = $4`,
+    [JSON.stringify(next), before.companyId, before.missionId, before.version]);
+    expect(result.rowCount).toBe(1);
+    return f.get();
+  });
+  expect(f.mocks.db.execute).toHaveBeenCalledTimes(count + 1);
+  expect(modelLaunch(recovered, "launch-1")).toMatchObject({ state: "bound", runId: "run-1" });
+  expect(recovered.aggregate.journal).toContainEqual({ action: "workflow_run_recovered", runId: "run-1" });
+});
 it("shares one ascent across interventions while allowing another intervention's stronger initial profile", async () => {
   const f = fixture(); let m = await start(f);
   m.aggregate.modelSelection!.choices.push({ taskKey: "root", interventionKey: "lead", family: "orchestration", profileId: "sol-high", rationale: "hard correction", authority: "user", actorId: "owner", at: "now" });

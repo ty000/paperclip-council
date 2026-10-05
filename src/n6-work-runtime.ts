@@ -50,9 +50,15 @@ async function dispatch(ctx: PluginContext, initial: MissionRecord, initialTask:
     throw error;
   }
   m = await fresh(ctx, m); task = coordinationTaskAt(m, task.taskId);
-  m = await recordVariantWake(ctx, m, task.reservationId, wake.runId);
-  if (!wake.runId || task.runId && task.runId !== wake.runId) throw new MissionError(409, "n6_work_effect_unknown", "Exact admitted run must be observed");
-  return saveCoordinationTask(ctx, m, { ...task, runId: wake.runId });
+  m = await recordVariantWake(ctx, m, task.reservationId, wake.runId, (before, aggregate, effectiveRunId) => {
+    if (task.runId && effectiveRunId && task.runId !== effectiveRunId) {
+      throw new MissionError(409, "n6_work_effect_unknown", "Coordination wake conflicts with its exact admitted run");
+    }
+    return saveCoordinationTask(ctx, { ...before, aggregate }, { ...task, runId: task.runId ?? effectiveRunId });
+  });
+  task = coordinationTaskAt(m, task.taskId);
+  if (!task.runId) throw new MissionError(409, "n6_work_effect_unknown", "Exact admitted run must be observed");
+  return m;
 }
 async function settle(ctx: PluginContext, m: MissionRecord, task: CoordinationTask) {
   const identity = { companyId: m.companyId, issueId: task.issueId!,

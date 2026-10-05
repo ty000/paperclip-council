@@ -30,7 +30,8 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(prepareVariantLaunch).mockImplementation(async (_ctx, mission) => ({ mission, binding: mission.aggregate.modelSelection ? { agentId: "physical-reviewer" } : null }) as never);
   vi.mocked(bindVariantIssue).mockImplementation(async (_ctx, mission) => mission);
-  vi.mocked(recordVariantWake).mockImplementation(async (_ctx, mission) => mission);
+  vi.mocked(recordVariantWake).mockImplementation(async (_ctx, mission, _key, runId, persist) =>
+    persist ? persist(mission, mission.aggregate, runId) : mission);
 });
 
 it("does not orphan a model wake claim when the combined task CAS fails", async () => {
@@ -74,4 +75,26 @@ it("keeps the historical path and records its workflow claim before wake", async
   expect(result.aggregate.n2!.ordinary!.tasks[0]).toMatchObject({ taskId: task.taskId, wake: "claimed", runId: "historical-run" });
   expect(timeline).toEqual(["cas:claimed", "wake", "cas:claimed"]);
   expect(reserveN2Run).toHaveBeenCalledTimes(1); expect(recordVariantWake).toHaveBeenCalledTimes(1);
+});
+
+it("preserves a historical callback run when the original wake readback is null", async () => {
+  const { mission, task } = fixture(false); let current = mission; const callbackRun = "callback-run";
+  vi.mocked(getMission).mockImplementation(async () => current);
+  vi.mocked(n2Cas).mockImplementation(async (_ctx, before, aggregate) => {
+    current = { ...before, version: before.version + 1, aggregate }; return current;
+  });
+  vi.mocked(claimVariantWake).mockImplementation(async (_ctx, ready, _key, persist) => persist!(ready, ready.aggregate));
+  const requestWakeup = vi.fn(async () => {
+    const state = current.aggregate.n2!;
+    current = { ...current, version: current.version + 1, aggregate: { ...current.aggregate, n2: { ...state,
+      ordinary: { ...state.ordinary!, tasks: state.ordinary!.tasks.map(item => item.taskId === task.taskId ? { ...item, runId: callbackRun } : item) } } } };
+    return { runId: null };
+  });
+  const ctx = { agents: { get: vi.fn().mockResolvedValue({ adapterType: "codex_local", adapterConfig: { engine: "cli" }, status: "idle" }) },
+    issues: { update: vi.fn(), requestWakeup } } as unknown as PluginContext;
+
+  const result = await reconcileOrdinaryN2(ctx, mission);
+
+  expect(result.aggregate).not.toHaveProperty("modelSelection");
+  expect(result.aggregate.n2!.ordinary!.tasks[0]).toMatchObject({ taskId: task.taskId, runId: callbackRun });
 });
