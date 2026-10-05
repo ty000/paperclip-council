@@ -5,12 +5,13 @@ import { prepareVariantLaunch, bindVariantIssue, claimVariantWake, recordVariant
 import { replaceMissingOpinion } from "./n2-ordinary-replacement.js";
 import { ordinaryTaskInstructions } from "./n2-ordinary-instructions.js";
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { AdmissionError } from "./admission.js";
 import { readOrdinaryRun, settleOrdinaryRunUsage } from "./g4-native.js";
 import { recordCouncilOrdinaryReadback } from "./decision-receipts.js";
 import { canonicalPayloadHash, MissionError, type MissionRecord } from "./missions.js";
-import { n2Cas, n2CommandCas, n2SubmissionResultReference, nativeN2Profile, prepareN2Decision,
+import { n2Cas, n2CommandCas, n2SubmissionResultReference, nativeN2Profile, prepareN2Decision, prepareResubmission,
   recordN2Decision, reserveN2Run, runtimeReceipt, runtimeUuid, startN2Review, startN2ResubmittedReview } from "./n2-missions.js";
 import { freshN3Round } from "./n3-runtime.js";
 import { n3Round, type N3NativeRound } from "./n3-state.js";
@@ -52,11 +53,12 @@ async function assertRootIdle(ctx: PluginContext, mission: MissionRecord) {
 export async function executeOrdinaryN2Board(ctx: PluginContext, mission: MissionRecord, input: { actorUserId: string | null; body: Record<string, unknown> }) {
   const body = input.body;
   if (body.command === "replace-missing-opinion") return replaceMissingOpinion(ctx, mission, input.actorUserId!, body);
+  if (body.command === "recover-terminal-resubmission") return recoverTerminalResubmission(ctx, mission, input.actorUserId!, body);
   if (body.command === "reconcile-ordinary-n2") {
     await reconcileOrdinaryN2(ctx, mission);
     return { outcome: "reconciled", mission: await freshOrdinary(ctx, mission) };
   }
-  if (body.command !== "start-review") throw new MissionError(400, "ordinary_command_unavailable", "Ordinary owner commands are start-review and reconcile-ordinary-n2");
+  if (body.command !== "start-review") throw new MissionError(400, "ordinary_command_unavailable", "Ordinary owner command is unavailable");
   const prior = runtimeReceipt(mission, runtimeUuid(body.commandId, "commandId"), input.actorUserId!, canonicalPayloadHash(body));
   if (prior) return { outcome: "replayed", mission, receipt: prior };
   if (mission.aggregate.n2 || mission.version !== body.expectedVersion) throw new MissionError(409, "ordinary_start_conflict", "Fresh ready-for-review mission version required");
@@ -84,6 +86,137 @@ export async function executeOrdinaryN2Board(ctx: PluginContext, mission: Missio
     control: { status: "active" }, n2: state, n3: { slots: round.review.slots, rounds: [round] } });
   await reconcileOrdinaryN2(ctx, claimed.mission);
   return { ...claimed, mission: await freshOrdinary(ctx, mission) };
+}
+
+type TerminalCorrectionIdentity = {
+  taskId: string;
+  runId: string;
+  reservationId: string;
+  settlementCommandId: string;
+};
+
+function terminalCorrectionIdentity(mission: MissionRecord, body: Record<string, unknown>): TerminalCorrectionIdentity {
+  if (body.expectedVersion !== mission.version) {
+    throw new MissionError(409, "version_conflict", "Mission version is stale", { currentVersion: mission.version });
+  }
+  if (body.authorizeTerminalRecovery !== true) {
+    throw new MissionError(403, "terminal_resubmission_authority", "Owner must explicitly authorize this exact terminal correction transfer");
+  }
+  return {
+    taskId: runtimeUuid(body.taskId, "taskId"),
+    runId: runtimeUuid(body.runId, "runId"),
+    reservationId: runtimeUuid(body.reservationId, "reservationId"),
+    settlementCommandId: runtimeUuid(body.settlementCommandId, "settlementCommandId"),
+  };
+}
+
+function correctionRecoveryState(mission: MissionRecord, identity: TerminalCorrectionIdentity) {
+  const state = mission.aggregate.n2!;
+  const correction = state.correction;
+  const corrections = state.ordinary!.tasks.filter((item) => item.kind === "correction");
+  const task = corrections.find((item) => item.taskId === identity.taskId);
+  if (state.status !== "correcting" || state.correctionLimit !== 1 || state.correctionsUsed !== 1) {
+    throw new MissionError(409, "terminal_resubmission_mismatch", "Recovery requires the consumed single-correction state");
+  }
+  if (!correction || correction.preparedSubmission || corrections.length !== 1 || !task) {
+    throw new MissionError(409, "terminal_resubmission_mismatch", "Recovery requires one correction without a prepared submission");
+  }
+  return { state, correction, task };
+}
+
+function requireTerminalCorrectionIdentity(
+  mission: MissionRecord,
+  identity: TerminalCorrectionIdentity,
+  state: NonNullable<MissionRecord["aggregate"]["n2"]>,
+  correction: NonNullable<NonNullable<MissionRecord["aggregate"]["n2"]>["correction"]>,
+  task: OrdinaryTask,
+) {
+  const actualIdentity = {
+    taskId: task.taskId,
+    taskRunId: task.runId,
+    correctionRunId: correction.runId,
+    taskReservationId: task.reservationId,
+    correctionReservationId: correction.reservationId,
+    settlementCommandId: task.settlementCommandId,
+    issueId: task.issueId,
+    submissionId: task.submissionId,
+    executorAgentId: task.agentId,
+  };
+  const expectedIdentity = {
+    taskId: identity.taskId,
+    taskRunId: identity.runId,
+    correctionRunId: identity.runId,
+    taskReservationId: identity.reservationId,
+    correctionReservationId: identity.reservationId,
+    settlementCommandId: identity.settlementCommandId,
+    issueId: mission.rootIssueId,
+    submissionId: state.activeSubmissionId,
+    executorAgentId: correction.executorAgentId,
+  };
+  if (!isDeepStrictEqual(actualIdentity, expectedIdentity)) {
+    throw new MissionError(409, "terminal_resubmission_mismatch", "Recovery identity differs from the exact admitted correction");
+  }
+}
+
+function requireSettledCorrectionTask(
+  correction: NonNullable<NonNullable<MissionRecord["aggregate"]["n2"]>["correction"]>,
+  task: OrdinaryTask,
+) {
+  if (task.closedAt || task.creation !== "confirmed" || task.wake !== "claimed") {
+    throw new MissionError(409, "terminal_resubmission_mismatch", "Recovery requires the open claimed correction task");
+  }
+  if (!task.settledAt || correction.usageSettledAt !== task.settledAt) {
+    throw new MissionError(409, "terminal_resubmission_mismatch", "Recovery requires the sole exact terminal, settled correction without a prepared submission");
+  }
+}
+
+function terminalCorrectionTask(mission: MissionRecord, identity: TerminalCorrectionIdentity): OrdinaryTask {
+  const { state, correction, task } = correctionRecoveryState(mission, identity);
+  requireTerminalCorrectionIdentity(mission, identity, state, correction, task);
+  requireSettledCorrectionTask(correction, task);
+  return task;
+}
+
+async function terminalCorrectionExecutor(
+  ctx: PluginContext,
+  mission: MissionRecord,
+  task: OrdinaryTask,
+  runId: string,
+) {
+  const executorAgentId = physicalAgent(mission, task.agentId, { issueId: task.issueId, launchKey: task.reservationId });
+  const run = await readOrdinaryRun(ctx, {
+    companyId: mission.companyId,
+    issueId: task.issueId!,
+    agentId: executorAgentId,
+    runId,
+  });
+  if (run.status !== "succeeded" || !run.startedAt || !run.finishedAt) {
+    throw new MissionError(409, "terminal_correction_required", "Recovery requires readback of the exact succeeded terminal correction run");
+  }
+  return executorAgentId;
+}
+
+async function recoverTerminalResubmission(
+  ctx: PluginContext,
+  mission: MissionRecord,
+  actorUserId: string,
+  body: Record<string, unknown>,
+) {
+  const commandId = runtimeUuid(body.commandId, "commandId");
+  const prior = runtimeReceipt(mission, commandId, actorUserId, canonicalPayloadHash(body));
+  if (prior) return { outcome: "replayed" as const, mission, receipt: prior };
+  const identity = terminalCorrectionIdentity(mission, body);
+  const task = terminalCorrectionTask(mission, identity);
+  const executorAgentId = await terminalCorrectionExecutor(ctx, mission, task, identity.runId);
+  return prepareResubmission(ctx, mission, body, {
+    actorType: "user",
+    actorId: actorUserId,
+    executorAgentId,
+    logicalExecutorAgentId: task.agentId,
+    runId: identity.runId,
+    journalAction: "owner_recovered_terminal_resubmission",
+    correctionTaskId: task.taskId,
+  });
 }
 
 async function dispatchTask(ctx: PluginContext, initial: MissionRecord, initialTask: OrdinaryTask) {
