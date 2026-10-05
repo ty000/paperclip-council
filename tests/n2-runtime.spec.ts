@@ -117,9 +117,10 @@ function aggregate(): MissionAggregate {
   };
 }
 
-function harness() {
+function harness(integrationAdjustedPaths?: string[]) {
   let version = 12;
   let stored = aggregate();
+  if (integrationAdjustedPaths) stored.n1!.candidate = { ...candidate(), integrationAdjustedPaths };
   let issue: Record<string, unknown> = {
     id: id.root, companyId: id.company, projectId: id.project, status: "in_progress", assigneeAgentId: id.lead,
   };
@@ -323,7 +324,7 @@ describe("N2 persisted native journey", () => {
   });
 
   it("persists handoff, correction admission, changed V2 and second independent review", async () => {
-    const h = harness();
+    const h = harness(["integration.md"]);
     currentN2 = () => h.current().n2!;
     vi.mocked(readNativeSequentialUsageBaseline).mockImplementation(async () => h.baseline());
     const submission1 = randomUUID();
@@ -461,6 +462,9 @@ describe("N2 persisted native journey", () => {
     expect(prepared).toMatchObject({
       status: 200, body: { mission: { aggregate: { n2: { status: "resubmission_prepared" } } } },
     });
+    expect(verifyIntegratedCandidate).toHaveBeenCalledWith(h.ctx, expect.objectContaining({
+      integrationAdjustedPaths: ["integration.md"], correctedPaths: ["src/a/a.ts"],
+    }));
     const inspectedPrepared = await handleN2AgentApi(agentRequest({
       command: "inspect",
     }, id.lead, id.correctionRun), h.ctx);

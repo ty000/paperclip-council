@@ -39,6 +39,8 @@ export type IntegratedCandidateInput = {
   candidateCommit: string;
   contributions: [IntegratedContributionInput, IntegratedContributionInput];
   correctedPaths?: string[];
+  /** Owner-declared changes in the integration commit, retained for later verification. */
+  integrationAdjustedPaths?: string[];
   /** Owner recovery only: the former reference must not name an imported object. */
   missingReference?: string;
 };
@@ -67,6 +69,7 @@ export type IntegratedCandidateVerification = {
     changedPaths: string[];
   }>;
   checks: IntegratedCandidateCheck[];
+  integrationAdjustedPaths?: string[];
 };
 
 type ValidatedContribution = {
@@ -113,13 +116,13 @@ function ownedPath(value: unknown, label: string): string {
 }
 
 function pathIsOwned(declared: string, changed: string): boolean {
-  return declared.endsWith("/") ? changed.startsWith(declared) : changed === declared;
+  const root = declared.endsWith("/") ? declared.slice(0, -1) : declared;
+  return changed === root || changed.startsWith(root + "/");
 }
 
-function ownershipsOverlap(left: string, right: string): boolean {
+export function ownershipsOverlap(left: string, right: string): boolean {
   return pathIsOwned(left, right.endsWith("/") ? right.slice(0, -1) : right)
-    || pathIsOwned(right, left.endsWith("/") ? left.slice(0, -1) : left)
-    || (left.endsWith("/") && right.endsWith("/") && (left.startsWith(right) || right.startsWith(left)));
+    || pathIsOwned(right, left.endsWith("/") ? left.slice(0, -1) : left);
 }
 
 async function git(args: readonly string[], cwd: string): Promise<string> {
@@ -492,17 +495,38 @@ async function verifyCandidateDelta(
   baseCommit: string,
   candidateCommit: string,
   repositoryPath: string,
+  integrationAdjustedPaths: string[] = [],
 ): Promise<void> {
   const attributedPaths = new Set(verifiedContributions.flatMap((contribution) => contribution.changedPaths));
   const candidateChangedPaths = await changedPathsBetween(baseCommit, candidateCommit, repositoryPath);
-  const unattributedPath = candidateChangedPaths.find((path) => !attributedPaths.has(path));
+  const unattributedPath = candidateChangedPaths.find((path) => !attributedPaths.has(path) && !integrationAdjustedPaths.includes(path));
   if (unattributedPath) {
     throw new Error(`Candidate changed unattributed path ${unattributedPath}`);
   }
-  const omittedPath = [...attributedPaths].find((path) => !candidateChangedPaths.includes(path));
+  const omittedPath = [...attributedPaths].find((path) => !candidateChangedPaths.includes(path) && !integrationAdjustedPaths.includes(path));
   if (omittedPath) {
     throw new Error(`Candidate omits attributed path ${omittedPath}`);
   }
+}
+
+async function verifyIntegrationAdjustments(
+  input: IntegratedCandidateInput,
+  contributions: IntegratedCandidateVerification["contributions"],
+  repositoryPath: string,
+): Promise<string[]> {
+  const paths = input.integrationAdjustedPaths;
+  if (paths === undefined) return [];
+  if (!Array.isArray(paths) || paths.length === 0 || paths.length > MAX_CHANGED_PATHS_PER_CONTRIBUTION) {
+    throw new Error("integrationAdjustedPaths must contain 1-256 exact changed paths");
+  }
+  const parsed = paths.map((path, index) => ownedPath(path, `integrationAdjustedPaths[${index}]`));
+  if (new Set(parsed).size !== parsed.length) throw new Error("integrationAdjustedPaths contains duplicates");
+  for (const path of parsed) {
+    const source = contributions.find(entry => entry.changedPaths.includes(path))?.commit ?? input.baseCommit;
+    const changed = await changedPathsBetween(source, input.candidateCommit, repositoryPath);
+    if (!changed.includes(path)) throw new Error(`Integration adjustment must name an exact changed file: ${path}`);
+  }
+  return parsed;
 }
 
 async function verifyCandidateOnlyHistory(
@@ -576,13 +600,16 @@ export async function verifyIntegratedCandidate(
       ));
     }
     const correctionPaths = correctedPaths(input, verifiedContributions);
+    const integrationPaths = await verifyIntegrationAdjustments(input, verifiedContributions, repositoryPath);
     for (const contribution of verifiedContributions) {
-      await verifyContributionTreePreservation(contribution, candidateCommit, repositoryPath, correctionPaths);
+      await verifyContributionTreePreservation(contribution, candidateCommit, repositoryPath, [...correctionPaths, ...integrationPaths]);
     }
     checks.push({ name: "contribution-ancestry", status: "passed", detail: "two distinct contribution commits are included" });
     checks.push({ name: "contribution-history-topology", status: "passed", detail: "each contribution is a bounded linear history rooted at base or a prior declared contribution" });
     checks.push({ name: "write-ownership", status: "passed", detail: "every contribution commit changed only its declared paths" });
-    checks.push({ name: "contribution-tree-preservation", status: "passed", detail: "both contributions survive in the candidate tree" });
+    checks.push({ name: "contribution-tree-preservation", status: "passed", detail: correctionPaths.length || integrationPaths.length
+      ? "contribution paths outside the explicit adjustments survive in the candidate tree"
+      : "both contributions survive in the candidate tree" });
     if (correctionPaths.length > 0) {
       await verifyMaterialCorrection(verifiedContributions, correctionPaths, candidateCommit, repositoryPath);
       checks.push({
@@ -592,11 +619,14 @@ export async function verifyIntegratedCandidate(
       });
     }
 
-    await verifyCandidateDelta(verifiedContributions, baseCommit, candidateCommit, repositoryPath);
+    if (integrationPaths.length) checks.push({ name: "explicit-integration-adjustments", status: "passed",
+      detail: `owner-declared changed paths: ${integrationPaths.join(", ")}` });
+    await verifyCandidateDelta(verifiedContributions, baseCommit, candidateCommit, repositoryPath, integrationPaths);
     checks.push({
       name: "candidate-delta-attribution",
       status: "passed",
-      detail: "complete candidate delta equals the union of attributed contribution deltas",
+      detail: integrationPaths.length ? "candidate delta is attributed to original contributions and explicit integration adjustments"
+        : "complete candidate delta equals the union of attributed contribution deltas",
     });
 
     await verifyCandidateOnlyHistory(contributions, baseCommit, candidateCommit, repositoryPath);
@@ -621,6 +651,7 @@ export async function verifyIntegratedCandidate(
         candidateCommit,
       },
       contributions: verifiedContributions,
+      ...(integrationPaths.length ? { integrationAdjustedPaths: integrationPaths } : {}),
       checks,
     };
   } finally {

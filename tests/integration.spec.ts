@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -31,6 +31,8 @@ type FixtureOptions = {
   oversizedObject?: boolean;
   revertAlpha?: boolean;
   whitespaceError?: boolean;
+  directoryAlpha?: boolean;
+  ownerIntegrationAdjustments?: boolean;
 };
 
 function currentCommit(repository: string): string {
@@ -51,7 +53,8 @@ async function createAlphaContribution(repository: string, options: FixtureOptio
     execFileSync("git", ["add", "unowned.txt"], { cwd: repository });
     execFileSync("git", ["commit", "-m", "unowned historical change"], { cwd: repository });
   }
-  const alphaPath = options.literalPathspecAlpha ? ":(exclude)*" : "alpha.txt";
+  const alphaPath = options.directoryAlpha ? "app/alpha.txt" : options.literalPathspecAlpha ? ":(exclude)*" : "alpha.txt";
+  if (options.directoryAlpha) await mkdir(resolve(repository, "app"));
   await writeFile(
     resolve(repository, alphaPath),
     options.oversizedObject
@@ -119,6 +122,13 @@ async function createCandidate(repository: string, options: FixtureOptions): Pro
     execFileSync("git", ["add", "integration.txt"], { cwd: repository });
     execFileSync("git", ["commit", "-m", "extra integration change"], { cwd: repository });
   }
+  if (options.ownerIntegrationAdjustments) {
+    await writeFile(resolve(repository, "alpha.txt"), "assembled alpha\n");
+    await writeFile(resolve(repository, "integration.md"), "Assembly evidence\n");
+    execFileSync("git", ["rm", "beta.txt"], { cwd: repository });
+    execFileSync("git", ["add", "alpha.txt", "integration.md"], { cwd: repository });
+    execFileSync("git", ["commit", "--amend", "--no-edit"], { cwd: repository });
+  }
   return currentCommit(repository);
 }
 
@@ -168,7 +178,7 @@ async function fixture(options: FixtureOptions = {}) {
       {
         contributionId: "alpha",
         commit: alphaCommit,
-        ownedPaths: [options.literalPathspecAlpha ? ":(exclude)*" : "alpha.txt"],
+        ownedPaths: [options.directoryAlpha ? "app" : options.literalPathspecAlpha ? ":(exclude)*" : "alpha.txt"],
       },
       { contributionId: "beta", commit: betaCommit, ownedPaths: ["beta.txt"] },
     ],
@@ -178,6 +188,30 @@ async function fixture(options: FixtureOptions = {}) {
 }
 
 describe("integrated Git candidate verification", () => {
+  it("retains original Git attribution while requiring every owner-declared assembly adjustment", async () => {
+    const { ctx, input } = await fixture({ ownerIntegrationAdjustments: true });
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow("contribution-tree-preservation");
+    input.integrationAdjustedPaths = ["alpha.txt", "beta.txt", "integration.md"];
+    const result = await verifyIntegratedCandidate(ctx, input);
+    expect(result.integrationAdjustedPaths).toEqual(input.integrationAdjustedPaths);
+    expect(result.contributions.map(entry => entry.commit)).toEqual(input.contributions.map(entry => entry.commit));
+    input.integrationAdjustedPaths = ["alpha.txt", "beta.txt"];
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow("unattributed path integration.md");
+    input.integrationAdjustedPaths = ["alpha.txt", "beta.txt", "integration.md", "missing.txt"];
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow("exact changed file: missing.txt");
+  });
+
+  it.each(["app", "app/"])("verifies a directory root %s without accepting sibling prefixes or overlapping owners", async (root) => {
+    const { ctx, input } = await fixture({ directoryAlpha: true });
+    input.contributions[0].ownedPaths = [root];
+    expect((await verifyIntegratedCandidate(ctx, input)).contributions[0].changedPaths).toEqual(["app/alpha.txt"]);
+    input.contributions[0].ownedPaths = ["ap"];
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow("unowned path app/alpha.txt");
+    input.contributions[0].ownedPaths = [root];
+    input.contributions[1].ownedPaths = ["app/alpha.txt"];
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow("Contribution ownership overlaps");
+  });
+
   it("checks the missing old reference while verifying both real contributions for owner recovery", async () => {
     const { ctx, input } = await fixture({ stacked: true });
     const result = await verifyIntegratedCandidate(ctx, { ...input, missingReference: "71b5f95145410736c691552b836df8f20df3880e" });

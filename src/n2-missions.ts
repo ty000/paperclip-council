@@ -1326,7 +1326,7 @@ export async function prepareResubmissionCommand(
   }
   const state = storedN2(mission);
   if (state.correction?.runId !== input.actor.runId) throw new MissionError(409, "correction_run_required", "The bound correction run must resubmit V2");
-  const n1 = mission.aggregate.n1 as { contributions?: Array<{ contributionId?: string; commit?: string; ownedPaths?: string[] }> } | undefined;
+  const n1 = mission.aggregate.n1 as { candidate?: IntegratedCandidateVerification; contributions?: Array<{ contributionId?: string; commit?: string; ownedPaths?: string[] }> } | undefined;
   if (!n1?.contributions || n1.contributions.length !== 2 || n1.contributions.some((entry) => !entry.contributionId || !entry.commit || !entry.ownedPaths)) {
     throw new MissionError(409, "n1_evidence_unavailable", "N1 contribution evidence is unavailable for V2 verification");
   }
@@ -1351,6 +1351,7 @@ export async function prepareResubmissionCommand(
     candidateCommit,
     expectedSha256,
     correctedPaths,
+    integrationAdjustedPaths: n1.candidate?.integrationAdjustedPaths,
     contributions: n1.contributions.map((entry) => ({
       contributionId: entry.contributionId!, commit: entry.commit!, ownedPaths: entry.ownedPaths!,
     })) as [

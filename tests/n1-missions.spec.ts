@@ -1602,7 +1602,7 @@ describe("N1 mission transitions", () => {
   });
 });
 
-describe("owner recovery of a known contribution reference", () => {
+describe.each(["recover-integration", "recover-candidate"])("owner recovery: %s", (command) => {
   function recovery() {
     const initial = aggregate();
     initial.phase = "executing";
@@ -1633,7 +1633,7 @@ describe("owner recovery of a known contribution reference", () => {
       subject: { companyId: id.company, issueId: id.root }, candidate: { attachmentId: id.root, byteSize: 123,
         sha256: "d".repeat(64), baseCommit: "0".repeat(40), candidateCommit: "c".repeat(40) }, contributions: [], checks: [],
     });
-    const body = { command: "recover-integration", commandId: randomUUID(), expectedVersion: 5,
+    const body = { command, commandId: randomUUID(), expectedVersion: 5,
       contributionId: id.contributionA, previousCommit: "a".repeat(40), replacementCommit: "d".repeat(40),
       reason: "Recorded SHA was expanded incorrectly; owner verified the original Git object and run log",
       attachmentId: id.root, expectedSha256: "d".repeat(64), baseCommit: "0".repeat(40), candidateCommit: "c".repeat(40) };
@@ -1651,18 +1651,24 @@ describe("owner recovery of a known contribution reference", () => {
     const state = h.row().aggregate;
     expect(state.phase).toBe("ready_for_review");
     expect(state.commandReceipts[0]).toEqual(h.initial.commandReceipts[0]);
-    expect(state.commandReceipts[1]).toMatchObject({ command: "recover-integration", actorType: "user", actorId: id.owner });
+    expect(state.commandReceipts[1]).toMatchObject({ command, actorType: "user", actorId: id.owner });
     const slots = state.n1!.contributions as Array<Record<string, any>>;
-    expect(slots[0]).toMatchObject({ commit: h.body.replacementCommit, authorRunId: id.contributorRun, referenceRecovery: { previousCommit: h.body.previousCommit, actorUserId: id.owner } });
-    expect(state.journal.at(-1)).toMatchObject({ action: "owner_recovered_integration", previousCommit: h.body.previousCommit, actorUserId: id.owner });
+    if (command === "recover-integration") {
+      expect(slots[0]).toMatchObject({ commit: h.body.replacementCommit, authorRunId: id.contributorRun, referenceRecovery: { previousCommit: h.body.previousCommit, actorUserId: id.owner } });
+      expect(state.journal.at(-1)).toMatchObject({ action: "owner_recovered_integration", previousCommit: h.body.previousCommit, actorUserId: id.owner });
+      expect(verifyIntegratedCandidate).toHaveBeenCalledWith(h.ctx, expect.objectContaining({ missingReference: h.body.previousCommit }));
+    } else {
+      expect(slots).toEqual(h.initial.n1!.contributions);
+      expect(state.journal.at(-1)).toMatchObject({ action: "owner_recovered_candidate", originalLeadRunId: id.leadRun, actorUserId: id.owner });
+      expect(vi.mocked(verifyIntegratedCandidate).mock.calls[0][1]).not.toHaveProperty("missingReference");
+    }
     expect(state.n2).toBeUndefined();
     expect(h.requestWakeup).not.toHaveBeenCalled();
     expect(h.update).not.toHaveBeenCalled();
     expect(settleAdmission).not.toHaveBeenCalled();
-    expect(verifyIntegratedCandidate).toHaveBeenCalledWith(h.ctx, expect.objectContaining({ missingReference: h.body.previousCommit }));
     expect((await h.apply()).outcome).toBe("replayed");
     expect(h.execute).toHaveBeenCalledTimes(1);
-    h.body.replacementCommit = "e".repeat(40);
+    h.body.candidateCommit = "e".repeat(40);
     await expect(h.apply()).rejects.toMatchObject({ code: "command_identity_conflict" });
   });
 
@@ -1688,9 +1694,11 @@ describe("owner recovery of a known contribution reference", () => {
     h.body.expectedVersion = 4;
     await expect(h.apply()).rejects.toMatchObject({ code: "version_conflict" });
     h.body.expectedVersion = 5;
-    h.body.previousCommit = "e".repeat(40);
-    await expect(h.apply()).rejects.toMatchObject({ code: "recovery_reference_mismatch" });
-    h.body.previousCommit = "a".repeat(40);
+    if (command === "recover-integration") {
+      h.body.previousCommit = "e".repeat(40);
+      await expect(h.apply()).rejects.toMatchObject({ code: "recovery_reference_mismatch" });
+      h.body.previousCommit = "a".repeat(40);
+    }
     h.advanceMission(a => ({ ...a, n1: { ...a.n1, candidate: {} } }));
     h.body.expectedVersion = 6;
     await expect(h.apply()).rejects.toMatchObject({ code: "recovery_unavailable" });
@@ -1706,5 +1714,15 @@ describe("owner recovery of a known contribution reference", () => {
     vi.mocked(verifyIntegratedCandidate).mockRejectedValueOnce(new Error("Unowned path"));
     await expect(h.apply()).rejects.toThrow("Unowned path");
     expect(h.execute).not.toHaveBeenCalled();
+  });
+
+  it("records explicit integration adjustments in the owner receipt and keeps the contribution identities", async () => {
+    if (command !== "recover-candidate") return;
+    const h = recovery();
+    const body = { ...h.body, integrationAdjustedPaths: ["alpha.txt"] };
+    await executeN1BoardCommand(h.ctx, { companyId: id.company, missionId: id.mission, actorUserId: id.owner, body });
+    expect(verifyIntegratedCandidate).toHaveBeenCalledWith(h.ctx, expect.objectContaining({ integrationAdjustedPaths: ["alpha.txt"] }));
+    expect(h.row().aggregate.n1!.contributions).toEqual(h.initial.n1!.contributions);
+    expect(h.row().aggregate.journal.at(-1)).toMatchObject({ integrationAdjustedPaths: ["alpha.txt"] });
   });
 });

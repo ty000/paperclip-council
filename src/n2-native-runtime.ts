@@ -134,6 +134,16 @@ async function reviewBinding(ctx: PluginContext, mission: MissionRecord, input: 
   return { interactionId, decisionId, sourceRunId };
 }
 
+async function verifyTransmissionCandidate(ctx: PluginContext, mission: MissionRecord) {
+  const submission = storedN2(mission).submissions[0]!;
+  const n1 = mission.aggregate.n1 as { candidate?: { integrationAdjustedPaths?: string[] }; contributions: Array<{ contributionId: string; commit: string; ownedPaths: string[] }> };
+  const contributions = n1.contributions;
+  await verifyIntegratedCandidate(ctx, { companyId: mission.companyId, issueId: mission.rootIssueId,
+    attachmentId: submission.attachmentId, expectedSha256: submission.sha256, baseCommit: submission.baseCommit,
+    integrationAdjustedPaths: n1.candidate?.integrationAdjustedPaths,
+    candidateCommit: submission.candidateCommit, contributions: contributions as [typeof contributions[number], typeof contributions[number]] });
+}
+
 export async function executeNativeN2Agent(ctx: PluginContext, initial: MissionRecord, input: PluginApiRequestInput, body: Record<string, unknown>) {
   let mission = initial;
   const lead = mission.aggregate.responsibilities.integrationLeadAgentId;
@@ -161,10 +171,7 @@ export async function executeNativeN2Agent(ctx: PluginContext, initial: MissionR
     const native = requireNative(mission);
     if (native.transmission.runId !== input.actor.runId) throw new MissionError(409, "transmission_run_required", "Reserved transmission run required");
     const submission = current.submissions[0]!;
-    const contributions = (mission.aggregate.n1 as { contributions: Array<{ contributionId: string; commit: string; ownedPaths: string[] }> }).contributions;
-    await verifyIntegratedCandidate(ctx, { companyId: mission.companyId, issueId: mission.rootIssueId,
-      attachmentId: submission.attachmentId, expectedSha256: submission.sha256, baseCommit: submission.baseCommit,
-      candidateCommit: submission.candidateCommit, contributions: contributions as [typeof contributions[number], typeof contributions[number]] });
+    await verifyTransmissionCandidate(ctx, mission);
     const attested = await n2CommandCas(ctx, mission, body, "agent", lead, { ...mission.aggregate,
       n2: { ...current, native: { ...native, transmission: { ...native.transmission, attestedAt: new Date().toISOString() } } },
       journal: [...mission.aggregate.journal, { action: "n2_transmission_candidate_verified", runId: input.actor.runId, submissionId: submission.submissionId, candidateCommit: submission.candidateCommit }],
