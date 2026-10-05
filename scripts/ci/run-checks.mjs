@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 
 const checks = [
+  { name: "operations", executable: "python3", args: ["-m", "unittest", "discover", "-s", "tests/operations", "-p", "test_*.py"] },
   { name: "typecheck", args: ["typecheck"] },
   { name: "test", args: ["test", "--", "--maxWorkers=2"] },
   { name: "build", args: ["build"] },
@@ -16,12 +17,13 @@ function prefixLines(stream, destination, name) {
 
 function runCheck(check) {
   const startedAt = process.hrtime.bigint();
-  const command = `pnpm ${check.args.join(" ")}`;
+  const executable = check.executable ?? "pnpm";
+  const command = `${executable} ${check.args.join(" ")}`;
 
   console.log(`[${check.name}] START ${command}`);
 
   return new Promise((resolve) => {
-    const child = spawn("pnpm", check.args, {
+    const child = spawn(executable, check.args, {
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
     });

@@ -15,6 +15,13 @@ It does not implement Council reasoning, voting, learning, delivery control, or
 a separate authorization model. The configured key retains the Council agent's
 normal Paperclip authority.
 
+## Bounded operator utilities
+
+The repository includes provider-free utilities for exact transfer preflight,
+bounded mission observation, durable context packets, and finite session usage
+audits. See the [token-efficiency operator guide](docs/operations/TOKEN-EFFICIENCY.md)
+for their explicit inputs, limits, evidence contracts, and manual adoption sequence.
+
 ## N1 candidate preparation boundary
 
 Version 0.5 adds a plugin-private admission envelope, owner-controlled mission
@@ -178,7 +185,7 @@ installation is not a first-class Paperclip workflow.
 
 The `Council CI` check runs on every branch push and pull request. It installs
 the frozen pnpm lockfile, then runs typechecking, unit tests (with at most two
-Vitest workers), and the package build concurrently in one Linux job. Each
+Vitest workers), Python operator tests, and the package build concurrently in one Linux job. Each
 command reports its own status and duration, and any failure fails the job.
 
 This fast check does not run `pnpm test:functional`. The functional replay needs
