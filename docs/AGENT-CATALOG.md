@@ -1,5 +1,11 @@
 # Paperclip Council — proposed agent catalogue
 
+Implementation update, October 5, 2026: [native agent variants](NATIVE-AGENT-VARIANTS.md)
+adds a versioned, opt-in catalogue and dedicated setup for new standard CLI
+missions. The shared source charters below remain authoritative. Their embedded
+variant bundles and configuration are checked locally; no active instance setup
+or model execution is implied by this implementation.
+
 Status: **nine prepared V1 profiles**, revised September 30, 2026. No agent was created, selected, configured, activated or tested to produce this document. Preparation covers Executor, Generalist Reviewer, Development Reviewer, Architecture Reviewer, UX and Accessibility Reviewer, Product Reviewer, Quality Reviewer, Security Reviewer and Operations Reviewer; a mission still selects only the responsibilities it needs.
 
 Catalogue revision 0.5 adds the owner-adopted orchestration responsibilities in §4.1. Those entries are product contracts awaiting profile preparation, not additional prepared/installed profiles. The nine existing source charters and their historical qualification limits remain unchanged.

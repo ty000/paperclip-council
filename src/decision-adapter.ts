@@ -129,10 +129,18 @@ export async function councilNativeRequest(
   ctx: PluginContext,
   companyId: string,
   path: string,
-  options: { method?: "GET" | "POST"; runId?: string; body?: unknown; logRead?: { offset: number; limitBytes: number } } = {},
+  options: { method?: "GET" | "POST"; runId?: string; body?: unknown; logRead?: { offset: number; limitBytes: number };
+    commentPage?: { after?: string; limit: number }; eventPage?: { afterSeq: number; limit: number } } = {},
 ): Promise<{ status: number; body: unknown }> {
   const config = parseCouncilConfig(await ctx.config.get(companyId));
-  if (!/^\/api\/(heartbeat-runs|issues)\/[a-zA-Z0-9/-]+$/.test(path)) throw new Error("Invalid Council native resource path");
+  if (!/^\/api\/(heartbeat-runs|issues)\/[a-zA-Z0-9/-]+$/.test(path)
+      && !((options.method ?? "GET") === "GET" && options.body === undefined
+        && /^\/api\/issues\/[a-zA-Z0-9-]+\/documents\/[a-z0-9][a-z0-9_-]{0,63}\/revisions$/.test(path))) {
+    throw new Error("Invalid Council native resource path");
+  }
+  if ([options.logRead, options.commentPage, options.eventPage].filter(Boolean).length > 1) {
+    throw new Error("Conflicting Council native read windows");
+  }
   let query = "";
   if (options.logRead) {
     const { offset, limitBytes } = options.logRead;
@@ -141,6 +149,27 @@ export async function councilNativeRequest(
       throw new Error("Invalid Council native log window");
     }
     query = `?offset=${offset}&limitBytes=${limitBytes}`;
+  }
+  if (options.commentPage || options.eventPage) {
+    const page = options.commentPage ?? options.eventPage!;
+    if ((options.method ?? "GET") !== "GET" || options.body !== undefined
+        || !Number.isSafeInteger(page.limit) || page.limit < 1 || page.limit > 100) {
+      throw new Error("Invalid Council native page");
+    }
+    const params = new URLSearchParams({ limit: String(page.limit) });
+    if (options.commentPage) {
+      const { after } = options.commentPage;
+      if (!/^\/api\/issues\/[a-zA-Z0-9-]+\/comments$/.test(path)
+          || (after !== undefined && !/^[a-zA-Z0-9-]{1,128}$/.test(after))) throw new Error("Invalid Council comment page");
+      params.set("order", "asc");
+      if (after) params.set("after", after);
+    } else {
+      const { afterSeq } = options.eventPage!;
+      if (!/^\/api\/heartbeat-runs\/[a-zA-Z0-9-]+\/events$/.test(path)
+          || !Number.isSafeInteger(afterSeq) || afterSeq < 0) throw new Error("Invalid Council event page");
+      params.set("afterSeq", String(afterSeq));
+    }
+    query = `?${params}`;
   }
   const apiKey = !options.method || options.method === "GET" ? await nativeReadCredential(ctx, companyId, config)
     : await ctx.secrets.resolve(config.councilApiKey, { companyId, configPath: "councilApiKey" });

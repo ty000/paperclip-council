@@ -1,3 +1,4 @@
+import { isLogicalActor, physicalAgent } from "./model-state.js";
 import { N3OpinionError } from "./n3-opinions.js";
 import { createHash, randomUUID } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
@@ -322,7 +323,7 @@ function validateDecisionTarget(
     throw new MissionError(409, "stale_submission", "Verdict does not target the active immutable submission");
   }
   const reviewer = mission.aggregate.responsibilities.finalReviewerAgentId;
-  if (input.actorAgentId !== reviewer || input.runId !== round.handoff.reviewerRunId) {
+  if (!isLogicalActor(mission, reviewer, input.actorAgentId, input.runId) || input.runId !== round.handoff.reviewerRunId) {
     throw new MissionError(403, "reviewer_run_required", "Pinned reviewer and confirmed native review run required");
   }
   return state.submissions.find((item) => item.submissionId === input.submissionId)!;
@@ -351,7 +352,7 @@ function nativeReceiptSubjectMatches(mission: MissionRecord, submission: N2Submi
 function ordinaryReceiptSubjectMatches(mission: MissionRecord, submission: N2Submission, input: N2DecisionInput): boolean {
   const task = mission.aggregate.n2!.ordinary!.tasks.find(task => task.kind === "council" && task.submissionId === submission.submissionId);
   const body = input.receipt.requestBody;
-  return Boolean(task?.report && task.settledAt && task.runId === input.runId && task.agentId === input.actorAgentId
+  return Boolean(task?.report && task.settledAt && task.runId === input.runId && isLogicalActor(mission, task.agentId, input.actorAgentId, input.runId)
     && body.provenance === "ordinary-task-terminal-readback-v1" && body.method === "GET"
     && body.issueId === task.issueId && body.runId === task.runId && body.reportHash === canonicalPayloadHash(task.report)
     && body.subjectHash === canonicalPayloadHash(task.report.subject) && task.report.subject.candidateCommit === submission.candidateCommit
@@ -478,7 +479,7 @@ export function bindN2CorrectionRun(
   if (state.status !== "correction_requested" || !state.correction || state.correction.runId) {
     throw new MissionError(409, "correction_run_unavailable", "No correction run is awaiting binding");
   }
-  if (input.actorAgentId !== mission.aggregate.responsibilities.integrationLeadAgentId) {
+  if (!isLogicalActor(mission, mission.aggregate.responsibilities.integrationLeadAgentId, input.actorAgentId, input.runId)) {
     throw new MissionError(403, "integration_lead_required", "Only the pinned integration lead may execute the correction");
   }
   return {
@@ -512,7 +513,7 @@ export function prepareN2Resubmission(
   if (state.status !== "correcting" || state.correctionsUsed !== 1 || !state.correction?.runId) {
     throw new MissionError(409, "resubmission_unavailable", "A confirmed single correction run is required before V2 submission");
   }
-  if (input.actorAgentId !== state.correction.executorAgentId || input.runId !== state.correction.runId) {
+  if (!isLogicalActor(mission, state.correction.executorAgentId, input.actorAgentId, input.runId) || input.runId !== state.correction.runId) {
     throw new MissionError(403, "correction_run_required", "The pinned correction run must submit V2");
   }
   const previous = state.submissions.at(-1)!;
@@ -923,7 +924,7 @@ export async function executeN2BoardCommand(ctx: PluginContext, input: {
   const mission = await getMission(ctx, input.companyId, input.missionId);
   if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
   await requireMissionOwner(ctx, mission, input.actorUserId);
-  if (mission.aggregate.n2?.ordinary || !mission.aggregate.n2 && (await ctx.config.get(input.companyId)).n2RuntimeProfile === "ordinary-cli-v1") {
+  if (mission.aggregate.n2?.ordinary || !mission.aggregate.n2 && (mission.aggregate.modelSelection || (await ctx.config.get(input.companyId)).n2RuntimeProfile === "ordinary-cli-v1")) {
     const { executeOrdinaryN2Board } = await import("./n2-ordinary-runtime.js");
     return executeOrdinaryN2Board(ctx, mission, input);
   }
@@ -1125,7 +1126,7 @@ export async function executeN2BoardCommand(ctx: PluginContext, input: {
     const issue = await ctx.issues.get(mission.rootIssueId, mission.companyId);
     const native = executionPrincipals(issue);
     if (!issue || native.status !== "in_progress"
-        || native.assigneeAgentId !== mission.aggregate.responsibilities.integrationLeadAgentId) {
+        || native.assigneeAgentId !== physicalAgent(mission, mission.aggregate.responsibilities.integrationLeadAgentId, { issueId: mission.rootIssueId })) {
       throw new MissionError(409, "native_review_entry_mismatch", "Root issue must remain under the pinned integration lead before V2 review");
     }
     const reservationId = runtimeUuid(input.body.reservationId, "reservationId");
@@ -1177,7 +1178,7 @@ export async function executeN2BoardCommand(ctx: PluginContext, input: {
   const issue = await ctx.issues.get(mission.rootIssueId, mission.companyId);
   const native = executionPrincipals(issue);
   if (!issue || native.status !== "in_progress"
-      || native.assigneeAgentId !== mission.aggregate.responsibilities.integrationLeadAgentId) {
+      || native.assigneeAgentId !== physicalAgent(mission, mission.aggregate.responsibilities.integrationLeadAgentId, { issueId: mission.rootIssueId })) {
     throw new MissionError(409, "native_review_entry_mismatch", "Root issue must still be in progress under the pinned integration lead");
   }
   const baseline = await readNativeSequentialUsageBaseline(ctx, { companyId: mission.companyId, issueId: mission.rootIssueId });
@@ -1285,7 +1286,7 @@ async function inspectN2Agent(
     }
   } else if (state.status === "correcting" || state.status === "resubmission_prepared") {
     const correction = state.correction;
-    if (actorId !== mission.aggregate.responsibilities.integrationLeadAgentId) {
+    if (actorId !== physicalAgent(mission, mission.aggregate.responsibilities.integrationLeadAgentId, { issueId: mission.rootIssueId, runId: input.actor.runId })) {
       throw new MissionError(403, "integration_lead_required", "Pinned integration lead correction run required");
     }
     if (!correction?.runId || correction.runId !== runId) {
@@ -1321,7 +1322,7 @@ export async function prepareResubmissionCommand(
   body: Record<string, unknown>,
 ) {
   const lead = mission.aggregate.responsibilities.integrationLeadAgentId;
-  if (input.actor.actorType !== "agent" || input.actor.agentId !== lead || !input.actor.runId) {
+  if (input.actor.actorType !== "agent" || (!input.actor.runId || !isLogicalActor(mission, lead, input.actor.agentId ?? "", input.actor.runId)) || !input.actor.runId) {
     throw new MissionError(403, "integration_lead_required", "Pinned integration lead correction run required");
   }
   const state = storedN2(mission);
@@ -1361,7 +1362,7 @@ export async function prepareResubmissionCommand(
   });
   const submissionId = runtimeUuid(body.submissionId, "submissionId");
   const nextState = prepareN2Resubmission(state, mission, {
-    actorAgentId: lead,
+    actorAgentId: input.actor.agentId!,
     runId: input.actor.runId,
     candidate: verified,
     evidenceRevision: mission.version + 1,
@@ -1374,10 +1375,10 @@ export async function prepareResubmissionCommand(
     n2: nextState,
     journal: [...mission.aggregate.journal, {
       action: "n2_resubmission_prepared", submissionId, candidate: verified.candidate,
-      correctedPaths, actorAgentId: lead, runId: input.actor.runId, at: new Date().toISOString(),
+      correctedPaths, actorAgentId: input.actor.agentId!, runId: input.actor.runId, at: new Date().toISOString(),
     }],
   };
-  return n2CommandCas(ctx, mission, body, "agent", lead, aggregate);
+  return n2CommandCas(ctx, mission, body, "agent", input.actor.agentId!, aggregate);
 }
 
 export async function handleN2AgentApi(input: PluginApiRequestInput, ctx: PluginContext) {
@@ -1501,7 +1502,7 @@ export async function prepareN2Decision(
   const round = state.rounds.at(-1);
   const submission = state.submissions.find((item) => item.submissionId === state.activeSubmissionId);
   if (!round || !submission || state.status !== "reviewing" || round.handoff.reviewerRunId !== decision.runId
-      || round.reviewerAgentId !== decision.actorAgentId
+      || !isLogicalActor(mission, round.reviewerAgentId, decision.actorAgentId, decision.runId)
       || decision.resultReference !== n2SubmissionResultReference(submission.submissionId)
       || (decision.verdict === "approved" && decision.approvedCommit !== submission.candidateCommit)) {
     throw new MissionError(409, "n2_decision_target_mismatch", "Decision does not target the active N2 submission and confirmed reviewer run");

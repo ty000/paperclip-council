@@ -1,11 +1,13 @@
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { canonicalPayloadHash, MissionError, type MissionRecord } from "./missions.js";
-import { n2CommandCas, nativeN2Profile, reserveN2Run, runtimeUuid } from "./n2-missions.js";
+import { n2CommandCas, nativeN2Profile, reserveN2Run, runtimeReceipt, runtimeUuid } from "./n2-missions.js";
 import { ordinaryTask } from "./n2-ordinary-state.js";
 import { ordinaryTaskInstructions } from "./n2-ordinary-instructions.js";
 import { readNativeRun, readOrdinaryRun } from "./g4-native.js";
 import { readN5Plan } from "./n5-native.js";
 import { acceptedN5Submission } from "./n5-preflight.js";
+import { bindVariantIssue, claimVariantWake, prepareVariantLaunch } from "./model-runtime.js";
+import { modelLaunch, physicalAgent } from "./model-state.js";
 
 function requiredReason(value: unknown): string {
   if (typeof value !== "string" || !value.trim() || value.length > 2000) throw new MissionError(422, "n5_correction_reason", "A bounded substantive correction/replan reason is required");
@@ -34,21 +36,74 @@ export function prepareN5Continuation(m: MissionRecord, input: { requestId: stri
 }
 
 export async function requestN5Correction(ctx: PluginContext, m: MissionRecord, body: Record<string, unknown>, actorId: string) {
-  if (m.version !== body.expectedVersion) throw new MissionError(409, "version_conflict", "Fresh mission version required before reserving correction");
   const requestId = runtimeUuid(body.commandId, "commandId"); const reservationId = runtimeUuid(body.reservationId, "reservationId");
+  const prior = runtimeReceipt(m, requestId, actorId, canonicalPayloadHash(body));
+  if (prior) {
+    const replay = { outcome: "replayed" as const, mission: m, receipt: prior };
+    const launch = modelLaunch(m, reservationId);
+    if (!m.aggregate.modelSelection || !m.aggregate.n2?.ordinary || launch && ["wake_claimed", "unknown", "bound"].includes(launch.state)) {
+      return { ...replay, effectPermission: "none" };
+    }
+    assertPreparingCorrection(m, requestId, reservationId, actorId);
+    return prepareCorrectionResume(ctx, replay, requestId, reservationId);
+  }
+  if (m.version !== body.expectedVersion) throw new MissionError(409, "version_conflict", "Fresh mission version required before reserving correction");
   const reason = requiredReason(body.reason); const criteria = body.criteria;
   if (!Array.isArray(criteria) || criteria.length < 1 || criteria.length > 20 || criteria.some(item => typeof item !== "string" || !item.trim() || item.length > 1000)) throw new MissionError(422, "n5_correction_criteria", "Explicit bounded correction criteria are required");
   const { profile } = await nativeN2Profile(ctx, m);
   const aggregate = prepareN5Continuation(m, { requestId, reservationId, reason, criteria, actorId, periodKey: profile.periodKey });
+  if (aggregate.modelSelection && aggregate.n2.ordinary) aggregate.effectIntents = [...aggregate.effectIntents,
+    { kind: "n5_correction_resume", state: "preparing", requestId, reservationId, actorId }];
   const root = await ctx.issues.get(m.rootIssueId, m.companyId);
-  if (root?.status !== "done" || root.assigneeAgentId !== m.aggregate.responsibilities.integrationLeadAgentId) throw new MissionError(409, "n5_reopen_target", "Accepted native root must remain done under its integration lead");
+  const previousRunId = m.aggregate.n2?.correction?.runId ?? m.aggregate.n1?.rootDispatchRunId;
+  const previousLead = physicalAgent(m, m.aggregate.responsibilities.integrationLeadAgentId,
+    { issueId: m.rootIssueId, ...(typeof previousRunId === "string" ? { runId: previousRunId } : {}) });
+  if (root?.status !== "done" || root.assigneeAgentId !== previousLead) throw new MissionError(409, "n5_reopen_target", "Accepted native root must remain done under its integration lead");
   await reserveN2Run(ctx, m, { reservationId, effectId: requestId, kind: "correction" });
   const result = await n2CommandCas(ctx, m, body, "user", actorId, aggregate);
-  if (result.outcome === "applied" && aggregate.n2.ordinary) {
-    const task = aggregate.n2.ordinary.tasks.at(-1)!;
-    await ctx.issues.update(m.rootIssueId, { description: (root.description ?? "") + "\n\nPost-publication correction: " + reason + "\nCriteria: " + JSON.stringify(criteria) + "\n" + ordinaryTaskInstructions(result.mission, task) }, m.companyId);
+  return prepareCorrectionResume(ctx, result, requestId, reservationId);
+}
+
+function assertPreparingCorrection(m: MissionRecord, requestId: string, reservationId: string, actorId: string) {
+  const continuation = m.aggregate.n5?.continuation; const correction = m.aggregate.n2?.correction;
+  const task = m.aggregate.n2?.ordinary?.tasks.find(item => item.taskId === requestId);
+  const intent = m.aggregate.effectIntents.find(item => item.kind === "n5_correction_resume" && item.requestId === requestId);
+  const launch = modelLaunch(m, reservationId);
+  if (intent?.state !== "preparing" || intent.reservationId !== reservationId || intent.actorId !== actorId
+      || continuation?.requestId !== requestId || continuation.reopen.reservationId !== reservationId || continuation.requestedBy !== actorId
+      || m.aggregate.n2?.status !== "correction_requested" || correction?.requestedByOperationId !== requestId
+      || correction.reservationId !== reservationId || correction.runId || task?.reservationId !== reservationId || task.issueId !== m.rootIssueId
+      || task.kind !== "correction" || task.agentId !== m.aggregate.responsibilities.integrationLeadAgentId
+      || task.submissionId !== m.aggregate.n2.activeSubmissionId || task.creation !== "confirmed" || task.wake !== "claimed"
+      || task.runId || task.settledAt || task.replacedBy || launch?.runId
+      || launch && !["selected", "assignment_claimed", "ready"].includes(launch.state)) {
+    throw new MissionError(409, "n5_correction_resume_unknown", "Only the exact persisted pre-wake preparation may resume; inspect any unknown effect");
   }
-  return { ...result, effectPermission: result.outcome === "applied" ? "execute" : "none",
+}
+
+async function prepareCorrectionResume(ctx: PluginContext, initial: Awaited<ReturnType<typeof n2CommandCas>>, requestId: string, reservationId: string) {
+  let result = initial; const m = result.mission; const continuation = m.aggregate.n5!.continuation!;
+  const { reason, criteria } = continuation;
+  if (m.aggregate.n2?.ordinary) {
+    const root = await ctx.issues.get(m.rootIssueId, m.companyId);
+    if (root?.status !== "done") throw new MissionError(409, "n5_reopen_target", "Correction preparation requires the still completed root; inspect any prior resume");
+    const prepared = await prepareVariantLaunch(ctx, m, { taskKey: m.rootIssueId, interventionKey: "lead", launchKey: reservationId,
+      logicalAgentId: m.aggregate.responsibilities.integrationLeadAgentId, family: "diagnosis", issueId: m.rootIssueId, expectedRoles: ["lead"] });
+    const bound = await bindVariantIssue(ctx, prepared.mission, reservationId, m.rootIssueId);
+    result = { ...result, mission: bound };
+    const task = bound.aggregate.n2!.ordinary!.tasks.find(item => item.taskId === requestId)!;
+    // Binding can append profile guidance and detailed-history references. Preserve its fresh readback.
+    const current = await ctx.issues.get(m.rootIssueId, m.companyId);
+    if (!current) throw new MissionError(409, "n5_reopen_target", "Root context must be observed before correction handoff");
+    const instructions = `Post-publication correction ${requestId}: ${reason}\nCriteria: ${JSON.stringify(criteria)}\n${ordinaryTaskInstructions(bound, task)}`;
+    if (!current.description?.includes(instructions)) {
+      await ctx.issues.update(m.rootIssueId, { description: `${current.description ?? ""}\n\n${instructions}` }, m.companyId);
+      const observed = await ctx.issues.get(m.rootIssueId, m.companyId);
+      if (!observed?.description?.includes(instructions)) throw new MissionError(409, "n5_correction_context_unknown", "Correction context was not observed; retain the existing preparation");
+    }
+    result = { ...result, mission: await claimVariantWake(ctx, result.mission, reservationId) };
+  }
+  return { ...result, effectPermission: "execute",
     nativeAction: { actor: "same_authenticated_owner", method: "PATCH", path: `/api/issues/${m.rootIssueId}`,
       body: { resume: true, comment: `Council correction ${requestId}: ${reason}` },
       instruction: "Execute once using your own native authority. Native resume owns the wake. An uncertain response must be inspected, never retried through another key." } };
@@ -59,9 +114,11 @@ export async function rebindN5Plan(ctx: PluginContext, m: MissionRecord, input: 
   const runId = input.actor.runId;
   const admittedRuns = [m.aggregate.n1?.rootDispatchRunId, m.aggregate.n2?.native?.transmission.runId, m.aggregate.n2?.correction?.runId,
     ...m.aggregate.n3?.rounds.map(round => round.transmission?.runId) ?? []];
-  if (!n5 || input.actor.actorType !== "agent" || input.actor.agentId !== lead || input.params.issueId !== m.rootIssueId
+  if (!n5 || input.actor.actorType !== "agent" || input.params.issueId !== m.rootIssueId
       || !runId || !admittedRuns.includes(runId)) throw new MissionError(403, "n5_plan_actor", "Exact admitted root lead run required for plan rebinding");
-  const run = await (m.aggregate.n2?.ordinary ? readOrdinaryRun : readNativeRun)(ctx, { companyId: m.companyId, issueId: m.rootIssueId, agentId: lead, runId });
+  const actorAgentId = physicalAgent(m, lead, { issueId: m.rootIssueId, runId });
+  if (input.actor.agentId !== actorAgentId) throw new MissionError(403, "n5_plan_actor", "Exact admitted root lead run required for plan rebinding");
+  const run = await (m.aggregate.n2?.ordinary ? readOrdinaryRun : readNativeRun)(ctx, { companyId: m.companyId, issueId: m.rootIssueId, agentId: actorAgentId, runId });
   if (run.status !== "running" || !run.startedAt || run.finishedAt) throw new MissionError(409, "n5_plan_run", "Plan rebinding requires its active native lead run");
   const reason = requiredReason(body.reason);
   const plan = await readN5Plan(ctx, m, runtimeUuid(body.planRevisionId, "planRevisionId"));
@@ -69,6 +126,6 @@ export async function rebindN5Plan(ctx: PluginContext, m: MissionRecord, input: 
     if (plan[field] !== n5.plan[field]) throw new MissionError(409, "n5_plan_authority_changed", "Plan rebinding cannot change the mandate or delegated role identities");
   }
   if (canonicalPayloadHash(plan) === canonicalPayloadHash(n5.plan)) throw new MissionError(409, "n5_plan_unchanged", "A new native plan revision is required");
-  return n2CommandCas(ctx, m, body, "agent", lead, { ...m.aggregate, n5: { ...n5, plan,
+  return n2CommandCas(ctx, m, body, "agent", actorAgentId, { ...m.aggregate, n5: { ...n5, plan,
     planHistory: [...n5.planHistory ?? [], { plan: n5.plan, reason, runId, at: new Date().toISOString() }] } });
 }

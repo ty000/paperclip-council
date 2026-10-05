@@ -1,3 +1,5 @@
+import { physicalAgent } from "./model-state.js";
+import { recordVariantWake } from "./model-runtime.js";
 import { ordinaryTaskInstructions } from "./n2-ordinary-instructions.js";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { readOrdinaryRun } from "./g4-native.js";
@@ -18,11 +20,12 @@ function assertOwnerResume(mission: MissionRecord, task: OrdinaryTask, run: Awai
 async function bindActor(ctx: PluginContext, mission: MissionRecord, input: PluginApiRequestInput) {
   const task = mission.aggregate.n2!.ordinary!.tasks.find(item => item.issueId === input.params.issueId
     && item.submissionId === mission.aggregate.n2!.activeSubmissionId && !item.settledAt);
-  if (!task || input.actor.actorType !== "agent" || task.agentId !== input.actor.agentId || !input.actor.runId || task.wake !== "claimed"
+  if (!task || input.actor.actorType !== "agent" || physicalAgent(mission, task.agentId, { issueId: task.issueId, launchKey: task.reservationId }) !== input.actor.agentId || !input.actor.runId || task.wake !== "claimed"
       || task.runId && task.runId !== input.actor.runId) throw new MissionError(403, "ordinary_actor_binding", "Exact admitted task, actor and run required");
-  const run = await readOrdinaryRun(ctx, { companyId: mission.companyId, issueId: task.issueId!, agentId: task.agentId, runId: input.actor.runId });
+  const run = await readOrdinaryRun(ctx, { companyId: mission.companyId, issueId: task.issueId!, agentId: input.actor.agentId, runId: input.actor.runId });
   if (run.status !== "running" || !run.startedAt || run.finishedAt) throw new MissionError(409, "ordinary_run_inactive", "Command requires its active CLI run");
   assertOwnerResume(mission, task, run);
+  mission = await recordVariantWake(ctx, mission, task.reservationId, run.id);
   if (!task.runId) mission = await saveOrdinaryTask(ctx, mission, { ...task, runId: run.id });
   const state = mission.aggregate.n2!;
   if (task.kind === "council" && state.status === "review_handoff") {

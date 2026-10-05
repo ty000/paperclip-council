@@ -3,6 +3,7 @@ import { projectCoordinationPresentation } from "../coordination-presentation.js
 import { projectDeliveryPresentation, type DeliveryPresentation } from "../delivery-presentation.js";
 import { CoordinationPanel } from "./coordination-panel.js";
 import { CouncilDecisionReceipts } from "./decision-receipts.js";
+import { ModelProfilesPanel } from "./model-profiles-panel.js";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import {
   useHostContext,
@@ -752,6 +753,7 @@ export function CouncilMissionsPage({ context }: PluginPageProps) {
       </div>
       {loading && <p role="status">Loading missions…</p>}
       {error && <p role="alert" style={card}>{error}</p>}
+      <ModelProfilesPanel companyId={companyId} missionId={selected?.mission.missionId} refreshKey={refreshKey} issueHref={issueLink} />
       {!loading && !error && loadedCompanyId === companyId && (
         <div style={grid}>
           <section style={card} aria-labelledby="mission-picker-title">

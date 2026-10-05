@@ -1,3 +1,6 @@
+import type { ModelSelectionState } from "./model-state.js";
+import { ModelSelectionError } from "./model-state.js";
+import { inspectVariant } from "./model-variants.js";
 import { inspectN6 } from "./n6-state.js";
 import { inspectN5 } from "./n5-state.js";
 import { inspectN3 } from "./n3-state.js";
@@ -80,6 +83,7 @@ export type MissionAggregate = {
   journal: Array<Record<string, unknown>>;
   commandReceipts: MissionReceipt[];
   effectIntents: Array<Record<string, unknown>>;
+  modelSelection?: ModelSelectionState;
   n1?: Record<string, unknown>;
   n2?: N2State;
   n3?: import("./n3-state.js").N3State;
@@ -505,6 +509,7 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
   if (existing) return existingCreationResult(existing, create.commandId, ownerUserId, payloadHash);
   let team: RosterSnapshot;
   let council: RosterSnapshot;
+  let useVariants = false;
   try {
     const issue = await ctx.issues.get(create.rootIssueId, companyId);
     if (!issue || issue.companyId !== companyId) throw new MissionError(404, "root_issue_not_found", "Root issue not found in this company");
@@ -530,6 +535,22 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
     }
     team = validation.team;
     council = validation.council;
+    const variantConfig = await ctx.config.get(companyId);
+    useVariants = variantConfig.modelVariantsEnabled === true && variantConfig.n2RuntimeProfile === "ordinary-cli-v1";
+    if (useVariants) {
+      const ids = new Set([...team.revision.content.members, ...council.revision.content.members].map(member => member.agentId));
+      for (const agentId of ids) {
+        const variant = await inspectVariant(ctx, companyId, agentId, "sol-medium", "1");
+        if (!variant.ready || variant.logicalAgentId !== agentId) throw new ModelSelectionError("model_roster_ineligible", "Prepare compatible catalogue anchors before creating an opted-in mission", variant);
+        const role = variant.roleKey;
+        const compatible = agentId === team.revision.content.integrationLeadAgentId ? role === "lead"
+          : agentId === council.revision.content.finalReviewerAgentId ? role === "generalist-reviewer"
+          : team.revision.content.members.some(member => member.agentId === agentId)
+            ? ["executor", "contributor-1", "contributor-2", "test", "design"].includes(role ?? "")
+            : Boolean(role?.endsWith("-reviewer") && role !== "generalist-reviewer");
+        if (!compatible) throw new ModelSelectionError("model_roster_role_mismatch", "Catalogue role must match the structured roster responsibility", { agentId, role });
+      }
+    }
   } catch (error) {
     let appeared: MissionRecord | null = null;
     try {
@@ -542,6 +563,9 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
   }
   const at = new Date().toISOString();
   const aggregate = buildMissionAggregate({ create, companyId, ownerUserId, team, council, payloadHash, at });
+  if (useVariants) {
+    aggregate.modelSelection = { protocol: "native-variants-v1", choices: [], tasks: [] };
+  }
   const insert = await ctx.db.execute(
     missionInsertSql(ctx),
     [companyId, create.missionId, create.rootIssueId, create.projectId, ownerUserId,

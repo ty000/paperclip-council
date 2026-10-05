@@ -7,6 +7,8 @@ import { assertN6Owner } from "./n6-guards.js";
 import { coordinationActor, coordinationText, type CoordinationReport, type CoordinationTask, type N6Priority } from "./n6-coordination-state.js";
 import { saveCoordinationTask } from "./n6-work-runtime.js";
 import { coordinationInstructions } from "./n6-work-instructions.js";
+import { recordVariantWake } from "./model-runtime.js";
+import { physicalAgent } from "./model-state.js";
 
 function refuseReserved(body: Record<string, unknown>, permitted: string[]) {
   if (Object.keys(body).some(k => !["missionId", "command", "commandId", "expectedVersion", ...permitted].includes(k))) {
@@ -41,12 +43,14 @@ export function coordinationReport(m: MissionRecord, task: CoordinationTask, bod
 }
 async function bind(ctx: PluginContext, m: MissionRecord, input: PluginApiRequestInput) {
   const task = m.aggregate.n6?.coordination?.tasks.find(t => t.issueId === input.params.issueId && !t.closedAt);
-  if (!task || input.actor.actorType !== "agent" || input.actor.agentId !== task.agentId || !input.actor.runId
+  if (!task || input.actor.actorType !== "agent"
+      || input.actor.agentId !== physicalAgent(m, task.agentId, { launchKey: task.reservationId, issueId: task.issueId! }) || !input.actor.runId
       || task.wake !== "claimed" || task.runId && task.runId !== input.actor.runId) throw new MissionError(403, "n6_work_binding", "Exact admitted role/task/run required");
   const c = m.aggregate.n6!.coordination!;
   if (task.kind === "coordinator" && task.agentId !== c.coordinatorAgentId) throw new MissionError(403, "n6_coordinator_required", "Old coordinator cannot mutate this delegation");
-  const run = await readOrdinaryRun(ctx, { companyId: m.companyId, issueId: task.issueId!, runId: input.actor.runId, agentId: task.agentId });
+  const run = await readOrdinaryRun(ctx, { companyId: m.companyId, issueId: task.issueId!, runId: input.actor.runId, agentId: input.actor.agentId });
   if (run.status !== "running" || run.finishedAt) throw new MissionError(409, "n6_work_inactive", "Current active admitted run required");
+  m = await recordVariantWake(ctx, m, task.reservationId, input.actor.runId);
   if (!task.runId) { m = await saveCoordinationTask(ctx, m, { ...task, runId: run.id }); }
   return { mission: m, task: m.aggregate.n6!.coordination!.tasks.find(t => t.taskId === task.taskId)! };
 }
@@ -59,13 +63,13 @@ export async function handleN6WorkAgent(ctx: PluginContext, input: PluginApiRequ
     const { mission: m, task } = await bind(ctx, initial, input);
     if (["inspect", "n6-inspect"].includes(String(body.command))) return { status: 200, body: {
       missionId: m.missionId, version: m.version, task, dependency: m.aggregate.n6, instructions: coordinationInstructions(m, task) } };
-    const prior = runtimeReceipt(m, runtimeUuid(body.commandId, "commandId"), task.agentId, canonicalPayloadHash(body));
+    const prior = runtimeReceipt(m, runtimeUuid(body.commandId, "commandId"), input.actor.agentId!, canonicalPayloadHash(body));
     if (prior) { await ctx.issues.update(task.issueId!, { status: "blocked" }, m.companyId); return { status: 200, body: { outcome: "replayed", finishReport: task.report } }; }
     if (task.report) throw new MissionError(409, "n6_report_frozen", "One prepared outcome per admitted run");
     const report = coordinationReport(m, task, body); const c = m.aggregate.n6!.coordination!;
-    const result = await n2CommandCas(ctx, m, body, "agent", task.agentId, { ...m.aggregate, n6: { ...m.aggregate.n6!, coordination: { ...c,
+    const result = await n2CommandCas(ctx, m, body, "agent", input.actor.agentId!, { ...m.aggregate, n6: { ...m.aggregate.n6!, coordination: { ...c,
       tasks: c.tasks.map(t => t.taskId === task.taskId ? { ...task, report } : t) } }, journal: [...m.aggregate.journal,
-        { action: "coordination_report_prepared", actorAgentId: task.agentId, runId: task.runId, taskId: task.taskId, report, at: new Date().toISOString() }] });
+        { action: "coordination_report_prepared", actorAgentId: input.actor.agentId, logicalAgentId: task.agentId, runId: task.runId, taskId: task.taskId, report, at: new Date().toISOString() }] });
     await ctx.issues.update(task.issueId!, { status: "blocked" }, m.companyId);
     return { status: 200, body: { ...result, finishReport: report } };
   } catch (error) {
