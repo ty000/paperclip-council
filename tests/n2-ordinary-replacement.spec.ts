@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { expect, it, vi } from "vitest";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 vi.mock("../src/decision-adapter.js", async original => ({ ...await original(), councilNativeRequest: vi.fn() }));
@@ -7,7 +7,8 @@ import { handleMissionApi } from "../src/missions.js";
 import { ordinaryTask } from "../src/n2-ordinary-state.js";
 import { configureAdmission, reserveAdmission } from "../src/admission.js";
 import { nativeAdmissionConfiguration, settleOrdinaryRunUsage } from "../src/g4-native.js";
-import { handleN2AgentApi } from "../src/n2-missions.js";
+import { handleN2AgentApi, inspectN2State } from "../src/n2-missions.js";
+import { acceptedN5Submission } from "../src/n5-preflight.js";
 
 async function fixture() {
   const company = randomUUID(), mission = randomUUID(), owner = randomUUID(), agent = randomUUID(), submissionId = randomUUID();
@@ -99,6 +100,8 @@ async function councilFixture() {
   aggregate.responsibilities.finalReviewerAgentId = f.task.agentId;
   aggregate.mandate = { objective: "Approve the exact corrected candidate", acceptanceCriteria: ["Exact V2 is independently approved"],
     commitments: [], limits: { taskPolicy: "bounded", periodPolicy: "bounded", correctionLimit: 1, elapsedMinutes: 60 } };
+  const mandateHash = createHash("sha256").update(JSON.stringify(aggregate.mandate)).digest("hex");
+  aggregate.n2.submissions[0].mandateHash = mandateHash; aggregate.n3.rounds[0].review.subject.mandateHash = mandateHash;
   aggregate.phase = "reviewing";
   aggregate.effectIntents = [];
   aggregate.n2.status = "reviewing";
@@ -106,7 +109,7 @@ async function councilFixture() {
   aggregate.n2.correctionLimit = 1;
   aggregate.n2.correctionsUsed = 1;
   aggregate.n2.correction = { requestedByOperationId: randomUUID(), criteria: ["Correct V1"], reasons: ["Historical objection"],
-    executorAgentId: lead, runId: randomUUID(), preparedSubmission: aggregate.n2.submissions[0] };
+    executorAgentId: lead, runId: randomUUID(), usageSettledAt: new Date().toISOString(), preparedSubmission: aggregate.n2.submissions[0] };
   aggregate.n2.application = { state: "none", submissionId: null, operationId: null, receiptState: null, nativeStatus: null };
   aggregate.n2.rounds = [{ round: 2, submissionId: f.task.submissionId, reviewerAgentId: f.task.agentId,
     handoff: { state: "confirmed", baselineRunIds: [], baselineTokenTotal: 0, reviewerRunId: f.task.runId,
@@ -128,6 +131,29 @@ async function councilFixture() {
   aggregate.n3.slots = [developmentSlot, qualitySlot];
   Object.assign(f.body, { command: "replace-missing-verdict" });
   return { ...f, deferrableFindingId };
+}
+
+async function acceptedCouncilFixtureWithoutHistoricalStamp() {
+  const f = await councilFixture();
+  expect((await f.call()).status).toBe(200);
+  expect((await f.call({ command: "reconcile-ordinary-n2" })).status).toBe(200);
+  const active = f.row().aggregate.n2.ordinary.tasks.find((item: any) => item.replacementOf === f.task.taskId);
+  const agentCall = (body: Record<string, unknown>) => handleN2AgentApi({ routeKey: "mission-agent-command", method: "POST",
+    companyId: f.row().company_id, params: { issueId: active.issueId }, query: {}, headers: {}, path: "",
+    actor: { actorType: "agent", actorId: active.agentId, agentId: active.agentId, runId: active.runId },
+    body: { missionId: f.row().mission_id, ...body } }, f.ctx);
+  const inspected = await agentCall({ command: "ordinary-inspect" });
+  const prepared = await agentCall({ command: "ordinary-verdict", commandId: randomUUID(), expectedVersion: f.row().version,
+    synthesis: { subject: (inspected.body as any).n3.review.subject, verdict: "approved",
+      rationale: "The exact corrected candidate satisfies the current independent review.", dispositions: [] } });
+  Object.assign(f.runs.get(active.runId), { status: "succeeded", finishedAt: new Date().toISOString(),
+    usageJson: { usageSource: "per_run", inputTokens: 80, outputTokens: 20 },
+    resultJson: { summary: JSON.stringify((prepared.body as any).finishReport) } });
+  const oldReceipt = f.ledger().document.reservations[0].settlementReceipts[0];
+  f.row().aggregate.n2.ordinary.tasks.find((item: any) => item.taskId === f.task.taskId).settledAt = oldReceipt.recordedAt;
+  expect((await f.call({ command: "reconcile-ordinary-n2" })).status).toBe(200);
+  delete f.row().aggregate.n2.ordinary.tasks.find((item: any) => item.taskId === f.task.taskId).settledAt;
+  return f;
 }
 
 it("preserves the missing task and costs, reserves resume with a durable grant, and replays without duplicate wake", async () => {
@@ -227,7 +253,32 @@ it("rebinds one terminal Council task, then accepts only the replacement review 
   ]));
   expect(f.row().aggregate.n2.ordinary.tasks.find((item: any) => item.taskId === replacement.taskId)).toMatchObject({
     settledAt: expect.any(String), receiptRecordedAt: expect.any(String), closedAt: expect.any(String), report });
+  const historical = f.row().aggregate.n2.ordinary.tasks.find((item: any) => item.taskId === f.task.taskId);
+  const historicalReceipt = originalReservation.settlementReceipts.find((item: any) => item.commandId === f.task.settlementCommandId);
+  expect(historical).toMatchObject({ settledAt: historicalReceipt.recordedAt, closedAt: expect.any(String),
+    replacedBy: replacement.taskId });
+  expect(historical).not.toHaveProperty("report"); expect(historical).not.toHaveProperty("receiptRecordedAt");
   expect(f.effects.filter((effect) => effect === "wake")).toHaveLength(1);
+
+  // Mirror the already-accepted v82 shape from before the accounting-stamp repair.
+  delete historical.settledAt;
+  expect(inspectN2State(f.row())?.usage.complete).toBe(false);
+  expect(() => acceptedN5Submission(f.row())).toThrowError(expect.objectContaining({ code: "n5_accepted_candidate_required" }));
+  const before = structuredClone(f.row().aggregate); const ledgerBefore = structuredClone(f.ledger().document);
+  expect((await f.call({ command: "reconcile-ordinary-n2" })).status).toBe(200);
+  const after = f.row().aggregate; const repaired = after.n2.ordinary.tasks.find((item: any) => item.taskId === f.task.taskId);
+  expect(repaired).toEqual({ ...before.n2.ordinary.tasks.find((item: any) => item.taskId === f.task.taskId),
+    settledAt: historicalReceipt.recordedAt });
+  const withoutRepair = structuredClone(after); delete withoutRepair.n2.ordinary.tasks.find((item: any) => item.taskId === f.task.taskId).settledAt;
+  expect(withoutRepair).toEqual(before);
+  expect(f.ledger().document).toEqual(ledgerBefore);
+  expect(inspectN2State(f.row())?.usage.complete).toBe(true);
+  expect(acceptedN5Submission(f.row())).toMatchObject({ submissionId: f.task.submissionId,
+    candidateCommit: f.body.candidateCommit });
+  const replayVersion = f.row().version; const replayAggregate = structuredClone(after);
+  expect((await f.call({ command: "reconcile-ordinary-n2" })).status).toBe(200);
+  expect(f.row().version).toBe(replayVersion); expect(f.row().aggregate).toEqual(replayAggregate);
+  expect(f.ledger().document).toEqual(ledgerBefore);
 });
 
 it.each(["synthesis", "report", "receipt", "verdict", "application", "decision-intent", "already-used", "replaced"])(
@@ -247,3 +298,17 @@ it.each(["synthesis", "report", "receipt", "verdict", "application", "decision-i
     expect(f.effects).toEqual([]);
   },
 );
+
+it.each(["unknown-usage", "cross-run"])("refuses historical settlement repair for %s without changing mission or costs", async kind => {
+  const f = await acceptedCouncilFixtureWithoutHistoricalStamp();
+  const oldRun = f.runs.get(f.task.runId)!;
+  if (kind === "unknown-usage") oldRun.usageJson = null;
+  else oldRun.agentId = randomUUID();
+  const before = structuredClone(f.row().aggregate); const ledgerBefore = structuredClone(f.ledger().document);
+  const wakeCount = f.effects.filter((item) => item === "wake").length;
+  const response = await f.call({ command: "reconcile-ordinary-n2" });
+  expect(response).toMatchObject({ status: 409, body: { code: kind === "unknown-usage"
+    ? "g4_usage_unavailable" : "g4_run_identity_unqualified" } });
+  expect(f.row().aggregate).toEqual(before); expect(f.ledger().document).toEqual(ledgerBefore);
+  expect(f.effects.filter((item) => item === "wake")).toHaveLength(wakeCount);
+});
