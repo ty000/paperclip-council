@@ -4,12 +4,14 @@ import { acceptedN5Submission } from "./n5-preflight.js";
 import { randomUUID } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { AdmissionError } from "./admission.js";
-import { createContributionIssueEffect } from "./contribution-effects.js";
+import { createContributionIssueEffect, reconcileContributionIssueEffect } from "./contribution-effects.js";
 import { readNativeRun, readOrdinaryRun, settleNativeExactRunUsage, settleOrdinaryRunUsage } from "./g4-native.js";
 import { canonicalPayloadHash, getMission, MissionError, type MissionRecord } from "./missions.js";
 import { n2Cas, n2CommandCas, nativeN2Profile, reserveN2Run, runtimeReceipt, runtimeUuid } from "./n2-missions.js";
 import { assertCurrentN5Plan, observeN5Native, readN5Plan } from "./n5-native.js";
 import { inspectN5, type N5State } from "./n5-state.js";
+import { bindVariantIssue, claimVariantWake, observeVariantRun, prepareVariantLaunch, recordVariantWake } from "./model-runtime.js";
+import { modelLaunch, physicalAgent } from "./model-state.js";
 
 const fresh = async (ctx: PluginContext, m: MissionRecord) => (await getMission(ctx, m.companyId, m.missionId))!;
 const save = (ctx: PluginContext, m: MissionRecord, n5: N5State) => n2Cas(ctx, m, { ...m.aggregate, n5 });
@@ -39,7 +41,7 @@ export async function startN5Publication(ctx: PluginContext, initial: MissionRec
   const continuation = n5.continuation;
   const updating = Boolean(continuation && !continuation.updateAdmitted && n5.publication?.settledAt
     && m.aggregate.n2?.status === "accepted" && m.aggregate.n2.activeSubmissionId !== continuation.previousPublication.submission.submissionId);
-  if (n5.publication && !updating) return m;
+  if (n5.publication && !updating) return n5.publication.creation === "confirmed" ? resumeN5PreWake(ctx, m) : resumeN5Creation(ctx, m);
   if (m.aggregate.n2?.ordinary) {
     const publisher = await ctx.agents.get(n5.authority.publisherAgentId, m.companyId);
     if (!publisher || publisher.adapterType !== "codex_local" || publisher.adapterConfig?.engine !== "cli"
@@ -54,24 +56,79 @@ export async function startN5Publication(ctx: PluginContext, initial: MissionRec
     await assertNativeLeadWakePolicy(ctx, m, false);
   }
   const intentId = randomUUID(); const reservationId = randomUUID();
-  // This CAS is the unique creation claim; any uncertain child creation stays retained.
+  // Persist the publication identity before variant selection so every recovery
+  // reuses the same launch key instead of creating an orphan selected launch.
   m = await save(ctx, m, { ...n5, ...(updating ? { continuation: { ...continuation!, updateAdmitted: true } } : {}),
     publication: { operation: updating ? "update" : "create", targetUrl: updating ? continuation!.previousPublication.observation!.url : undefined, intentId, submission, issueId: null, runId: null, reservationId,
-    settlementCommandId: randomUUID(), createdAt: new Date().toISOString(), creation: "claimed", wake: "pending", state: "pending" } });
-  const created = await createContributionIssueEffect(ctx, { state: "creation_claimed", intentId, companyId: m.companyId,
-    projectId: m.projectId, rootIssueId: m.rootIssueId, missionId: m.missionId, contributionId: intentId,
-    assigneeAgentId: n5.authority.publisherAgentId, title: `Council delivery ${submission.submissionId}`,
-    description: JSON.stringify({ missionId: m.missionId, intentId, operation: updating ? "update" : "create", targetUrl: m.aggregate.n5!.publication!.targetUrl, plan: n5.plan, authority: n5.authority, submission,
-      instructions: n5PublisherInstructions(m) }) });
+    settlementCommandId: randomUUID(), createdAt: new Date().toISOString(), creation: "preparing", wake: "pending", state: "pending" } });
+  return resumeN5Creation(ctx, m);
+}
+
+async function resumeN5Creation(ctx: PluginContext, initial: MissionRecord) {
+  let m = initial; let p = m.aggregate.n5?.publication;
+  if (!p || p.creation === "confirmed" || p.issueId) return m;
+  let publisherAgentId = modelLaunch(m, p.reservationId)?.agentId ?? m.aggregate.n5!.authority.publisherAgentId;
+  if (p.creation === "preparing") {
+    const prepared = await prepareVariantLaunch(ctx, m, { taskKey: "delivery", interventionKey: "publisher", launchKey: p.reservationId,
+      logicalAgentId: m.aggregate.n5!.authority.publisherAgentId, family: "orchestration", expectedRoles: ["publisher"] });
+    m = prepared.mission; p = m.aggregate.n5!.publication!;
+    publisherAgentId = prepared.binding?.agentId ?? m.aggregate.n5!.authority.publisherAgentId;
+  }
+  const intent = { state: "creation_claimed" as const, intentId: p.intentId, companyId: m.companyId,
+    projectId: m.projectId, rootIssueId: m.rootIssueId, missionId: m.missionId, contributionId: p.intentId,
+    assigneeAgentId: publisherAgentId, title: `Council delivery ${p.submission.submissionId}`,
+    description: JSON.stringify({ missionId: m.missionId, intentId: p.intentId, operation: p.operation, targetUrl: p.targetUrl,
+      plan: m.aggregate.n5!.plan, authority: m.aggregate.n5!.authority, submission: p.submission, instructions: n5PublisherInstructions(m) }) };
+  if (p.creation === "claimed") {
+    const recovered = await reconcileContributionIssueEffect(ctx, intent);
+    if (recovered.state !== "confirmed") return m;
+    m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...p, issueId: recovered.issue.id, creation: "confirmed" } });
+    return resumeN5PreWake(ctx, m, true);
+  }
+  // Crossing this CAS means child creation may be attempted. Recovery after
+  // this point is correlation readback only and can never issue another create.
+  m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...p, creation: "claimed" } });
+  p = m.aggregate.n5!.publication!;
+  const created = await createContributionIssueEffect(ctx, intent);
   if (created.state !== "confirmed") return m;
-  m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...m.aggregate.n5!.publication!, issueId: created.issue.id, creation: "confirmed" } });
-  await reserveN2Run(ctx, m, { reservationId, effectId: intentId, kind: updating ? "correction" : "initial" });
-  m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...m.aggregate.n5!.publication!, wake: "claimed" } });
-  await ctx.issues.update(created.issue.id, { status: "todo" }, m.companyId);
-  const wake = await ctx.issues.requestWakeup(created.issue.id, m.companyId, { idempotencyKey: `council:n5:${intentId}`, reason: "council_n5_authorized_delivery", actorUserId: m.ownerUserId });
+  m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...p, issueId: created.issue.id, creation: "confirmed" } });
+  return resumeN5PreWake(ctx, m, true);
+}
+
+async function resumeN5PreWake(ctx: PluginContext, initial: MissionRecord, newlyCreated = false) {
+  let m = initial; let p = m.aggregate.n5?.publication;
+  if (!p || p.creation !== "confirmed" || !p.issueId || p.runId || !m.aggregate.modelSelection && !newlyCreated) return m;
+  const prior = m.aggregate.modelSelection ? modelLaunch(m, p.reservationId) : undefined;
+  if (prior && !["selected", "assignment_claimed", "ready"].includes(prior.state)) return m;
+  const issueId = p.issueId;
+  await reserveN2Run(ctx, m, { reservationId: p.reservationId, effectId: p.intentId,
+    kind: p.operation === "update" ? "correction" : "initial" });
+  const prepared = prior || !m.aggregate.modelSelection ? { mission: m, binding: prior ?? null } : await prepareVariantLaunch(ctx, m, { taskKey: "delivery", interventionKey: "publisher", launchKey: p.reservationId,
+    logicalAgentId: m.aggregate.n5!.authority.publisherAgentId, family: "orchestration", issueId, expectedRoles: ["publisher"] });
+  m = await bindVariantIssue(ctx, prepared.mission, p.reservationId, issueId);
+  p = m.aggregate.n5!.publication!;
+  if (p.wake !== "claimed") {
+    m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...p, wake: "claimed" } });
+  }
+  m = await claimVariantWake(ctx, m, p.reservationId);
+  let wake: { runId: string | null };
+  try {
+    await ctx.issues.update(issueId, { status: "todo" }, m.companyId);
+    wake = await ctx.issues.requestWakeup(issueId, m.companyId, { idempotencyKey: `council:n5:${p.intentId}`, reason: "council_n5_authorized_delivery", actorUserId: m.ownerUserId });
+  } catch (error) {
+    await recordVariantWake(ctx, await fresh(ctx, m), p.reservationId, null);
+    throw error;
+  }
   m = await fresh(ctx, m);
-  if (!m.aggregate.n5!.publication!.runId && wake.runId) m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...m.aggregate.n5!.publication!, runId: wake.runId } });
-  return m;
+  return recordVariantWake(ctx, m, p.reservationId, wake.runId, (before, aggregate, effectiveRunId) => {
+    const publication = aggregate.n5!.publication!;
+    if (publication.runId && effectiveRunId && publication.runId !== effectiveRunId) {
+      throw new MissionError(409, "n5_publisher_binding", "Publisher wake conflicts with its exact admitted run");
+    }
+    return save(ctx, { ...before, aggregate }, { ...aggregate.n5!, publication: {
+      ...publication, runId: publication.runId ?? effectiveRunId,
+    } });
+  });
 }
 
 export async function reconcileN5(ctx: PluginContext, initial: MissionRecord) {
@@ -80,14 +137,16 @@ export async function reconcileN5(ctx: PluginContext, initial: MissionRecord) {
   if (!m.aggregate.n5.publication || m.aggregate.n5.continuation && !m.aggregate.n5.continuation.updateAdmitted
       && m.aggregate.n2?.status === "accepted" && m.aggregate.n2.activeSubmissionId !== m.aggregate.n5.publication.submission.submissionId) return startN5Publication(ctx, m);
   let p = m.aggregate.n5.publication;
-  if (!p.runId || !p.issueId) return m;
+  if (!p.runId || !p.issueId) return p.creation === "confirmed" ? resumeN5PreWake(ctx, m) : resumeN5Creation(ctx, m);
   if (!p.settledAt) {
     const { profile, envelope } = await nativeN2Profile(ctx, m);
     if (!envelope.reservations.find(r => r.reservationId === p.reservationId)?.settlementReceipts.some(r => r.commandId === p.settlementCommandId)) {
-      await (m.aggregate.n2?.ordinary ? settleOrdinaryRunUsage : settleNativeExactRunUsage)(ctx, { companyId: m.companyId, issueId: p.issueId, agentId: m.aggregate.n5.authority.publisherAgentId,
+      await (m.aggregate.n2?.ordinary ? settleOrdinaryRunUsage : settleNativeExactRunUsage)(ctx, { companyId: m.companyId, issueId: p.issueId,
+        agentId: physicalAgent(m, m.aggregate.n5.authority.publisherAgentId, { launchKey: p.reservationId, issueId: p.issueId, runId: p.runId }),
         runId: p.runId, reservationId: p.reservationId, commandId: p.settlementCommandId, periodKey: profile.periodKey, expectedVersion: envelope.version });
     }
     m = await fresh(ctx, m); p = m.aggregate.n5!.publication!;
+    m = await observeVariantRun(ctx, m, p.reservationId);
     m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...p, settledAt: new Date().toISOString() } });
   }
   if (m.aggregate.n2?.ordinary) await ctx.issues.update(p.issueId!, { status: "done" }, m.companyId);
@@ -105,20 +164,25 @@ async function executeN5Board(ctx: PluginContext, input: { companyId: string; mi
       { actorType: "user", actorId: input.actorUserId, userId: input.actorUserId }, input.body) : reconciled;
     return { outcome: "reconciled", mission: updated };
   }
+  if (input.body.command === "request-delivery-correction") return requestN5Correction(ctx, m, input.body, input.actorUserId);
   const prior = runtimeReceipt(m, runtimeUuid(input.body.commandId, "commandId"), input.actorUserId, canonicalPayloadHash(input.body));
   if (prior) return { outcome: "replayed", effectPermission: "none", mission: m, receipt: prior };
-  if (input.body.command === "request-delivery-correction") return requestN5Correction(ctx, m, input.body, input.actorUserId);
   return authorize(ctx, m, input.body, input.actorUserId);
 }
 
 async function bindPublisher(ctx: PluginContext, m: MissionRecord, input: PluginApiRequestInput) {
   const n5 = m.aggregate.n5; const p = n5?.publication;
+  const launch = p ? modelLaunch(m, p.reservationId) : undefined;
   if (!n5 || !p || !p.issueId || input.params.issueId !== p.issueId || input.actor.actorType !== "agent"
-      || input.actor.agentId !== n5.authority.publisherAgentId || !input.actor.runId || p.wake !== "claimed"
+      || input.actor.agentId !== physicalAgent(m, n5.authority.publisherAgentId, { launchKey: p.reservationId, issueId: p.issueId })
+      || !input.actor.runId || p.wake !== "claimed"
+      || m.aggregate.modelSelection && (!launch || !["wake_claimed", "unknown", "bound"].includes(launch.state))
       || p.runId && p.runId !== input.actor.runId) throw new MissionError(403, "n5_publisher_binding", "Exact authorized publisher child and reserved run required");
   const run = await (m.aggregate.n2?.ordinary ? readOrdinaryRun : readNativeRun)(ctx, { companyId: m.companyId, issueId: p.issueId, runId: input.actor.runId, agentId: input.actor.agentId });
   if (run.status !== "running" || !run.startedAt || run.finishedAt) throw new MissionError(409, "n5_publisher_not_running", "Publisher run must be active");
-  return p.runId ? m : save(ctx, m, { ...n5, publication: { ...p, runId: input.actor.runId } });
+  if (p.runId) return recordVariantWake(ctx, m, p.reservationId, input.actor.runId);
+  return recordVariantWake(ctx, m, p.reservationId, input.actor.runId, (before, aggregate, effectiveRunId) => save(ctx,
+    { ...before, aggregate }, { ...aggregate.n5!, publication: { ...aggregate.n5!.publication!, runId: p.runId ?? effectiveRunId } }));
 }
 function attributedObservation(value: unknown, states: string[], actor: PluginApiRequestInput["actor"], headSha: string) {
   const v = value as Record<string, unknown>;

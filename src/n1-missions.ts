@@ -1,3 +1,5 @@
+import { physicalAgent, isLogicalActor } from "./model-state.js";
+import { contributionModelFamily, prepareVariantLaunch, bindVariantIssue, claimVariantWake, recordVariantWake, observeVariantRun } from "./model-runtime.js";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { randomUUID } from "node:crypto";
 import {
@@ -138,9 +140,10 @@ async function commandCas(
   actorType: "user" | "agent",
   actorId: string,
   next: MissionAggregate,
+  preparedVersion?: number,
 ) {
   const commandId = uuid(body.commandId, "commandId");
-  const expectedVersion = integer(body.expectedVersion, "expectedVersion");
+  const expectedVersion = preparedVersion ?? integer(body.expectedVersion, "expectedVersion");
   const payloadHash = canonicalPayloadHash(body);
   const old = receipt(mission, commandId, actorId, payloadHash);
   if (old) return { outcome: "replayed" as const, mission, receipt: old };
@@ -215,7 +218,7 @@ async function owner(ctx: PluginContext, mission: MissionRecord, actorUserId: st
 
 async function lead(ctx: PluginContext, mission: MissionRecord, input: PluginApiRequestInput) {
   const actor = input.actor;
-  if (actor.actorType !== "agent" || actor.agentId !== mission.aggregate.responsibilities.integrationLeadAgentId || !actor.runId) {
+  if (actor.actorType !== "agent" || !actor.agentId || !actor.runId || !isLogicalActor(mission, mission.aggregate.responsibilities.integrationLeadAgentId, actor.agentId, actor.runId)) {
     throw new MissionError(403, "integration_lead_required", "Active integration lead run required");
   }
   if (input.params.issueId !== mission.rootIssueId) {
@@ -306,7 +309,7 @@ export function contributionDescription(input: {
     "Use the Paperclip skill injected by the host for issue context, authenticated API calls, and status updates. No additional plugin is required.",
     "",
     "Modele et effort recommandes",
-    "Target: bounded implementation contributor. Model: gpt-5.6-sol. Effort: high because the run participates in a governed native integration proof. Re-evaluate only if availability is rejected before launch; do not silently substitute. Source: independent mapping /home/davy-lp/.codex/shared/model-selection/model-effort-mapping.md, updated 2026-09-05. Effective runtime settings must be observed separately.",
+    "Target: bounded implementation contributor. Use the exact persisted Council profile when this issue carries a profile launch binding. Otherwise the recommendation is gpt-5.6-sol / medium for bounded implementation; reconsider high for substantial difficulty. Source: independent model-effort-mapping.md, 2026-09-05. Recommendation is not an observed setting; never silently substitute.",
   ].join("\n");
 }
 
@@ -423,7 +426,7 @@ async function assertRecoveryChild(ctx: PluginContext, mission: MissionRecord, c
   if (!contribution.commit || !contribution.authorRunId || contribution.authorRunId !== contribution.dispatchRunId
     || contribution.dispatchState !== "requested" || contribution.issueState !== "confirmed" || child?.status !== "done"
     || child.companyId !== mission.companyId || child.projectId !== mission.projectId || child.parentId !== mission.rootIssueId
-    || child.assigneeAgentId !== contribution.assigneeAgentId) {
+    || child.assigneeAgentId !== physicalAgent(mission, contribution.assigneeAgentId, { issueId: contribution.childIssueId })) {
     throw new MissionError(409, "recovery_child_incomplete", "Recovery retains two attributed, completed native children");
   }
 }
@@ -516,7 +519,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
   actorUserId: string | null;
   body: Record<string, unknown>;
 }) {
-  const mission = await getMission(ctx, input.companyId, input.missionId);
+  let mission = await getMission(ctx, input.companyId, input.missionId);
   if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
   await owner(ctx, mission, input.actorUserId);
   if (input.body.command === "recover-integration" || input.body.command === "recover-candidate") {
@@ -533,6 +536,8 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
       commandId: uuid(input.body.commandId, "commandId"),
       contributionId: uuid(input.body.contributionId, "contributionId"),
     });
+    const contribution = n1State(mission)!.contributions.find(slot => slot.contributionId === input.body.contributionId)!;
+    mission = await observeVariantRun(ctx, mission, contribution.dispatchReservationId!);
     return { ...result, mission };
   }
   if (input.body.command === "fixture-bind-lead-run") {
@@ -600,7 +605,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     const requestedUnits = integer(input.body.requestedUnits, "requestedUnits");
     const issue = await ctx.issues.get(slot.childIssueId, mission.companyId);
     if (!issue || issue.companyId !== mission.companyId || issue.projectId !== mission.projectId
-        || issue.parentId !== mission.rootIssueId || issue.assigneeAgentId !== slot.assigneeAgentId
+        || issue.parentId !== mission.rootIssueId || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
         || issue.status !== "in_progress") {
       throw new MissionError(409, "child_ownership_changed", "Synthetic contribution run needs its mapped in-progress child issue");
     }
@@ -671,7 +676,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     const leadAgentId = mission.aggregate.responsibilities.integrationLeadAgentId;
     const leadAgent = await ctx.agents.get(leadAgentId, mission.companyId);
     if (!root || root.companyId !== mission.companyId || root.projectId !== mission.projectId
-        || root.assigneeAgentId !== leadAgentId || !["backlog", "todo", ...(mission.aggregate.n6 ? ["blocked"] : [])].includes(root.status)
+        || root.assigneeAgentId !== physicalAgent(mission, leadAgentId, { issueId: mission.rootIssueId }) || !["backlog", "todo", ...(mission.aggregate.n6 ? ["blocked"] : [])].includes(root.status)
         || !leadAgent || leadAgent.companyId !== mission.companyId
         || !["active", "idle", "running"].includes(leadAgent.status)) {
       throw new MissionError(409, "root_dispatch_ineligible", "Root issue or lead is no longer eligible");
@@ -680,19 +685,27 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
       throw new MissionError(409, "native_agent_adapter_required",
         "Native N1 dispatch requires a codex_local agent configured with the cli engine");
     }
-    const next: MissionAggregate = {
-      ...mission.aggregate,
-      n1: { ...state, rootDispatchState: "claimed", rootUsageBaselineUnits },
-      effectIntents: [...mission.aggregate.effectIntents, {
-        kind: "root_wakeup", state: "claimed", reservationId: state.activationReservationId,
-        issueId: mission.rootIssueId, assigneeAgentId: leadAgentId,
-      }],
-      journal: [...mission.aggregate.journal, {
-        action: "root_dispatch_claimed", reservationId: state.activationReservationId,
-        actorUserId: input.actorUserId, at: new Date().toISOString(),
-      }],
-    };
-    const claim = await commandCas(ctx, mission, input.body, "user", input.actorUserId!, next);
+    requireFreshCommand(mission, input.body);
+    const prepared = await prepareVariantLaunch(ctx, mission, { taskKey: mission.rootIssueId, interventionKey: "lead",
+      launchKey: state.activationReservationId, logicalAgentId: leadAgentId, family: "orchestration", issueId: mission.rootIssueId, expectedRoles: ["lead"] });
+    mission = await bindVariantIssue(ctx, prepared.mission, state.activationReservationId, mission.rootIssueId);
+    const claim = await claimVariantWake(ctx, mission, state.activationReservationId, async (readyMission, claimedAggregate) => {
+      const readyState = n1State(readyMission);
+      if (!readyState) throw new Error("N1 state disappeared before root dispatch claim");
+      const next: MissionAggregate = {
+        ...claimedAggregate,
+        n1: { ...readyState, rootDispatchState: "claimed", rootUsageBaselineUnits },
+        effectIntents: [...claimedAggregate.effectIntents, {
+          kind: "root_wakeup", state: "claimed", reservationId: state.activationReservationId,
+          issueId: readyMission.rootIssueId, assigneeAgentId: leadAgentId,
+        }],
+        journal: [...claimedAggregate.journal, {
+          action: "root_dispatch_claimed", reservationId: state.activationReservationId,
+          actorUserId: input.actorUserId, at: new Date().toISOString(),
+        }],
+      };
+      return commandCas(ctx, readyMission, input.body, "user", input.actorUserId!, next, readyMission.version);
+    });
     if (claim.outcome !== "applied") return claim;
     let wake: { queued: boolean; runId: string | null } | null = null;
     try {
@@ -707,20 +720,25 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     } catch {
       // A lost response cannot authorize a second wakeup.
     }
-    const afterClaim = await getMission(ctx, mission.companyId, mission.missionId);
+    let afterClaim = await getMission(ctx, mission.companyId, mission.missionId);
     if (!afterClaim) throw new Error("Mission disappeared after root dispatch effect");
-    const afterState = n1State(afterClaim);
-    if (!afterState) throw new Error("N1 state disappeared after root dispatch effect");
-    const confirmed = Boolean(wake?.queued && wake.runId);
-    const settled: MissionAggregate = {
-      ...afterClaim.aggregate,
-      n1: { ...afterState, rootDispatchState: confirmed ? "requested" : "unknown", rootDispatchRunId: wake?.runId ?? null, rootDispatchMode: "native" },
-      effectIntents: afterClaim.aggregate.effectIntents.map((entry) =>
-        entry.kind === "root_wakeup" && entry.reservationId === state.activationReservationId
-          ? { ...entry, state: confirmed ? "requested" : "unknown", queued: wake?.queued ?? null, runId: wake?.runId ?? null }
-          : entry),
-    };
-    const finalMission = await cas(ctx, afterClaim, settled, afterClaim.version);
+    const finalMission = await recordVariantWake(ctx, afterClaim, state.activationReservationId, wake?.runId ?? null,
+      async (before, aggregate, effectiveRunId) => {
+        const afterState = n1State({ ...before, aggregate });
+        if (!afterState) throw new Error("N1 state disappeared after root dispatch effect");
+        const priorLaunch = before.aggregate.modelSelection && before.aggregate.modelSelection.tasks
+          .flatMap(task => task.launches).find(item => item.launchKey === state.activationReservationId);
+        const confirmed = Boolean(effectiveRunId && (wake?.queued || priorLaunch?.state === "bound" && priorLaunch.runId === effectiveRunId));
+        return cas(ctx, before, {
+          ...aggregate,
+          n1: { ...afterState, rootDispatchState: confirmed ? "requested" : "unknown", rootDispatchRunId: effectiveRunId, rootDispatchMode: "native" },
+          effectIntents: aggregate.effectIntents.map((entry) =>
+            entry.kind === "root_wakeup" && entry.reservationId === state.activationReservationId
+              ? { ...entry, state: confirmed ? "requested" : "unknown", queued: wake?.queued ?? null, runId: effectiveRunId }
+              : entry),
+        }, before.version);
+      });
+    const confirmed = n1State(finalMission)?.rootDispatchState === "requested";
     return { outcome: confirmed ? "requested" as const : "unknown" as const, mission: finalMission, receipt: claim.receipt };
   }
   if (input.body.command === "reconcile-lead-usage") {
@@ -772,7 +790,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
         currentVersion: mission.version,
       });
     }
-    if (!state.candidate) return { ...settlement, mission };
+    if (!state.candidate) return { ...settlement, mission: await observeVariantRun(ctx, mission, state.activationReservationId) };
     const next: MissionAggregate = {
       ...mission.aggregate,
       phase: "ready_for_review",
@@ -788,7 +806,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     const promotion = recoveringSettledCommand
       ? await recoveredCommandCas(ctx, mission, input.body, "user", input.actorUserId!, next)
       : await commandCas(ctx, mission, input.body, "user", input.actorUserId!, next);
-    return { ...settlement, mission: promotion.mission, missionReceipt: promotion.receipt };
+    return { ...settlement, mission: await observeVariantRun(ctx, promotion.mission, state.activationReservationId), missionReceipt: promotion.receipt };
   }
   if (input.body.command !== "activate") throw new MissionError(400, "unknown_command", "Unsupported N1 board command");
   const commandId = uuid(input.body.commandId, "commandId");
@@ -986,7 +1004,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
     }
     const body = bodyRecord(input.body);
     const missionId = uuid(body.missionId, "missionId");
-    const mission = await getMission(ctx, input.companyId, missionId);
+    let mission = await getMission(ctx, input.companyId, missionId);
     if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
     const state = n1State(mission);
     if (!state || mission.aggregate.control.status !== "active") {
@@ -1001,7 +1019,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         await lead(ctx, mission, input);
       } else {
         const slot = state.contributions.find((entry) => entry.childIssueId === input.params.issueId);
-        if (!slot || input.actor.agentId !== slot.assigneeAgentId) {
+        if (!slot || !input.actor.agentId || !input.actor.runId || !isLogicalActor(mission, slot.assigneeAgentId, input.actor.agentId, input.actor.runId)) {
           throw new MissionError(403, "contributor_required", "Assigned contributor on the mapped child issue required");
         }
         if (slot.dispatchState !== "requested" || !slot.dispatchRunId || input.actor.runId !== slot.dispatchRunId) {
@@ -1071,7 +1089,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         effectIntents: [...mission.aggregate.effectIntents, { kind: "child_issue_create", ...intent }],
         journal: [...mission.aggregate.journal, { action: "child_creation_claimed", contributionId, actorAgentId: actor.agentId, runId: actor.runId, at: new Date().toISOString() }],
       };
-      const claim = await commandCas(ctx, mission, body, "agent", actor.agentId, next);
+      const claim = await commandCas(ctx, mission, body, "agent", actor.agentId, next, mission.version);
       if (claim.outcome !== "applied") return { status: 200, body: claim };
       const effect = await createContributionIssueEffect(ctx, intent);
       const afterClaim = await getMission(ctx, mission.companyId, mission.missionId);
@@ -1110,7 +1128,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       const issue = await ctx.issues.get(slot.childIssueId, mission.companyId);
       const agent = await ctx.agents.get(slot.assigneeAgentId, mission.companyId);
       if (!issue || issue.companyId !== mission.companyId || issue.projectId !== mission.projectId
-          || issue.parentId !== mission.rootIssueId || issue.assigneeAgentId !== slot.assigneeAgentId
+          || issue.parentId !== mission.rootIssueId || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
           || issue.status !== "backlog" || !agent || agent.companyId !== mission.companyId
           || !["active", "idle", "running"].includes(agent.status)) {
         throw new MissionError(409, "native_dispatch_ineligible", "Native child or assignee is no longer eligible for dispatch");
@@ -1124,7 +1142,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
             || prior.authorRunId !== prior.dispatchRunId
             || !priorIssue || priorIssue.companyId !== mission.companyId
             || priorIssue.projectId !== mission.projectId || priorIssue.parentId !== mission.rootIssueId
-            || priorIssue.assigneeAgentId !== prior.assigneeAgentId || priorIssue.status !== "done") {
+            || priorIssue.assigneeAgentId !== physicalAgent(mission, prior.assigneeAgentId, { issueId: prior.childIssueId }) || priorIssue.status !== "done") {
           throw new MissionError(409, "prior_contribution_incomplete",
             "Every earlier contribution must be attributed to its confirmed native run and its mapped child issue must be done");
         }
@@ -1163,6 +1181,9 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
           issueId: slot.childIssueId,
         });
       }
+      const prepared = await prepareVariantLaunch(ctx, mission, { taskKey: contributionId, interventionKey: contributionId,
+        launchKey: reservationId, logicalAgentId: slot.assigneeAgentId, family: await contributionModelFamily(ctx, mission, slot.assigneeAgentId), issueId: slot.childIssueId, expectedRoles: ["executor", "contributor-1", "contributor-2", "test", "design"] });
+      mission = prepared.mission;
       const reserved = await reserveAdmission(ctx, {
         companyId: mission.companyId, periodKey: state.periodKey,
         reservationId, missionId: mission.missionId, effectId: contributionId,
@@ -1171,34 +1192,32 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       if (!reserved.reservation || reserved.reservation.status !== "reserved") {
         throw new MissionError(409, "g4_reservation_unavailable", "Durable child reservation is unavailable");
       }
-      const slots = [...state.contributions];
-      slots[index] = {
-        ...slot,
-        dispatchState: "claimed",
-        dispatchReservationId: reservationId,
-        dispatchUsageBaselineUnits,
-      };
-      const next: MissionAggregate = {
-        ...mission.aggregate,
-        n1: { ...state, contributions: slots },
-        effectIntents: [...mission.aggregate.effectIntents, {
-          kind: "child_wakeup", state: "claimed", reservationId, contributionId,
-          issueId: slot.childIssueId, assigneeAgentId: slot.assigneeAgentId,
-          actorAgentId: actor.agentId, actorRunId: actor.runId,
-        }],
-        journal: [...mission.aggregate.journal, {
-          action: "child_dispatch_claimed", contributionId, reservationId,
-          actorAgentId: actor.agentId, runId: actor.runId, at: new Date().toISOString(),
-        }],
-      };
-      let claim: Awaited<ReturnType<typeof commandCas>>;
-      try {
-        claim = await commandCas(ctx, mission, body, "agent", actor.agentId, next);
-      } catch (error) {
-        // A concurrent request can win the mission CAS using this reservation.
-        // Keep the allowance reserved until its actual effect is reconciled.
-        throw error;
-      }
+      mission = await bindVariantIssue(ctx, mission, reservationId, slot.childIssueId);
+      const claim = await claimVariantWake(ctx, mission, reservationId, async (readyMission, claimedAggregate) => {
+        const readyState = n1State(readyMission);
+        if (!readyState) throw new Error("N1 state disappeared before child dispatch claim");
+        const slots = [...readyState.contributions];
+        slots[index] = {
+          ...slots[index]!,
+          dispatchState: "claimed",
+          dispatchReservationId: reservationId,
+          dispatchUsageBaselineUnits,
+        };
+        const next: MissionAggregate = {
+          ...claimedAggregate,
+          n1: { ...readyState, contributions: slots },
+          effectIntents: [...claimedAggregate.effectIntents, {
+            kind: "child_wakeup", state: "claimed", reservationId, contributionId,
+            issueId: slot.childIssueId, assigneeAgentId: slot.assigneeAgentId,
+            actorAgentId: actor.agentId, actorRunId: actor.runId,
+          }],
+          journal: [...claimedAggregate.journal, {
+            action: "child_dispatch_claimed", contributionId, reservationId,
+            actorAgentId: actor.agentId, runId: actor.runId, at: new Date().toISOString(),
+          }],
+        };
+        return commandCas(ctx, readyMission, body, "agent", actor.agentId, next, readyMission.version);
+      });
       if (claim.outcome !== "applied") return { status: 200, body: claim };
       let wake: { queued: boolean; runId: string | null } | null = null;
       try {
@@ -1213,22 +1232,28 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       } catch {
         // Native state may have changed even when the response was lost.
       }
-      const wakeConfirmed = Boolean(wake?.queued && wake.runId);
-      const afterClaim = await getMission(ctx, mission.companyId, mission.missionId);
+      let afterClaim = await getMission(ctx, mission.companyId, mission.missionId);
       if (!afterClaim) throw new Error("Mission disappeared after dispatch effect");
-      const afterState = n1State(afterClaim);
-      if (!afterState) throw new Error("N1 state disappeared after dispatch effect");
-      const updatedSlots = afterState.contributions.map((entry) => entry.contributionId === contributionId
-        ? { ...entry, dispatchState: wakeConfirmed ? "requested" as const : "unknown" as const, dispatchRunId: wake?.runId ?? null }
-        : entry);
-      const settled: MissionAggregate = {
-        ...afterClaim.aggregate,
-        n1: { ...afterState, contributions: updatedSlots },
-        effectIntents: afterClaim.aggregate.effectIntents.map((entry) => entry.kind === "child_wakeup" && entry.reservationId === reservationId
-          ? { ...entry, state: wakeConfirmed ? "requested" : "unknown", queued: wake?.queued ?? null, runId: wake?.runId ?? null }
-          : entry),
-      };
-      const finalMission = await cas(ctx, afterClaim, settled, afterClaim.version);
+      const finalMission = await recordVariantWake(ctx, afterClaim, reservationId, wake?.runId ?? null,
+        async (before, aggregate, effectiveRunId) => {
+          const afterState = n1State({ ...before, aggregate });
+          if (!afterState) throw new Error("N1 state disappeared after dispatch effect");
+          const priorLaunch = before.aggregate.modelSelection && before.aggregate.modelSelection.tasks
+            .flatMap(task => task.launches).find(item => item.launchKey === reservationId);
+          const wakeConfirmed = Boolean(effectiveRunId && (wake?.queued || priorLaunch?.state === "bound" && priorLaunch.runId === effectiveRunId));
+          const updatedSlots = afterState.contributions.map((entry) => entry.contributionId === contributionId
+            ? { ...entry, dispatchState: wakeConfirmed ? "requested" as const : "unknown" as const, dispatchRunId: effectiveRunId }
+            : entry);
+          return cas(ctx, before, {
+            ...aggregate,
+            n1: { ...afterState, contributions: updatedSlots },
+            effectIntents: aggregate.effectIntents.map((entry) => entry.kind === "child_wakeup" && entry.reservationId === reservationId
+              ? { ...entry, state: wakeConfirmed ? "requested" : "unknown", queued: wake?.queued ?? null, runId: effectiveRunId }
+              : entry),
+          }, before.version);
+        });
+      const finalSlot = n1State(finalMission)?.contributions.find(entry => entry.contributionId === contributionId);
+      const wakeConfirmed = finalSlot?.dispatchState === "requested";
       return { status: wakeConfirmed ? 200 : 202, body: { outcome: wakeConfirmed ? "requested" : "unknown", wake, mission: finalMission } };
     }
     if (body.command === "reconcile-usage") {
@@ -1237,13 +1262,15 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         commandId,
         contributionId: uuid(body.contributionId, "contributionId"),
       });
-      return { status: 200, body: result };
+      const contribution = state.contributions.find(slot => slot.contributionId === body.contributionId)!;
+      mission = await observeVariantRun(ctx, mission, contribution.dispatchReservationId!);
+      return { status: 200, body: { ...result, mission } };
     }
     if (body.command === "record-contribution") {
       const contributionId = uuid(body.contributionId, "contributionId");
       const slot = state.contributions.find((entry) => entry.contributionId === contributionId);
       if (!slot || !slot.childIssueId) throw new MissionError(404, "child_issue_not_found", "Contribution child issue is not confirmed");
-      if (input.actor.agentId !== slot.assigneeAgentId || input.params.issueId !== slot.childIssueId) {
+      if (!input.actor.agentId || !input.actor.runId || !isLogicalActor(mission, slot.assigneeAgentId, input.actor.agentId, input.actor.runId) || input.params.issueId !== slot.childIssueId) {
         throw new MissionError(403, "contributor_required", "Assigned contributor on the mapped child issue required");
       }
       if (slot.dispatchState !== "requested" || !slot.dispatchReservationId || !slot.dispatchRunId) {
@@ -1255,7 +1282,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       if (slot.commit) throw new MissionError(409, "contribution_recorded", "Contribution was already recorded");
       const issue = await ctx.issues.get(slot.childIssueId, mission.companyId);
       if (!issue || issue.companyId !== mission.companyId || issue.projectId !== mission.projectId
-          || issue.parentId !== mission.rootIssueId || issue.assigneeAgentId !== slot.assigneeAgentId
+          || issue.parentId !== mission.rootIssueId || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
           || issue.status !== "in_progress") {
         throw new MissionError(409, "child_ownership_changed", "Child issue is not in progress under the assigned contributor");
       }
@@ -1285,7 +1312,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       for (const slot of state.contributions) {
         const issue = await ctx.issues.get(slot.childIssueId!, mission.companyId);
         if (!issue || issue.companyId !== mission.companyId || issue.projectId !== mission.projectId
-            || issue.parentId !== mission.rootIssueId || issue.assigneeAgentId !== slot.assigneeAgentId
+            || issue.parentId !== mission.rootIssueId || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
             || issue.status !== "done") {
           throw new MissionError(409, "child_not_done", "Both mapped native child issues must be done before integration");
         }

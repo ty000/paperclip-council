@@ -1,3 +1,4 @@
+import { physicalAgent } from "./model-state.js";
 import { getMissionByN6WorkIssue } from "./missions.js";
 import { reconcileN6 } from "./n6-runtime.js";
 import { reconcileN5 } from "./n5-runtime.js";
@@ -68,10 +69,10 @@ export async function handleN2RunFinished(
   let mission = await getMissionByOrdinaryIssue(ctx, event.companyId, run.issueId);
   if (mission?.aggregate.n2?.ordinary) {
     if (mission.aggregate.n5?.publication?.issueId === run.issueId) {
-      if (mission.aggregate.n5.publication.runId !== run.runId || mission.aggregate.n5.authority.publisherAgentId !== run.agentId) return { outcome: "ignored", reason: "n5_child_unbound" };
+      if (mission.aggregate.n5.publication.runId !== run.runId || physicalAgent(mission, mission.aggregate.n5.authority.publisherAgentId, { issueId: run.issueId, runId: run.runId }) !== run.agentId) return { outcome: "ignored", reason: "n5_child_unbound" };
       await reconcileN5(ctx, mission); return { outcome: "reconciled" };
     }
-    const task = mission.aggregate.n2.ordinary.tasks.find(task => task.issueId === run.issueId && task.runId === run.runId && task.agentId === run.agentId);
+    const task = mission.aggregate.n2.ordinary.tasks.find(task => task.issueId === run.issueId && task.runId === run.runId && physicalAgent(mission!, task.agentId, { issueId: run.issueId, runId: run.runId }) === run.agentId);
     if (!task) return { outcome: "ignored", reason: "ordinary_task_unbound" };
     const { reconcileOrdinaryN2 } = await import("./n2-ordinary-runtime.js");
     for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -94,7 +95,7 @@ export async function handleN2RunFinished(
     if (issue?.parentId) mission = await getMissionByRootIssue(ctx, event.companyId, issue.parentId);
   }
   if (mission?.aggregate.n5?.publication?.issueId === run.issueId) {
-    if (mission.aggregate.n5.publication.runId !== run.runId || mission.aggregate.n5.authority.publisherAgentId !== run.agentId) return { outcome: "ignored", reason: "n5_child_unbound" };
+    if (mission.aggregate.n5.publication.runId !== run.runId || physicalAgent(mission, mission.aggregate.n5.authority.publisherAgentId, { issueId: run.issueId, runId: run.runId }) !== run.agentId) return { outcome: "ignored", reason: "n5_child_unbound" };
     await reconcileN5(ctx, mission);
     return { outcome: "reconciled" };
   }

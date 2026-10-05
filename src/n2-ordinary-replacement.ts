@@ -1,3 +1,4 @@
+import { physicalAgent } from "./model-state.js";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { canonicalPayloadHash, MissionError, type MissionRecord } from "./missions.js";
 import { nativeN2Profile, n2CommandCas, runtimeReceipt, runtimeUuid } from "./n2-missions.js";
@@ -23,7 +24,7 @@ export async function replaceMissingOpinion(ctx: PluginContext, mission: Mission
   }
   if (typeof body.reason !== "string" || !body.reason.trim() || body.reason.length > 1000) throw new MissionError(400, "ordinary_replacement_reason", "A bounded owner reason is required");
   const reason = body.reason.trim();
-  const identity = { companyId: mission.companyId, issueId: task.issueId, agentId: task.agentId, runId: task.runId };
+  const identity = { companyId: mission.companyId, issueId: task.issueId, agentId: physicalAgent(mission, task.agentId, { issueId: task.issueId, runId: task.runId }), runId: task.runId };
   const run = await readOrdinaryRun(ctx, identity);
   if (run.status !== "succeeded") throw new MissionError(409, "ordinary_replacement_run", "Only a successful terminal run with no opinion can be replaced");
   const { profile, envelope } = await nativeN2Profile(ctx, mission);

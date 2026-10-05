@@ -15,7 +15,7 @@ export type N5State = {
   publication?: { intentId: string; submission: N2Submission; issueId: string | null; runId: string | null;
     operation?: "create" | "update"; targetUrl?: string;
     reservationId: string; settlementCommandId: string; settledAt?: string;
-    createdAt: string; claimedAt?: string; creation: "claimed" | "confirmed"; wake: "pending" | "claimed";
+    createdAt: string; claimedAt?: string; creation: "preparing" | "claimed" | "confirmed"; wake: "pending" | "claimed";
     state: "pending" | "unknown" | "opened"; claimCommandId?: string;
     readbackUnavailable?: string;
     observation?: { observedAt: string; objectId: string; workProductId: string; documentRevisionId: string;

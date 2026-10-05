@@ -1,3 +1,5 @@
+import { modelLaunch, physicalAgent } from "./model-state.js";
+import { recordVariantWake } from "./model-runtime.js";
 import { ordinaryTaskInstructions } from "./n2-ordinary-instructions.js";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { readOrdinaryRun } from "./g4-native.js";
@@ -18,12 +20,16 @@ function assertOwnerResume(mission: MissionRecord, task: OrdinaryTask, run: Awai
 async function bindActor(ctx: PluginContext, mission: MissionRecord, input: PluginApiRequestInput) {
   const task = mission.aggregate.n2!.ordinary!.tasks.find(item => item.issueId === input.params.issueId
     && item.submissionId === mission.aggregate.n2!.activeSubmissionId && !item.settledAt);
-  if (!task || input.actor.actorType !== "agent" || task.agentId !== input.actor.agentId || !input.actor.runId || task.wake !== "claimed"
+  const launch = task ? modelLaunch(mission, task.reservationId) : undefined;
+  if (!task || input.actor.actorType !== "agent" || physicalAgent(mission, task.agentId, { issueId: task.issueId, launchKey: task.reservationId }) !== input.actor.agentId || !input.actor.runId || task.wake !== "claimed"
+      || mission.aggregate.modelSelection && (!launch || !["wake_claimed", "unknown", "bound"].includes(launch.state))
       || task.runId && task.runId !== input.actor.runId) throw new MissionError(403, "ordinary_actor_binding", "Exact admitted task, actor and run required");
-  const run = await readOrdinaryRun(ctx, { companyId: mission.companyId, issueId: task.issueId!, agentId: task.agentId, runId: input.actor.runId });
+  const run = await readOrdinaryRun(ctx, { companyId: mission.companyId, issueId: task.issueId!, agentId: input.actor.agentId, runId: input.actor.runId });
   if (run.status !== "running" || !run.startedAt || run.finishedAt) throw new MissionError(409, "ordinary_run_inactive", "Command requires its active CLI run");
   assertOwnerResume(mission, task, run);
-  if (!task.runId) mission = await saveOrdinaryTask(ctx, mission, { ...task, runId: run.id });
+  mission = task.runId ? await recordVariantWake(ctx, mission, task.reservationId, run.id)
+    : await recordVariantWake(ctx, mission, task.reservationId, run.id, (before, aggregate, effectiveRunId) =>
+      saveOrdinaryTask(ctx, { ...before, aggregate }, { ...task, runId: effectiveRunId }));
   const state = mission.aggregate.n2!;
   if (task.kind === "council" && state.status === "review_handoff") {
     mission = await n2Cas(ctx, mission, { ...mission.aggregate, phase: "reviewing", n2: { ...state, status: "reviewing",

@@ -10,6 +10,11 @@ it("binds existing dispatch exclusively to the native gateway context and run is
   const request = await missionToolRequest(ctx as never, { operation: "command", body: { command: "inspect", missionId: "mission" } }, binding);
   expect(request).toMatchObject({ routeKey: "mission-agent-command", companyId: "company", params: { issueId: "issue" }, actor: { actorType: "agent", actorId: "agent", runId: "run" } });
 });
+it("exposes profile selection through the authenticated agent tool without exposing setup", async () => {
+  expect(await missionToolRequest(ctx as never, { operation: "command", body: { command: "select-model-profile", missionId: "mission" } }, binding))
+    .toMatchObject({ routeKey: "mission-agent-command", actor: { agentId: "agent", runId: "run" } });
+  await expect(missionToolRequest(ctx as never, { operation: "command", body: { command: "prepare-variant" } }, binding)).rejects.toMatchObject({ code: "mission_tool_agent_only" });
+});
 it.each(["companyId", "agentId", "actor", "runId", "issueId", "projectId", "headers"])("refuses model identity override %s", async key => {
   await expect(missionToolRequest(ctx as never, { operation: "command", body: { command: "inspect", [key]: "other" } }, binding)).rejects.toMatchObject({ code: "mission_tool_identity_override" });
   expect(councilNativeRequest).not.toHaveBeenCalled();

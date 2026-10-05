@@ -16,12 +16,15 @@ vi.mock("../src/integration.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/integration.js")>();
   return { ...actual, verifyIntegratedCandidate: vi.fn() };
 });
+vi.mock("../src/model-variants.js", () => ({ inspectVariant: vi.fn() }));
 
 import { AdmissionError, readAdmission, reserveAdmission, settleAdmission } from "../src/admission.js";
 import { verifyIntegratedCandidate } from "../src/integration.js";
 import { executeN1BoardCommand, handleN1AgentApi } from "../src/n1-missions.js";
 import { handleMissionApi, type MissionAggregate } from "../src/missions.js";
 import { reconcileTerminalN1Usage } from "./functional/n1-live.js";
+import { inspectVariant } from "../src/model-variants.js";
+import { MODEL_CATALOGUE } from "../src/model-catalogue.js";
 
 const id = {
   company: randomUUID(),
@@ -257,6 +260,19 @@ function activeAggregate() {
   return value;
 }
 
+function withBoundLead(value: MissionAggregate) {
+  value.modelSelection = { protocol: "native-variants-v1", choices: [], tasks: [{
+      taskKey: id.root, mapping: structuredClone(MODEL_CATALOGUE), variantRevision: "1", launches: [{
+      taskKey: id.root, interventionKey: "lead", launchKey: String(value.n1!.activationReservationId),
+      logicalAgentId: id.lead, agentId: id.lead, roleKey: "lead", profileId: "sol-medium",
+      requestedProfileId: "sol-medium", family: "orchestration", rationale: "Initial lead profile",
+      authority: "default", mappingRevision: "1", variantRevision: "1", selectedAt: new Date(0).toISOString(),
+      state: "bound", issueId: id.root, runId: id.leadRun, ascent: false,
+    }],
+  }] };
+  return value;
+}
+
 function agentRequest(body: Record<string, unknown>, actor: { agentId: string; runId: string }, issueId: string): PluginApiRequestInput {
   return {
     routeKey: "n1-agent",
@@ -326,6 +342,68 @@ beforeEach(() => {
 });
 
 describe("N1 mission transitions", () => {
+  it("launches physical lead and contributor variants and accepts only their exact return identities", async () => {
+    const leadVariant = randomUUID(), contributorVariant = randomUUID();
+    const value = activeAggregate();
+    value.modelSelection = { protocol: "native-variants-v1", choices: [], tasks: [] };
+    value.n1 = { ...value.n1, rootDispatchState: undefined, rootDispatchRunId: undefined };
+    const reservationId = value.n1.activationReservationId as string;
+    const h = harness(value);
+    h.issues.set(id.root, nativeIssue({ id: id.root, parentId: null, assigneeAgentId: id.lead, status: "backlog" }));
+    vi.mocked(readAdmission).mockResolvedValue({ version: 4,
+      periodStart: new Date(Date.now() - 60_000).toISOString(), periodEnd: new Date(Date.now() + 60_000).toISOString(),
+      reservations: [{ reservationId, missionId: id.mission, status: "reserved" }] } as never);
+    vi.mocked(inspectVariant).mockImplementation(async (_ctx, _company, logicalAgentId, profileId, revision) => ({
+      logicalAgentId, agentId: logicalAgentId === id.lead ? leadVariant : contributorVariant,
+      roleKey: logicalAgentId === id.lead ? "lead" : "contributor-1", profileId, revision: revision!, ready: true, expected: {}, observed: {}, gaps: [],
+    }));
+    h.update.mockImplementation(async (...args: unknown[]) => {
+      const issue = h.issues.get(String(args[0])); const patch = args[1] as { assigneeAgentId?: string; description?: string };
+      if (issue && patch.assigneeAgentId) issue.assigneeAgentId = patch.assigneeAgentId;
+      if (issue && patch.description) Object.assign(issue, { description: patch.description });
+    });
+    h.requestWakeup.mockImplementation(async (...args: unknown[]) => {
+      const issueId = String(args[0]); const issue = h.issues.get(issueId)!;
+      const launch = h.row().aggregate.modelSelection!.tasks.flatMap(task => task.launches).find(item => item.issueId === issueId)!;
+      expect(launch).toMatchObject({ state: "wake_claimed", agentId: issue.assigneeAgentId });
+      expect(issue.assigneeAgentId).toBe(issueId === id.root ? leadVariant : contributorVariant);
+      issue.status = "in_progress";
+      return { queued: true, runId: issueId === id.root ? id.leadRun : id.contributorRun };
+    });
+    await executeN1BoardCommand(h.ctx, { companyId: id.company, missionId: id.mission, actorUserId: id.owner,
+      body: { command: "start-lead", commandId: randomUUID(), expectedVersion: 1 } });
+    expect(h.row().aggregate.responsibilities.integrationLeadAgentId).toBe(id.lead);
+    expect(h.row().aggregate.modelSelection!.tasks[0]!.launches[0]).toMatchObject({ logicalAgentId: id.lead, agentId: leadVariant, runId: id.leadRun, state: "bound" });
+    expect(await handleN1AgentApi(agentRequest({ command: "inspect" }, { agentId: id.lead, runId: id.leadRun }, id.root), h.ctx))
+      .toMatchObject({ status: 403, body: { code: "integration_lead_required" } });
+    expect(await handleN1AgentApi(agentRequest({ command: "inspect" }, { agentId: leadVariant, runId: id.leadRun }, id.root), h.ctx))
+      .toMatchObject({ status: 200 });
+    const planned = await handleN1AgentApi(agentRequest({ command: "plan", commandId: randomUUID(), expectedVersion: h.row().version, contributions: plan },
+      { agentId: leadVariant, runId: id.leadRun }, id.root), h.ctx);
+    expect(planned).toMatchObject({ status: 200, body: { outcome: "applied" } });
+    h.advanceMission(current => ({ ...current, n1: { ...current.n1,
+      contributions: plan.map((slot, index) => ({ ...slot, issueState: "confirmed", childIssueId: index ? id.childB : id.childA })) } }));
+    h.issues.set(id.childA, nativeIssue({ id: id.childA, parentId: id.root, assigneeAgentId: id.contributorA, status: "backlog" }));
+    const childReservationId = randomUUID();
+    expect(await handleN1AgentApi(agentRequest({ command: "dispatch", commandId: randomUUID(), expectedVersion: h.row().version,
+      contributionId: id.contributionA, reservationId: childReservationId, requestedUnits: 1 }, { agentId: leadVariant, runId: id.leadRun }, id.root), h.ctx))
+      .toMatchObject({ status: 200, body: { outcome: "requested" } });
+    const record = { command: "record-contribution", commandId: randomUUID(), expectedVersion: h.row().version,
+      contributionId: id.contributionA, commit: "a".repeat(40) };
+    for (const actor of [{ agentId: id.contributorA, runId: id.contributorRun }, { agentId: contributorVariant, runId: randomUUID() }]) {
+      expect(await handleN1AgentApi(agentRequest(record, actor, id.childA), h.ctx)).toMatchObject({ status: 403 });
+    }
+    expect(await handleN1AgentApi(agentRequest(record, { agentId: contributorVariant, runId: id.contributorRun }, id.childA), h.ctx))
+      .toMatchObject({ status: 200, body: { outcome: "applied" } });
+    expect(h.assertCheckoutOwner).toHaveBeenLastCalledWith({ companyId: id.company, issueId: id.childA,
+      actorAgentId: contributorVariant, actorRunId: id.contributorRun });
+    expect(h.row().aggregate.n1!.contributions).toEqual(expect.arrayContaining([expect.objectContaining({
+      contributionId: id.contributionA, assigneeAgentId: id.contributorA, dispatchReservationId: childReservationId, authorRunId: id.contributorRun, commit: "a".repeat(40) })]));
+    expect(h.row().aggregate.commandReceipts.at(-1)?.actorId).toBe(contributorVariant);
+    expect(h.row().aggregate.compositions).toEqual(value.compositions);
+    expect(h.requestWakeup).toHaveBeenCalledTimes(2);
+  });
+
   it("never repeats an ambiguous root wake and blocks a new start command until reconciliation", async () => {
     const value = activeAggregate();
     const state = value.n1 as { activationReservationId: string; rootDispatchState?: string; rootDispatchRunId?: string };
@@ -382,6 +460,77 @@ describe("N1 mission transitions", () => {
     })).rejects.toMatchObject({ status: 409, code: "root_dispatch_unavailable" });
     expect(h.requestWakeup).toHaveBeenCalledTimes(1);
     expect(h.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the root model launch ready when the atomic workflow claim loses its CAS", async () => {
+    const value = activeAggregate();
+    value.modelSelection = { protocol: "native-variants-v1", choices: [], tasks: [] };
+    const state = value.n1!;
+    state.rootDispatchState = undefined; state.rootDispatchRunId = undefined;
+    const h = harness(value);
+    h.issues.set(id.root, nativeIssue({ id: id.root, parentId: null, assigneeAgentId: id.lead, status: "backlog" }));
+    vi.mocked(readAdmission).mockResolvedValue({ version: 4,
+      periodStart: new Date(Date.now() - 60_000).toISOString(), periodEnd: new Date(Date.now() + 60_000).toISOString(),
+      reservations: [{ reservationId: state.activationReservationId, missionId: id.mission, status: "reserved" }] } as never);
+    vi.mocked(inspectVariant).mockResolvedValue({ logicalAgentId: id.lead, agentId: id.lead, roleKey: "lead",
+      profileId: "sol-medium", revision: "1", ready: true, expected: {}, observed: {}, gaps: [] });
+    h.update.mockImplementation(async (...args: unknown[]) => {
+      const issue = h.issues.get(String(args[0])); const patch = args[1] as { description?: string };
+      if (issue && patch.description) Object.assign(issue, { description: patch.description });
+    });
+    const persist = h.execute.getMockImplementation()!;
+    h.execute.mockImplementationOnce(persist).mockImplementationOnce(persist).mockResolvedValueOnce({ rowCount: 0 });
+
+    await expect(executeN1BoardCommand(h.ctx, { companyId: id.company, missionId: id.mission, actorUserId: id.owner,
+      body: { command: "start-lead", commandId: randomUUID(), expectedVersion: 1 } }))
+      .rejects.toMatchObject({ status: 409, code: "version_conflict" });
+
+    expect(h.row().aggregate.modelSelection!.tasks[0]!.launches[0]).toMatchObject({ state: "ready", runId: null });
+    expect(h.row().aggregate.n1).not.toHaveProperty("rootDispatchState");
+    expect(h.row().aggregate.effectIntents).not.toContainEqual(expect.objectContaining({ kind: "root_wakeup" }));
+    expect(h.requestWakeup).not.toHaveBeenCalled();
+  });
+
+  it("commits neither the bound model run nor requested workflow state when their shared CAS loses", async () => {
+    const value = activeAggregate();
+    value.modelSelection = { protocol: "native-variants-v1", choices: [], tasks: [] };
+    const state = value.n1!;
+    state.rootDispatchState = undefined; state.rootDispatchRunId = undefined;
+    const h = harness(value);
+    h.issues.set(id.root, nativeIssue({ id: id.root, parentId: null, assigneeAgentId: id.lead, status: "backlog" }));
+    vi.mocked(readAdmission).mockResolvedValue({ version: 4,
+      periodStart: new Date(Date.now() - 60_000).toISOString(), periodEnd: new Date(Date.now() + 60_000).toISOString(),
+      reservations: [{ reservationId: state.activationReservationId, missionId: id.mission, status: "reserved" }] } as never);
+    vi.mocked(inspectVariant).mockResolvedValue({ logicalAgentId: id.lead, agentId: id.lead, roleKey: "lead",
+      profileId: "sol-medium", revision: "1", ready: true, expected: {}, observed: {}, gaps: [] });
+    h.update.mockImplementation(async (...args: unknown[]) => {
+      const issue = h.issues.get(String(args[0])); const patch = args[1] as { description?: string };
+      if (issue && patch.description) Object.assign(issue, { description: patch.description });
+    });
+    h.requestWakeup.mockResolvedValue({ queued: true, runId: id.leadRun });
+    const persist = h.execute.getMockImplementation()!;
+    let rejectedCombinedWake = false;
+    h.execute.mockImplementation(async (...args: Parameters<typeof persist>) => {
+      const aggregate = JSON.parse(String(args[1][0])) as MissionAggregate;
+      const launch = aggregate.modelSelection?.tasks.flatMap(task => task.launches)
+        .find(item => item.launchKey === state.activationReservationId);
+      if (launch?.state === "bound" && aggregate.n1?.rootDispatchState === "requested") {
+        rejectedCombinedWake = true;
+        return { rowCount: 0 };
+      }
+      return persist(...args);
+    });
+
+    await expect(executeN1BoardCommand(h.ctx, { companyId: id.company, missionId: id.mission, actorUserId: id.owner,
+      body: { command: "start-lead", commandId: randomUUID(), expectedVersion: 1 } }))
+      .rejects.toMatchObject({ status: 409, code: "version_conflict" });
+
+    expect(h.requestWakeup).toHaveBeenCalledTimes(1);
+    expect(rejectedCombinedWake).toBe(true);
+    expect(h.row().aggregate.modelSelection!.tasks[0]!.launches[0]).toMatchObject({ state: "wake_claimed", runId: null });
+    expect(h.row().aggregate.n1).toMatchObject({ rootDispatchState: "claimed" });
+    expect(h.row().aggregate.n1).not.toHaveProperty("rootDispatchRunId");
+    expect(h.row().aggregate.effectIntents).toContainEqual(expect.objectContaining({ kind: "root_wakeup", state: "claimed" }));
   });
 
   it("requires the configured owner and eligible pinned agents before activation, while preserving exact roster revisions", async () => {
@@ -675,6 +824,80 @@ describe("N1 mission transitions", () => {
       expect(result).toMatchObject({ status, body: { code, details: { currentVersion: 7 } } });
     }
     expect(h.execute).not.toHaveBeenCalled();
+    expect(h.requestWakeup).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unavailable child variant before reserving admission", async () => {
+    const value = withBoundLead(activeAggregate());
+    value.n1 = { ...value.n1!, contributions: [{ ...plan[0], issueState: "confirmed", childIssueId: id.childA }] };
+    const h = harness(value);
+    h.issues.set(id.childA, nativeIssue({ id: id.childA, parentId: id.root, assigneeAgentId: id.contributorA, status: "backlog" }));
+    vi.mocked(inspectVariant).mockResolvedValue({ logicalAgentId: id.contributorA, agentId: id.contributorA,
+      roleKey: "contributor-1", profileId: "sol-medium", revision: "1", ready: false,
+      expected: {}, observed: { availability: "blocked" }, gaps: ["instructions_drift"] });
+
+    await expect(handleN1AgentApi(agentRequest({ command: "dispatch", commandId: randomUUID(), expectedVersion: 1,
+      contributionId: id.contributionA, reservationId: randomUUID(), requestedUnits: 3 },
+    { agentId: id.lead, runId: id.leadRun }, id.root), h.ctx))
+      .rejects.toMatchObject({ code: "model_variant_unavailable" });
+    expect(reserveAdmission).not.toHaveBeenCalled();
+    expect(h.execute).not.toHaveBeenCalled();
+    expect(h.requestWakeup).not.toHaveBeenCalled();
+  });
+
+  it("keeps the exact child launch ready when its atomic workflow claim loses the CAS", async () => {
+    const value = withBoundLead(activeAggregate());
+    value.n1 = { ...value.n1!, contributions: [{ ...plan[0], issueState: "confirmed", childIssueId: id.childA }] };
+    const h = harness(value);
+    h.issues.set(id.childA, nativeIssue({ id: id.childA, parentId: id.root, assigneeAgentId: id.contributorA, status: "backlog" }));
+    vi.mocked(inspectVariant).mockImplementation(async (_ctx, _company, logicalAgentId, profileId, revision) => ({
+      logicalAgentId, agentId: logicalAgentId, roleKey: logicalAgentId === id.lead ? "lead" : "contributor-1",
+      profileId, revision: revision!, ready: true, expected: {}, observed: {}, gaps: [],
+    }));
+    h.update.mockImplementation(async (...args: unknown[]) => {
+      const issue = h.issues.get(String(args[0])); const patch = args[1] as { description?: string };
+      if (issue && patch.description) Object.assign(issue, { description: patch.description });
+    });
+    const persist = h.execute.getMockImplementation()!;
+    h.execute.mockImplementationOnce(persist).mockImplementationOnce(persist).mockResolvedValueOnce({ rowCount: 0 });
+    const reservationId = randomUUID();
+
+    const raced = await handleN1AgentApi(agentRequest({ command: "dispatch", commandId: randomUUID(), expectedVersion: 1,
+      contributionId: id.contributionA, reservationId, requestedUnits: 3 },
+    { agentId: id.lead, runId: id.leadRun }, id.root), h.ctx);
+
+    expect(raced).toMatchObject({ status: 409, body: { code: "version_conflict" } });
+    expect(reserveAdmission).toHaveBeenCalledTimes(1);
+    expect(h.row().aggregate.modelSelection!.tasks.find(task => task.taskKey === id.contributionA)?.launches[0])
+      .toMatchObject({ launchKey: reservationId, state: "ready", runId: null });
+    expect((h.row().aggregate.n1 as { contributions: Array<Record<string, unknown>> }).contributions[0]).not.toHaveProperty("dispatchState");
+    expect(h.row().aggregate.effectIntents).not.toContainEqual(expect.objectContaining({ kind: "child_wakeup" }));
+    expect(h.requestWakeup).not.toHaveBeenCalled();
+  });
+
+  it("retains the selected child launch after reservation refusal and blocks a replacement reservation key", async () => {
+    const value = withBoundLead(activeAggregate());
+    value.n1 = { ...value.n1!, contributions: [{ ...plan[0], issueState: "confirmed", childIssueId: id.childA }] };
+    const h = harness(value);
+    h.issues.set(id.childA, nativeIssue({ id: id.childA, parentId: id.root, assigneeAgentId: id.contributorA, status: "backlog" }));
+    vi.mocked(inspectVariant).mockImplementation(async (_ctx, _company, logicalAgentId, profileId, revision) => ({
+      logicalAgentId, agentId: logicalAgentId, roleKey: logicalAgentId === id.lead ? "lead" : "contributor-1",
+      profileId, revision: revision!, ready: true, expected: {}, observed: {}, gaps: [],
+    }));
+    const reservationId = randomUUID();
+    vi.mocked(reserveAdmission).mockRejectedValueOnce(new AdmissionError(409, "version_conflict", "Admission changed"));
+    const first = await handleN1AgentApi(agentRequest({ command: "dispatch", commandId: randomUUID(), expectedVersion: 1,
+      contributionId: id.contributionA, reservationId, requestedUnits: 3 },
+    { agentId: id.lead, runId: id.leadRun }, id.root), h.ctx);
+    expect(first).toMatchObject({ status: 409, body: { code: "version_conflict" } });
+    expect(h.row().aggregate.modelSelection!.tasks.find(task => task.taskKey === id.contributionA)?.launches[0])
+      .toMatchObject({ launchKey: reservationId, state: "selected" });
+
+    await expect(handleN1AgentApi(agentRequest({ command: "dispatch", commandId: randomUUID(), expectedVersion: h.row().version,
+      contributionId: id.contributionA, reservationId: randomUUID(), requestedUnits: 3 },
+    { agentId: id.lead, runId: id.leadRun }, id.root), h.ctx))
+      .rejects.toMatchObject({ code: "model_previous_unknown" });
+    expect(reserveAdmission).toHaveBeenCalledTimes(1);
     expect(h.requestWakeup).not.toHaveBeenCalled();
   });
 

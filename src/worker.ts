@@ -1,3 +1,5 @@
+import { handleModelProfiles, chooseModelProfile, inspectModelSelections, reconcileModelMeasurements } from "./model-api.js";
+import { ModelSelectionError } from "./model-state.js";
 import { handleN6WorkAgent } from "./n6-work-api.js";
 import { getMissionByN6WorkIssue } from "./missions.js";
 import { handleN6Board } from "./n6-runtime.js";
@@ -30,6 +32,7 @@ import { AdmissionError } from "./admission.js";
 import { handleRosterApi, registerRosterBridge } from "./rosters.js";
 
 import { registerMissionTool } from "./mission-tool.js";
+import { publicResponse } from "./public-response.js";
 
 let ctx: PluginContext;
 
@@ -224,6 +227,22 @@ async function handleMissionAgentCommand(input: PluginApiRequestInput, context: 
 }
 
 export async function handlePluginRequest(input: PluginApiRequestInput, context: PluginContext = ctx) {
+  try { return publicResponse(await handleRequest(input, context)); }
+  catch (error) {
+    if (error instanceof ModelSelectionError) return publicResponse({ status: 409, body: { code: error.code, error: error.message, details: error.details } });
+    if (error instanceof MissionError) return publicResponse({ status: error.status, body: { code: error.code, error: error.message, details: error.details } });
+    throw error;
+  }
+}
+async function handleRequest(input: PluginApiRequestInput, context: PluginContext) {
+  if (input.params.companyId !== undefined && input.params.companyId !== input.companyId) {
+    throw new MissionError(403, "company_scope_mismatch", "Path company does not match the host-authorized company scope");
+  }
+  if (input.routeKey.startsWith("model-profiles-")) return handleModelProfiles(context, input);
+  if (input.routeKey === "model-selection-read") return inspectModelSelections(context, input);
+  const profileCommand = (input.body as { command?: string } | null)?.command;
+  if (["mission-command", "mission-agent-command"].includes(input.routeKey) && profileCommand === "select-model-profile") return chooseModelProfile(context, input);
+  if (input.routeKey === "mission-command" && profileCommand === "reconcile-model-measurements") return reconcileModelMeasurements(context, input);
   if (input.routeKey === "mission-command" && ["configure-result-dependency", "reconcile-result-dependency", "transfer-result-coordinator", "rebind-result-dependency", "resolve-result-coordination"].includes(String((input.body as { command?: string })?.command))) return handleN6Board(context, input);
   if (input.routeKey === "decision") return handleDecision(input, context);
   if (input.routeKey.startsWith("council-decision")) return handleDecisionReceiptApi(input, context);

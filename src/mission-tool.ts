@@ -5,7 +5,7 @@ import { readNativeRun, readOrdinaryRun } from "./g4-native.js";
 import { AdmissionError } from "./admission.js";
 import { getMissionByOrdinaryIssue, getMissionByN6WorkIssue, MissionError } from "./missions.js";
 
-const agentCommands = new Set(["n6-inspect", "n6-coordinate", "n6-facilitation-outcome", "inspect", "plan", "materialize", "dispatch", "reconcile-usage", "record-contribution", "publish",
+const agentCommands = new Set(["select-model-profile", "n6-inspect", "n6-coordinate", "n6-facilitation-outcome", "inspect", "plan", "materialize", "dispatch", "reconcile-usage", "record-contribution", "publish",
   "ordinary-inspect", "ordinary-verdict",
   "confirm-review-handoff", "prepare-resubmission", "attest-transmission", "attest-n3-transmission", "n3-inspect", "n3-opinion", "n3-synthesize",
   "n5-inspect", "n5-rebind-plan", "n5-claim-publication", "n5-observe-delivery"]);

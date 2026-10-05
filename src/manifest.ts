@@ -1,3 +1,4 @@
+import { MODEL_PROFILE_MAPPING_SCHEMA, managedAgentDeclarations, managedSkillDeclarations } from "./model-catalogue.js";
 import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
 
 export const PLUGIN_ID = "private.paperclip-council";
@@ -12,7 +13,7 @@ export const missionToolDeclaration = {
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
-  version: "0.6.1",
+  version: "0.7.0",
   displayName: "Paperclip Council",
   description: "Private Council integration with revisioned rosters, bounded admission and checked candidate preparation.",
   author: "Local Paperclip integration",
@@ -23,6 +24,10 @@ const manifest: PaperclipPluginManifestV1 = {
     "companies.read",
     "projects.read",
     "agents.read",
+    "agents.managed",
+    "skills.managed",
+    "issue.comments.read",
+    "issue.documents.write",
     "database.namespace.migrate",
     "database.namespace.read",
     "database.namespace.write",
@@ -43,6 +48,8 @@ const manifest: PaperclipPluginManifestV1 = {
     "secrets.read-ref",
     "ui.page.register",
   ],
+  agents: managedAgentDeclarations(),
+  skills: managedSkillDeclarations(),
   tools: [missionToolDeclaration],
   entrypoints: { worker: "./dist/worker.js", ui: "./dist/ui" },
   database: {
@@ -55,6 +62,9 @@ const manifest: PaperclipPluginManifestV1 = {
     additionalProperties: false,
     required: ["apiBaseUrl", "councilAgentId", "councilApiKey"],
     properties: {
+      modelVariantsEnabled: { type: "boolean", default: false, description: "Use prepared fixed-profile Council variants on newly created standard missions only." },
+      modelProfileMapping: { ...MODEL_PROFILE_MAPPING_SCHEMA,
+        description: "Versioned family/profile catalogue. Shared runtime validation applies before selection; existing tasks retain their snapshot." },
       apiBaseUrl: {
         type: "string",
         format: "uri",
@@ -107,6 +117,12 @@ const manifest: PaperclipPluginManifestV1 = {
     },
   },
   apiRoutes: [
+    { routeKey: "model-profiles-read", method: "GET", path: "/companies/:companyId/model-profiles", auth: "board",
+      capability: "api.routes.register", companyResolution: { from: "query", key: "companyId" } },
+    { routeKey: "model-profiles-command", method: "POST", path: "/companies/:companyId/model-profiles", auth: "board",
+      capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
+    { routeKey: "model-selection-read", method: "GET", path: "/companies/:companyId/missions/:missionId/model-profiles", auth: "board",
+      capability: "api.routes.register", companyResolution: { from: "query", key: "companyId" } },
     {
       routeKey: "admission-read",
       method: "GET",

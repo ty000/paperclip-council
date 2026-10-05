@@ -1,3 +1,7 @@
+import { physicalAgent } from "./model-state.js";
+import type { RoleKey } from "./model-catalogue.js";
+import { inspectVariant } from "./model-variants.js";
+import { prepareVariantLaunch, bindVariantIssue, claimVariantWake, recordVariantWake, observeVariantRun } from "./model-runtime.js";
 import { replaceMissingOpinion } from "./n2-ordinary-replacement.js";
 import { ordinaryTaskInstructions } from "./n2-ordinary-instructions.js";
 import { randomUUID } from "node:crypto";
@@ -23,6 +27,13 @@ function reviewTasks(mission: MissionRecord, round: N3NativeRound) {
   return [...round.review.slots.map(slot => ordinaryTask("specialist", round.review.subject.submissionId, slot.specialistAgentId, slot.slotId)),
     ordinaryTask("council", round.review.subject.submissionId, mission.aggregate.responsibilities.finalReviewerAgentId)];
 }
+function taskRoles(task: OrdinaryTask, slots: N3OpinionSlot[]): RoleKey[] {
+  if (task.kind === "correction") return ["lead"];
+  if (task.kind === "council") return ["generalist-reviewer"];
+  const slot = slots.find(item => item.slotId === task.slotId);
+  if (!slot) throw new MissionError(409, "ordinary_slot_missing", "Specialist requires its exact declared perspective");
+  return [`${slot.perspective.replaceAll("_", "-")}-reviewer` as RoleKey];
+}
 async function requireCli(ctx: PluginContext, mission: MissionRecord, agentId: string) {
   const agent = await ctx.agents.get(agentId, mission.companyId);
   if (!agent || agent.adapterType !== "codex_local" || agent.adapterConfig?.engine !== "cli"
@@ -33,7 +44,7 @@ async function requireCli(ctx: PluginContext, mission: MissionRecord, agentId: s
 async function assertRootIdle(ctx: PluginContext, mission: MissionRecord) {
   const root = await ctx.issues.get(mission.rootIssueId, mission.companyId);
   const summary = await ctx.issues.summaries.getOrchestration({ companyId: mission.companyId, issueId: mission.rootIssueId, includeSubtree: false });
-  if (!root || root.assigneeAgentId !== mission.aggregate.responsibilities.integrationLeadAgentId || root.status !== "in_progress"
+  if (!root || root.assigneeAgentId !== physicalAgent(mission, mission.aggregate.responsibilities.integrationLeadAgentId, { issueId: mission.rootIssueId }) || root.status !== "in_progress"
       || root.executionPolicy || root.executionState || summary.runs.some(run => ["queued", "running"].includes(run.status))) {
     throw new MissionError(409, "ordinary_root_not_idle", "Root must remain under its lead, without native review policy/state or active run");
   }
@@ -59,6 +70,14 @@ export async function executeOrdinaryN2Board(ctx: PluginContext, mission: Missio
   for (const id of [...round.review.slots.map(slot => slot.specialistAgentId), mission.aggregate.responsibilities.finalReviewerAgentId,
     mission.aggregate.responsibilities.integrationLeadAgentId]) await requireCli(ctx, mission, id);
   const tasks = reviewTasks(mission, round);
+  if (mission.aggregate.modelSelection) {
+    for (const task of tasks) {
+      const variant = await inspectVariant(ctx, mission.companyId, task.agentId, "sol-medium", "1");
+      if (!variant.ready || !variant.roleKey || !taskRoles(task, round.review.slots).includes(variant.roleKey)) {
+        throw new MissionError(422, "model_review_role_mismatch", "Prepared reviewer/specialist template must match the declared responsibility and perspective");
+      }
+    }
+  }
   state.rounds[0]!.handoff.reservationId = tasks.at(-1)!.reservationId;
   state.ordinary = { protocol: "ordinary-cli-v1", tasks };
   const claimed = await n2CommandCas(ctx, mission, body, "user", input.actorUserId!, { ...mission.aggregate, phase: "review_handoff",
@@ -69,12 +88,21 @@ export async function executeOrdinaryN2Board(ctx: PluginContext, mission: Missio
 
 async function dispatchTask(ctx: PluginContext, initial: MissionRecord, initialTask: OrdinaryTask) {
   let mission = initial; let task = initialTask;
-  await requireCli(ctx, mission, task.agentId);
+  if (task.wake === "claimed" || !task.issueId && task.creation !== "pending") {
+    throw new MissionError(409, "ordinary_effect_unknown", "Retain the existing uncertain creation or wake; no replacement launch");
+  }
+  const prepared = await prepareVariantLaunch(ctx, mission, { taskKey: mission.rootIssueId,
+    interventionKey: task.kind === "correction" ? "lead" : task.kind === "council" ? "reviewer" : `specialist:${task.slotId}`,
+    launchKey: task.reservationId, logicalAgentId: task.agentId, family: task.kind === "correction" ? "diagnosis" : "review", issueId: task.issueId,
+    expectedRoles: mission.aggregate.modelSelection ? taskRoles(task, n3Round(mission)?.review.slots ?? []) : [] });
+  mission = prepared.mission;
+  const agentId = prepared.binding?.agentId ?? task.agentId;
+  await requireCli(ctx, mission, agentId);
   if (!task.issueId) {
     if (task.creation !== "pending") throw new MissionError(409, "ordinary_effect_unknown", "Task creation was claimed; reconcile its existing effect, never create a replacement");
     mission = await saveOrdinaryTask(ctx, mission, { ...task, creation: "claimed" });
     const issue = await ctx.issues.create({ companyId: mission.companyId, projectId: mission.projectId,
-      title: `Council ${task.kind} ${task.slotId ?? ""} ${task.submissionId}`, status: "backlog", assigneeAgentId: task.agentId,
+      title: `Council ${task.kind} ${task.slotId ?? ""} ${task.submissionId}`, status: "backlog", assigneeAgentId: agentId,
       inheritExecutionWorkspaceFromIssueId: mission.rootIssueId,
       originKind: "plugin:private.paperclip-council:ordinary", originId: task.taskId,
       description: ordinaryTaskInstructions(mission, task) });
@@ -84,8 +112,10 @@ async function dispatchTask(ctx: PluginContext, initial: MissionRecord, initialT
   if (task.wake === "claimed") throw new MissionError(409, "ordinary_effect_unknown", "Wake already claimed; an unbound outcome cannot authorize another wake");
   await reserveN2Run(ctx, mission, { reservationId: task.reservationId, effectId: task.taskId, kind: task.replacementOf ? "resume" : task.kind === "correction" ? "correction" : "initial",
     ownerReplacementCommandId: task.replacementOf ? mission.aggregate.n2!.ordinary!.missingOpinionReplacement!.commandId : undefined });
-  task = { ...task, wake: "claimed" };
-  mission = await saveOrdinaryTask(ctx, mission, task);
+  mission = await bindVariantIssue(ctx, mission, task.reservationId, task.issueId!);
+  mission = await claimVariantWake(ctx, mission, task.reservationId, (readyMission, claimedAggregate) =>
+    saveOrdinaryTask(ctx, { ...readyMission, aggregate: claimedAggregate }, { ...task, wake: "claimed" }));
+  task = currentOrdinaryTask(mission, task.taskId);
   if (task.kind === "correction") {
     const root = await ctx.issues.get(task.issueId!, mission.companyId);
     await ctx.issues.update(task.issueId!, { status: "in_progress", description: `${root?.description ?? ""}\n\n${ordinaryTaskInstructions(mission, task)}` }, mission.companyId);
@@ -93,13 +123,20 @@ async function dispatchTask(ctx: PluginContext, initial: MissionRecord, initialT
   const wake = await ctx.issues.requestWakeup(task.issueId!, mission.companyId, { idempotencyKey: `council:ordinary:${task.taskId}`,
     reason: "council_ordinary_admitted", actorUserId: mission.ownerUserId });
   mission = await freshOrdinary(ctx, mission); task = currentOrdinaryTask(mission, task.taskId);
-  if (!wake.runId || task.runId && task.runId !== wake.runId) throw new MissionError(409, "ordinary_effect_unknown", "Ordinary dispatch outcome requires exact run readback");
-  return saveOrdinaryTask(ctx, mission, { ...task, runId: wake.runId });
+  mission = await recordVariantWake(ctx, mission, task.reservationId, wake.runId, (before, aggregate, effectiveRunId) => {
+    if (task.runId && effectiveRunId && task.runId !== effectiveRunId) {
+      throw new MissionError(409, "ordinary_effect_unknown", "Ordinary dispatch outcome conflicts with its exact run readback");
+    }
+    return saveOrdinaryTask(ctx, { ...before, aggregate }, { ...task, runId: task.runId ?? effectiveRunId });
+  });
+  task = currentOrdinaryTask(mission, task.taskId);
+  if (!task.runId) throw new MissionError(409, "ordinary_effect_unknown", "Ordinary dispatch outcome requires exact run readback");
+  return mission;
 }
 
 async function settleTask(ctx: PluginContext, initial: MissionRecord, task: OrdinaryTask) {
   let mission = initial;
-  const identity = { companyId: mission.companyId, issueId: task.issueId!, agentId: task.agentId, runId: task.runId! };
+  const identity = { companyId: mission.companyId, issueId: task.issueId!, agentId: physicalAgent(mission, task.agentId, { issueId: task.issueId, launchKey: task.reservationId }), runId: task.runId! };
   const run = await readOrdinaryRun(ctx, identity);
   if (["queued", "running"].includes(run.status)) return null;
   const { profile, envelope } = await nativeN2Profile(ctx, mission);
@@ -107,7 +144,9 @@ async function settleTask(ctx: PluginContext, initial: MissionRecord, task: Ordi
     periodKey: profile.periodKey, expectedVersion: envelope.version });
   if (run.status !== "succeeded") throw new MissionError(409, "ordinary_run_failed", "Terminal costs are recorded, but unsuccessful work cannot advance the mission");
   if (task.kind === "council") validateOrdinaryReport(mission, task, await readOrdinaryRunSummary(ctx, run));
-  mission = await freshOrdinary(ctx, mission); task = currentOrdinaryTask(mission, task.taskId);
+  mission = await freshOrdinary(ctx, mission);
+  mission = await observeVariantRun(ctx, mission, task.reservationId);
+  task = currentOrdinaryTask(mission, task.taskId);
   const settledAt = new Date().toISOString();
   const state = mission.aggregate.n2!; const n3 = mission.aggregate.n3!;
   return n2Cas(ctx, mission, { ...mission.aggregate,
@@ -127,7 +166,7 @@ async function applyVerdict(ctx: PluginContext, mission: MissionRecord, task: Or
   const correctionTask = ordinaryTask("correction", task.submissionId, mission.aggregate.responsibilities.integrationLeadAgentId);
   const existingIntent = mission.aggregate.effectIntents.find(item => item.kind === "n2_decision" && item.operationId === operationId);
   const correctionReservationId = typeof existingIntent?.reservationId === "string" ? existingIntent.reservationId : correctionTask.reservationId;
-  const common = { companyId: mission.companyId, issueId: mission.rootIssueId, actorAgentId: task.agentId, runId: task.runId!,
+  const common = { companyId: mission.companyId, issueId: mission.rootIssueId, actorAgentId: physicalAgent(mission, task.agentId, { issueId: task.issueId, runId: task.runId }), runId: task.runId!,
     operationId, justification: report.rationale, resultReference: n2SubmissionResultReference(task.submissionId) };
   const decision = report.verdict === "approved" ? { ...common, verdict: "approved" as const, approvedCommit: submission.candidateCommit }
     : { ...common, verdict: "changes_requested" as const };

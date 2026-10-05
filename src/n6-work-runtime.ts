@@ -5,6 +5,8 @@ import { canonicalPayloadHash, getMission, MissionError, type MissionRecord } fr
 import { readOrdinaryRunSummary } from "./n2-ordinary-report.js";
 import { coordinationActor, coordinationTask, coordinationTaskAt, saveCoordination, type CoordinationTask } from "./n6-coordination-state.js";
 import { coordinationInstructions } from "./n6-work-instructions.js";
+import { bindVariantIssue, claimVariantWake, observeVariantRun, prepareVariantLaunch, recordVariantWake } from "./model-runtime.js";
+import { modelLaunch, physicalAgent } from "./model-state.js";
 
 const fresh = async (ctx: PluginContext, m: MissionRecord) => (await getMission(ctx, m.companyId, m.missionId))!;
 export function saveCoordinationTask(ctx: PluginContext, m: MissionRecord, task: CoordinationTask) {
@@ -13,31 +15,54 @@ export function saveCoordinationTask(ctx: PluginContext, m: MissionRecord, task:
 }
 async function dispatch(ctx: PluginContext, initial: MissionRecord, initialTask: CoordinationTask) {
   let m = initial; let task = initialTask;
+  const prior = modelLaunch(m, task.reservationId);
+  if (task.wake === "claimed" && (!prior || !["selected", "assignment_claimed", "ready"].includes(prior.state))) return m;
+  if (!task.issueId && task.creation !== "pending") throw new MissionError(409, "n6_work_effect_unknown", "Creation claimed: retain existing identity; no replacement task");
   await coordinationActor(ctx, m, task.agentId);
+  const prepared = await prepareVariantLaunch(ctx, m, { taskKey: "coordination", interventionKey: task.kind, launchKey: task.reservationId,
+    logicalAgentId: task.agentId, family: "orchestration", expectedRoles: [task.kind], ...(task.issueId ? { issueId: task.issueId } : {}) });
+  m = prepared.mission;
+  const agentId = prepared.binding?.agentId ?? task.agentId;
   if (!task.issueId) {
-    if (task.creation !== "pending") throw new MissionError(409, "n6_work_effect_unknown", "Creation claimed: retain existing identity; no replacement task");
     m = await saveCoordinationTask(ctx, m, { ...task, creation: "claimed" });
-    const issue = await ctx.issues.create({ companyId: m.companyId, projectId: m.projectId, status: "backlog", assigneeAgentId: task.agentId,
+    const issue = await ctx.issues.create({ companyId: m.companyId, projectId: m.projectId, status: "backlog", assigneeAgentId: agentId,
       title: `Council N6 ${task.kind}: ${m.missionId}`, description: coordinationInstructions(m, task),
       inheritExecutionWorkspaceFromIssueId: m.rootIssueId, originKind: "plugin:private.paperclip-council:coordination", originId: task.taskId });
     task = { ...task, issueId: issue.id, creation: "confirmed" }; m = await saveCoordinationTask(ctx, m, task);
   }
-  if (task.wake === "claimed") return m; // An unbound wake is uncertain, never repeated.
   const c = m.aggregate.n6!.coordination!;
   const envelope = await readAdmission(ctx, { companyId: m.companyId, periodKey: c.periodKey });
   if (!envelope) throw new MissionError(409, "n6_work_budget", "Configured native admission required");
   await reserveAdmission(ctx, { companyId: m.companyId, periodKey: c.periodKey, reservationId: task.reservationId, missionId: m.missionId,
     effectId: task.taskId, requestedUnits: c.requestedUnits, attempt: { kind: "initial", ordinal: 0 }, expectedVersion: envelope.version });
-  task = { ...task, wake: "claimed" }; m = await saveCoordinationTask(ctx, m, task);
-  await ctx.issues.update(task.issueId!, { status: "todo" }, m.companyId);
-  const wake = await ctx.issues.requestWakeup(task.issueId!, m.companyId, { idempotencyKey: `council:n6:${task.taskId}`,
-    reason: "council_n6_coordination_admitted", actorUserId: c.authorizedBy });
+  m = await bindVariantIssue(ctx, m, task.reservationId, task.issueId!);
+  if (task.wake !== "claimed") {
+    task = { ...task, wake: "claimed" }; m = await saveCoordinationTask(ctx, m, task);
+  }
+  m = await claimVariantWake(ctx, m, task.reservationId);
+  let wake: { runId: string | null };
+  try {
+    await ctx.issues.update(task.issueId!, { status: "todo" }, m.companyId);
+    wake = await ctx.issues.requestWakeup(task.issueId!, m.companyId, { idempotencyKey: `council:n6:${task.taskId}`,
+      reason: "council_n6_coordination_admitted", actorUserId: c.authorizedBy });
+  } catch (error) {
+    await recordVariantWake(ctx, await fresh(ctx, m), task.reservationId, null);
+    throw error;
+  }
   m = await fresh(ctx, m); task = coordinationTaskAt(m, task.taskId);
-  if (!wake.runId || task.runId && task.runId !== wake.runId) throw new MissionError(409, "n6_work_effect_unknown", "Exact admitted run must be observed");
-  return saveCoordinationTask(ctx, m, { ...task, runId: wake.runId });
+  m = await recordVariantWake(ctx, m, task.reservationId, wake.runId, (before, aggregate, effectiveRunId) => {
+    if (task.runId && effectiveRunId && task.runId !== effectiveRunId) {
+      throw new MissionError(409, "n6_work_effect_unknown", "Coordination wake conflicts with its exact admitted run");
+    }
+    return saveCoordinationTask(ctx, { ...before, aggregate }, { ...task, runId: task.runId ?? effectiveRunId });
+  });
+  task = coordinationTaskAt(m, task.taskId);
+  if (!task.runId) throw new MissionError(409, "n6_work_effect_unknown", "Exact admitted run must be observed");
+  return m;
 }
 async function settle(ctx: PluginContext, m: MissionRecord, task: CoordinationTask) {
-  const identity = { companyId: m.companyId, issueId: task.issueId!, agentId: task.agentId, runId: task.runId! };
+  const identity = { companyId: m.companyId, issueId: task.issueId!,
+    agentId: physicalAgent(m, task.agentId, { launchKey: task.reservationId, issueId: task.issueId!, runId: task.runId! }), runId: task.runId! };
   const run = await readOrdinaryRun(ctx, identity);
   if (["queued", "running"].includes(run.status)) return null;
   const c = m.aggregate.n6!.coordination!;
@@ -50,6 +75,7 @@ async function settle(ctx: PluginContext, m: MissionRecord, task: CoordinationTa
   try { report = JSON.parse(String(await readOrdinaryRunSummary(ctx, run))); } catch { throw new MissionError(409, "n6_work_report", "Exact terminal report required"); }
   if (!task.report || canonicalPayloadHash(task.report) !== canonicalPayloadHash(report)) throw new MissionError(409, "n6_work_report", "Terminal report must match its attributed prepared command");
   m = await fresh(ctx, m); task = coordinationTaskAt(m, task.taskId);
+  m = await observeVariantRun(ctx, m, task.reservationId);
   return saveCoordinationTask(ctx, m, { ...task, settledAt: new Date().toISOString() });
 }
 async function apply(ctx: PluginContext, m: MissionRecord, task: CoordinationTask) {
