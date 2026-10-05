@@ -15,9 +15,9 @@ This local implementation completes the five approved bounded small lots from cl
 | S5 | Beginning of OPT-09 | Exact candidate/bundle and external-cache transfer preflight |
 
 The M/L lots and the complete optimization backlog remain outside this scope.
-All results were implemented locally. Repository presence does not mean the
-utilities are installed, activated, deployed, or natively qualified in a
-Paperclip instance.
+The implementation evidence below records the reviewed package. A subsequent,
+separately verified local and recette installation is recorded at the end of
+this report; repository presence alone is not deployment or runtime proof.
 
 ## Verification
 
@@ -75,3 +75,41 @@ Adoption remains an operator decision: preflight the exact transfer first,
 start one observer against explicit sources, then create packets or usage audits
 when required. The detailed commands and stop conditions are in the
 [operator guide](../../operations/TOKEN-EFFICIENCY.md).
+
+## Recette installation follow-up, 2026-10-05
+
+[PR #38](https://github.com/ty000/paperclip-council/pull/38) was merged as
+`ef817493bf99606d324cac6ef572c23de839a9ab`. Four local command wrappers were
+installed from that release. On explicit operator instruction, a self-contained
+company skill was then imported through the native Paperclip API into
+`council-local`, company `e-ty local`
+(`587884dc-195c-4555-8db9-9f3d9541b373`).
+
+The installation completed at **2026-10-05T16:22:14.545219Z**. Its
+[receipt](/home/davy-lp/.local/share/paperclip-council/deployments/2026-10-05-token-operations-ef81749/installation-receipt.json)
+has SHA-256 `74bcc5ea179b9657a5bc37bc062bc4b4301b4a2548ecfcb53f7a07d5d2624209`.
+The [deployment report](/home/davy-lp/.local/share/paperclip-council/deployments/2026-10-05-token-operations-ef81749/RECIPE-INSTALLATION.md)
+links the operation ledger, native readbacks, hashes and isolated mount proof.
+
+| Layer | Observed result |
+| --- | --- |
+| Library | Skill `849ec34b-266c-435d-b1fe-8405946de284`, key `local/47824fb670/council-token-operations`, imported and read back |
+| Agent configuration | Seven assignments; all prior selections preserved |
+| Instructions | Seven hash-guarded additive updates, 513 bytes each; original text preserved and read back |
+| Native adapter mount | Seven isolated profiles verified with `ensureCodexSkillsInjected`; seven package file hashes checked |
+| Installed CLI | Four `--help` checks passed through the mounted package |
+| Recette health at readback | Enabled/active, health OK; existing Council plugin and agent runtime settings preserved |
+| Real model use and savings | Not observed; agents remained paused and no new Council run was launched |
+
+The initial import source was outside the server's approved directory roots.
+The same package was staged under the already approved company skill root and
+imported through the same API. No policy or permission change was made.
+The library references that retained local source and reports no native version
+ID; verified hashes, rather than a native version pin, identify this package.
+
+This follow-up updates documentation only. The original `proof.json` and test
+logs remain evidence for the reviewed implementation, not hashes or test results
+for these later documentary edits. The broader OPT items remain partial where
+only an initial small lot was delivered. See the
+[updated backlog](../../operations/TOKEN-OPTIMIZATION-BACKLOG.md) for the remaining
+S/M candidates and the conditional XL program.

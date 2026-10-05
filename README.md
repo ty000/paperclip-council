@@ -18,8 +18,9 @@ normal Paperclip authority.
 ## Bounded operator utilities
 
 The repository includes provider-free utilities for exact transfer preflight,
-bounded mission observation, durable context packets, and finite session usage
-audits. See the [token-efficiency operator guide](docs/operations/TOKEN-EFFICIENCY.md)
+bounded mission observation, durable context packets, finite session usage
+audits, compact saved tool outputs, and conservative before/after comparisons.
+See the [token-efficiency operator guide](docs/operations/TOKEN-EFFICIENCY.md)
 for their explicit inputs, limits, evidence contracts, and manual adoption sequence.
 
 ## N1 candidate preparation boundary

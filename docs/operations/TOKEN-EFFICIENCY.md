@@ -5,6 +5,12 @@ and replayable. They are local tools: their presence does not install, activate,
 deploy, or natively qualify them. An operator chooses every source and starts
 every command; the tools do not discover inputs, credentials, or transfer limits.
 
+The five initial lots were merged in PR #38 and separately installed on
+`council-local` on 2026-10-05. See the dated
+[delivery and recette evidence](../reviews/token-small-lots/REPORT.md#recette-installation-follow-up-2026-10-05)
+and the [updated optimization backlog](TOKEN-OPTIMIZATION-BACKLOG.md).
+This recorded deployment does not imply automatic use or measured token savings.
+
 Use Python 3.10 or newer. The verified local run used Python 3.11.2. Paths and
 identifiers in the examples are placeholders; replace every value under
 `/absolute/path`, every `MISSION_ID`, and every SHA before running them.
@@ -27,6 +33,8 @@ all arguments unchanged:
 | `council-watch` | `mission_watch.py` |
 | `council-context-packet` | `context_packet.py` |
 | `council-transfer-preflight` | `transfer_preflight.py` |
+| `council-compact-output` | `compact_output.py` |
+| `council-usage-compare` | `usage_compare.py` |
 
 Before exposing commands, verify each installed file against the exact merged
 commit and run `python3 -m unittest discover -s tests/operations -p 'test_*.py'`
@@ -34,6 +42,32 @@ from that release. Verify each installed command with `--help`, record the
 commit, hashes, and results in an installation receipt, and preserve any
 pre-existing command paths. Installation alone does not start an observer,
 change a Paperclip instance, or schedule a provider run.
+
+## Paperclip agent installation recorded on 2026-10-05
+
+The deployment imported a self-contained `council-token-operations` company skill
+and selected it for the seven Council agents. The native skill key is
+`local/47824fb670/council-token-operations`; its five Python scripts match
+reviewed commit `ef817493bf99606d324cac6ef572c23de839a9ab` byte for byte.
+In that package the scripts live in `scripts/`, so resolve their paths relative
+to the loaded `SKILL.md`; repository examples below use `scripts/operations/`.
+
+Existing instructions were preserved with a short additive reference to the
+skill. Native adapter injection was verified in seven isolated profiles, and
+all four CLI entrypoints passed `--help`. The adapter reports `ephemeral` mode:
+the selected skills are linked into the effective profile on the next authorized
+run. No actual agent run was started to test loading or measure savings.
+
+Keep the imported source directory referenced by the company library. Its native
+version ID is null; the installation receipt records the verified file hashes.
+A future managed-defaults reset must preserve or explicitly reapply the additive
+instruction reference. Presence in the library and `desiredSkills` are distinct
+from loading and use by a model.
+
+Agent use remains within the assigned task. Prefer supplied snapshots for mission
+observation; a board-only API requires board authority. Agents must never reuse
+operator cookies. Usage audits require explicit authorization for each session
+file. Installation does not authorize resume, wakeups or provider spending.
 
 ## Manual adoption sequence
 
@@ -43,7 +77,10 @@ change a Paperclip instance, or schedule a provider run.
    progress. Keep its state file private to that process.
 3. Build a `context_packet.py` packet when another bounded run needs the durable
    checkpoint. Run `usage_audit.py` when response-level accounting is needed.
-4. Preserve the source inputs and evidence artifacts. Review nonzero exits and
+4. Project explicitly saved thread/inspection/log output with `compact_output.py`
+   before returning it to model context. Compare full usage reports with
+   `usage_compare.py` only when cohort and quality evidence is available.
+5. Preserve the source inputs and evidence artifacts. Review nonzero exits and
    reported unknowns instead of retrying blindly.
 
 This manual, provider-free sequence does not provide an exactly-once guarantee.
@@ -257,6 +294,140 @@ refused. Exit `0` means every check passed, exit `1` means blocked, and argparse
 uses exit `2` for invalid command syntax.
 
 ## Operational boundary
+
+The R1/R2 follow-up utilities below are additional local source tools. They are
+not part of the earlier PR #38 installation receipt or its company skill.
+Their validation and review are recorded in the
+[R1/R2 report](../reviews/token-r1-r2/REPORT.md).
+
+### Compact saved thread, inspection and log outputs (R1)
+
+`compact_output.py` consumes one explicitly supplied local file. It makes no API
+call, discovers no source and executes none of the input. Supported modes are:
+
+- `thread`: a saved Codex `read_thread` object with a `turns` array;
+- `inspection`: a saved JSON object or collection, such as a Paperclip inspection;
+- `log`: one UTF-8 command log, with replacement markers for invalid text bytes.
+
+```sh
+python3 scripts/operations/compact_output.py \
+  --mode thread --input /absolute/path/read-thread.json \
+  --cursor 0 --page-size 20 --max-bytes 16384 \
+  --output /absolute/path/new-thread-summary.json
+```
+
+The `council.compact-output.v1` JSON stdout and optional artifact have the same
+bytes, capped at 16 KiB by default including the newline. The configurable output
+range is 2 KiB–1 MiB; input defaults to 8 MiB and may be raised explicitly to
+64 MiB. JSON nesting is capped at 32 levels; duplicate keys and nonfinite numbers
+are refused. Page size is 1–100 (default 20).
+
+The summary contains the source's absolute path, SHA-256 and byte length; every
+item has a JSON pointer or one-based line locator. Full detail stays in the
+original file: keep those bytes unchanged and verify its hash before using a
+locator. A summary is a projection, not a replacement for archived evidence.
+
+Local pagination uses the numeric `pagination.nextCursor` over the supplied
+file. Upstream cursor/`hasMore` metadata describes other pages that were never
+supplied; the tool does not fetch them. Contradictory metadata, invalid pagination
+types or evidence of an upstream page produce `needs_inspection`. If the output
+budget leaves no room for one item, `pageBlocked` is true and the local next
+cursor is null; increase the explicit budget or inspect the source instead of
+repeating the same page.
+
+Structured errors and critical text patterns are scanned beyond the displayed
+page, including nested tool results. Signal samples are bounded; omitted samples
+remain counted and produce `needs_inspection`. Text matching is heuristic and
+can flag quoted errors or test names. `bounded` describes the projection, never
+successful execution or absence of every possible blocker. Redaction covers
+known credential forms only; it does not certify that arbitrary text is public.
+
+Exit `0` means the summary was produced, including a possible `needs_inspection`
+status; callers must read that status. Exit `2` means invalid input or a failed
+output operation. An output must be new and is created with mode `0600`; existing
+destinations, symlinks and the input path are refused.
+
+### Compare explicit usage reports (R2)
+
+`usage_compare.py` accepts two **full** `council-usage-audit.v1` reports written
+by `usage_audit.py --output`. Its compact stdout alone is not a report input.
+The comparator never reads session directories or uses cumulative fallback
+snapshots. Each report is limited to 4 MiB and the comparison manifest to 64 KiB.
+
+```sh
+python3 scripts/operations/usage_compare.py \
+  --before /absolute/path/before.report.json \
+  --after /absolute/path/after.report.json \
+  --comparison /absolute/path/comparison.json \
+  --output /absolute/path/new-comparison.report.json
+```
+
+The comparison manifest has this shape. Replace every placeholder with factual
+data; its statuses do not authorize inventing a successful quality check.
+
+```json
+{
+  "schema_version": "council-usage-comparison-input.v1",
+  "reports": {
+    "before_sha256": "SHA256_OF_EXACT_BEFORE_REPORT_BYTES",
+    "after_sha256": "SHA256_OF_EXACT_AFTER_REPORT_BYTES"
+  },
+  "cohort": {
+    "before": {
+      "scope_id": "same-workload-and-acceptance-criteria",
+      "task_count": 2,
+      "coverage_id": "same-accounting-coverage",
+      "configuration_id": "same-comparison-controls",
+      "data_ref": "/absolute/path/before-case-index.json"
+    },
+    "after": {
+      "scope_id": "same-workload-and-acceptance-criteria",
+      "task_count": 2,
+      "coverage_id": "same-accounting-coverage",
+      "configuration_id": "same-comparison-controls",
+      "data_ref": "/absolute/path/after-case-index.json"
+    },
+    "evidence_refs": ["/absolute/path/cohort-review.json"]
+  },
+  "quality": {
+    "before_status": "unknown",
+    "after_status": "unknown",
+    "evidence_refs": ["/absolute/path/quality-review.json"]
+  }
+}
+```
+
+Both cohorts must match on scope, task count, accounting coverage and fixed
+configuration controls. Record the intended optimization and candidate identities
+in the referenced case evidence; a changed model, effort or coverage cannot be
+silently treated as equivalent. Data references can differ. References and
+quality statuses are **operator assertions**, not independently verified by this
+tool: it does not open those references or establish functional quality itself.
+Report hashes bind the assertions to the exact reports being compared.
+
+Only two exact reports with compatible metadata and both quality statuses `pass`
+permit a conditional numerical comparison. Missing metadata, `partial` or
+`unavailable` usage, different cohorts, stale hashes, quality `fail`/`unknown`,
+or identical report bytes produce `inconclusive` without savings percentages.
+Malformed or internally inconsistent reports are input errors, not zero usage.
+
+The `council-usage-comparison.v1` result separates input without cache, cached
+input, output, reasoning output, total and unique response count. Cached input
+and reasoning remain subsets. Deltas use **after minus before**; reduction
+percentages use **(before minus after) / before**, as four-decimal strings.
+A zero baseline gives a null percentage for that metric. A mixed or increased
+usage profile is reported separately from an optimization supported by operator
+assertions. No price, complete parent/child accounting or provider saving is
+inferred.
+
+Exit `0` means a comparison is conclusive under those supplied assertions, not
+necessarily an improvement. Exit `1` means inconclusive; exit `2` means invalid
+input or failed output. Stdout is capped at 16 KiB, while `--output` optionally
+writes the full report to a new private file. Existing files, symlink names and
+input aliases are not overwritten. Neither this tool nor its tests establish
+the real savings from deploying R1/R2.
+
+## Evidence and adoption boundary
 
 Keep sessions, checkpoints, repositories, and bundles immutable during each
 read. A snapshot producer may atomically replace its file between observer polls;
