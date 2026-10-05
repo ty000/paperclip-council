@@ -34,10 +34,21 @@ recette aujourd'hui.
 | Autorité, candidat exact, avis, correction bornée | Un mauvais acteur/candidat ne peut accepter ; V2 reçoit une nouvelle revue | `n2-ordinary*.spec.ts`, `n3-*.spec.ts`, `ordinary-installed.ts` et `ordinary-delivery-scenario.ts` | Non ; contrats synthétiques |
 | Usage et budget | Réservation puis règlement observé ; usage inconnu reste visible et ne devient pas zéro | `g4-native*.spec.ts`, `admission.spec.ts` et scénarios installés | Non pour les calculs ; lire la consommation réelle du premier ticket |
 | Dépendance A → B, coordination et reprise | B attend le résultat accepté exact ; PM/facilitateur restent dans leur mandat | `n6-dependencies.spec.ts`, `n6-coordination.spec.ts`, `functional/n6-scenario.ts` | Non avant un ticket qui a réellement une dépendance |
-| Lecture Delivery/Coordination | Raison, acteur suivant, attendu/vérifié et publication inconnue compréhensibles | `delivery-presentation.spec.ts`, `coordination-presentation.spec.ts` ; navigateur avec fixtures pour les états peuplés | Oui, une appréciation de clarté quand un dossier existe ; pas une répétition des transitions |
-| Lien vers mission source et mission hors des 50 dernières | La mission demandée est sélectionnée après lecture authentifiée | Recherche hors liste et course au refresh couvertes dans `functional/run.ts` ; compléter le clic `?missionId=` en fixture si nécessaire | Non : candidat prioritaire à un test navigateur synthétique ciblé |
+| Lecture Delivery/Coordination | Raison, acteur suivant, attendu/vérifié et publication inconnue compréhensibles | Projections unitaires + `functional/delivery-coordination-browser.ts` : états peuplés held/unknown, released/ready et started, détails et liens | Seulement apprécier la clarté ; valeurs et transitions couvertes en synthétique |
+| Lien vers mission source et mission hors des 50 dernières | La mission demandée est sélectionnée après lecture authentifiée | `functional/run.ts` + `functional/delivery-coordination-browser.ts` : clic réel du lien source, présente/absente de la liste, sélection et rechargement | Non : scénario navigateur synthétique |
 | Relecture après redémarrage | Identités et états persistés conservés | Rechargement du worker vérifié ici ; scénarios de persistance/restart en sandbox | Non ; redémarrage complet de l'instance non exigé pour cette prise en main |
 | Qualité du travail et publication réelles | Ticket utile, contribution intégrée, critique pertinente, PR avec le bon contenu | Le synthétique vérifie le protocole ; un vrai petit ticket vérifie les modèles et accès réels | Oui sur ce résultat utile, avec lancement/budget/publication cadrés séparément |
+
+Les deux compléments navigateur sont intégrés à `pnpm qualification:bounded`.
+Ils utilisent le build installé et des lectures authentifiées du sandbox, puis
+remplacent uniquement les réponses GET dans leur propre contexte navigateur.
+Les missions, identités de candidat et PR affichées sont explicitement
+synthétiques ; aucune décision N5/N6 n'est persistée par ces scénarios. Ils ne
+modifient pas la recette et ne lancent aucun modèle. Le JSON fonctionnel porte
+`syntheticDeliveryCoordinationUi` et deux résultats obligatoires :
+`syntheticDeliveryCoordinationBrowserStates` et
+`syntheticSourceMissionLinkAndReload`. Trois captures sont conservées sous
+`.paperclip/qualification/ui-synthetic/<commit>/`.
 
 ## Parcours manuel minimal proposé
 

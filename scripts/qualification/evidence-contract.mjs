@@ -71,6 +71,8 @@ export const SAFE_RESULT_KEYS = Object.freeze([
   "installedUiBundleAndAuthenticatedBridge",
   "n1MissionExactLookupBeyondLatestList",
   "n1MissionUiHidesStaleDetailsOnRefreshFailure",
+  "syntheticDeliveryCoordinationBrowserStates",
+  "syntheticSourceMissionLinkAndReload",
   "installedBrowserPageAndAuthenticatedAction",
   "installedBrowserStates",
   "n1MissionOwnerPageAndFailureStates",
