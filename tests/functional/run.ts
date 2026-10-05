@@ -21,6 +21,7 @@ import { runN45Preparation } from "./n45-campaign.js";
 import { n45Profile as validateN45Profile } from "../../scripts/qualification/n45-contract.mjs";
 import { runSyntheticN2 } from "./n2-synthetic.js";
 import { createFunctionalRuntimeCleanup } from "./runtime-cleanup.js";
+import { runDeliveryCoordinationBrowser } from "./delivery-coordination-browser.js";
 // @ts-expect-error The qualification evidence contract is intentionally plain ESM.
 import { writeClaimedArtifact } from "../../scripts/qualification/evidence-contract.mjs";
 
@@ -1666,6 +1667,15 @@ try {
     assert.equal(await ownerPage.getByRole("heading", { name: "Admission and usage" }).count(), 0);
     evidence.results.n1MissionUiHidesStaleDetailsOnRefreshFailure = "PASS";
     await ownerContext.close();
+
+    evidence.syntheticDeliveryCoordinationUi = await runDeliveryCoordinationBrowser({
+      browser, authenticate: (context) => addSessionCookies(context, cookie), baseUrl, companyId,
+      sourceInspection: (await request("human", "GET", `${missionBase}/${missionId}?companyId=${companyId}`)).body,
+      downstreamInspection: (await request("human", "GET", `${missionBase}/${activeFixture.missionId}?companyId=${companyId}`)).body,
+      screenshotPath: resolve(packageRoot, ".paperclip/qualification/ui-synthetic", candidateCommit),
+    });
+    evidence.results.syntheticDeliveryCoordinationBrowserStates = "PASS";
+    evidence.results.syntheticSourceMissionLinkAndReload = "PASS";
 
     const loadingContext = await browser.newContext({ viewport: { width: 760, height: 760 } });
     await addSessionCookies(loadingContext, cookie);
