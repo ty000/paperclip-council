@@ -49,6 +49,11 @@ Existing files are preserved. New commits are attributed only to the newly admit
 runs; their exact native `per_run` usage is settled separately from historical costs.
 Unknown effects, a second resume and automatic retries remain refused. This command
 does not extend the period envelope or authorize a later review/publication.
+Native blocker relations are checked before claiming a wake. If an existing wake
+has an unknown result, `bind-resumed-lead-run` lets the owner reconcile the exact
+already-observed run (`commandId`, `expectedVersion`, `runId`); it never wakes an
+agent or reserves another run. It requires the existing resume reservation and
+exactly the original run plus the new run, with matching native identity.
 
 From 0.7.5, materializing a contributor also reads the parent's native `plan`
 document through the SDK. The child description includes the mission objective,

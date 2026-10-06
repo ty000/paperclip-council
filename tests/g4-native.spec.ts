@@ -62,6 +62,11 @@ function context(config: Record<string, unknown>, orchestration = summary()) {
   } as never;
 }
 
+it("refuses unresolved native blockers before any launch claim, including a known terminal resume", async () => {
+  const ctx = context({}, summary({ relations: { [issueId]: { blockedBy: [{ id: "child", status: "blocked" }], blocks: [] } } }));
+  await expect(assertNativeLaunchAllowed(ctx, { companyId, issueId, priorRunId: runId })).rejects.toMatchObject({ code: "native_issue_blocked" });
+});
+
 function settledEnvelope(input: { commandId?: string; runId?: string; baselineUsageUnits?: number } = {}) {
   const commandId = input.commandId ?? settlementCommandId;
   const settledRunId = input.runId ?? runId;

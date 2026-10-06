@@ -391,6 +391,29 @@ describe("explicit interrupted N1 resume", () => {
     expect((await h.apply(nextOwner)).outcome).toBe("replayed");
   });
 
+  it("binds only the single observed resumed lead run without creating another wake", async () => {
+    const h = interrupted(); await h.apply(); const runId = randomUUID();
+    const state = h.row().aggregate.n1 as N1State;
+    h.advanceMission(a => ({ ...a, n1: { ...a.n1, rootDispatchState: "unknown", rootDispatchRunId: null } }));
+    vi.mocked(readAdmission).mockResolvedValue({ ...h.envelope, reservations: [...h.envelope.reservations,
+      { reservationId: state.activationReservationId, missionId: id.mission, status: "reserved", ownerReplacementCommandId: state.resume!.commandId }] } as never);
+    h.getOrchestration.mockResolvedValue({ runs: [{ id: id.leadRun }, { id: runId }] } as never);
+    const spy = vi.spyOn(nativeAdapter, "councilNativeRequest").mockResolvedValue({ status: 200, body: {
+      id: runId, companyId: id.company, agentId: id.lead, nativeIssueId: null, contextSnapshot: { issueId: id.root },
+      status: "running", startedAt: new Date().toISOString(), finishedAt: null,
+    } });
+    const body = { command: "bind-resumed-lead-run", commandId: randomUUID(), expectedVersion: h.row().version, runId };
+    const bind = () => executeN1BoardCommand(h.ctx, { companyId: id.company, missionId: id.mission, actorUserId: id.owner, body });
+    try {
+      h.getOrchestration.mockResolvedValueOnce({ runs: [{ id: id.leadRun }, { id: runId }, { id: randomUUID() }] } as never);
+      await expect(bind()).rejects.toMatchObject({ code: "n1_resume_run_mismatch" });
+      expect((await bind()).outcome).toBe("applied");
+      expect((await bind()).outcome).toBe("replayed");
+      expect(h.row().aggregate.n1).toMatchObject({ rootDispatchState: "requested", rootDispatchRunId: runId });
+      expect(h.requestWakeup).not.toHaveBeenCalled(); expect(reserveAdmission).not.toHaveBeenCalled();
+    } finally { spy.mockRestore(); }
+  });
+
   it.each(["unknown dispatch", "unsettled cost", "active run", "already resumed", "candidate"])("refuses %s without a wake or reservation", async kind => {
     const h = interrupted();
     if (kind === "unsettled cost") h.envelope.reservations[0].status = "reserved";

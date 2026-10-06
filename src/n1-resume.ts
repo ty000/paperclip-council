@@ -1,11 +1,36 @@
 import { randomUUID } from "node:crypto";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { readAdmission } from "./admission.js";
-import { assertNativeLaunchAllowed } from "./g4-native.js";
+import { assertNativeLaunchAllowed, readOrdinaryRun } from "./g4-native.js";
 import { MissionError, type MissionRecord, type MissionAggregate } from "./missions.js";
 import type { N1State } from "./n1-missions.js";
 
 import { settledResumeReservation as settled, type ResumeTarget, type N1Resume } from "./n1-resume-state.js";
+import { physicalAgent } from "./model-state.js";
+
+/** Readback only: this binds an explicitly operator-started run and never requests another wake. */
+export async function verifyResumedLeadRun(ctx: PluginContext, m: MissionRecord, runId: string) {
+  const state = m.aggregate.n1 as N1State | undefined;
+  if (!state?.resume || state.rootDispatchState !== "unknown" || state.rootDispatchRunId
+      || state.candidate || m.aggregate.phase !== "executing" || m.aggregate.control.status !== "active") {
+    throw new MissionError(409, "n1_resume_binding_unavailable", "Only an unresolved resumed lead launch can bind an observed run");
+  }
+  const envelope = await readAdmission(ctx, { companyId: m.companyId, periodKey: state.periodKey });
+  const reservation = envelope?.reservations.find(r => r.reservationId === state.activationReservationId);
+  if (reservation?.status !== "reserved" || reservation.missionId !== m.missionId
+      || reservation.ownerReplacementCommandId !== state.resume.commandId) {
+    throw new MissionError(409, "n1_resume_binding_unreserved", "The original resume reservation must remain held");
+  }
+  const run = await readOrdinaryRun(ctx, { companyId: m.companyId, issueId: m.rootIssueId, runId,
+    agentId: physicalAgent(m, m.aggregate.responsibilities.integrationLeadAgentId, { issueId: m.rootIssueId }) });
+  const summary = await ctx.issues.summaries.getOrchestration({ companyId: m.companyId, issueId: m.rootIssueId, includeSubtree: false });
+  const expected = new Set([state.resume.lead.priorRunId, runId]);
+  if (expected.size !== 2 || summary.runs.length !== 2 || summary.runs.some(r => !expected.has(r.id))
+      || !run.startedAt || Date.parse(run.startedAt) < Date.parse(state.resume.authorizedAt)) {
+    throw new MissionError(409, "n1_resume_run_mismatch", "Exactly one new run after the owner grant must be observed alongside the original run");
+  }
+  return state;
+}
 
 async function requireBlockedIssue(ctx: PluginContext, m: MissionRecord, issueId: string) {
   const issue = await ctx.issues.get(issueId, m.companyId);

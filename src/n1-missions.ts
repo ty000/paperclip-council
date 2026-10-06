@@ -1,4 +1,4 @@
-import { prepareN1Resume } from "./n1-resume.js";
+import { prepareN1Resume, verifyResumedLeadRun } from "./n1-resume.js";
 import type { N1Resume } from "./n1-resume-state.js";
 import { physicalAgent, isLogicalActor } from "./model-state.js";
 import { contributionModelFamily, prepareVariantLaunch, bindVariantIssue, claimVariantWake, recordVariantWake, observeVariantRun } from "./model-runtime.js";
@@ -536,6 +536,21 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
   let mission = await getMission(ctx, input.companyId, input.missionId);
   if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
   await owner(ctx, mission, input.actorUserId, input.body.command === "prepare-n1-resume");
+  if (input.body.command === "bind-resumed-lead-run") {
+    const commandId = uuid(input.body.commandId, "commandId");
+    const replay = receipt(mission, commandId, input.actorUserId!, canonicalPayloadHash(input.body));
+    if (replay) return { outcome: "replayed" as const, mission, receipt: replay };
+    requireFreshCommand(mission, input.body);
+    const runId = uuid(input.body.runId, "runId");
+    const state = await verifyResumedLeadRun(ctx, mission, runId);
+    return recordVariantWake(ctx, mission, state.activationReservationId, runId, async (before, aggregate) =>
+      commandCas(ctx, before, input.body, "user", input.actorUserId!, { ...aggregate,
+        n1: { ...state, rootDispatchState: "requested", rootDispatchRunId: runId },
+        effectIntents: aggregate.effectIntents.map(e => e.kind === "root_wakeup" && e.reservationId === state.activationReservationId
+          ? { ...e, state: "requested", runId, observedByOwner: input.actorUserId } : e),
+        journal: [...aggregate.journal, { action: "resumed_lead_run_observed", runId,
+          reservationId: state.activationReservationId, actorUserId: input.actorUserId, at: new Date().toISOString() }] }));
+  }
   if (input.body.command === "prepare-n1-resume") {
     const commandId = uuid(input.body.commandId, "commandId");
     const replay = receipt(mission, commandId, input.actorUserId!, canonicalPayloadHash(input.body));

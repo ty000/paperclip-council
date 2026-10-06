@@ -276,6 +276,9 @@ export async function assertNativeLaunchAllowed(
   input: { companyId: string; issueId: string; priorRunId?: string },
 ): Promise<number> {
   const summary = await readNativeOrchestration(ctx, input);
+  if (summary.relations?.[input.issueId]?.blockedBy?.some(issue => issue.status !== "done")) {
+    throw new AdmissionError(409, "native_issue_blocked", "Resolve native issue blockers before claiming a wakeup");
+  }
   if (summary.invocationBlocks.length > 0) {
     throw new AdmissionError(422, "native_invocation_blocked", "Paperclip reports an invocation budget block", {
       invocationBlocks: summary.invocationBlocks,
