@@ -3,7 +3,7 @@ import type { MissionAggregate, MissionRecord } from "./missions.js";
 import { MODEL_CATALOGUE, roleTemplate, validateModelCatalogue, type TaskFamily, type ProfileId, type RoleKey } from "./model-catalogue.js";
 import { inspectVariant } from "./model-variants.js";
 import { ModelSelectionError, modelLaunch, type ModelLaunch, type ModelSelectionState, type ModelMeasurement } from "./model-state.js";
-import { readOrdinaryRun } from "./g4-native.js";
+import { readOrdinaryRun, suppressedBeforeProvider } from "./g4-native.js";
 import { collectInterventionHistory, publishInterventionHistory } from "./model-history.js";
 
 type LaunchInput = { taskKey: string; interventionKey: string; launchKey: string; logicalAgentId: string; family: TaskFamily; issueId?: string | null; expectedRoles: readonly RoleKey[] };
@@ -38,10 +38,20 @@ export async function observeVariantRun(ctx: PluginContext, m: MissionRecord, la
   return terminal.has(run.status) && run.finishedAt ? changeLaunch(ctx, m, { ...launch, measurement: measurement(run) }) : m;
 }
 
-async function previousAttempt(ctx: PluginContext, m: MissionRecord, prior: ModelLaunch | undefined) {
+function authorizedPreExecutionReplacement(m: MissionRecord, prior: ModelLaunch,
+  nextLaunchKey: string, run: Awaited<ReturnType<typeof readOrdinaryRun>>) {
+  const recovery = m.aggregate.n2?.ordinary?.preExecutionRecovery;
+  return Boolean(recovery && recovery.reservationId === nextLaunchKey && recovery.priorRunId === run.id
+    && recovery.priorReservationId === prior.launchKey && suppressedBeforeProvider(run));
+}
+
+async function previousAttempt(ctx: PluginContext, m: MissionRecord, prior: ModelLaunch | undefined, nextLaunchKey: string) {
   if (!prior) return undefined;
   if (!prior.runId || !prior.issueId || prior.state !== "bound") throw new ModelSelectionError("model_previous_unknown", "Previous launch outcome is unknown; retain its identity");
   const run = await readOrdinaryRun(ctx, { companyId: m.companyId, issueId: prior.issueId, agentId: prior.agentId, runId: prior.runId });
+  if (authorizedPreExecutionReplacement(m, prior, nextLaunchKey, run)) {
+    return { ...measurement(run), inputTokens: 0, outputTokens: 0 };
+  }
   if (run.status !== "succeeded" || !run.finishedAt || run.usageJson?.usageSource !== "per_run") {
     throw new ModelSelectionError("model_previous_unsettled", "A technical failure, active run or unknown accounting cannot authorize a profile change");
   }
@@ -102,7 +112,7 @@ export async function prepareVariantLaunch(ctx: PluginContext, initial: MissionR
   if (ascent && (task.ascentLaunchKey || ["terra-low", "sol-medium", "sol-high", "astra-high"].indexOf(profileId) <= ["terra-low", "sol-medium", "sol-high", "astra-high"].indexOf(previous!.profileId))) {
     throw new ModelSelectionError("model_ascent_limit", "Only one upward profile change is permitted for this whole task");
   }
-  const priorMeasurement = await previousAttempt(ctx, m, previous);
+  const priorMeasurement = await previousAttempt(ctx, m, previous, input.launchKey);
   const variant = await inspectVariant(ctx, m.companyId, input.logicalAgentId, profileId, task.variantRevision);
   if (!variant.ready) {
     // The current public host contract exposes configuration/readiness, not a

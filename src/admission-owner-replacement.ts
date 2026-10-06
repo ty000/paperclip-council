@@ -1,3 +1,4 @@
+import { n1ResumeAdmissionFailure } from "./n1-resume-state.js";
 import { isDeepStrictEqual } from "node:util";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import type { AdmissionSnapshot, AdmissionReserveInput } from "./admission.js";
@@ -62,6 +63,9 @@ export async function ownerReplacementAdmissionFailure(ctx: PluginContext, envel
   const [row] = await ctx.db.query<{ owner_user_id: string; aggregate: MissionAggregate }>(
     `SELECT owner_user_id, aggregate FROM ${ctx.db.namespace}.missions WHERE company_id = $1 AND mission_id = $2`, [envelope.companyId, input.missionId]);
   const company = await ctx.companies.get(envelope.companyId);
+  if (row?.aggregate.n1?.resume && !row.aggregate.n2) {
+    return n1ResumeAdmissionFailure(row.aggregate, envelope, input, row.owner_user_id, company?.defaultResponsibleUserId);
+  }
   const grant = row?.aggregate.n2?.ordinary?.missingOpinionReplacement;
   if (!grant || !matchesAuthority(grant, input, row.owner_user_id, company?.defaultResponsibleUserId)) return "owner_replacement_grant_required";
   if (!matchesSubject(row.aggregate, grant) || !matchesTasks(row.aggregate, grant)) return "owner_replacement_binding";

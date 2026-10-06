@@ -120,6 +120,19 @@ it.each(["running", "failed", "cancelled"])("does not ascend after a %s run", as
   vi.mocked(readOrdinaryRun).mockResolvedValue({ status, finishedAt: status === "running" ? null : "now", usageJson: { usageSource: "per_run" } } as never);
   await expect(prepareVariantLaunch(f.ctx, m, { ...f.input, launchKey: "attempt-2" })).rejects.toMatchObject({ code: "model_previous_unsettled" });
 });
+it("allows only the exact owner replacement after the host's pre-provider suppression, preserving its profile/history", async () => {
+  const f = fixture(); const m = await start(f);
+  const run = { id: "run-1", status: "cancelled", startedAt: "2026-10-05T10:00:00Z", finishedAt: "2026-10-05T10:00:01Z",
+    errorCode: "legacy_disposition_repair_suppressed", executionStage: "dispatching", contextSnapshot: { wakeReason: "issue_disposition_repair" },
+    processPid: null, processStartedAt: null, sessionIdAfter: null, usageJson: null, resultJson: null };
+  vi.mocked(readOrdinaryRun).mockResolvedValue(run as never);
+  await expect(prepareVariantLaunch(f.ctx, m, { ...f.input, launchKey: "replacement" })).rejects.toMatchObject({ code: "model_previous_unsettled" });
+  m.aggregate.n2 = { ordinary: { preExecutionRecovery: { priorRunId: "run-1", priorReservationId: "launch-1", reservationId: "replacement" } } } as never;
+  await expect(prepareVariantLaunch(f.ctx, m, { ...f.input, launchKey: "other" })).rejects.toMatchObject({ code: "model_previous_unsettled" });
+  const result = await prepareVariantLaunch(f.ctx, m, { ...f.input, launchKey: "replacement" });
+  expect(result.binding).toMatchObject({ profileId: "sol-medium", previousLaunchKey: "launch-1", ascent: false });
+  expect(modelLaunch(result.mission, "launch-1")).toMatchObject({ runId: "run-1", measurement: { status: "cancelled", inputTokens: 0, outputTokens: 0 } });
+});
 it("preserves detailed history and gaps before the ascent becomes launchable", async () => {
   const f = fixture(); let m = await start(f);
   m.aggregate.modelSelection!.choices.push({ taskKey: "root", interventionKey: "lead", family: "orchestration", profileId: "sol-high", rationale: "hard correction", authority: "user", actorId: "owner", at: "now" });

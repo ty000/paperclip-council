@@ -33,6 +33,42 @@ checks and the next actor. Child issues are first created in native Paperclip
 backlog; their dispatch requires a separate durable reservation. An uncertain
 create or wakeup is retained as unknown and is never retried automatically.
 
+From 0.7.6, an owner can prepare **one explicit N1 resume** when the lead and
+unfinished contributors stopped before committing. `prepare-n1-resume` requires
+`commandId`, `expectedVersion`, `authorizeOneResume: true`, `previousOwnerUserId`
+and a reason. Every old reservation must be settled, and targeted native issues
+must be blocked with exactly their known successful terminal run and no run lock.
+It records previous identities and new reservation IDs without waking an agent,
+resetting costs, changing the mandate or changing the original elapsed deadline.
+The current configured company owner may use this command to record the handover
+from the previous mission owner; historical attribution remains unchanged.
+
+The owner then uses `start-lead`. The lead inspects the existing plan and dispatches
+unfinished contributors with the reservation IDs in `n1.resume.contributions`.
+Existing files are preserved. New commits are attributed only to the newly admitted
+runs; their exact native `per_run` usage is settled separately from historical costs.
+Owner candidate recovery after a resume accepts only the original and admitted
+resume runs, all successful and with both historical and current reservations settled.
+Unknown effects, a second resume and automatic retries remain refused. This command
+does not extend the period envelope or authorize a later review/publication.
+Native blocker relations are checked before claiming a wake. If an existing wake
+has an unknown result, `bind-resumed-lead-run` lets the owner reconcile the exact
+already-observed run (`commandId`, `expectedVersion`, `runId`); it never wakes an
+agent or reserves another run. It requires the existing resume reservation and
+exactly the original run plus the new run, with matching native identity.
+
+An ordinary correction cancelled by Paperclip's exact pre-provider
+`legacy_disposition_repair_suppressed` guard can be recovered once through
+owner command `replace-undispatched-correction`. Supply `commandId`,
+`expectedVersion`, `authorizePreExecutionReplacement: true`, the exact `taskId`,
+`runId`, `reservationId` and active `candidateCommit`. Native readback must show
+no provider process, session, result or usage. The command records a zero-cost
+suppression receipt and preserves the old task/run before preparing a fresh
+correction issue; it never launches the replacement. Normal owner reconciliation
+then admits it. Failed, active or ambiguously executed runs remain blocked.
+Keep the root in a native waiting disposition during specialist review and avoid
+disabling an agent while its provider-dispatch checks are still running.
+
 From 0.7.5, materializing a contributor also reads the parent's native `plan`
 document through the SDK. The child description includes the mission objective,
 acceptance criteria, commitments and operating limits, plus the full plan body,
@@ -434,3 +470,14 @@ and agent command contract. No durable agent is migrated and no provider is call
 N2 approval still rechecks the immutable verified submission attachment; the
 non-N2 legacy approval path still requires its delivery manifest. Native final
 acceptance is not yet an N6 guarantee that all dependent work waits for final cost.
+
+Une correction prépublication conserve le plan déjà lié ; seule une correction
+post-publication demande sa révision par le lead. Si un run de correction termine
+sans V2 après un blocage identifié, `resume-settled-correction` prépare une unique
+reprise explicitement autorisée par le propriétaire. Le run doit être terminé avec
+succès et son usage exact déjà soldé. La commande conserve l’ancien task/run, les
+coûts, le candidat courant, le verdict et `correctionsUsed=1` ; elle crée une nouvelle
+tâche à admettre, sans lancement ni acceptation. Toute V2 préparée, publication,
+consommation inconnue ou seconde reprise de ce type est refusée. Une révision de
+plan déjà écrite peut être liée par le propriétaire via `configure-delivery` avant
+la première publication, en conservant la même autorité de livraison.

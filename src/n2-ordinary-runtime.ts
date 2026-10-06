@@ -1,4 +1,6 @@
 import { physicalAgent } from "./model-state.js";
+import { replaceUndispatchedCorrection } from "./n2-undispatched-correction.js";
+import { resumeSettledCorrection } from "./n2-correction-resume.js";
 import type { RoleKey } from "./model-catalogue.js";
 import { inspectVariant } from "./model-variants.js";
 import { prepareVariantLaunch, bindVariantIssue, claimVariantWake, recordVariantWake, observeVariantRun } from "./model-runtime.js";
@@ -52,6 +54,8 @@ async function assertRootIdle(ctx: PluginContext, mission: MissionRecord) {
 }
 export async function executeOrdinaryN2Board(ctx: PluginContext, mission: MissionRecord, input: { actorUserId: string | null; body: Record<string, unknown> }) {
   const body = input.body;
+  if (body.command === "resume-settled-correction") return resumeSettledCorrection(ctx, mission, input.actorUserId!, body);
+  if (body.command === "replace-undispatched-correction") return replaceUndispatchedCorrection(ctx, mission, input.actorUserId!, body);
   if (["replace-missing-opinion", "replace-missing-verdict"].includes(String(body.command))) {
     return replaceMissingOpinion(ctx, mission, input.actorUserId!, body);
   }

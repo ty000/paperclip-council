@@ -4,12 +4,13 @@ import type { PluginContext } from "@paperclipai/plugin-sdk";
 
 vi.mock("../src/decision-adapter.js", async original => ({ ...await original(), councilNativeRequest: vi.fn() }));
 vi.mock("../src/integration.js", async original => ({ ...await original(), verifyIntegratedCandidate: vi.fn() }));
-import { configureAdmission } from "../src/admission.js";
+import { configureAdmission, reserveAdmission } from "../src/admission.js";
 import { councilNativeRequest } from "../src/decision-adapter.js";
-import { nativeAdmissionConfiguration } from "../src/g4-native.js";
+import { nativeAdmissionConfiguration, settleOrdinaryRunUsage } from "../src/g4-native.js";
 import { verifyIntegratedCandidate } from "../src/integration.js";
 import type { MissionAggregate, MissionRecord } from "../src/missions.js";
 import { executeN2BoardCommand, startN2Review } from "../src/n2-missions.js";
+import { ordinaryTaskInstructions } from "../src/n2-ordinary-instructions.js";
 import { ordinaryTask } from "../src/n2-ordinary-state.js";
 import type { N3OpinionSlot } from "../src/n3-opinions.js";
 
@@ -137,6 +138,87 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
+async function undispatchedFixture() {
+  const f = await fixture();
+  const state = f.row().aggregate.n2!;
+  f.row().aggregate.phase = "correction_requested";
+  state.status = "correction_requested";
+  state.correction!.runId = null;
+  delete state.correction!.usageSettledAt;
+  delete state.correction!.wakeState;
+  delete state.ordinary!.tasks[0]!.settledAt;
+  await reserveAdmission(f.ctx, { companyId: f.ids.company, periodKey: profile.periodKey,
+    missionId: f.ids.mission, effectId: f.ids.correctionTask, reservationId: f.ids.correctionReservation,
+    requestedUnits: profile.runReservationUnits, attempt: { kind: "correction", ordinal: 1 }, expectedVersion: 1 });
+  const run = { id: f.ids.correctionRun, companyId: f.ids.company, agentId: f.ids.lead, nativeIssueId: null,
+    contextSnapshot: { issueId: f.ids.root, wakeReason: "issue_disposition_repair" }, status: "cancelled",
+    startedAt: "2026-10-05T19:00:00.000Z", finishedAt: "2026-10-05T19:00:01.000Z",
+    errorCode: "legacy_disposition_repair_suppressed", executionStage: "dispatching",
+    processPid: null, processStartedAt: null, sessionIdAfter: null, usageJson: null, resultJson: null };
+  vi.mocked(councilNativeRequest).mockResolvedValue({ status: 200, body: run });
+  const body = { command: "replace-undispatched-correction", commandId: randomUUID(), expectedVersion: f.row().version,
+    authorizePreExecutionReplacement: true, taskId: f.ids.correctionTask, runId: f.ids.correctionRun,
+    reservationId: f.ids.correctionReservation, candidateCommit: f.v1.candidate.candidateCommit };
+  f.effects.length = 0;
+  return { ...f, run, replacementBody: body };
+}
+
+it("retains a suppressed correction and its zero-cost receipt, with one owner-authorized new task and no wake", async () => {
+  const f = await undispatchedFixture();
+  const history = structuredClone(f.row().aggregate.n3);
+  const mandate = structuredClone(f.row().aggregate.mandate);
+  await f.recover(f.replacementBody as never);
+  const tasks = f.row().aggregate.n2!.ordinary!.tasks;
+  expect(tasks).toHaveLength(2);
+  expect(tasks[0]).toMatchObject({ runId: f.ids.correctionRun, reservationId: f.ids.correctionReservation,
+    settledAt: expect.any(String), closedAt: expect.any(String), replacedBy: tasks[1]!.taskId });
+  expect(tasks[1]).toMatchObject({ kind: "correction", runId: null, issueId: null, creation: "pending", wake: "pending",
+    preExecutionReplacementOf: f.ids.correctionTask });
+  expect(f.ledger().document).toMatchObject({ allowance: { knownUsageUnits: profile.initialKnownUsageUnits },
+    reservations: [{ status: "settled", usage: { status: "known", units: 0 }, remainingExposure: { units: 0 } }] });
+  expect(f.row().aggregate.n2!.correctionsUsed).toBe(1);
+  expect(f.row().aggregate.n3).toEqual(history);
+  expect(f.row().aggregate.mandate).toEqual(mandate);
+  expect(f.effects).toEqual(["admission-cas", "mission-cas"]);
+  expect((await f.recover(f.replacementBody as never)).outcome).toBe("replayed");
+  await expect(f.recover({ ...f.replacementBody, commandId: randomUUID(), expectedVersion: f.row().version } as never))
+    .rejects.toMatchObject({ code: "undispatched_correction_binding" });
+
+  const issueId = randomUUID();
+  f.ctx.issues.create = vi.fn().mockResolvedValue({ id: issueId });
+  f.ctx.issues.get = vi.fn().mockResolvedValue({ id: issueId, description: "correction" });
+  f.ctx.issues.update = vi.fn().mockResolvedValue({ id: issueId });
+  await executeN2BoardCommand(f.ctx, { companyId: f.ids.company, missionId: f.ids.mission, actorUserId: f.ids.owner,
+    body: { command: "reconcile-ordinary-n2" } });
+  expect(f.ctx.issues.create).toHaveBeenCalledWith(expect.objectContaining({ inheritExecutionWorkspaceFromIssueId: f.ids.root }));
+  expect(f.ctx.issues.update).not.toHaveBeenCalledWith(f.ids.root, expect.anything(), expect.anything());
+  expect(f.row().aggregate.n2!.ordinary!.tasks[1]).toMatchObject({ issueId, runId: f.ids.reviewRun, wake: "claimed" });
+  expect(f.ledger().document.reservations).toHaveLength(2);
+});
+
+it.each([
+  { status: "running", finishedAt: null }, { errorCode: "timeout" }, { executionStage: "executing" },
+  { processPid: 12 }, { processStartedAt: "2026-10-05T19:00:00.100Z" }, { sessionIdAfter: "session" },
+  { usageJson: { usageSource: "per_run", inputTokens: 5, outputTokens: 0 } }, { resultJson: { summary: "work" } },
+])("does not infer zero usage from an unqualified run: %j", async change => {
+  const f = await undispatchedFixture();
+  vi.mocked(councilNativeRequest).mockResolvedValue({ status: 200, body: { ...f.run, ...change } });
+  await expect(f.recover(f.replacementBody as never)).rejects.toMatchObject({ code: "correction_execution_not_excluded" });
+  expect(f.effects).toEqual([]);
+  expect(f.ledger().document.reservations[0].remainingExposure.units).toBe(4_000_000);
+});
+
+it("requires the owner and explicit authority on the exact candidate before any recovery write", async () => {
+  const f = await undispatchedFixture();
+  await expect(executeN2BoardCommand(f.ctx, { companyId: f.ids.company, missionId: f.ids.mission,
+    actorUserId: randomUUID(), body: f.replacementBody })).rejects.toMatchObject({ code: "owner_required" });
+  for (const change of [{ authorizePreExecutionReplacement: false }, { candidateCommit: "0".repeat(40) },
+    { runId: randomUUID() }, { reservationId: randomUUID() }, { expectedVersion: 0 }]) {
+    await expect(f.recover({ ...f.replacementBody, ...change } as never)).rejects.toMatchObject({ code: "undispatched_correction_binding" });
+  }
+  expect(f.effects).toEqual([]);
+});
+
 it("transfers one exact terminal correction, preserves history/accounting, then lets ordinary reconciliation start V2 review", async () => {
   const f = await fixture();
   const before = structuredClone({ tasks: f.row().aggregate.n2!.ordinary!.tasks, n3: f.row().aggregate.n3,
@@ -195,4 +277,113 @@ it.each(["active", "identity", "prepared", "payload"])("refuses %s recovery with
   await expect(f.recover()).rejects.toBeDefined();
   expect(f.effects).toEqual([]);
   expect(f.ledger().document.reservations).toEqual([]);
+});
+
+async function settledResumeFixture() {
+  const f = await fixture();
+  await reserveAdmission(f.ctx, { companyId: f.ids.company, periodKey: profile.periodKey,
+    missionId: f.ids.mission, effectId: f.ids.correctionTask, reservationId: f.ids.correctionReservation,
+    requestedUnits: profile.runReservationUnits, attempt: { kind: "correction", ordinal: 1 }, expectedVersion: 1 });
+  await settleOrdinaryRunUsage(f.ctx, { companyId: f.ids.company, periodKey: profile.periodKey,
+    issueId: f.ids.root, agentId: f.ids.lead, runId: f.ids.correctionRun, commandId: f.ids.correctionSettlement,
+    reservationId: f.ids.correctionReservation, expectedVersion: f.ledger().version });
+  f.effects.length = 0;
+  const body = { command: "resume-settled-correction", commandId: randomUUID(), expectedVersion: f.row().version,
+    authorizeCorrectionResume: true, taskId: f.ids.correctionTask, runId: f.ids.correctionRun,
+    reservationId: f.ids.correctionReservation, candidateCommit: f.v1.candidate.candidateCommit,
+    reason: "Correction stopped on an incompatible plan prerequisite; resume the same correction" };
+  return { ...f, resumeBody: body };
+}
+
+it("resumes one settled correction with its costs and verdict preserved, without launching or consuming a second correction", async () => {
+  const f = await settledResumeFixture();
+  const before = structuredClone(f.row().aggregate); const ledger = structuredClone(f.ledger());
+  await f.recover(f.resumeBody as never);
+  const next = f.row().aggregate;
+  expect(next.n2!.status).toBe("correction_requested");
+  expect(next.n2!.correctionsUsed).toBe(1);
+  expect(next.n2!.submissions).toEqual(before.n2!.submissions);
+  expect(next.n3).toEqual(before.n3);
+  expect(next.mandate).toEqual(before.mandate);
+  expect(next.n2!.ordinary!.tasks[0]).toMatchObject({ runId: f.ids.correctionRun, closedAt: expect.any(String), settledAt: expect.any(String) });
+  expect(next.n2!.ordinary!.tasks[1]).toMatchObject({ kind: "correction", issueId: null, runId: null, wake: "pending" });
+  expect(next.n2!.correction).toMatchObject({ runId: null, reservationId: next.n2!.ordinary!.tasks[1]!.reservationId });
+  expect(f.ledger()).toEqual(ledger);
+  expect(f.effects).toEqual(["mission-cas"]);
+  expect((await f.recover(f.resumeBody as never)).outcome).toBe("replayed");
+  await expect(f.recover({ ...f.resumeBody, commandId: randomUUID(), expectedVersion: f.row().version } as never)).rejects.toThrow();
+});
+
+it.each(["owner", "consent", "run", "unsettled", "unknown", "active", "prepared", "candidate", "used"])("rejects a %s correction resume without effects", async failure => {
+  const f = await settledResumeFixture();
+  if (failure === "owner") {
+    await expect(executeN2BoardCommand(f.ctx, { companyId: f.ids.company, missionId: f.ids.mission,
+      actorUserId: randomUUID(), body: f.resumeBody })).rejects.toThrow();
+  } else {
+    if (failure === "consent") f.resumeBody.authorizeCorrectionResume = false;
+    if (failure === "run") f.resumeBody.runId = randomUUID();
+    if (failure === "candidate") f.resumeBody.candidateCommit = "0".repeat(40);
+    if (failure === "unsettled") delete f.row().aggregate.n2!.ordinary!.tasks[0]!.settledAt;
+    if (failure === "unknown") f.ledger().document.reservations[0].usage = { status: "unknown", source: "pending" };
+    if (failure === "active") vi.mocked(councilNativeRequest).mockResolvedValue({ status: 200, body: { id: f.ids.correctionRun,
+      companyId: f.ids.company, agentId: f.ids.lead, nativeIssueId: null, contextSnapshot: { issueId: f.ids.root },
+      status: "running", startedAt: "now", finishedAt: null } });
+    if (failure === "prepared") f.row().aggregate.n2!.correction!.preparedSubmission = f.row().aggregate.n2!.submissions[0];
+    if (failure === "used") f.row().aggregate.n2!.ordinary!.correctionResume = {} as never;
+    await expect(f.recover(f.resumeBody as never)).rejects.toThrow();
+  }
+  expect(f.effects).toEqual([]);
+});
+
+it("reserves plan rewrite/rebind instructions for post-publication correction only", async () => {
+  const f = await fixture(); const m = { ...f.row(), aggregate: f.row().aggregate } as unknown as MissionRecord;
+  const task = m.aggregate.n2!.ordinary!.tasks[0]!;
+  expect(ordinaryTaskInstructions(m, task)).toContain("Do not rewrite the plan or call n5-rebind-plan");
+  m.aggregate.n5 = { continuation: {} } as never;
+  expect(ordinaryTaskInstructions(m, task)).toContain("then call n5-rebind-plan");
+  expect(ordinaryTaskInstructions(m, task)).not.toContain("Do not rewrite the plan");
+});
+
+it("continues a settled dedicated task after a suppressed predecessor through dispatch, inspect and root-bound V2", async () => {
+  const f = await settledResumeFixture();
+  const { getMission } = await import("../src/missions.js");
+  const { freshN3Round } = await import("../src/n3-runtime.js");
+  const { handleN2AgentApi } = await import("../src/n2-missions.js");
+  const state = f.row().aggregate.n2!;
+  const previous = { ...state.ordinary!.tasks[0]!, taskId: randomUUID(), runId: randomUUID(), reservationId: randomUUID(),
+    closedAt: "2026-10-05T19:00:00.000Z", replacedBy: f.ids.correctionTask };
+  state.ordinary!.tasks.unshift(previous);
+  state.ordinary!.preExecutionRecovery = { commandId: randomUUID(), authorizedBy: f.ids.owner, priorTaskId: previous.taskId,
+    priorRunId: previous.runId!, priorReservationId: previous.reservationId, replacementTaskId: f.ids.correctionTask,
+    reservationId: f.ids.correctionReservation };
+  const m = (await getMission(f.ctx, f.ids.company, f.ids.mission))!;
+  f.row().aggregate.n3!.rounds = [freshN3Round(m, state.submissions[0]!, m.aggregate.n3!.slots)];
+  const oldTask = structuredClone(state.ordinary!.tasks[1]);
+  await f.recover(f.resumeBody as never);
+  const dedicated = randomUUID();
+  f.ctx.issues.create = vi.fn().mockResolvedValue({ id: dedicated });
+  f.ctx.issues.get = vi.fn().mockResolvedValue({ id: dedicated, description: "admitted correction" });
+  await executeN2BoardCommand(f.ctx, { companyId: f.ids.company, missionId: f.ids.mission, actorUserId: f.ids.owner,
+    body: { command: "reconcile-ordinary-n2" } });
+  const active = f.row().aggregate.n2!.ordinary!.tasks[2]!;
+  expect(active).toMatchObject({ issueId: dedicated, runId: f.ids.reviewRun });
+  vi.mocked(councilNativeRequest).mockResolvedValue({ status: 200, body: { id: f.ids.reviewRun,
+    companyId: f.ids.company, agentId: f.ids.lead, nativeIssueId: null, contextSnapshot: { issueId: dedicated },
+    status: "running", startedAt: "2026-10-05T21:00:00.000Z", finishedAt: null, usageJson: null } });
+  const input = { companyId: f.ids.company, params: { issueId: dedicated },
+    actor: { actorType: "agent", agentId: f.ids.lead, runId: f.ids.reviewRun },
+    body: { missionId: f.ids.mission, command: "ordinary-inspect" } };
+  expect((await handleN2AgentApi(input as never, f.ctx)).status).toBe(200);
+  expect(f.row().aggregate.n2!.correction).toMatchObject({ runId: f.ids.reviewRun, reservationId: active.reservationId });
+  const prepared = await handleN2AgentApi({ ...input, body: { ...f.body, missionId: f.ids.mission,
+    command: "prepare-resubmission", commandId: randomUUID(), expectedVersion: f.row().version } } as never, f.ctx);
+  expect(prepared.status).toBe(200);
+  expect(f.row().aggregate.n2!.status).toBe("resubmission_prepared");
+  expect(f.row().aggregate.n2!.correctionsUsed).toBe(1);
+  expect(f.row().aggregate.n2!.ordinary!.tasks.slice(0, 2)).toEqual([previous, { ...oldTask,
+    closedAt: expect.any(String), replacedBy: active.taskId }]);
+  expect(verifyIntegratedCandidate).toHaveBeenLastCalledWith(f.ctx, expect.objectContaining({ issueId: f.ids.root,
+    candidateCommit: f.v2.candidate.candidateCommit, correctedPaths: f.body.correctedPaths }));
+  expect(f.row().aggregate.journal.at(-1)).toMatchObject({ actorAgentId: f.ids.lead, runId: f.ids.reviewRun });
+  expect(f.effects.filter(effect => effect === "wake")).toHaveLength(1);
 });

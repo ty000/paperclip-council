@@ -21,7 +21,18 @@ export type NativeRunReadback = {
   logBytes?: number | null;
   resultJson?: { summary?: unknown; truncated?: boolean; truncationReason?: string; nativeResult?: { summary?: unknown } };
   contextSnapshot: Record<string, unknown>; usageJson: Record<string, unknown> | null;
+  errorCode?: string | null; executionStage?: string | null; processPid?: number | null;
+  processStartedAt?: string | null; sessionIdAfter?: string | null;
 };
+
+/** Host cancellation at its final pre-provider guard, not an absent usage estimate. */
+export function suppressedBeforeProvider(run: NativeRunReadback): boolean {
+  return run.status === "cancelled" && Boolean(run.startedAt && run.finishedAt)
+    && run.errorCode === "legacy_disposition_repair_suppressed" && run.executionStage === "dispatching"
+    && run.contextSnapshot.wakeReason === "issue_disposition_repair"
+    && run.processPid === null && run.processStartedAt === null && run.sessionIdAfter === null
+    && run.usageJson === null && run.resultJson === null;
+}
 
 export async function readNativeRun(ctx: PluginContext, input: {
   companyId: string; issueId: string; runId: string; agentId: string;
@@ -273,9 +284,12 @@ function orchestrationUsageUnits(summary: PluginIssueOrchestrationSummary): numb
 
 export async function assertNativeLaunchAllowed(
   ctx: PluginContext,
-  input: { companyId: string; issueId: string },
+  input: { companyId: string; issueId: string; priorRunId?: string },
 ): Promise<number> {
   const summary = await readNativeOrchestration(ctx, input);
+  if (summary.relations?.[input.issueId]?.blockedBy?.some(issue => issue.status !== "done")) {
+    throw new AdmissionError(409, "native_issue_blocked", "Resolve native issue blockers before claiming a wakeup");
+  }
   if (summary.invocationBlocks.length > 0) {
     throw new AdmissionError(422, "native_invocation_blocked", "Paperclip reports an invocation budget block", {
       invocationBlocks: summary.invocationBlocks,
@@ -286,7 +300,10 @@ export async function assertNativeLaunchAllowed(
       openBudgetIncidents: summary.openBudgetIncidents,
     });
   }
-  if (summary.runs.length > 0) {
+  const resumed = input.priorRunId && summary.runs.length === 1
+    && summary.runs[0].id === input.priorRunId && summary.runs[0].issueId === input.issueId
+    && summary.runs[0].status === "succeeded" && summary.runs[0].finishedAt;
+  if (input.priorRunId ? !resumed : summary.runs.length > 0) {
     throw new AdmissionError(409, "native_run_already_exists", "The target issue already has a native run; a new launch is not admissible");
   }
   return orchestrationUsageUnits(summary);
