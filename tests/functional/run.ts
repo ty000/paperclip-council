@@ -1437,7 +1437,7 @@ try {
   const nativePlan = await request("human", "PUT", `/api/issues/${activeFixture.rootIssueId}/documents/plan`, {
     format: "markdown", title: "Contribution context fixture", body: nativePlanBody,
   });
-  assert.equal(nativePlan.status, 200);
+  assert.equal(nativePlan.status, 201);
   assert(nativePlan.body.latestRevisionId);
   const materializedChildren: Array<{ contributionId: string; childIssueId: string; actor: string }> = [];
   for (const [index, contributionId] of contributionIds.entries()) {
