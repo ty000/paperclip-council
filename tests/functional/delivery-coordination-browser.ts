@@ -133,6 +133,10 @@ export async function runDeliveryCoordinationBrowser(options: {
       const url = new URL(request.url());
       assert.equal(request.method(), "GET", "these browser scenarios must not issue mission commands");
       assert.equal(url.searchParams.get("companyId"), companyId);
+      if (url.pathname.endsWith("/model-profiles")) {
+        await route.continue();
+        return;
+      }
       // Fetch first: exercise the real authenticated read route, then replace
       // its display payload only within this browser context.
       const response = await route.fetch();
@@ -140,10 +144,8 @@ export async function runDeliveryCoordinationBrowser(options: {
       assert.equal(response.status(), 200);
       if (url.pathname.endsWith("/missions")) {
         await route.fulfill({ response, json: { missions: sourceInList ? [downstream, source] : [downstream] } });
-      } else if (url.pathname.endsWith(`/missions/${downstream.mission.missionId}`)) {
-        await route.fulfill({ response, json: downstream });
       } else {
-        assert(url.pathname.endsWith(`/missions/${sourceId}`));
+        assert(url.pathname.endsWith(`/missions/${sourceId}`), `Unexpected mission read: ${url.pathname}`);
         exactSourceReads += 1;
         await route.fulfill({ response, json: source });
       }
