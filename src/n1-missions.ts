@@ -1,5 +1,5 @@
 import { prepareN1Resume, verifyResumedLeadRun } from "./n1-resume.js";
-import type { N1Resume } from "./n1-resume-state.js";
+import { settledResumeReservation, type N1Resume, type ResumeTarget } from "./n1-resume-state.js";
 import { physicalAgent, isLogicalActor } from "./model-state.js";
 import { contributionModelFamily, prepareVariantLaunch, bindVariantIssue, claimVariantWake, recordVariantWake, observeVariantRun } from "./model-runtime.js";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
@@ -401,12 +401,17 @@ async function assertRecoverySettled(ctx: PluginContext, mission: MissionRecord,
     { issueId: mission.rootIssueId, runId: state.rootDispatchRunId, reservationId: state.activationReservationId },
     ...state.contributions.map(slot => ({ issueId: slot.childIssueId, runId: slot.dispatchRunId, reservationId: slot.dispatchReservationId })),
   ];
-  for (const binding of bindings) await assertSettledRecoveryRun(ctx, mission, envelope, binding);
+  for (const binding of bindings) {
+    const prior = state.resume && [state.resume.lead, ...state.resume.contributions]
+      .find(target => target.issueId === binding.issueId && target.reservationId === binding.reservationId);
+    await assertSettledRecoveryRun(ctx, mission, envelope, binding, prior);
+  }
 }
 
 async function assertSettledRecoveryRun(
   ctx: PluginContext, mission: MissionRecord, envelope: Awaited<ReturnType<typeof readAdmission>>,
   binding: { issueId?: string; runId?: string | null; reservationId?: string },
+  prior?: ResumeTarget,
 ) {
   const reservation = envelope?.reservations.find(item => item.reservationId === binding.reservationId);
   if (!binding.issueId || !binding.runId || reservation?.missionId !== mission.missionId
@@ -414,9 +419,17 @@ async function assertSettledRecoveryRun(
       || reservation.remainingExposure.status !== "known" || reservation.remainingExposure.units !== 0) {
     throw new MissionError(409, "recovery_usage_unsettled", "Recovery requires all original runs settled without exposure");
   }
+  if (prior) {
+    const previous = envelope?.reservations.find(item => item.reservationId === prior.priorReservationId);
+    if (!previous || previous.missionId !== mission.missionId || !settledResumeReservation(previous)) {
+      throw new MissionError(409, "recovery_usage_unsettled", "Resumed recovery also requires the original reservation settled without exposure");
+    }
+  }
   const summary = await ctx.issues.summaries.getOrchestration({ companyId: mission.companyId, issueId: binding.issueId, includeSubtree: false });
-  if (summary.runs.length !== 1 || summary.runs[0].id !== binding.runId || summary.runs[0].status !== "succeeded") {
-    throw new MissionError(409, "recovery_run_not_terminal", "Recovery requires each exact original run succeeded, without a replacement run");
+  const expected = prior ? [binding.runId, prior.priorRunId] : [binding.runId];
+  if (summary.runs.length !== expected.length || new Set(summary.runs.map(run => run.id)).size !== expected.length
+      || summary.runs.some(run => !expected.includes(run.id) || run.status !== "succeeded")) {
+    throw new MissionError(409, "recovery_run_not_terminal", "Recovery requires only the exact successful original and explicitly resumed runs");
   }
 }
 

@@ -47,6 +47,8 @@ The owner then uses `start-lead`. The lead inspects the existing plan and dispat
 unfinished contributors with the reservation IDs in `n1.resume.contributions`.
 Existing files are preserved. New commits are attributed only to the newly admitted
 runs; their exact native `per_run` usage is settled separately from historical costs.
+Owner candidate recovery after a resume accepts only the original and admitted
+resume runs, all successful and with both historical and current reservations settled.
 Unknown effects, a second resume and automatic retries remain refused. This command
 does not extend the period envelope or authorize a later review/publication.
 Native blocker relations are checked before claiming a wake. If an existing wake

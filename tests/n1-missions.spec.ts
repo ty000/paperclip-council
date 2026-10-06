@@ -2144,6 +2144,48 @@ describe.each(["recover-integration", "recover-candidate"])("owner recovery: %s"
     expect(h.execute).not.toHaveBeenCalled();
   });
 
+  it("recovers an explicitly resumed lead and child, retaining both settled histories", async () => {
+    const h = resumedRecovery();
+    await h.apply();
+    expect(h.row().aggregate.phase).toBe("ready_for_review");
+    expect(h.row().aggregate.n1!.resume).toEqual(h.resume);
+    expect(h.requestWakeup).not.toHaveBeenCalled();
+    expect(settleAdmission).not.toHaveBeenCalled();
+  });
+
+  it("rejects a third run or a still exposed historical reservation after resume", async () => {
+    const h = resumedRecovery();
+    h.extraRuns.push({ id: randomUUID(), status: "succeeded" });
+    await expect(h.apply()).rejects.toMatchObject({ code: "recovery_run_not_terminal" });
+    h.extraRuns.pop();
+    h.reservations.at(-1)!.remainingExposure.units = 1;
+    await expect(h.apply()).rejects.toMatchObject({ code: "recovery_usage_unsettled" });
+    expect(h.execute).not.toHaveBeenCalled();
+  });
+
+  function resumedRecovery() {
+    const h = recovery();
+    const state = h.initial.n1 as N1State;
+    const targets = [{ issueId: id.root, reservationId: state.activationReservationId },
+      { issueId: id.childA, reservationId: state.contributions[0].dispatchReservationId!, contributionId: id.contributionA }]
+      .map(target => ({ ...target, priorRunId: randomUUID(), priorReservationId: randomUUID(), priorUsageBaselineUnits: 0 }));
+    const resume = { commandId: randomUUID(), authorizedBy: id.owner, previousOwnerUserId: id.owner,
+      authorizedAt: new Date().toISOString(), reason: "Explicit terminal resume", lead: targets[0], contributions: [targets[1]] };
+    h.advanceMission(a => ({ ...a, n1: { ...a.n1, resume } }));
+    h.body.expectedVersion = 6;
+    h.reservations.push(...targets.map(target => ({ reservationId: target.priorReservationId, missionId: id.mission,
+      status: "settled", usage: { status: "known", units: 123 }, remainingExposure: { status: "known", units: 0 } })));
+    const extraRuns: Array<{ id: string; status: string }> = [];
+    h.getOrchestration.mockImplementation(async (...args: unknown[]) => {
+      const { issueId } = args[0] as { issueId: string };
+      const runId = issueId === id.root ? id.leadRun : state.contributions.find(slot => slot.childIssueId === issueId)!.dispatchRunId;
+      const prior = targets.find(target => target.issueId === issueId);
+      return { runs: [{ id: runId, status: "succeeded" }, ...(prior ? [{ id: prior.priorRunId, status: "succeeded" }] : []),
+        ...(issueId === id.root ? extraRuns : [])] } as never;
+    });
+    return { ...h, resume, extraRuns };
+  }
+
   it("refuses stale versions, changed references and an existing candidate", async () => {
     const h = recovery();
     h.body.expectedVersion = 4;
