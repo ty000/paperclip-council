@@ -177,9 +177,10 @@ function harness(initial = aggregate(), initialVersion = 1) {
   });
   const assertCheckoutOwner = vi.fn(async () => undefined);
   const list = vi.fn(async () => []);
-  const create = vi.fn(async () => {
+  const create = vi.fn(async (): Promise<Record<string, unknown>> => {
     throw new Error("native issue create response was lost");
   });
+  const documentGet = vi.fn(async () => null as Record<string, unknown> | null);
   const update = vi.fn(async () => undefined);
   const requestWakeup = vi.fn(async (): Promise<{ queued: boolean; runId: string | null }> => ({ queued: true, runId: null }));
   const configGet = vi.fn(async () => ({ n1FixtureMode: "ephemeral-local-sandbox" }));
@@ -222,6 +223,7 @@ function harness(initial = aggregate(), initialVersion = 1) {
       assertCheckoutOwner,
       list,
       create,
+      documents: { get: documentGet },
       update,
       requestWakeup,
       summaries: { getOrchestration },
@@ -235,6 +237,7 @@ function harness(initial = aggregate(), initialVersion = 1) {
     assertCheckoutOwner,
     list,
     create,
+    documentGet,
     update,
     requestWakeup,
     configGet,
@@ -936,6 +939,85 @@ describe("N1 mission transitions", () => {
       expect.objectContaining({ contributionId: id.contributionA, assigneeAgentId: id.contributorA, ownedPaths: ["src/a/"] }),
       expect.objectContaining({ contributionId: id.contributionB, assigneeAgentId: id.contributorB, ownedPaths: ["src/b/"] }),
     ]);
+  });
+
+  it("carries the native plan and mandate into both child issues and their durable intents", async () => {
+    const value = activeAggregate();
+    value.mandate.objective = "Persist the public form through a shared SiteBinding service";
+    value.mandate.acceptanceCriteria = ["SSR and Hono read the same durable SiteBinding"];
+    value.mandate.commitments = ["Close the database connection after each invocation"];
+    const h = harness(value);
+    const nativePlan = {
+      id: randomUUID(), issueId: id.root, latestRevisionId: randomUUID(),
+      body: JSON.stringify({
+        work: plan.map(slot => ({ ...slot,
+          instruction: `Complete ${slot.title} with its tests`,
+          interface: "One async read/write service shared by SSR and Hono",
+          sourceRefs: ["AGENTS.md", "docs/implementation-plan.md"],
+        })),
+        integrationNotes: "Backend finishes before frontend consumes its contract",
+      }),
+    };
+    h.documentGet.mockResolvedValue(nativePlan);
+    const planned = await handleN1AgentApi(agentRequest({
+      command: "plan", commandId: randomUUID(), expectedVersion: 1, contributions: plan,
+    }, { agentId: id.lead, runId: id.leadRun }, id.root), h.ctx);
+    expect(planned.status).toBe(200);
+    h.create.mockImplementation(async () => {
+      const intent = h.row().aggregate.effectIntents.at(-1)!;
+      expect(intent.description).toContain(value.mandate.objective);
+      expect(intent.description).toContain(value.mandate.acceptanceCriteria[0]);
+      expect(intent.description).toContain(value.mandate.commitments[0]);
+      expect(intent.description).toContain(nativePlan.body);
+      expect(intent.description).toContain(nativePlan.latestRevisionId);
+      expect(intent.description).toContain(`/api/issues/${id.root}/documents/plan`);
+      return nativeIssue({ id: randomUUID(), parentId: id.root,
+        assigneeAgentId: intent.assigneeAgentId as string, status: "backlog",
+        originKind: "plugin:private.paperclip-council:contribution",
+        originId: `mission:${id.mission}:contribution:${intent.contributionId}`,
+      });
+    });
+    for (const slot of plan) {
+      const request = agentRequest({ command: "materialize", commandId: randomUUID(),
+        expectedVersion: h.row().version, contributionId: slot.contributionId,
+      }, { agentId: id.lead, runId: id.leadRun }, id.root);
+      expect(await handleN1AgentApi(request, h.ctx)).toMatchObject({ status: 200, body: { outcome: "confirmed" } });
+      const description = h.row().aggregate.effectIntents.at(-1)!.description;
+      expect(h.create).toHaveBeenLastCalledWith(expect.objectContaining({ description, parentId: id.root }));
+      expect(await handleN1AgentApi(request, h.ctx)).toMatchObject({ status: 200, body: { outcome: "replayed" } });
+    }
+    expect(h.documentGet).toHaveBeenCalledWith(id.root, "plan", id.company);
+    expect(h.documentGet).toHaveBeenCalledTimes(2);
+    expect(h.create).toHaveBeenCalledTimes(2);
+    expect(h.requestWakeup).not.toHaveBeenCalled();
+  });
+
+  it("retains the mandate and an explicit parent reference for legacy missions without a plan document", async () => {
+    const value = activeAggregate();
+    value.n1 = { ...value.n1, contributions: plan.map(slot => ({ ...slot, issueState: "planned" })) };
+    const h = harness(value);
+    await handleN1AgentApi(agentRequest({ command: "materialize", commandId: randomUUID(),
+      expectedVersion: 1, contributionId: id.contributionA,
+    }, { agentId: id.lead, runId: id.leadRun }, id.root), h.ctx);
+    const description = h.row().aggregate.effectIntents[0]!.description as string;
+    expect(description).toContain(value.mandate.objective);
+    expect(description).toContain(`/api/issues/${id.root}`);
+    expect(description).toContain("No native plan document exists");
+    expect(h.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not create an incomplete child or claim an effect when the native plan read fails", async () => {
+    const value = activeAggregate();
+    value.n1 = { ...value.n1, contributions: plan.map(slot => ({ ...slot, issueState: "planned" })) };
+    const h = harness(value);
+    h.documentGet.mockRejectedValue(new Error("native read unavailable"));
+    const result = await handleN1AgentApi(agentRequest({ command: "materialize", commandId: randomUUID(),
+      expectedVersion: 1, contributionId: id.contributionA,
+    }, { agentId: id.lead, runId: id.leadRun }, id.root), h.ctx);
+    expect(result).toMatchObject({ status: 409, body: { code: "contribution_context_unavailable" } });
+    expect(h.create).not.toHaveBeenCalled();
+    expect(h.execute).not.toHaveBeenCalled();
+    expect(h.requestWakeup).not.toHaveBeenCalled();
   });
 
   it("persists the creation claim before the native effect and replays an uncertain command without a second create", async () => {

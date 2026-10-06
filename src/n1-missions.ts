@@ -21,6 +21,7 @@ import {
 } from "./missions.js";
 import { createContributionIssueEffect, type ContributionIssueIntent } from "./contribution-effects.js";
 import { contributionCommand } from "./contribution-command.js";
+import { readContributionContext } from "./contribution-context.js";
 import {
   assertNativeConfigurationRequest,
   assertNativeEnvelope,
@@ -290,12 +291,14 @@ export function contributionDescription(input: {
   missionId: string;
   contributionId: string;
   ownedPaths: string[];
+  context?: string;
 }): string {
   return [
     "Council N1 contribution. Complete only this bounded child issue.",
     `Mission ID: ${input.missionId}`,
     `Contribution ID: ${input.contributionId}`,
     `Owned paths: ${input.ownedPaths.join(", ")}`,
+    ...(input.context ? ["", input.context, "", "## Contribution reporting"] : []),
     "Do not modify files outside the owned paths. Commit the completed change on the current shared branch.",
     `The command below first sends {"command":"inspect","missionId":"${input.missionId}"}, then records the contribution through the authenticated Council endpoint.`,
     "After committing, run this complete command unchanged from your repository. It reads the full SHA directly from Git and constructs the UUID/payload itself. Never expand an abbreviated SHA, copy a SHA into JSON, or replace this with a handwritten record-contribution request. It sends no retries; retain its printed request for any uncertain-effect readback.",
@@ -328,7 +331,7 @@ export function inspectN1State(mission: MissionRecord) {
           ? "Owner must reconcile the root lead wakeup before any further launch."
           : "Owner may start the Integration Lead; the lead then records the two-contributor plan."
         : state.contributions.some((slot) => slot.issueState === "planned")
-          ? "Integration Lead must materialize the planned child issues."
+          ? "Integration Lead must complete the native parent plan with outcomes, interfaces, sources and acceptance checks, then materialize and read back the child descriptions before dispatch."
           : state.contributions.some((slot) => !slot.dispatchState)
             ? "Integration Lead must reserve and dispatch each mapped child issue."
             : state.contributions.some((slot) => slot.dispatchState === "unknown" || slot.dispatchState === "claimed")
@@ -1077,6 +1080,10 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
           missionId: mission.missionId,
           contributionId,
           ownedPaths: slot.ownedPaths,
+          context: await readContributionContext(ctx, mission).catch(() => {
+            throw new MissionError(409, "contribution_context_unavailable",
+              "Native plan read failed; no child was created. Read the parent plan before materializing again.");
+          }),
         }),
         actor: { actorAgentId: actor.agentId, actorRunId: actor.runId },
       };

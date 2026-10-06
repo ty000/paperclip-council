@@ -1425,6 +1425,20 @@ try {
   });
   assert.equal(plan.status, 200);
   activeMission = plan.body.mission;
+  const nativePlanBody = [
+    "# Contributor context fixture",
+    "Outcome: persist and reload the SiteBinding from the same SSR/Hono service.",
+    "Interface: asynchronous read/write contract shared by backend and frontend.",
+    "Constraint: close the connection after each invocation.",
+    "Acceptance: a fresh service instance reads the submitted site URL.",
+    "Sources: AGENTS.md and docs/implementation-plan.md.",
+    ...contributionIds.map((id, index) => `Contribution ${id}: own fixture/${index ? "b" : "a"}.txt and its behavior checks.`),
+  ].join("\n");
+  const nativePlan = await request("human", "PUT", `/api/issues/${activeFixture.rootIssueId}/documents/plan`, {
+    format: "markdown", title: "Contribution context fixture", body: nativePlanBody,
+  });
+  assert.equal(nativePlan.status, 201);
+  assert(nativePlan.body.latestRevisionId);
   const materializedChildren: Array<{ contributionId: string; childIssueId: string; actor: string }> = [];
   for (const [index, contributionId] of contributionIds.entries()) {
     const materialized = await request("executor", "POST", agentCommandPath, {
@@ -1438,6 +1452,15 @@ try {
     assert.equal(materialized.body.outcome, "confirmed");
     assert.equal(materialized.body.effect.issue.parentId, activeFixture.rootIssueId);
     assert.equal(materialized.body.effect.issue.assigneeAgentId, index === 0 ? contributorAId : contributorBId);
+    const childReadback = await request("human", "GET", `/api/issues/${materialized.body.effect.issue.id}`);
+    assert.equal(childReadback.status, 200);
+    assert(childReadback.body.description.includes(nativePlanBody));
+    assert(childReadback.body.description.includes(nativePlan.body.latestRevisionId));
+    assert(childReadback.body.description.includes(`/api/issues/${activeFixture.rootIssueId}/documents/plan`));
+    assert(childReadback.body.description.includes(activeMission.aggregate.mandate.objective));
+    for (const criterion of activeMission.aggregate.mandate.acceptanceCriteria) {
+      assert(childReadback.body.description.includes(criterion));
+    }
     activeMission = materialized.body.mission;
     materializedChildren.push({
       contributionId,
@@ -1721,7 +1744,7 @@ try {
     await intruderPage.getByText("Status: read only").waitFor();
     assert.equal(await intruderPage.getByRole("button", { name: "Create draft" }).isDisabled(), true);
     await intruderPage.goto(`${baseUrl}/CPQ/council-missions`, { waitUntil: "networkidle" });
-    await intruderPage.getByRole("alert").waitFor();
+    await intruderPage.getByRole("alert").filter({ hasText: "Only the configured company owner" }).waitFor();
     await intruderContext.close();
     evidence.results.installedBrowserPageAndAuthenticatedAction = "PASS";
     evidence.results.installedBrowserStates = "PASS";
