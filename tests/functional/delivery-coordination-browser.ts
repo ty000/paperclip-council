@@ -140,6 +140,8 @@ export async function runDeliveryCoordinationBrowser(options: {
       assert.equal(response.status(), 200);
       if (url.pathname.endsWith("/missions")) {
         await route.fulfill({ response, json: { missions: sourceInList ? [downstream, source] : [downstream] } });
+      } else if (url.pathname.endsWith(`/missions/${downstream.mission.missionId}`)) {
+        await route.fulfill({ response, json: downstream });
       } else {
         assert(url.pathname.endsWith(`/missions/${sourceId}`));
         exactSourceReads += 1;
