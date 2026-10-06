@@ -73,7 +73,11 @@ describe("versioned model catalogue", () => {
       expect(embedded.content).toBe(body);
       expect(embedded.sha256).toBe(createHash("sha256").update(body).digest("hex"));
     }
-    expect(managedSkillDeclarations()[0]!.markdown).toBe(MODEL_CHARTER_SOURCES["skills/council-review/SKILL.md"].content);
+    const skill = managedSkillDeclarations()[0]!;
+    expect(skill.skillKey).toBe("council-variant-review-v1");
+    expect(skill.slug).toBe(skill.skillKey);
+    expect(skill.markdown).toBe(MODEL_CHARTER_SOURCES["skills/council-review/SKILL.md"].content
+      .replaceAll("council-review", "council-variant-review-v1"));
   });
   it("prepares real native variants with identical role rules and no periodic work", () => {
     const declarations = managedAgentDeclarations();
@@ -93,6 +97,10 @@ describe("versioned model catalogue", () => {
         expect(variant.runtimeConfig?.heartbeat).toEqual({ enabled: false, wakeOnDemand: true, maxConcurrentRuns: 1 });
         expect(variant.adapterType).toBe("codex_local"); expect(variant.adapterConfig?.engine).toBe("cli");
       }
+    }
+    for (const role of ROLE_TEMPLATES.filter(role => role.key.endsWith("reviewer"))) {
+      expect(role.instructions["AGENTS.md"]).toContain("`council-variant-review-v1`");
+      expect(role.instructions["AGENTS.md"]).not.toContain("`council-review`");
     }
     expect(variantKey("lead", "sol-medium", "1")).toBe(logicalAnchorKey("lead"));
   });

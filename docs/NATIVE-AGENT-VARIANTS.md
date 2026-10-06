@@ -248,3 +248,36 @@ checkout with React DOM and Playwright already installed,
 `COUNCIL_MODEL_UI_EVIDENCE_DIR`, then run `pnpm test:profiles:browser`.
 The output includes assertions, request inventory and nonempty desktop/mobile/
 error screenshots. It proves component rendering, not an installed plugin.
+
+
+## Review skill isolation (0.7.4)
+
+Variants now select `plugin/private-paperclip-council/council-variant-review-v1`.
+The managed resource key and Markdown name both use `council-variant-review-v1`.
+Changing only the manifest slug is insufficient: the host derives imported slugs
+from Markdown and its managed import replaces a match by key **or slug**.
+The generic `council-review` company skill and its old plugin binding are never
+reconciled or reset by the new setup. The review rules are unchanged; variant charters and skill invocation examples
+use the dedicated runtime name. Historical source charters are retained.
+
+Before an owner invokes `prepare-variant`, inspect the company's native skill
+inventory. Stop if the reserved variant key or slug belongs to an unrelated
+skill; the current SDK cannot list company skills or request conflict-safe
+imports. This inventory check is an operator prerequisite, not an automatic
+collision guarantee. Setup reads back the dedicated key, company, UUID binding
+and content drift before creating any reviewer; a failed or uncertain import
+stops without reset or retry.
+
+An upgrade does not change existing agents' selected skills. For previously
+prepared variants, inspect their exact IDs, bindings, instructions, configuration
+and mission dependencies first. With explicit operator authorization, update only
+their desired skill selection and variant instruction file to the dedicated name
+and read both back. Do not reset
+agents or migrate historical missions. Changed selection remains a readiness gap
+until that explicit update; agent keys and v1 logical UUID anchors are retained.
+
+If an earlier setup reused a company `council-review` skill, retain its UUID,
+versions, assignments and original source file. Record the provenance/content
+metadata delta separately. This release does not restore historical provenance:
+the current public host API cannot do so while preserving the same identity.
+No model run or runtime skill-mount qualification is implied by successful setup.
