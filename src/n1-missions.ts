@@ -1,3 +1,5 @@
+import { prepareN1Resume } from "./n1-resume.js";
+import type { N1Resume } from "./n1-resume-state.js";
 import { physicalAgent, isLogicalActor } from "./model-state.js";
 import { contributionModelFamily, prepareVariantLaunch, bindVariantIssue, claimVariantWake, recordVariantWake, observeVariantRun } from "./model-runtime.js";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
@@ -29,6 +31,7 @@ import {
   nativeAdmissionConfiguration,
   readNativeG4Profile,
   settleNativeRunUsage,
+  settleOrdinaryRunUsage,
 } from "./g4-native.js";
 import { ownershipsOverlap, verifyIntegratedCandidate, type IntegratedCandidateInput, type IntegratedCandidateVerification } from "./integration.js";
 
@@ -54,7 +57,8 @@ type Slot = {
   referenceRecovery?: { previousCommit: string; actorUserId: string; commandId: string };
 };
 
-type N1State = {
+export type N1State = {
+  resume?: N1Resume;
   periodKey: string;
   activationReservationId: string;
   activatedAt: string;
@@ -122,7 +126,7 @@ async function cas(
   expectedVersion: number,
 ): Promise<MissionRecord> {
   const changed = await ctx.db.execute(
-    "UPDATE " + table(ctx) + " SET aggregate = $1::jsonb, version = version + 1, updated_at = now() " +
+    "UPDATE " + table(ctx) + " SET aggregate = $1::jsonb, owner_user_id = $1::jsonb->>'ownerUserId', version = version + 1, updated_at = now() " +
     "WHERE company_id = $2 AND mission_id = $3 AND version = $4",
     [JSON.stringify(aggregate), mission.companyId, mission.missionId, expectedVersion],
   );
@@ -207,12 +211,12 @@ function requireFreshCommand(mission: MissionRecord, body: Record<string, unknow
   }
 }
 
-async function owner(ctx: PluginContext, mission: MissionRecord, actorUserId: string | null) {
+async function owner(ctx: PluginContext, mission: MissionRecord, actorUserId: string | null, transfer = false) {
   const company = await ctx.companies.get(mission.companyId);
   if (!company || company.id !== mission.companyId || !company.defaultResponsibleUserId) {
     throw new MissionError(422, "owner_not_configured", "Company owner is not configured");
   }
-  if (!actorUserId || actorUserId !== company.defaultResponsibleUserId || actorUserId !== mission.ownerUserId) {
+  if (!actorUserId || actorUserId !== company.defaultResponsibleUserId || !transfer && actorUserId !== mission.ownerUserId) {
     throw new MissionError(403, "owner_required", "Configured mission owner required");
   }
 }
@@ -340,6 +344,7 @@ export function inspectN1State(mission: MissionRecord) {
                 ? "Assigned contributors must report their Git commits through their child issues."
             : "Integration Lead must publish a verified integrated Git bundle.";
   return {
+    resume: state.resume ?? null,
     prerequisites: mission.aggregate.readiness.blockers,
     nextAction,
     participants: state.contributions,
@@ -372,6 +377,12 @@ async function reconcileContributionUsage(
   const envelope = await readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
   if (!envelope) throw new MissionError(422, "g4_not_configured", "No task/period admission envelope is configured");
   assertNativeEnvelope(envelope, profile);
+  if (state.resume?.contributions.some(t => t.contributionId === slot.contributionId)) {
+    return settleOrdinaryRunUsage(ctx, { commandId: input.commandId, companyId: mission.companyId,
+      issueId: slot.childIssueId, runId: slot.dispatchRunId,
+      agentId: physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId, runId: slot.dispatchRunId }),
+      periodKey: state.periodKey, reservationId: slot.dispatchReservationId, expectedVersion: envelope.version });
+  }
   return settleNativeRunUsage(ctx, {
     commandId: input.commandId,
     companyId: mission.companyId,
@@ -524,7 +535,15 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
 }) {
   let mission = await getMission(ctx, input.companyId, input.missionId);
   if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
-  await owner(ctx, mission, input.actorUserId);
+  await owner(ctx, mission, input.actorUserId, input.body.command === "prepare-n1-resume");
+  if (input.body.command === "prepare-n1-resume") {
+    const commandId = uuid(input.body.commandId, "commandId");
+    const replay = receipt(mission, commandId, input.actorUserId!, canonicalPayloadHash(input.body));
+    if (replay) return { outcome: "replayed" as const, mission, receipt: replay };
+    requireFreshCommand(mission, input.body);
+    const next = await prepareN1Resume(ctx, mission, input.body, input.actorUserId!);
+    return commandCas(ctx, mission, input.body, "user", input.actorUserId!, next);
+  }
   if (input.body.command === "recover-integration" || input.body.command === "recover-candidate") {
     const commandId = uuid(input.body.commandId, "commandId");
     const replay = receipt(mission, commandId, input.actorUserId!, canonicalPayloadHash(input.body));
@@ -661,7 +680,18 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     if (!Number.isFinite(activatedAt) || Date.now() >= activatedAt + mission.aggregate.mandate.limits.elapsedMinutes * 60_000) {
       throw new MissionError(409, "elapsed_limit_exceeded", "Mission elapsed limit blocks root dispatch");
     }
-    const admission = await readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
+    let admission = await readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
+    if (state.resume && admission) {
+      requireFreshCommand(mission, input.body);
+      if (!nativeProfile) throw new MissionError(409, "g4_measurement_unqualified", "Resume requires native per-run accounting");
+      const reserved = await reserveAdmission(ctx, {
+        companyId: mission.companyId, periodKey: state.periodKey, missionId: mission.missionId,
+        reservationId: state.activationReservationId, effectId: state.resume.commandId,
+        requestedUnits: nativeProfile!.runReservationUnits, attempt: { kind: "resume", ordinal: 1 },
+        ownerReplacementCommandId: state.resume.commandId, expectedVersion: admission.version,
+      });
+      admission = reserved.envelope;
+    }
     const reservation = admission?.reservations.find((item) => item.reservationId === state.activationReservationId);
     if (!reservation || reservation.missionId !== mission.missionId || reservation.status !== "reserved"
         || Date.now() < Date.parse(admission!.periodStart) || Date.now() >= Date.parse(admission!.periodEnd)) {
@@ -673,13 +703,14 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
       rootUsageBaselineUnits = await assertNativeLaunchAllowed(ctx, {
         companyId: mission.companyId,
         issueId: mission.rootIssueId,
+        priorRunId: state.resume?.lead.priorRunId,
       });
     }
     const root = await ctx.issues.get(mission.rootIssueId, mission.companyId);
     const leadAgentId = mission.aggregate.responsibilities.integrationLeadAgentId;
     const leadAgent = await ctx.agents.get(leadAgentId, mission.companyId);
     if (!root || root.companyId !== mission.companyId || root.projectId !== mission.projectId
-        || root.assigneeAgentId !== physicalAgent(mission, leadAgentId, { issueId: mission.rootIssueId }) || !["backlog", "todo", ...(mission.aggregate.n6 ? ["blocked"] : [])].includes(root.status)
+        || root.assigneeAgentId !== physicalAgent(mission, leadAgentId, { issueId: mission.rootIssueId }) || !["backlog", "todo", ...(mission.aggregate.n6 || state.resume ? ["blocked"] : [])].includes(root.status)
         || !leadAgent || leadAgent.companyId !== mission.companyId
         || !["active", "idle", "running"].includes(leadAgent.status)) {
       throw new MissionError(409, "root_dispatch_ineligible", "Root issue or lead is no longer eligible");
@@ -712,7 +743,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     if (claim.outcome !== "applied") return claim;
     let wake: { queued: boolean; runId: string | null } | null = null;
     try {
-      if (root.status === "backlog" || root.status === "blocked" && mission.aggregate.n6) {
+      if (root.status === "backlog" || root.status === "blocked" && (mission.aggregate.n6 || state.resume)) {
         await ctx.issues.update(mission.rootIssueId, { status: "todo" }, mission.companyId, { actorUserId: input.actorUserId! });
       }
       wake = await ctx.issues.requestWakeup(mission.rootIssueId, mission.companyId, {
@@ -778,7 +809,12 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
         });
       }
     }
-    const settlement = await settleNativeRunUsage(ctx, {
+    const settlement = state.resume
+      ? await settleOrdinaryRunUsage(ctx, { commandId, companyId: mission.companyId,
+        issueId: mission.rootIssueId, runId: state.rootDispatchRunId,
+        agentId: physicalAgent(mission, mission.aggregate.responsibilities.integrationLeadAgentId, { issueId: mission.rootIssueId, runId: state.rootDispatchRunId }),
+        periodKey: state.periodKey, reservationId: state.activationReservationId, expectedVersion: envelope.version })
+      : await settleNativeRunUsage(ctx, {
       commandId,
       companyId: mission.companyId,
       issueId: mission.rootIssueId,
@@ -1129,6 +1165,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       const index = state.contributions.findIndex((slot) => slot.contributionId === contributionId);
       if (index < 0) throw new MissionError(404, "contribution_not_found", "Contribution slot not found");
       const slot = state.contributions[index];
+      const resumed = state.resume?.contributions.find(t => t.contributionId === contributionId);
       if (slot.issueState !== "confirmed" || !slot.childIssueId || slot.dispatchState) {
         throw new MissionError(409, "dispatch_unavailable", "Child issue is not confirmed or dispatch was already claimed");
       }
@@ -1136,7 +1173,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       const agent = await ctx.agents.get(slot.assigneeAgentId, mission.companyId);
       if (!issue || issue.companyId !== mission.companyId || issue.projectId !== mission.projectId
           || issue.parentId !== mission.rootIssueId || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
-          || issue.status !== "backlog" || !agent || agent.companyId !== mission.companyId
+          || !["backlog", ...(resumed ? ["blocked"] : [])].includes(issue.status) || !agent || agent.companyId !== mission.companyId
           || !["active", "idle", "running"].includes(agent.status)) {
         throw new MissionError(409, "native_dispatch_ineligible", "Native child or assignee is no longer eligible for dispatch");
       }
@@ -1156,6 +1193,9 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       }
       const reservationId = uuid(body.reservationId, "reservationId");
       const requestedUnits = integer(body.requestedUnits, "requestedUnits");
+      if (resumed && reservationId !== resumed.reservationId) {
+        throw new MissionError(409, "n1_resume_reservation_mismatch", "Use the exact owner-authorized resume reservation from inspect.n1.resume");
+      }
       requireFreshCommand(mission, body);
       const envelope = await readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
       if (!envelope) throw new MissionError(422, "g4_not_configured", "No task/period admission envelope is configured");
@@ -1186,6 +1226,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         dispatchUsageBaselineUnits = await assertNativeLaunchAllowed(ctx, {
           companyId: mission.companyId,
           issueId: slot.childIssueId,
+          priorRunId: resumed?.priorRunId,
         });
       }
       const prepared = await prepareVariantLaunch(ctx, mission, { taskKey: contributionId, interventionKey: contributionId,
@@ -1194,7 +1235,8 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       const reserved = await reserveAdmission(ctx, {
         companyId: mission.companyId, periodKey: state.periodKey,
         reservationId, missionId: mission.missionId, effectId: contributionId,
-        requestedUnits, attempt: { kind: "initial", ordinal: 0 }, expectedVersion: envelope.version,
+        requestedUnits, attempt: resumed ? { kind: "resume", ordinal: 1 } : { kind: "initial", ordinal: 0 },
+        ...(resumed ? { ownerReplacementCommandId: state.resume!.commandId } : {}), expectedVersion: envelope.version,
       });
       if (!reserved.reservation || reserved.reservation.status !== "reserved") {
         throw new MissionError(409, "g4_reservation_unavailable", "Durable child reservation is unavailable");

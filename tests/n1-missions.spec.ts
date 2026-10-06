@@ -25,6 +25,9 @@ import { handleMissionApi, type MissionAggregate } from "../src/missions.js";
 import { reconcileTerminalN1Usage } from "./functional/n1-live.js";
 import { inspectVariant } from "../src/model-variants.js";
 import { MODEL_CATALOGUE } from "../src/model-catalogue.js";
+import { n1ResumeAdmissionFailure } from "../src/n1-resume-state.js";
+import type { N1State } from "../src/n1-missions.js";
+import * as nativeAdapter from "../src/decision-adapter.js";
 
 const id = {
   company: randomUUID(),
@@ -170,6 +173,7 @@ function harness(initial = aggregate(), initialVersion = 1) {
     row = {
       ...row,
       aggregate: JSON.parse(params[0] as string) as MissionAggregate,
+      owner_user_id: (JSON.parse(params[0] as string) as MissionAggregate).ownerUserId,
       version: row.version + 1,
       updated_at: new Date().toISOString(),
     };
@@ -294,6 +298,129 @@ const plan = [
   { contributionId: id.contributionA, assigneeAgentId: id.contributorA, title: "Contribution A", ownedPaths: ["src/a/"] },
   { contributionId: id.contributionB, assigneeAgentId: id.contributorB, title: "Contribution B", ownedPaths: ["src/b/"] },
 ];
+
+describe("explicit interrupted N1 resume", () => {
+  function interrupted() {
+    const value = activeAggregate(); const rootReservation = String(value.n1!.activationReservationId);
+    const childReservation = randomUUID(); const priorJournal = { action: "original_work", runId: id.contributorRun };
+    value.journal = [priorJournal];
+    value.n1 = { ...value.n1, rootDispatchMode: "native", rootUsageBaselineUnits: 0, contributions: [
+      { ...plan[0], issueState: "confirmed", childIssueId: id.childA, dispatchState: "requested",
+        dispatchRunId: id.contributorRun, dispatchReservationId: childReservation, dispatchUsageBaselineUnits: 0 },
+      { ...plan[1], issueState: "confirmed", childIssueId: id.childB },
+    ] };
+    const h = harness(value);
+    h.configGet.mockResolvedValue({ n1OperatingProfile: nativeProfile } as never);
+    for (const [issueId, agentId, parentId] of [[id.root, id.lead, null], [id.childA, id.contributorA, id.root]] as const) {
+      h.issues.set(issueId, { ...nativeIssue({ id: issueId, assigneeAgentId: agentId, parentId, status: "backlog" }), status: "blocked" } as never);
+    }
+    h.getOrchestration.mockImplementation(async (...args: unknown[]) => {
+      const issueId = (args[0] as { issueId: string }).issueId;
+      return { issueId, companyId: id.company, runs: [{ id: issueId === id.root ? id.leadRun : id.contributorRun,
+        issueId, status: "succeeded", startedAt: new Date(0).toISOString(), finishedAt: new Date(1).toISOString() }],
+        costs: { inputTokens: 90, cachedInputTokens: 70, outputTokens: 10, costCents: 0 },
+        invocationBlocks: [], openBudgetIncidents: [] } as never;
+    });
+    const envelope = { ...nativeEnvelope([rootReservation, childReservation].map(reservationId => ({
+      reservationId, missionId: id.mission, status: "settled", usage: { status: "known", units: 100 },
+      remainingExposure: { status: "known", units: 0 }, settlementReceipts: [],
+    }))), companyId: id.company };
+    vi.mocked(readAdmission).mockResolvedValue(envelope as never);
+    const body = { command: "prepare-n1-resume", commandId: randomUUID(), expectedVersion: 1,
+      authorizeOneResume: true, previousOwnerUserId: id.owner, reason: "Git permission repaired; retain the existing diff" };
+    const apply = (actorUserId = id.owner) => executeN1BoardCommand(h.ctx, { companyId: id.company, missionId: id.mission, actorUserId, body });
+    return { ...h, value, envelope, body, apply, rootReservation, childReservation, priorJournal };
+  }
+
+  it("preserves history and costs, then admits one exact lead and contributor through existing dispatch", async () => {
+    const h = interrupted(); await h.apply();
+    const state = h.row().aggregate.n1 as N1State; const grant = state.resume!;
+    expect(state.rootDispatchState).toBeUndefined();
+    expect(state.contributions[0].dispatchRunId).toBeUndefined();
+    expect(grant.lead).toMatchObject({ priorRunId: id.leadRun, priorReservationId: h.rootReservation });
+    expect(grant.contributions[0]).toMatchObject({ priorRunId: id.contributorRun, priorReservationId: h.childReservation });
+    expect(h.row().aggregate.journal[0]).toEqual(h.priorJournal);
+    expect(h.row().aggregate.mandate).toEqual(h.value.mandate);
+    expect(reserveAdmission).not.toHaveBeenCalled(); expect(h.requestWakeup).not.toHaveBeenCalled();
+    expect((await h.apply()).outcome).toBe("replayed");
+    vi.mocked(reserveAdmission).mockImplementation(async (_ctx, input) => {
+      expect(n1ResumeAdmissionFailure(h.row().aggregate, h.envelope as never, input, id.owner, id.owner)).toBeNull();
+      const reservation = { reservationId: input.reservationId, missionId: id.mission, status: "reserved" };
+      return { reservation, envelope: { ...h.envelope, reservations: [...h.envelope.reservations, reservation] } } as never;
+    });
+    const nextLead = randomUUID(); const nextChild = randomUUID();
+    h.requestWakeup.mockResolvedValueOnce({ queued: true, runId: nextLead }).mockResolvedValueOnce({ queued: true, runId: nextChild });
+    const start = await executeN1BoardCommand(h.ctx, { companyId: id.company, missionId: id.mission, actorUserId: id.owner,
+      body: { command: "start-lead", commandId: randomUUID(), expectedVersion: h.row().version } });
+    expect(start.outcome).toBe("requested");
+    h.issues.get(id.root)!.status = "in_progress";
+    const resumed = grant.contributions[0];
+    const command = { command: "dispatch", commandId: randomUUID(), expectedVersion: h.row().version,
+      contributionId: id.contributionA, requestedUnits: nativeProfile.runReservationUnits, reservationId: resumed.reservationId };
+    const wrong = await handleN1AgentApi(agentRequest({ ...command, reservationId: randomUUID() }, { agentId: id.lead, runId: nextLead }, id.root), h.ctx);
+    expect(wrong).toMatchObject({ status: 409, body: { code: "n1_resume_reservation_mismatch" } });
+    const child = await handleN1AgentApi(agentRequest(command, { agentId: id.lead, runId: nextLead }, id.root), h.ctx);
+    expect(child).toMatchObject({ status: 200, body: { outcome: "requested" } });
+    expect(h.requestWakeup).toHaveBeenCalledTimes(2);
+    expect(h.row().aggregate.n1).toMatchObject({ rootDispatchRunId: nextLead,
+      contributions: [expect.objectContaining({ dispatchRunId: nextChild }), expect.anything()] });
+    const old = await handleN1AgentApi(agentRequest({ command: "record-contribution", commandId: randomUUID(), expectedVersion: h.row().version,
+      contributionId: id.contributionA, commit: "a".repeat(40) }, { agentId: id.contributorA, runId: id.contributorRun }, id.childA), h.ctx);
+    expect(old).toMatchObject({ status: 409, body: { code: "dispatch_run_mismatch" } });
+    const spy = vi.spyOn(nativeAdapter, "councilNativeRequest").mockResolvedValue({ status: 200, body: {
+      id: nextChild, companyId: id.company, agentId: id.contributorA, nativeIssueId: null, contextSnapshot: { issueId: id.childA },
+      status: "succeeded", startedAt: new Date(2).toISOString(), finishedAt: new Date(3).toISOString(),
+      usageJson: { usageSource: "per_run", inputTokens: 60, cachedInputTokens: 40, outputTokens: 10 },
+    } });
+    try {
+      await executeN1BoardCommand(h.ctx, { companyId: id.company, missionId: id.mission, actorUserId: id.owner,
+        body: { command: "reconcile-contribution-usage", commandId: randomUUID(), contributionId: id.contributionA } });
+      expect(settleAdmission).toHaveBeenCalledWith(h.ctx, expect.objectContaining({ reservationId: resumed.reservationId,
+        usage: expect.objectContaining({ units: 70 }), remainingExposure: expect.objectContaining({ units: 0 }) }));
+    } finally { spy.mockRestore(); }
+  });
+
+  it("records a configured owner handover without rewriting historical attribution", async () => {
+    const h = interrupted(); const nextOwner = randomUUID();
+    vi.mocked(h.ctx.companies.get).mockResolvedValue({ id: id.company, defaultResponsibleUserId: nextOwner } as never);
+    await expect(h.apply()).rejects.toMatchObject({ code: "owner_required" });
+    await h.apply(nextOwner);
+    expect(h.row()).toMatchObject({ owner_user_id: nextOwner, aggregate: { ownerUserId: nextOwner,
+      n1: { resume: { previousOwnerUserId: id.owner, authorizedBy: nextOwner } } } });
+    expect(h.row().aggregate.journal[0]).toEqual(h.priorJournal);
+    expect((await h.apply(nextOwner)).outcome).toBe("replayed");
+  });
+
+  it.each(["unknown dispatch", "unsettled cost", "active run", "already resumed", "candidate"])("refuses %s without a wake or reservation", async kind => {
+    const h = interrupted();
+    if (kind === "unsettled cost") h.envelope.reservations[0].status = "reserved";
+    else if (kind === "active run") h.getOrchestration.mockResolvedValue({ companyId: id.company, issueId: id.root,
+      runs: [{ id: id.leadRun, issueId: id.root, status: "running", finishedAt: null }], invocationBlocks: [], openBudgetIncidents: [] } as never);
+    else {
+      h.advanceMission(a => { const state = a.n1 as N1State;
+        if (kind === "unknown dispatch") state.contributions[0].dispatchState = "unknown";
+        if (kind === "already resumed") state.resume = {} as never;
+        if (kind === "candidate") state.candidate = {} as never;
+        return a;
+      }); h.body.expectedVersion = h.row().version;
+    }
+    await expect(h.apply()).rejects.toThrow();
+    expect(h.requestWakeup).not.toHaveBeenCalled(); expect(reserveAdmission).not.toHaveBeenCalled();
+  });
+
+  it("rejects forged, consumed and cross-target admission grants", async () => {
+    const h = interrupted(); await h.apply(); const aggregate = h.row().aggregate; const grant = (aggregate.n1 as N1State).resume!;
+    const binding = { missionId: id.mission, effectId: grant.commandId, reservationId: grant.lead.reservationId,
+      attempt: { kind: "resume" as const, ordinal: 1 }, ownerReplacementCommandId: grant.commandId };
+    expect(n1ResumeAdmissionFailure(aggregate, h.envelope as never, binding, id.owner, id.owner)).toBeNull();
+    for (const patch of [{ reservationId: randomUUID() }, { effectId: id.contributionB }, { ownerReplacementCommandId: randomUUID() },
+      { attempt: { kind: "resume" as const, ordinal: 2 } }]) {
+      expect(n1ResumeAdmissionFailure(aggregate, h.envelope as never, { ...binding, ...patch }, id.owner, id.owner)).not.toBeNull();
+    }
+    (aggregate.n1 as N1State).rootDispatchState = "claimed";
+    expect(n1ResumeAdmissionFailure(aggregate, h.envelope as never, binding, id.owner, id.owner)).not.toBeNull();
+  });
+});
 
 const nativeProfile = {
   kind: "paperclip-orchestration-tokens-v1",

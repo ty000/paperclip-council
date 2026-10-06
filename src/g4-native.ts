@@ -273,7 +273,7 @@ function orchestrationUsageUnits(summary: PluginIssueOrchestrationSummary): numb
 
 export async function assertNativeLaunchAllowed(
   ctx: PluginContext,
-  input: { companyId: string; issueId: string },
+  input: { companyId: string; issueId: string; priorRunId?: string },
 ): Promise<number> {
   const summary = await readNativeOrchestration(ctx, input);
   if (summary.invocationBlocks.length > 0) {
@@ -286,7 +286,10 @@ export async function assertNativeLaunchAllowed(
       openBudgetIncidents: summary.openBudgetIncidents,
     });
   }
-  if (summary.runs.length > 0) {
+  const resumed = input.priorRunId && summary.runs.length === 1
+    && summary.runs[0].id === input.priorRunId && summary.runs[0].issueId === input.issueId
+    && summary.runs[0].status === "succeeded" && summary.runs[0].finishedAt;
+  if (input.priorRunId ? !resumed : summary.runs.length > 0) {
     throw new AdmissionError(409, "native_run_already_exists", "The target issue already has a native run; a new launch is not admissible");
   }
   return orchestrationUsageUnits(summary);

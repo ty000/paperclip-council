@@ -33,6 +33,23 @@ checks and the next actor. Child issues are first created in native Paperclip
 backlog; their dispatch requires a separate durable reservation. An uncertain
 create or wakeup is retained as unknown and is never retried automatically.
 
+From 0.7.6, an owner can prepare **one explicit N1 resume** when the lead and
+unfinished contributors stopped before committing. `prepare-n1-resume` requires
+`commandId`, `expectedVersion`, `authorizeOneResume: true`, `previousOwnerUserId`
+and a reason. Every old reservation must be settled, and targeted native issues
+must be blocked with exactly their known successful terminal run and no run lock.
+It records previous identities and new reservation IDs without waking an agent,
+resetting costs, changing the mandate or changing the original elapsed deadline.
+The current configured company owner may use this command to record the handover
+from the previous mission owner; historical attribution remains unchanged.
+
+The owner then uses `start-lead`. The lead inspects the existing plan and dispatches
+unfinished contributors with the reservation IDs in `n1.resume.contributions`.
+Existing files are preserved. New commits are attributed only to the newly admitted
+runs; their exact native `per_run` usage is settled separately from historical costs.
+Unknown effects, a second resume and automatic retries remain refused. This command
+does not extend the period envelope or authorize a later review/publication.
+
 From 0.7.5, materializing a contributor also reads the parent's native `plan`
 document through the SDK. The child description includes the mission objective,
 acceptance criteria, commitments and operating limits, plus the full plan body,
