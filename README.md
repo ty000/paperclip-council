@@ -470,3 +470,14 @@ and agent command contract. No durable agent is migrated and no provider is call
 N2 approval still rechecks the immutable verified submission attachment; the
 non-N2 legacy approval path still requires its delivery manifest. Native final
 acceptance is not yet an N6 guarantee that all dependent work waits for final cost.
+
+Une correction prépublication conserve le plan déjà lié ; seule une correction
+post-publication demande sa révision par le lead. Si un run de correction termine
+sans V2 après un blocage identifié, `resume-settled-correction` prépare une unique
+reprise explicitement autorisée par le propriétaire. Le run doit être terminé avec
+succès et son usage exact déjà soldé. La commande conserve l’ancien task/run, les
+coûts, le candidat courant, le verdict et `correctionsUsed=1` ; elle crée une nouvelle
+tâche à admettre, sans lancement ni acceptation. Toute V2 préparée, publication,
+consommation inconnue ou seconde reprise de ce type est refusée. Une révision de
+plan déjà écrite peut être liée par le propriétaire via `configure-delivery` avant
+la première publication, en conservant la même autorité de livraison.

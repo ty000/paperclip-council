@@ -12,6 +12,7 @@ export type OrdinaryTask = { taskId: string; kind: "specialist" | "council" | "c
   reservationId: string; settlementCommandId: string; runId: string | null; wake: "pending" | "claimed";
   replacementOf?: string; preExecutionReplacementOf?: string; replacedBy?: string; settledAt?: string; report?: OrdinaryReport; receiptRecordedAt?: string; closedAt?: string };
 export type OrdinaryN2State = { protocol: "ordinary-cli-v1"; tasks: OrdinaryTask[];
+  correctionResume?: { commandId: string; authorizedBy: string; reason: string; priorTaskId: string; priorRunId: string; priorReservationId: string; replacementTaskId: string; reservationId: string };
   preExecutionRecovery?: { commandId: string; authorizedBy: string; priorTaskId: string; priorRunId: string; priorReservationId: string; replacementTaskId: string; reservationId: string };
   missingOpinionReplacement?: { commandId: string; authorizedBy: string; authorizedAt: string; reason: string; missingOutput?: "opinion" | "verdict"; taskKind?: "specialist" | "council"; priorTaskId: string; priorRunId: string; priorReservationId: string; replacementTaskId: string; reservationId: string; submissionId: string; candidateCommit: string; subject: N3CandidateSubject } };
 
