@@ -57,6 +57,18 @@ already-observed run (`commandId`, `expectedVersion`, `runId`); it never wakes a
 agent or reserves another run. It requires the existing resume reservation and
 exactly the original run plus the new run, with matching native identity.
 
+An ordinary correction cancelled by Paperclip's exact pre-provider
+`legacy_disposition_repair_suppressed` guard can be recovered once through
+owner command `replace-undispatched-correction`. Supply `commandId`,
+`expectedVersion`, `authorizePreExecutionReplacement: true`, the exact `taskId`,
+`runId`, `reservationId` and active `candidateCommit`. Native readback must show
+no provider process, session, result or usage. The command records a zero-cost
+suppression receipt and preserves the old task/run before preparing a fresh
+correction issue; it never launches the replacement. Normal owner reconciliation
+then admits it. Failed, active or ambiguously executed runs remain blocked.
+Keep the root in a native waiting disposition during specialist review and avoid
+disabling an agent while its provider-dispatch checks are still running.
+
 From 0.7.5, materializing a contributor also reads the parent's native `plan`
 document through the SDK. The child description includes the mission objective,
 acceptance criteria, commitments and operating limits, plus the full plan body,

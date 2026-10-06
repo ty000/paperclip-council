@@ -4,7 +4,7 @@ import type { PluginContext } from "@paperclipai/plugin-sdk";
 
 vi.mock("../src/decision-adapter.js", async original => ({ ...await original(), councilNativeRequest: vi.fn() }));
 vi.mock("../src/integration.js", async original => ({ ...await original(), verifyIntegratedCandidate: vi.fn() }));
-import { configureAdmission } from "../src/admission.js";
+import { configureAdmission, reserveAdmission } from "../src/admission.js";
 import { councilNativeRequest } from "../src/decision-adapter.js";
 import { nativeAdmissionConfiguration } from "../src/g4-native.js";
 import { verifyIntegratedCandidate } from "../src/integration.js";
@@ -136,6 +136,87 @@ beforeEach(() => {
   vi.setSystemTime(new Date("2026-10-05T21:00:00.000Z"));
 });
 afterEach(() => vi.useRealTimers());
+
+async function undispatchedFixture() {
+  const f = await fixture();
+  const state = f.row().aggregate.n2!;
+  f.row().aggregate.phase = "correction_requested";
+  state.status = "correction_requested";
+  state.correction!.runId = null;
+  delete state.correction!.usageSettledAt;
+  delete state.correction!.wakeState;
+  delete state.ordinary!.tasks[0]!.settledAt;
+  await reserveAdmission(f.ctx, { companyId: f.ids.company, periodKey: profile.periodKey,
+    missionId: f.ids.mission, effectId: f.ids.correctionTask, reservationId: f.ids.correctionReservation,
+    requestedUnits: profile.runReservationUnits, attempt: { kind: "correction", ordinal: 1 }, expectedVersion: 1 });
+  const run = { id: f.ids.correctionRun, companyId: f.ids.company, agentId: f.ids.lead, nativeIssueId: null,
+    contextSnapshot: { issueId: f.ids.root, wakeReason: "issue_disposition_repair" }, status: "cancelled",
+    startedAt: "2026-10-05T19:00:00.000Z", finishedAt: "2026-10-05T19:00:01.000Z",
+    errorCode: "legacy_disposition_repair_suppressed", executionStage: "dispatching",
+    processPid: null, processStartedAt: null, sessionIdAfter: null, usageJson: null, resultJson: null };
+  vi.mocked(councilNativeRequest).mockResolvedValue({ status: 200, body: run });
+  const body = { command: "replace-undispatched-correction", commandId: randomUUID(), expectedVersion: f.row().version,
+    authorizePreExecutionReplacement: true, taskId: f.ids.correctionTask, runId: f.ids.correctionRun,
+    reservationId: f.ids.correctionReservation, candidateCommit: f.v1.candidate.candidateCommit };
+  f.effects.length = 0;
+  return { ...f, run, replacementBody: body };
+}
+
+it("retains a suppressed correction and its zero-cost receipt, with one owner-authorized new task and no wake", async () => {
+  const f = await undispatchedFixture();
+  const history = structuredClone(f.row().aggregate.n3);
+  const mandate = structuredClone(f.row().aggregate.mandate);
+  await f.recover(f.replacementBody as never);
+  const tasks = f.row().aggregate.n2!.ordinary!.tasks;
+  expect(tasks).toHaveLength(2);
+  expect(tasks[0]).toMatchObject({ runId: f.ids.correctionRun, reservationId: f.ids.correctionReservation,
+    settledAt: expect.any(String), closedAt: expect.any(String), replacedBy: tasks[1]!.taskId });
+  expect(tasks[1]).toMatchObject({ kind: "correction", runId: null, issueId: null, creation: "pending", wake: "pending",
+    preExecutionReplacementOf: f.ids.correctionTask });
+  expect(f.ledger().document).toMatchObject({ allowance: { knownUsageUnits: profile.initialKnownUsageUnits },
+    reservations: [{ status: "settled", usage: { status: "known", units: 0 }, remainingExposure: { units: 0 } }] });
+  expect(f.row().aggregate.n2!.correctionsUsed).toBe(1);
+  expect(f.row().aggregate.n3).toEqual(history);
+  expect(f.row().aggregate.mandate).toEqual(mandate);
+  expect(f.effects).toEqual(["admission-cas", "mission-cas"]);
+  expect((await f.recover(f.replacementBody as never)).outcome).toBe("replayed");
+  await expect(f.recover({ ...f.replacementBody, commandId: randomUUID(), expectedVersion: f.row().version } as never))
+    .rejects.toMatchObject({ code: "undispatched_correction_binding" });
+
+  const issueId = randomUUID();
+  f.ctx.issues.create = vi.fn().mockResolvedValue({ id: issueId });
+  f.ctx.issues.get = vi.fn().mockResolvedValue({ id: issueId, description: "correction" });
+  f.ctx.issues.update = vi.fn().mockResolvedValue({ id: issueId });
+  await executeN2BoardCommand(f.ctx, { companyId: f.ids.company, missionId: f.ids.mission, actorUserId: f.ids.owner,
+    body: { command: "reconcile-ordinary-n2" } });
+  expect(f.ctx.issues.create).toHaveBeenCalledWith(expect.objectContaining({ inheritExecutionWorkspaceFromIssueId: f.ids.root }));
+  expect(f.ctx.issues.update).not.toHaveBeenCalledWith(f.ids.root, expect.anything(), expect.anything());
+  expect(f.row().aggregate.n2!.ordinary!.tasks[1]).toMatchObject({ issueId, runId: f.ids.reviewRun, wake: "claimed" });
+  expect(f.ledger().document.reservations).toHaveLength(2);
+});
+
+it.each([
+  { status: "running", finishedAt: null }, { errorCode: "timeout" }, { executionStage: "executing" },
+  { processPid: 12 }, { processStartedAt: "2026-10-05T19:00:00.100Z" }, { sessionIdAfter: "session" },
+  { usageJson: { usageSource: "per_run", inputTokens: 5, outputTokens: 0 } }, { resultJson: { summary: "work" } },
+])("does not infer zero usage from an unqualified run: %j", async change => {
+  const f = await undispatchedFixture();
+  vi.mocked(councilNativeRequest).mockResolvedValue({ status: 200, body: { ...f.run, ...change } });
+  await expect(f.recover(f.replacementBody as never)).rejects.toMatchObject({ code: "correction_execution_not_excluded" });
+  expect(f.effects).toEqual([]);
+  expect(f.ledger().document.reservations[0].remainingExposure.units).toBe(4_000_000);
+});
+
+it("requires the owner and explicit authority on the exact candidate before any recovery write", async () => {
+  const f = await undispatchedFixture();
+  await expect(executeN2BoardCommand(f.ctx, { companyId: f.ids.company, missionId: f.ids.mission,
+    actorUserId: randomUUID(), body: f.replacementBody })).rejects.toMatchObject({ code: "owner_required" });
+  for (const change of [{ authorizePreExecutionReplacement: false }, { candidateCommit: "0".repeat(40) },
+    { runId: randomUUID() }, { reservationId: randomUUID() }, { expectedVersion: 0 }]) {
+    await expect(f.recover({ ...f.replacementBody, ...change } as never)).rejects.toMatchObject({ code: "undispatched_correction_binding" });
+  }
+  expect(f.effects).toEqual([]);
+});
 
 it("transfers one exact terminal correction, preserves history/accounting, then lets ordinary reconciliation start V2 review", async () => {
   const f = await fixture();

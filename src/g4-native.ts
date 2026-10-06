@@ -21,7 +21,18 @@ export type NativeRunReadback = {
   logBytes?: number | null;
   resultJson?: { summary?: unknown; truncated?: boolean; truncationReason?: string; nativeResult?: { summary?: unknown } };
   contextSnapshot: Record<string, unknown>; usageJson: Record<string, unknown> | null;
+  errorCode?: string | null; executionStage?: string | null; processPid?: number | null;
+  processStartedAt?: string | null; sessionIdAfter?: string | null;
 };
+
+/** Host cancellation at its final pre-provider guard, not an absent usage estimate. */
+export function suppressedBeforeProvider(run: NativeRunReadback): boolean {
+  return run.status === "cancelled" && Boolean(run.startedAt && run.finishedAt)
+    && run.errorCode === "legacy_disposition_repair_suppressed" && run.executionStage === "dispatching"
+    && run.contextSnapshot.wakeReason === "issue_disposition_repair"
+    && run.processPid === null && run.processStartedAt === null && run.sessionIdAfter === null
+    && run.usageJson === null && run.resultJson === null;
+}
 
 export async function readNativeRun(ctx: PluginContext, input: {
   companyId: string; issueId: string; runId: string; agentId: string;

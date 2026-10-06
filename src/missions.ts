@@ -31,6 +31,7 @@ const N1_BOARD_COMMANDS = new Set([
   "recover-candidate",
 ]);
 const N2_BOARD_COMMANDS = new Set([
+  "replace-undispatched-correction",
   "start-review",
   "start-correction",
   "start-resubmitted-review",
@@ -58,7 +59,7 @@ export type MissionMandate = {
 export type MissionReceipt = {
   commandId: string;
   command: "bind-resumed-lead-run" | "prepare-n1-resume" | "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "fixture-bind-contribution-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish" | "recover-integration" | "recover-candidate"
-    | "start-review" | "confirm-review-handoff" | "start-correction" | "prepare-resubmission"
+    | "replace-undispatched-correction" | "start-review" | "confirm-review-handoff" | "start-correction" | "prepare-resubmission"
     | "start-resubmitted-review" | "settle-n2-usage" | "attest-transmission" | "reconcile-native-n2" | "release-native-correction" | "reconcile-ordinary-n2" | "replace-missing-opinion" | "replace-missing-verdict" | "recover-terminal-resubmission" | "ordinary-verdict";
   actorType: "user" | "agent";
   actorId: string;
