@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { Agent, PluginContext, PluginManagedAgentResolution, PluginManagedSkillResolution } from "@paperclipai/plugin-sdk";
 import { describe, expect, it, vi } from "vitest";
-import { COUNCIL_REVIEW_SKILL_KEY, logicalAnchorKey, managedAgentDeclarations, variantKey } from "../src/model-catalogue.js";
+import { COUNCIL_REVIEW_RESOURCE_KEY, COUNCIL_REVIEW_SKILL_KEY, logicalAnchorKey, managedAgentDeclarations, managedSkillDeclarations, variantKey } from "../src/model-catalogue.js";
 import { inspectVariant, inspectPreparedVariants, setupVariant, setupVariants } from "../src/model-variants.js";
 
 const companyId = "company-fixture";
 function fixture() {
   const agents = new Map<string, PluginManagedAgentResolution>();
-  let skill: PluginManagedSkillResolution = { pluginKey: "private.paperclip-council", resourceKind: "skill", resourceKey: "council-review", companyId, skillId: null, skill: null, status: "missing", defaultDrift: null };
+  let skill: PluginManagedSkillResolution = { pluginKey: "private.paperclip-council", resourceKind: "skill", resourceKey: COUNCIL_REVIEW_RESOURCE_KEY, companyId, skillId: null, skill: null, status: "missing", defaultDrift: null };
   const put = (key: string, status: Agent["status"] = "idle") => {
     const declaration = managedAgentDeclarations().find(v => v.agentKey === key)!;
     const id = randomUUID();
@@ -23,9 +23,10 @@ function fixture() {
   };
   const get = vi.fn(async (key: string) => agents.get(key) ?? { pluginKey: "private.paperclip-council", resourceKind: "agent", resourceKey: key, companyId, agentId: null, agent: null, status: "missing", defaultDrift: null });
   const reconcile = vi.fn(async (key: string) => put(key));
-  const skillGet = vi.fn(async () => skill);
-  const skillReconcile = vi.fn(async () => {
-    skill = { ...skill, status: "created", skillId: randomUUID(), skill: { key: COUNCIL_REVIEW_SKILL_KEY, companyId, currentVersionId: randomUUID() } as never };
+  const skillGet = vi.fn(async (_key: string) => skill);
+  const skillReconcile = vi.fn(async (_key: string) => {
+    const id = randomUUID();
+    skill = { ...skill, status: "created", skillId: id, skill: { id, key: COUNCIL_REVIEW_SKILL_KEY, companyId, currentVersionId: randomUUID() } as never };
     return skill;
   });
   const reset = vi.fn(() => { throw new Error("Reset is forbidden"); });
@@ -50,6 +51,48 @@ describe("native variant setup and readback", () => {
     expect(f.skillReconcile).toHaveBeenCalledTimes(1);
     const replay = await setupVariant(f.ctx, companyId, "generalist-reviewer", "sol-high", "1");
     expect(replay).toEqual(first); expect(f.reconcile).toHaveBeenCalledTimes(2); expect(f.reset).not.toHaveBeenCalled();
+  });
+  it("isolates the variant import from a pre-existing historical company skill", async () => {
+    const f = fixture();
+    const historical = { id: "historical-skill", key: `company/${companyId}/council-review`, slug: "council-review", markdown: "original method", sourceType: "local_path" };
+    const original = structuredClone(historical);
+    const inventory = [historical];
+    const declaration = managedSkillDeclarations()[0]!;
+    // Mirror the host's frontmatter-derived slug and key-or-slug conflict rule.
+    const slug = /^name: (.+)$/m.exec(declaration.markdown!)![1]!;
+    f.skillReconcile.mockImplementation(async resourceKey => {
+      expect(resourceKey).toBe(COUNCIL_REVIEW_RESOURCE_KEY);
+      const conflict = inventory.find(s => s.key === COUNCIL_REVIEW_SKILL_KEY || s.slug === slug);
+      expect(conflict).toBeUndefined();
+      const id = randomUUID();
+      const prepared = { pluginKey: "private.paperclip-council", resourceKind: "skill", resourceKey,
+        companyId, skillId: id, status: "created", defaultDrift: null,
+        skill: { id, key: COUNCIL_REVIEW_SKILL_KEY, slug, companyId, currentVersionId: randomUUID() } } as PluginManagedSkillResolution;
+      f.skillGet.mockResolvedValue(prepared);
+      return prepared;
+    });
+    expect((await setupVariant(f.ctx, companyId, "generalist-reviewer", "sol-medium")).ready).toBe(true);
+    expect(historical).toEqual(original);
+    expect(f.skillGet.mock.calls.every(([key]) => key === COUNCIL_REVIEW_RESOURCE_KEY)).toBe(true);
+    expect(f.reset).not.toHaveBeenCalled();
+  });
+  it.each(["foreign-key", "wrong-company", "wrong-id", "wrong-binding", "drift", "unreadable"])("stops before creating reviewers when skill readback is %s", async failure => {
+    const f = fixture();
+    await f.skillReconcile(COUNCIL_REVIEW_RESOURCE_KEY);
+    const skill = await f.skillGet(COUNCIL_REVIEW_RESOURCE_KEY);
+    if (failure === "foreign-key") skill.skill!.key = `company/${companyId}/council-review`;
+    if (failure === "wrong-company") skill.skill!.companyId = "other-company";
+    if (failure === "wrong-id") skill.skillId = "other-id";
+    if (failure === "wrong-binding") skill.resourceKey = "council-review";
+    if (failure === "drift") skill.defaultDrift = { changedFiles: ["SKILL.md"] };
+    if (failure === "unreadable") delete skill.defaultDrift;
+    await expect(setupVariant(f.ctx, companyId, "generalist-reviewer", "sol-medium")).rejects.toMatchObject({ code: "review_skill_not_ready" });
+    expect(f.reconcile).not.toHaveBeenCalled(); expect(f.reset).not.toHaveBeenCalled();
+  });
+  it("does not retry a skill import with an unknown result", async () => {
+    const f = fixture(); f.skillReconcile.mockRejectedValueOnce(new Error("response lost"));
+    await expect(setupVariant(f.ctx, companyId, "generalist-reviewer", "sol-medium")).rejects.toThrow("response lost");
+    expect(f.skillReconcile).toHaveBeenCalledTimes(1); expect(f.reconcile).not.toHaveBeenCalled();
   });
   it("resolves profile variants through the fixed anchor rather than physical agent/display name", async () => {
     const f = fixture(); const anchor = f.put(logicalAnchorKey("lead")); const high = f.put(variantKey("lead", "astra-high"));

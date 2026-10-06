@@ -124,7 +124,8 @@ export function validateModelCatalogue(value: unknown): ModelCatalogue {
 }
 
 export const ROLE_TEMPLATE_REVISION = "1";
-export const COUNCIL_REVIEW_SKILL_KEY = "plugin/private-paperclip-council/council-review";
+export const COUNCIL_REVIEW_RESOURCE_KEY = "council-variant-review-v1";
+export const COUNCIL_REVIEW_SKILL_KEY = `plugin/private-paperclip-council/${COUNCIL_REVIEW_RESOURCE_KEY}`;
 const sources = MODEL_CHARTER_SOURCES;
 const roles = [
   ["executor", "engineer", "Software Executor", "executor", ""],
@@ -169,7 +170,8 @@ function roleFamilies(key: RoleKey): TaskFamily[] {
   return ["synthesis", "implementation", "diagnosis"];
 }
 export const ROLE_TEMPLATES: readonly RoleTemplate[] = roles.map(([key, role, title, source, specialization]) => {
-  const content = sources[`agents/${source}/AGENTS.md`].content + (specialization ? `\n## Profile specialization\n\n${specialization}\n` : "")
+  const sourceContent = sources[`agents/${source}/AGENTS.md`].content;
+  const content = (key.endsWith("reviewer") ? sourceContent.replaceAll("council-review", COUNCIL_REVIEW_RESOURCE_KEY) : sourceContent) + (specialization ? `\n## Profile specialization\n\n${specialization}\n` : "")
     + "\n## Physical variants\n\nThis agent is one physical variant of a stable Council identity. A different model/profile does not create independence, a new budget or a new authorization. Use the durable task binding and available public history; do not assume a prior variant's private session was transferred.\n";
   const families = roleFamilies(key);
   const allowedProfiles = [...new Set(MODEL_CATALOGUE.families.filter(family => families.includes(family.id)).flatMap(family => family.allowedProfiles))];
@@ -205,6 +207,7 @@ export function managedAgentDeclarations(): PluginManagedAgentDeclaration[] {
   })));
 }
 export function managedSkillDeclarations(): PluginManagedSkillDeclaration[] {
-  return [{ skillKey: "council-review", displayName: "Council Review", slug: "council-review",
-    markdown: sources["skills/council-review/SKILL.md"].content }];
+  return [{ skillKey: COUNCIL_REVIEW_RESOURCE_KEY, displayName: "Council Variant Review", slug: COUNCIL_REVIEW_RESOURCE_KEY,
+    // Host imports derive the slug from Markdown, not declaration.slug alone.
+    markdown: sources["skills/council-review/SKILL.md"].content.replaceAll("council-review", COUNCIL_REVIEW_RESOURCE_KEY) }];
 }

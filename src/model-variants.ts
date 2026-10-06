@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { PluginContext, PluginManagedAgentResolution } from "@paperclipai/plugin-sdk";
 import { ModelSelectionError } from "./model-state.js";
 import {
-  COUNCIL_REVIEW_SKILL_KEY, ROLE_TEMPLATES, ROLE_TEMPLATE_REVISION,
+  COUNCIL_REVIEW_RESOURCE_KEY, COUNCIL_REVIEW_SKILL_KEY, ROLE_TEMPLATES, ROLE_TEMPLATE_REVISION,
   isProfileId, logicalAnchorKey, managedAgentDeclarations, roleTemplate, variantKey,
   type ProfileId, type RoleKey,
 } from "./model-catalogue.js";
@@ -103,10 +103,11 @@ async function inspectRoleVariant(
   }
   if (role.desiredSkills.includes(COUNCIL_REVIEW_SKILL_KEY)) {
     try {
-      const skill = await ctx.skills.managed.get("council-review", companyId);
+      const skill = await ctx.skills.managed.get(COUNCIL_REVIEW_RESOURCE_KEY, companyId);
       observed.reviewSkill = { key: skill.skill?.key ?? null, versionId: skill.skill?.currentVersionId ?? null,
         drift: skill.defaultDrift ?? null, readbackAvailable: skill.defaultDrift !== undefined };
-      if (!skill.skill || skill.companyId !== companyId || skill.skill.companyId !== companyId || skill.skill.key !== COUNCIL_REVIEW_SKILL_KEY) gaps.push("review_skill_missing_or_mismatched");
+      if (!skill.skill || skill.companyId !== companyId || skill.skill.companyId !== companyId
+        || skill.resourceKey !== COUNCIL_REVIEW_RESOURCE_KEY || skill.skillId !== skill.skill.id || skill.skill.key !== COUNCIL_REVIEW_SKILL_KEY) gaps.push("review_skill_missing_or_mismatched");
       if (skill.defaultDrift === undefined) gaps.push("review_skill_readback_unavailable");
       else if (skill.defaultDrift !== null) gaps.push("review_skill_drift");
     } catch { gaps.push("review_skill_read_unavailable"); }
@@ -162,9 +163,17 @@ export async function setupVariant(
   const role = roleTemplate(roleKey, revision);
   if (!role.allowedProfiles.includes(profileId)) throw new VariantIdentityError("variant_outside_catalogue");
   if (role.desiredSkills.includes(COUNCIL_REVIEW_SKILL_KEY)) {
-    const skill = await ctx.skills.managed.get("council-review", companyId);
+    const skill = await ctx.skills.managed.get(COUNCIL_REVIEW_RESOURCE_KEY, companyId);
     if (skill.status === "missing" && skill.skill === null && skill.skillId === null) {
-      await ctx.skills.managed.reconcile("council-review", companyId);
+      await ctx.skills.managed.reconcile(COUNCIL_REVIEW_RESOURCE_KEY, companyId);
+    }
+    // A reconcile can resolve an existing foreign skill by slug. Never proceed
+    // with reviewer creation on a wrong binding, drift or incomplete readback.
+    const prepared = await ctx.skills.managed.get(COUNCIL_REVIEW_RESOURCE_KEY, companyId);
+    if (!prepared.skill || prepared.companyId !== companyId || prepared.skill.companyId !== companyId
+      || prepared.resourceKey !== COUNCIL_REVIEW_RESOURCE_KEY || prepared.skillId !== prepared.skill.id
+      || prepared.skill.key !== COUNCIL_REVIEW_SKILL_KEY || prepared.defaultDrift !== null) {
+      throw new ModelSelectionError("review_skill_not_ready", "Inspect the dedicated variant skill before preparing reviewers; setup never resets existing skills");
     }
   }
   await prepareAgent(ctx, companyId, logicalAnchorKey(roleKey));
