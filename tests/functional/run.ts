@@ -1744,7 +1744,7 @@ try {
     await intruderPage.getByText("Status: read only").waitFor();
     assert.equal(await intruderPage.getByRole("button", { name: "Create draft" }).isDisabled(), true);
     await intruderPage.goto(`${baseUrl}/CPQ/council-missions`, { waitUntil: "networkidle" });
-    await intruderPage.getByRole("alert").waitFor();
+    await intruderPage.getByRole("alert").filter({ hasText: "Only the configured company owner" }).waitFor();
     await intruderContext.close();
     evidence.results.installedBrowserPageAndAuthenticatedAction = "PASS";
     evidence.results.installedBrowserStates = "PASS";
