@@ -33,6 +33,27 @@ checks and the next actor. Child issues are first created in native Paperclip
 backlog; their dispatch requires a separate durable reservation. An uncertain
 create or wakeup is retained as unknown and is never retried automatically.
 
+From 0.7.5, materializing a contributor also reads the parent's native `plan`
+document through the SDK. The child description includes the mission objective,
+acceptance criteria, commitments and operating limits, plus the full plan body,
+document/revision identifiers and parent API references. The existing creation
+intent stores that description before the native issue is created; replay does
+not recopy a newer plan or create another child.
+
+Before materializing, the lead completes each work slot in that same native plan:
+expected result, interfaces, dependencies, source documents, owned paths and
+behavior checks. It reads back the child description before dispatch. Contributors
+read their repository instructions and referenced sources, implement only their
+assigned scope, and report results against those checks. A later plan revision
+requires coordination with the lead, not silent scope expansion. No new plan store,
+command schema or agent provisioning is introduced.
+
+Legacy missions without a plan document retain the mandate and an explicit parent
+reference. A failed plan read returns `contribution_context_unavailable` before
+claiming a creation effect, so a transport error cannot silently strip the context.
+The unit and installed-package synthetic tests verify content transmission; they
+do not prove that a model has read or correctly implemented every requirement.
+
 The pinned SDK exposes an authenticated orchestration summary containing exact
 native runs, token totals, cost cents, budget incidents and invocation blocks.
 Council supports one deliberately narrow native profile that reserves an

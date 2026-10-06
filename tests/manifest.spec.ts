@@ -66,7 +66,7 @@ describe("paperclip council manifest", () => {
     });
     expect(((parsed.instanceConfigSchema!.properties as Record<string, unknown>).modelProfileMapping as Record<string, unknown>))
       .toMatchObject(MODEL_PROFILE_MAPPING_SCHEMA);
-    expect(parsed.version).toBe("0.7.4");
+    expect(parsed.version).toBe("0.7.5");
     expect(JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version).toBe(parsed.version);
     expect(parsed.entrypoints.ui).toBe("./dist/ui");
     expect(parsed.ui?.slots).toEqual(expect.arrayContaining([
