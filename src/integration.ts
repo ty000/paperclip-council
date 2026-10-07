@@ -348,7 +348,7 @@ function validateContributions(input: IntegratedCandidateInput): Array<{
 
 async function readIssueBoundBundle(
   ctx: PluginContext,
-  input: IntegratedCandidateInput,
+  input: Pick<IntegratedCandidateInput, "companyId" | "issueId" | "attachmentId" | "expectedByteSize">,
   expectedSha256: string,
 ): Promise<{ bytes: Buffer; sha256: string }> {
   const attachments = await ctx.issues.listAttachments(input.issueId, input.companyId);
@@ -385,6 +385,7 @@ async function importAndValidateRepository(
   baseCommit: string,
   candidateCommit: string,
   checks: IntegratedCandidateCheck[],
+  sourceRefs = ["refs/heads/base", "refs/heads/candidate"],
 ): Promise<void> {
   await writeFile(bundlePath, bytes, { mode: 0o600 });
   await git(["init", "--bare", repositoryPath], dirname(bundlePath));
@@ -401,8 +402,8 @@ async function importAndValidateRepository(
     "fetch",
     "--no-tags",
     bundlePath,
-    "refs/heads/base:refs/council/base",
-    "refs/heads/candidate:refs/council/candidate",
+    sourceRefs[0] + ":refs/council/base",
+    sourceRefs[1] + ":refs/council/candidate",
   ], repositoryPath, "required base or candidate ref is missing");
   const observedBase = (await git(["rev-parse", "refs/council/base^{commit}"], repositoryPath)).trim();
   const observedCandidate = (await git(["rev-parse", "refs/council/candidate^{commit}"], repositoryPath)).trim();
@@ -665,4 +666,25 @@ export async function verifyIntegratedCandidate(
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+}
+
+export type ContributionBundleProof = { protocol: "council-contribution-proof-v1"; attachmentId: string; sha256: string; byteSize: number;
+  segmentRootCommit: string; commit: string; changedPaths: string[]; checks: IntegratedCandidateCheck[]; verifiedAt: string; closureClaimedAt?: string; closedAt?: string };
+
+export async function verifyContributionBundle(ctx: PluginContext, input: Pick<IntegratedCandidateInput, "companyId" | "issueId" | "attachmentId" | "expectedSha256" | "baseCommit" | "candidateCommit"> & { contributionId: string; ownedPaths: string[] }): Promise<ContributionBundleProof> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.contributionId)) throw new Error("Contribution UUID required");
+  if (!Array.isArray(input.ownedPaths) || !input.ownedPaths.length || input.ownedPaths.length > MAX_OWNED_PATHS_PER_CONTRIBUTION) throw new Error("Bounded ownership required");
+  const baseCommit = commit(input.baseCommit, "baseCommit"), candidateCommit = commit(input.candidateCommit, "candidateCommit");
+  const ownedPaths = input.ownedPaths.map(p => ownedPath(p, "ownedPaths"));
+  const { bytes, sha256 } = await readIssueBoundBundle(ctx, input, digest(input.expectedSha256));
+  const root = await mkdtemp(resolve(tmpdir(), "paperclip-council-child-proof-"));
+  const checks: IntegratedCandidateCheck[] = [{ name: "child-bound-bundle", status: "passed", detail: `${bytes.byteLength} bytes; SHA-256 verified` }];
+  try {
+    const repository = resolve(root, "repository.git"), refs = ["base", "candidate"].map(ref => `refs/council/proof/${input.contributionId}/${ref}`);
+    await importAndValidateRepository(bytes, resolve(root, "child.bundle"), repository, baseCommit, candidateCommit, checks, refs);
+    const verified = await verifyContribution({ contributionId: input.contributionId, commit: candidateCommit, ownedPaths }, baseCommit, repository);
+    await requireGitCheck("child-diff-check", ["diff", "--check", baseCommit, candidateCommit], repository, "Whitespace errors in child contribution");
+    checks.push({ name: "linear-owned-child-history", status: "passed", detail: "Nonempty bounded linear history changes only declared owned paths" });
+    return { protocol: "council-contribution-proof-v1", attachmentId: input.attachmentId, sha256, byteSize: bytes.byteLength, segmentRootCommit: baseCommit, commit: candidateCommit, changedPaths: verified.changedPaths, checks, verifiedAt: new Date().toISOString() };
+  } finally { await rm(root, { recursive: true, force: true }); }
 }

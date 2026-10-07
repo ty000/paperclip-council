@@ -108,6 +108,7 @@ export type MissionAggregate = {
   workspacePreflight?: import("./workspace-preflight.js").WorkspacePreflightProfile;
   continuity?: import("./continuity-policy.js").ContinuityPolicy;
   projectMandate?: import("./project-mandate-state.js").ProjectMandateSnapshot;
+  completion?: import("./completion-contract.js").CompletionState;
   hierarchy?: import("./hierarchy-contract.js").HierarchyState;
   nativeWakePolicy?: import("./native-wake-policy.js").NativeWakePolicy;
   n1?: Record<string, unknown>;
@@ -706,6 +707,7 @@ export function inspectMission(mission: MissionRecord) {
     prerequisites: n1?.prerequisites ?? mission.aggregate.readiness.blockers,
     nextAction: (mission.aggregate.n6 && !mission.aggregate.n1?.rootDispatchState ? inspectN6(mission)?.nextAction : undefined) ?? n2?.nextAction.label ?? n1?.nextAction ?? "Resolve and qualify G4 before adding any dispatch or activation command.",
     n1,
+    ...(mission.aggregate.completion ? { completion: mission.aggregate.completion } : {}),
     n2,
     n3: inspectN3(mission),
     n5: inspectN5(mission),

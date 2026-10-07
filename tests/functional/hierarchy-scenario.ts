@@ -34,8 +34,8 @@ export async function verifyHierarchyTasks(api: any, proof: any, rootId: string)
     for (const key of ["description", "title", "parentId", "assigneeAgentId"]) assert.deepEqual(current[key], original[key]);
     assert.deepEqual(current.blockedByIssueIds, original.blockedByIssueIds);
   }
-  assert.equal(after.find((issue: any) => issue.id === rootId).status, "blocked");
-  if (proof.hierarchyTasks.group) assert.equal(after.find((issue: any) => issue.id === proof.hierarchyTasks.group.id).status, "blocked");
+  assert.equal(after.find((issue: any) => issue.id === rootId).status, proof.mission.aggregate.completion?.state === "closed" ? "done" : "blocked");
+  if (proof.hierarchyTasks.group) assert.equal(after.find((issue: any) => issue.id === proof.hierarchyTasks.group.id).status, proof.mission.aggregate.completion?.state === "closed" ? "done" : "blocked");
   assert(proof.hierarchyTasks.leaves.every((leaf: any) => after.find((issue: any) => issue.id === leaf.id).status === "done"));
   assert.deepEqual(new Set(state.contributions.map((slot: any) => slot.childIssueId)), new Set(proof.hierarchyTasks.leaves.map((leaf: any) => leaf.id)));
   assert.equal(proof.runs.filter((run: any) => run.contextSnapshot.issueId === rootId).length, 0);

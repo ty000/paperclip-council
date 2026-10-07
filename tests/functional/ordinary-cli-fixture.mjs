@@ -127,7 +127,7 @@ else if (inspection.task) {
   }
 } else if (agentId === config.actors.lead) {
   const contributions = inspection.n1.hierarchy?.leaves ?? ["alpha", "beta"].map(name => ({ contributionId: randomUUID(), assigneeAgentId: config.actors[name], title: name, ownedPaths: [`${name}.txt`] }));
-  await command("plan", { contributions });
+  await command("plan", { contributions, ...(config.completionMode ? { sourceBaseCommit: config.baseCommit } : {}) });
   for (const slot of contributions) await command("materialize", { contributionId: slot.contributionId });
   for (const slot of contributions) {
     const dispatched = await command("dispatch", { contributionId: slot.contributionId, reservationId: randomUUID(), requestedUnits: 1000 });
@@ -152,7 +152,13 @@ else if (inspection.task) {
   await writeFile(resolve(config.repoPath, `${name}.txt`), `${name} contribution\n`);
   git("add", `${name}.txt`); git("commit", "-m", `fixture: ${name} contribution`);
   const slot = inspection.n1.participants.find(slot => slot.assigneeAgentId === agentId);
-  await command("record-contribution", { contributionId: slot.contributionId, commit: git("rev-parse", "HEAD") });
+  if (config.completionMode) {
+    const { contributionCommand } = await import(new URL("file://" + resolve(config.councilRepository, "dist/contribution-command.js")));
+    execFileSync("bash", ["-c", contributionCommand(config.missionId, slot.contributionId)], { cwd: config.repoPath, env: process.env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 60000 });
+    const held = await api("GET", `/api/issues/${issueId}`);
+    assert.equal(held.status, "blocked");
+    await writeFile(resolve(config.runtime, `child-proof-${runId}.json`), JSON.stringify({ runId, issueId, statusWhileRunning: held.status }));
+  } else await command("record-contribution", { contributionId: slot.contributionId, commit: git("rev-parse", "HEAD") });
   summary = { fixture: "N1 real CLI contribution", name };
 }
 console.log(JSON.stringify({ type: "thread.started", thread_id: randomUUID() }));

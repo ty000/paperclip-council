@@ -1,3 +1,4 @@
+import { completionPolicy } from "./completion-contract.js";
 import type { PluginContext, PluginApiRequestInput } from "@paperclipai/plugin-sdk";
 import { MissionError, type MissionRecord } from "./missions.js";
 import { physicalAgent } from "./model-state.js";
@@ -36,7 +37,7 @@ export async function finishN1Disposition(ctx: PluginContext, m: MissionRecord, 
     }
     const agentId = physicalAgent(m, slot.assigneeAgentId, { issueId: slot.childIssueId, runId: slot.authorRunId });
     if (agentId !== input.actor.agentId) throw new MissionError(403, "native_disposition_actor", "Mapped contributor required");
-    await observeStatus(ctx, m, slot.childIssueId!, agentId, "done");
+    await observeStatus(ctx, m, slot.childIssueId!, agentId, completionPolicy(m) ? "blocked" : "done");
   }
   if (body.command === "publish") {
     const issueId = leadIssueId(m);
