@@ -11,8 +11,9 @@ async function readDeliveryNative(ctx: PluginContext, mission: MissionRecord, is
   if (result.status !== 200) throw new MissionError(409, "n5_native_read_unavailable", `Native ${resource} read unavailable (${result.status})`);
   return result.body;
 }
-export async function readN5Plan(ctx: PluginContext, mission: MissionRecord, revisionId: string): Promise<N5Plan> {
-  const document = await readDeliveryNative(ctx, mission, mission.rootIssueId, "documents/plan");
+export async function readN5Plan(ctx: PluginContext, mission: MissionRecord, revisionId: string, documentKey = "plan"): Promise<N5Plan> {
+  if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(documentKey)) throw new MissionError(422, "n5_plan_key", "Safe bounded native document key required");
+  const document = await readDeliveryNative(ctx, mission, mission.rootIssueId, `documents/${documentKey}`);
   if (document.latestRevisionId !== revisionId || document.issueId !== mission.rootIssueId) throw new MissionError(409, "n5_plan_revision", "Exact current native plan revision required");
   let plan: ObjectRecord;
   try { plan = JSON.parse(document.body); } catch { throw new MissionError(422, "n5_plan_format", "Plan document must contain the JSON operational plan"); }
@@ -30,12 +31,12 @@ export async function readN5Plan(ctx: PluginContext, mission: MissionRecord, rev
   for (const id of new Set([...roles.map(role => plan[role]), ...plan.work.map((work: ObjectRecord) => work.assigneeAgentId)])) {
     if (!(await ctx.agents.get(id, mission.companyId))) throw new MissionError(422, "n5_plan_actor", "Plan actor is not in this company");
   }
-  return { documentId: document.id, revisionId, bodyHash: canonicalPayloadHash(document.body), mandateHash,
+  return { documentId: document.id, revisionId, bodyHash: canonicalPayloadHash(document.body), mandateHash, ...(documentKey === "plan" ? {} : { documentKey }),
     plannerAgentId: plan.plannerAgentId, orchestratorAgentId: plan.orchestratorAgentId, integrationLeadAgentId: plan.integrationLeadAgentId, qaAgentId: plan.qaAgentId };
 }
 export async function assertCurrentN5Plan(ctx: PluginContext, mission: MissionRecord) {
   const expected = mission.aggregate.n5!.plan;
-  const current = await readN5Plan(ctx, mission, expected.revisionId);
+  const current = await readN5Plan(ctx, mission, expected.revisionId, expected.documentKey);
   if (canonicalPayloadHash(current) !== canonicalPayloadHash(expected)) throw new MissionError(409, "n5_plan_changed", "Plan binding changed; replan before publication admission");
 }
 

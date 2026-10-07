@@ -6,6 +6,7 @@ import { assertContinuityDeparture } from "../src/continuity-policy.js";
 
 const f = vi.hoisted(() => ({ mission: null as unknown as MissionRecord, run: { status: "running" },
   board: vi.fn(), review: vi.fn(), reconcile: vi.fn(), delivery: vi.fn(), inventory: vi.fn(), settle: vi.fn() }));
+vi.mock("../src/project-task-intake.js", () => ({ reconcileProjectTasks: async () => {} }));
 vi.mock("../src/missions.js", () => ({ getMission: async () => structuredClone(f.mission), canonicalPayloadHash: (value: unknown) => JSON.stringify(value),
   MissionError: class extends Error { constructor(public status: number, public code: string, message: string) { super(message); } } }));
 vi.mock("../src/n1-missions.js", () => ({ executeN1BoardCommand: (...args: unknown[]) => f.board(...args) }));

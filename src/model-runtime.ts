@@ -8,6 +8,7 @@ import { readOrdinaryRun, suppressedBeforeProvider } from "./g4-native.js";
 import { collectInterventionHistory, publishInterventionHistory } from "./model-history.js";
 import { assertWorkspacePreflight } from "./workspace-preflight.js";
 import { assertNativeRunInventory } from "./native-runs.js";
+import { assertProjectDeparture } from "./project-mandate-guard.js";
 
 type LaunchInput = { taskKey: string; interventionKey: string; launchKey: string; logicalAgentId: string; family: TaskFamily; issueId?: string | null; expectedRoles: readonly RoleKey[] };
 const terminal = new Set(["succeeded", "failed", "cancelled", "timed_out", "interrupted"]);
@@ -84,6 +85,7 @@ function assertRoleFamily(roleKey: string, revision: string, family: TaskFamily)
 /** Called only by existing authorized dispatchers. This function never grants another attempt or wakes an agent. */
 export async function prepareVariantLaunch(ctx: PluginContext, initial: MissionRecord, input: LaunchInput) {
   assertContinuityDeparture(initial);
+  await assertProjectDeparture(ctx, initial);
   await assertNativeRunInventory(ctx, initial, true);
   let m = initial; const state = m.aggregate.modelSelection;
   if (!state) return { mission: m, binding: null };
@@ -206,6 +208,7 @@ export function claimVariantWake<T>(ctx: PluginContext, m: MissionRecord, launch
 export async function claimVariantWake<T>(ctx: PluginContext, m: MissionRecord, launchKey: string,
   persist?: (mission: MissionRecord, aggregate: MissionAggregate) => Promise<T>): Promise<MissionRecord | T> {
   assertContinuityDeparture(m);
+  await assertProjectDeparture(ctx, m);
   await assertNativeRunInventory(ctx, m, true);
   const launch = modelLaunch(m, launchKey);
   if (!launch) return persist ? persist(m, m.aggregate) : m;
