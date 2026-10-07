@@ -1,3 +1,4 @@
+import { readContinuityObservation } from "./continuity-observation.js";
 import { configureContinuity } from "./continuity-configuration.js";
 import type { ModelSelectionState } from "./model-state.js";
 import { assertNativeRunInventory, initialNativeWakePolicy } from "./native-runs.js";
@@ -773,7 +774,8 @@ export async function handleMissionApi(input: PluginApiRequestInput, ctx: Plugin
       const missionId = uuid(input.params.missionId, "missionId");
       const mission = await getMission(ctx, companyId, missionId);
       if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
-      return { status: 200, body: await inspectMissionWithAdmission(ctx, mission) };
+      return { status: 200, body: { ...await inspectMissionWithAdmission(ctx, mission),
+        continuity: await readContinuityObservation(ctx, mission) } };
     }
     if (input.routeKey === "missions-command" || input.routeKey === "mission-command") {
       const body = asRecord(input.body);

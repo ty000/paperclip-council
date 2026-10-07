@@ -234,7 +234,7 @@ try {
   const n6 = n6Mode ? prepareN6Scenario({ api, companyId, projectId, actors, missions, missionPath, profile, runtime, fixtureConfig, proof, coordinationMode }) : undefined;
   const reviewBody = { companyId, command: "start-review", commandId: randomUUID(), expectedVersion: mission.version, submissionId: randomUUID(), n3Slots };
   if (!continuityMode) await api("POST", `${missionPath}/commands`, reviewBody);
-  record("ordinary_review_started");
+  record(continuityMode ? "waiting_for_scheduled_review" : "ordinary_review_started");
   await save();
   mission = await waitFor("installed ordinary acceptance", async () => {
     const value = (await api("GET", `${missionPath}?companyId=${companyId}`)).mission;

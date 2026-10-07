@@ -23,8 +23,9 @@ const job = { jobKey: "mission-continuity", runId: "native-job", trigger: "sched
 function context() {
   let callback: (job: PluginJobContext) => Promise<void>;
   let document: { body: string } | null = null;
+  let stored: unknown = null;
   const upsert = vi.fn(async (input: { body: string }) => { document = { body: input.body }; return document; });
-  const ctx = { companies: { get: async () => ({ defaultResponsibleUserId: "owner" }) },
+  const ctx = { state: { get: async () => stored, set: async (_scope: unknown, value: unknown) => { stored = value; } }, companies: { get: async () => ({ defaultResponsibleUserId: "owner" }) },
     issues: { documents: { get: async () => document, upsert } },
     jobs: { register: (_key: string, fn: typeof callback) => { callback = fn; } } } as unknown as PluginContext;
   return { ctx, upsert, runJob: () => callback(job) };
