@@ -13,7 +13,7 @@ export const missionToolDeclaration = {
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
-  version: "0.7.8",
+  version: "0.7.10",
   displayName: "Paperclip Council",
   description: "Private Council integration with revisioned rosters, bounded admission and checked candidate preparation.",
   author: "Local Paperclip integration",
@@ -63,6 +63,8 @@ const manifest: PaperclipPluginManifestV1 = {
     required: ["apiBaseUrl", "councilAgentId", "councilApiKey"],
     properties: {
       modelVariantsEnabled: { type: "boolean", default: false, description: "Use prepared fixed-profile Council variants on newly created standard missions only." },
+      nativeWakeGuardEnabled: { type: "boolean", default: true, description: "Pin Council-owned N1 child completion and blocked root waiting on new ordinary missions. Preserve historical contracts; never disable agent demand wakes." },
+      nativeRunLimit: { type: "integer", minimum: 1, maximum: 256, description: "Optional explicit total observed native run limit, pinned on new ordinary missions. Includes governed repeats and unexpected runs; no limit is invented when absent. Not a provider token ceiling." },
       n5PublisherPreflightEnabled: { type: "boolean", default: true, description: "Require a fresh attributed read-only Git/GitHub report inside the already admitted publisher run before claiming a publication write. Pinned on new ordinary N5 authorizations; historical authorities are preserved." },
       workspacePreflight: { type: "object", additionalProperties: false, required: ["codexHome"],
         description: "Opt in new fixed-variant ordinary missions to provider-free Git sandbox checks. Register the observed effective native Codex home; historical missions retain their pinned configuration. This is not proof of GitHub access or model execution.",

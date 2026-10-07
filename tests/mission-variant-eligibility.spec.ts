@@ -45,7 +45,8 @@ function harness(config: Record<string, unknown> = { modelVariantsEnabled: true,
   const getIssue = vi.fn(async () => ({ id: ids.root, companyId: ids.company, projectId: ids.project, parentId: null }));
   const getProject = vi.fn(async () => ({ id: ids.project, companyId: ids.company, archivedAt: null }));
   const ctx = { companies: { get: async () => ({ id: ids.company, defaultResponsibleUserId: ids.owner }) },
-    config: { get: getConfig }, issues: { get: getIssue }, projects: { get: getProject },
+    config: { get: getConfig }, issues: { get: getIssue,
+      summaries: { getOrchestration: vi.fn(async ({ companyId, issueId }) => ({ companyId, issueId, runs: [] })) } }, projects: { get: getProject },
     db: { namespace: "plugin_private_council_test", execute, query } } as unknown as PluginContext;
   const compatible = (logicalId: string): VariantInspection => ({ logicalAgentId: logicalId, agentId: logicalId,
     roleKey: logicalId === ids.lead ? "lead" : logicalId === ids.contributor ? "contributor-1"

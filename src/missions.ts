@@ -1,4 +1,6 @@
 import type { ModelSelectionState } from "./model-state.js";
+import { assertNativeRunInventory, initialNativeWakePolicy } from "./native-runs.js";
+import type { NativeWakePolicy } from "./native-wake-policy.js";
 import { ModelSelectionError } from "./model-state.js";
 import { inspectVariant } from "./model-variants.js";
 import { readWorkspacePreflightProfile, type WorkspacePreflightProfile } from "./workspace-preflight.js";
@@ -102,6 +104,7 @@ export type MissionAggregate = {
   effectIntents: Array<Record<string, unknown>>;
   modelSelection?: ModelSelectionState;
   workspacePreflight?: import("./workspace-preflight.js").WorkspacePreflightProfile;
+  nativeWakePolicy?: import("./native-wake-policy.js").NativeWakePolicy;
   n1?: Record<string, unknown>;
   n2?: N2State;
   n3?: import("./n3-state.js").N3State;
@@ -529,6 +532,7 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
   let council: RosterSnapshot;
   let useVariants = false;
   let workspacePreflight: WorkspacePreflightProfile | undefined;
+  let nativeWakePolicy: NativeWakePolicy | undefined;
   try {
     const issue = await ctx.issues.get(create.rootIssueId, companyId);
     if (!issue || issue.companyId !== companyId) throw new MissionError(404, "root_issue_not_found", "Root issue not found in this company");
@@ -574,6 +578,9 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
         if (!compatible) throw new ModelSelectionError("model_roster_role_mismatch", "Catalogue role must match the structured roster responsibility", { agentId, role });
       }
     }
+    if (variantConfig.n2RuntimeProfile === "ordinary-cli-v1" && variantConfig.nativeWakeGuardEnabled !== false) {
+      nativeWakePolicy = await initialNativeWakePolicy(ctx, companyId, create.rootIssueId, variantConfig.nativeRunLimit);
+    }
   } catch (error) {
     let appeared: MissionRecord | null = null;
     try {
@@ -590,6 +597,7 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
     aggregate.modelSelection = { protocol: "native-variants-v1", choices: [], tasks: [] };
   }
   if (workspacePreflight) aggregate.workspacePreflight = workspacePreflight;
+  if (nativeWakePolicy) aggregate.nativeWakePolicy = nativeWakePolicy;
   const insert = await ctx.db.execute(
     missionInsertSql(ctx),
     [companyId, create.missionId, create.rootIssueId, create.projectId, ownerUserId,
@@ -719,6 +727,13 @@ async function executeMissionRouteCommand(
   missionId: string | undefined,
 ) {
   const command = String(body.command);
+  if (missionId && command === "reconcile-native-runs") {
+    await requireOwner(ctx, companyId, actorUserId);
+    const mission = await getMission(ctx, companyId, missionId);
+    if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
+    await assertNativeRunInventory(ctx, mission);
+    return { outcome: "reconciled", mission };
+  }
   if (missionId && N1_BOARD_COMMANDS.has(command)) {
     return executeN1BoardCommand(ctx, { companyId, missionId, actorUserId, body });
   }

@@ -1,4 +1,5 @@
 import { prepareN1Resume, verifyResumedLeadRun } from "./n1-resume.js";
+import { finishN1Disposition } from "./native-wake-policy.js";
 import { settledResumeReservation, type N1Resume, type ResumeTarget } from "./n1-resume-state.js";
 import { physicalAgent, isLogicalActor } from "./model-state.js";
 import { contributionModelFamily, prepareVariantLaunch, bindVariantIssue, claimVariantWake, recordVariantWake, observeVariantRun } from "./model-runtime.js";
@@ -296,6 +297,7 @@ export function contributionDescription(input: {
   contributionId: string;
   ownedPaths: string[];
   context?: string;
+  closeThroughCouncil?: boolean;
 }): string {
   return [
     "Council N1 contribution. Complete only this bounded child issue.",
@@ -309,7 +311,9 @@ export function contributionDescription(input: {
     "```sh",
     contributionCommand(input.missionId, input.contributionId),
     "```",
-    "Mark this Paperclip child issue done only after record-contribution succeeds.",
+    input.closeThroughCouncil
+      ? "Council closes this child through its SDK after the exact record-contribution succeeds. Finish your run; do not issue another status/comment wake. Terminal usage remains required before integration."
+      : "Mark this Paperclip child issue done only after record-contribution succeeds.",
     "For any non-2xx response, preserve the HTTP status and sanitized JSON response body in your final report without exposing credentials.",
     "",
     "Plugins/skills à utiliser",
@@ -1106,7 +1110,10 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
     const commandId = uuid(body.commandId, "commandId");
     const hash = canonicalPayloadHash(body);
     const prior = receipt(mission, commandId, input.actor.agentId, hash);
-    if (prior) return { status: 200, body: { outcome: "replayed", mission, receipt: prior } };
+    if (prior) {
+      await finishN1Disposition(ctx, mission, input, body);
+      return { status: 200, body: { outcome: "replayed", mission, receipt: prior } };
+    }
     if (body.command === "plan") {
       const actor = await lead(ctx, mission, input);
       if (state.contributions.length !== 0) throw new MissionError(409, "plan_exists", "Contribution plan already exists");
@@ -1142,6 +1149,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         title: slot.title,
         description: contributionDescription({
           missionId: mission.missionId,
+          closeThroughCouncil: Boolean(mission.aggregate.nativeWakePolicy),
           contributionId,
           ownedPaths: slot.ownedPaths,
           context: await readContributionContext(ctx, mission).catch(() => {
@@ -1376,6 +1384,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         journal: [...mission.aggregate.journal, { action: "contribution_recorded", contributionId, commit, actorAgentId: input.actor.agentId, runId: input.actor.runId, at: new Date().toISOString() }],
       };
       const result = await commandCas(ctx, mission, body, "agent", input.actor.agentId, next);
+      await finishN1Disposition(ctx, result.mission, input, body);
       return { status: 200, body: result };
     }
     if (body.command === "publish") {
@@ -1469,6 +1478,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         }],
       };
       const result = await commandCas(ctx, mission, body, "agent", actor.agentId, next);
+      await finishN1Disposition(ctx, result.mission, input, body);
       return { status: 200, body: result };
     }
     throw new MissionError(400, "unknown_command", "Unknown N1 agent command");

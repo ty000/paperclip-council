@@ -6,6 +6,7 @@ import {
   configureAdmission,
   readAdmission,
   reserveAdmission,
+  recordUnadmittedRun,
   settleAdmission,
   type AdmissionConfigureInput,
 } from "../src/admission.js";
@@ -100,6 +101,35 @@ function reservation(overrides: Record<string, unknown> = {}) {
 }
 
 describe("G4 admission envelopes", () => {
+  it("holds unadmitted unknown usage across restart then accounts an exact cost only once", async () => {
+    const store = admissionStore(); const config = knownConfiguration();
+    await configureAdmission(store.context(), config);
+    const fact = { companyId, periodKey: config.periodKey, missionId, runId: randomUUID(), issueId: randomUUID(), agentId: randomUUID(), nativeStatus: "succeeded",
+      usage: { status: "unknown" as const, reason: "Cumulative usage cannot be attributed" },
+      remainingExposure: { status: "known" as const, source: "Qualified terminal state", units: 0 } };
+    const held = await recordUnadmittedRun(store.context(), fact);
+    expect(held.status).toBe("blocked"); expect(held.accountedUnits).toBeNull(); expect(held.reservations).toHaveLength(0);
+    expect(await readAdmission(store.context(), fact)).toEqual(held);
+    expect(await recordUnadmittedRun(store.context(), fact)).toEqual(held);
+    const settled = await recordUnadmittedRun(store.context(), { ...fact, usage: { status: "known", source: "Native exact per_run", units: 12 } });
+    expect(settled.allowance).toMatchObject({ knownUsageUnits: 12 });
+    expect(await recordUnadmittedRun(store.context(), { ...fact, usage: { status: "known", source: "Native exact per_run", units: 12 } })).toEqual(settled);
+    expect(settled.status).toBe("blocked"); expect(settled.blockers).toContainEqual(expect.objectContaining({ code: "unadmitted_native_run" }));
+    await expect(reserveAdmission(store.context(), { ...reservation(), expectedVersion: settled.version })).rejects.toMatchObject({ code: "admission_blocked" });
+    await expect(configureAdmission(store.context(), { ...config, commandId: randomUUID(), expectedVersion: settled.version })).rejects.toMatchObject({ code: "configuration_in_use" });
+  });
+  it("preserves an observed foreign cost when later usage is missing or smaller", async () => {
+    const store = admissionStore(); const config = knownConfiguration(); await configureAdmission(store.context(), config);
+    const fact = { companyId, periodKey: config.periodKey, missionId, runId: randomUUID(), issueId: randomUUID(), agentId: randomUUID(), nativeStatus: "failed",
+      usage: { status: "known" as const, source: "Native exact per_run", units: 20 },
+      remainingExposure: { status: "known" as const, source: "Qualified failed terminal state", units: 0 } };
+    await recordUnadmittedRun(store.context(), fact);
+    await expect(recordUnadmittedRun(store.context(), { ...fact, usage: { ...fact.usage, units: 10 } })).rejects.toMatchObject({ code: "unadmitted_usage_decreased" });
+    const missing = await recordUnadmittedRun(store.context(), { ...fact, usage: { status: "unknown", reason: "New read unavailable" } });
+    expect(missing.allowance).toMatchObject({ knownUsageUnits: 20 }); expect(missing.unadmittedRuns![0].lastKnownUsageUnits).toBe(20);
+    expect(missing.accountedUnits).toBeNull();
+    await expect(recordUnadmittedRun(store.context(), { ...fact, issueId: randomUUID() })).rejects.toMatchObject({ code: "unadmitted_run_identity_conflict" });
+  });
   it("accepts settled native usage growth through the complete sequential N1 ledger", async () => {
     const store = admissionStore();
     const profile: NativeG4Profile = {

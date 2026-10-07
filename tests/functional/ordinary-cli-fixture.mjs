@@ -128,7 +128,7 @@ else if (inspection.task) {
     assert.equal(run.status, "succeeded", run.error);
     const body = { command: "reconcile-usage", commandId: randomUUID(), contributionId: slot.contributionId };
     await observe(async () => { try { return await call(body); } catch (e) { if (["g4_usage_unavailable", "g4_run_not_terminal"].includes(e.response?.code)) return null; throw e; } }, Boolean, "child costs");
-    await observe(() => api("GET", `/api/issues/${item.childIssueId}`), issue => issue.status === "done", "owner closes prerequisite child");
+    await observe(() => api("GET", `/api/issues/${item.childIssueId}`), issue => issue.status === "done", "Council finishes the exact recorded child");
   }
   git("commit", "--allow-empty", "-m", "fixture: integrate two contributions");
   const candidate = await uploadCandidate();
