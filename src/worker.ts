@@ -1,4 +1,5 @@
 import { registerContinuityJob } from "./continuity-runtime.js";
+import { handleProjectMandate } from "./project-mandate-configuration.js";
 import { listContinuityMissions } from "./missions.js";
 import { handleModelProfiles, chooseModelProfile, inspectModelSelections, reconcileModelMeasurements } from "./model-api.js";
 import { ModelSelectionError } from "./model-state.js";
@@ -220,6 +221,9 @@ async function handleMissionAgentCommand(input: PluginApiRequestInput, context: 
   }
   if (command === "inspect") {
     const mission = await getMissionByRootIssue(context, input.companyId, input.params.issueId);
+    if (mission && !(input.body as Record<string, unknown>).missionId) {
+      input = { ...input, body: { ...(input.body as Record<string, unknown>), missionId: mission.missionId } };
+    }
     if (mission?.aggregate.n2) return handleN2AgentApi(input, context);
   }
   if (["ordinary-inspect", "ordinary-verdict", "confirm-review-handoff", "prepare-resubmission", "attest-transmission", "attest-n3-transmission", "n3-synthesize"].includes(command as string)) {
@@ -241,6 +245,7 @@ async function handleRequest(input: PluginApiRequestInput, context: PluginContex
     throw new MissionError(403, "company_scope_mismatch", "Path company does not match the host-authorized company scope");
   }
   if (input.routeKey.startsWith("model-profiles-")) return handleModelProfiles(context, input);
+  if (input.routeKey.startsWith("project-mandate-")) return handleProjectMandate(context, input);
   if (input.routeKey === "model-selection-read") return inspectModelSelections(context, input);
   const profileCommand = (input.body as { command?: string } | null)?.command;
   if (["mission-command", "mission-agent-command"].includes(input.routeKey) && profileCommand === "select-model-profile") return chooseModelProfile(context, input);

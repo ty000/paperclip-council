@@ -1,3 +1,4 @@
+import { MissionError, canonicalPayloadHash } from "./mission-primitives.js";
 import { readContinuityObservation } from "./continuity-observation.js";
 import { configureContinuity } from "./continuity-configuration.js";
 import type { ModelSelectionState } from "./model-state.js";
@@ -9,7 +10,6 @@ import { readWorkspacePreflightProfile, type WorkspacePreflightProfile } from ".
 import { inspectN6 } from "./n6-state.js";
 import { inspectN5 } from "./n5-state.js";
 import { inspectN3 } from "./n3-state.js";
-import { createHash } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { AdmissionError } from "./admission.js";
 import { executeN1BoardCommand, inspectN1State, readN1AdmissionForMission } from "./n1-missions.js";
@@ -107,6 +107,7 @@ export type MissionAggregate = {
   modelSelection?: ModelSelectionState;
   workspacePreflight?: import("./workspace-preflight.js").WorkspacePreflightProfile;
   continuity?: import("./continuity-policy.js").ContinuityPolicy;
+  projectMandate?: import("./project-mandate-state.js").ProjectMandateSnapshot;
   nativeWakePolicy?: import("./native-wake-policy.js").NativeWakePolicy;
   n1?: Record<string, unknown>;
   n2?: N2State;
@@ -175,17 +176,7 @@ type CreateInput = {
   mandate: MissionMandate;
 };
 
-export class MissionError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly code: string,
-    message: string,
-    public readonly details?: unknown,
-  ) {
-    super(message);
-    this.name = "MissionError";
-  }
-}
+export { MissionError, canonicalPayloadHash } from "./mission-primitives.js";
 
 function asRecord(value: unknown, label = "request body"): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -267,19 +258,6 @@ export function parseMissionCreateInput(value: unknown): CreateInput {
   };
 }
 
-function stable(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stable);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => [key, stable(entry)]));
-  }
-  return value;
-}
-
-export function canonicalPayloadHash(value: unknown): string {
-  return createHash("sha256").update(JSON.stringify(stable(value))).digest("hex");
-}
 
 function namespaceTable(ctx: PluginContext, name: "missions" | "roster_heads"): string {
   if (!/^[a-z_][a-z0-9_]*$/.test(ctx.db.namespace)) throw new Error("Unsafe plugin database namespace");
@@ -533,7 +511,7 @@ function existingCreationResult(mission: MissionRecord, commandId: string, actor
   });
 }
 
-async function createMission(ctx: PluginContext, companyId: string, actorUserId: string | null, body: unknown) {
+export async function createMission(ctx: PluginContext, companyId: string, actorUserId: string | null, body: unknown) {
   const ownerUserId = await requireOwner(ctx, companyId, actorUserId);
   const create = parseMissionCreateInput(body);
   const payloadHash = canonicalPayloadHash(create);

@@ -13,7 +13,7 @@ export const missionToolDeclaration = {
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
-  version: "0.7.11",
+  version: "0.7.12",
   displayName: "Paperclip Council",
   description: "Private Council integration with revisioned rosters, bounded admission and checked candidate preparation.",
   author: "Local Paperclip integration",
@@ -128,6 +128,10 @@ const manifest: PaperclipPluginManifestV1 = {
     },
   },
   apiRoutes: [
+    { routeKey: "project-mandate-read", method: "GET", path: "/companies/:companyId/projects/:projectId/mandate", auth: "board",
+      capability: "api.routes.register", companyResolution: { from: "query", key: "companyId" } },
+    { routeKey: "project-mandate-command", method: "POST", path: "/companies/:companyId/projects/:projectId/mandate", auth: "board",
+      capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
     { routeKey: "model-profiles-read", method: "GET", path: "/companies/:companyId/model-profiles", auth: "board",
       capability: "api.routes.register", companyResolution: { from: "query", key: "companyId" } },
     { routeKey: "model-profiles-command", method: "POST", path: "/companies/:companyId/model-profiles", auth: "board",

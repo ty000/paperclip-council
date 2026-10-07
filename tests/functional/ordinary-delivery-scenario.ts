@@ -16,7 +16,7 @@ export async function installOrdinaryGitHubTransport(runtime: string, proof: any
       const remote = JSON.parse(await readFile(remotePath, "utf8"));
       proof.githubTransportCalls.push({ url, headSha: remote.headSha, at: new Date().toISOString() });
       return new Response(JSON.stringify({ number: 4242, state: "open", draft: false, title: "Simulated GitHub transport",
-        head: { sha: remote.headSha, ref: "codex/n5-fixture" }, base: { ref: "main" }, updated_at: new Date().toISOString() }), { status: 200, headers: { "content-type": "application/json" } });
+        head: { sha: remote.headSha, ref: remote.headRef ?? "codex/n5-fixture" }, base: { ref: "main" }, updated_at: new Date().toISOString() }), { status: 200, headers: { "content-type": "application/json" } });
     }
     assert(["127.0.0.1", "localhost"].includes(new URL(url).hostname), "Qualification forbids unsimulated outbound fetch");
     return original(input, init);
@@ -38,6 +38,7 @@ export async function prepareOrdinaryDelivery(input: any) {
   const configured = await api("POST", `${missionPath}/commands`, { companyId, command: "configure-delivery", commandId: randomUUID(), expectedVersion: mission.version,
     planRevisionId: doc.latestRevisionId, publisherAgentId: actors.publisher, repository: "ty000/paperclip-council", baseRef: "main", headRef: "codex/n5-fixture" });
   assert.equal(configured.mission.aggregate.n5.authority.publisherPreflight, "publisher-run-report-v1");
+  if (nominal) return nominalDeliveryObserver(input);
   let correctionRequested = false;
   let versionConflicts = 0;
   const correctionIdentity = { commandId: randomUUID(), reservationId: randomUUID() };
@@ -68,15 +69,7 @@ export async function prepareOrdinaryDelivery(input: any) {
     },
     complete: (m: any) => nominal ? Boolean(m.aggregate.n5.publication?.settledAt && m.aggregate.n5.publication?.observation?.matchesCandidate) : Boolean(m.aggregate.n5.continuation?.updateAdmitted && m.aggregate.n5.publication?.settledAt),
     async finish() {
-      let view = await get();
-      if (nominal) {
-        assert.equal(view.n5.ready, true);
-        const remote = JSON.parse(await readFile(resolve(runtime, "github-transport.json"), "utf8"));
-        assert.equal(remote.createCount, 1); assert.equal(remote.updateCount, 0);
-        assert.equal(view.mission.aggregate.n2.correctionsUsed, 0);
-        proof.delivery = { remote, final: view.n5, checks: { nominalAuthorizedPublication: "PASS", noOwnerTransition: "PASS" } };
-        return;
-      }
+      const view = await get();
       const n5 = view.mission.aggregate.n5; const p = n5.publication;
       assert.equal(p.operation, "update"); assert(p.settledAt);
       proof.publishers = await Promise.all((await readdir(runtime)).filter(name => name.startsWith("publisher-")).map(async name => JSON.parse(await readFile(resolve(runtime, name), "utf8"))));
@@ -113,4 +106,18 @@ export async function prepareOrdinaryDelivery(input: any) {
       proof.delivery = { refreshed, remote, final: view.n5, checks: { samePr: "PASS", changedHead: "PASS", oneCumulativeCorrection: "PASS", readyAfterSettlementAndFreshReadback: "PASS" } };
     },
   };
+}
+
+export function nominalDeliveryObserver(input: any) {
+  const { api, companyId, missionPath, runtime, proof } = input;
+  return { advance: async (_m: any) => {},
+    complete: (m: any) => Boolean(m.aggregate.n5?.publication?.settledAt && m.aggregate.n5.publication.observation?.matchesCandidate),
+    async finish() {
+      const view = await api("GET", `${missionPath}?companyId=${companyId}`);
+      assert.equal(view.n5.ready, true);
+      const remote = JSON.parse(await readFile(resolve(runtime, "github-transport.json"), "utf8"));
+      assert.equal(remote.createCount, 1); assert.equal(remote.updateCount, 0);
+      assert.equal(view.mission.aggregate.n2.correctionsUsed, 0);
+      proof.delivery = { remote, final: view.n5, checks: { nominalAuthorizedPublication: "PASS", noOwnerTransition: "PASS" } };
+    } };
 }
