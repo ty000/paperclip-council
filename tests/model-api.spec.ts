@@ -24,8 +24,20 @@ function request(actor: "owner" | "lead" | "stranger" = "owner"): PluginApiReque
   }, actor: actor === "lead" ? { actorType: "agent", actorId: "physical", agentId: "physical", runId: "run" }
     : { actorType: "user", actorId: actor, userId: actor }, routeKey: "mission-command", method: "POST", path: "/", query: {}, headers: {} };
 }
+function hierarchicalLeadRequest(): PluginApiRequestInput {
+  mission.aggregate.n1!.coordination = { issueId: "coordinator" };
+  mission.aggregate.modelSelection!.tasks[0]!.launches[0]!.issueId = "coordinator";
+  const input = request("lead");
+  input.routeKey = "mission-agent-command";
+  input.params.issueId = "coordinator";
+  input.body = { ...input.body as Record<string, unknown>, command: "select-model-profile",
+    taskKey: "contribution", interventionKey: "contribution", family: "implementation", profileId: "sol-medium",
+    rationale: "Bounded contribution under the existing hierarchy mandate" };
+  return input;
+}
 beforeEach(() => {
   vi.clearAllMocks();
+  ctx.issues.assertCheckoutOwner.mockReset();
   mission = { companyId: "company", missionId: "mission", ownerUserId: "owner", rootIssueId: "root", version: 1,
     aggregate: { responsibilities: { integrationLeadAgentId: "logical" }, n1: { rootDispatchRunId: "run" }, modelSelection: {
       protocol: "native-variants-v1", choices: [], tasks: [{ taskKey: "root", mapping: MODEL_CATALOGUE, variantRevision: "1", launches: [{
@@ -40,6 +52,48 @@ it("records the lead's physical identity and grants no wake or setup authority",
   expect(ctx.issues.assertCheckoutOwner).toHaveBeenCalledWith({ companyId: "company", issueId: "root", actorAgentId: "physical", actorRunId: "run" });
   expect(result.body.effectPermission).toBe("none");
   expect(setupVariant).not.toHaveBeenCalled(); expect(ctx.issues.requestWakeup).not.toHaveBeenCalled();
+});
+it("lets the bound hierarchy coordinator select a contribution profile without a wake", async () => {
+  const input = hierarchicalLeadRequest();
+  const result = await chooseModelProfile(ctx as unknown as PluginContext, input);
+  expect(result.body.choice).toMatchObject({ authority: "lead", actorId: "physical", taskKey: "contribution", profileId: "sol-medium" });
+  expect(ctx.issues.assertCheckoutOwner).toHaveBeenCalledWith({ companyId: "company", issueId: "coordinator", actorAgentId: "physical", actorRunId: "run" });
+  expect(ctx.db.execute).toHaveBeenCalledOnce();
+  expect(result.body.effectPermission).toBe("none");
+  expect(setupVariant).not.toHaveBeenCalled(); expect(ctx.issues.requestWakeup).not.toHaveBeenCalled();
+});
+it.each([
+  ["actor", "integration_lead_required"],
+  ["root issue", "integration_lead_required"],
+  ["foreign issue", "integration_lead_required"],
+  ["run", "model_binding_missing"],
+] as const)("rejects a hierarchy profile choice with a mismatched %s before writes", async (kind, code) => {
+  const input = hierarchicalLeadRequest();
+  if (kind === "actor") input.actor.agentId = "foreign";
+  if (kind === "root issue") input.params.issueId = "root";
+  if (kind === "foreign issue") input.params.issueId = "foreign";
+  if (kind === "run") input.actor.runId = "foreign";
+  await expect(chooseModelProfile(ctx as unknown as PluginContext, input)).rejects.toMatchObject({ code });
+  expect(ctx.issues.assertCheckoutOwner).not.toHaveBeenCalled();
+  expect(ctx.db.execute).not.toHaveBeenCalled(); expect(ctx.issues.requestWakeup).not.toHaveBeenCalled();
+});
+it("requires the hierarchy coordinator's native checkout before recording its choice", async () => {
+  const input = hierarchicalLeadRequest();
+  ctx.issues.assertCheckoutOwner.mockRejectedValueOnce(new Error("checkout does not belong to this run"));
+  await expect(chooseModelProfile(ctx as unknown as PluginContext, input)).rejects.toThrow("checkout does not belong");
+  expect(ctx.issues.assertCheckoutOwner).toHaveBeenCalledWith({ companyId: "company", issueId: "coordinator", actorAgentId: "physical", actorRunId: "run" });
+  expect(ctx.db.execute).not.toHaveBeenCalled(); expect(ctx.issues.requestWakeup).not.toHaveBeenCalled();
+});
+it("preserves a historical correction run bound to the root when N1 has a coordinator", async () => {
+  hierarchicalLeadRequest();
+  mission.aggregate.n2 = { correction: { runId: "correction-run" } } as typeof mission.aggregate.n2;
+  const launches = mission.aggregate.modelSelection!.tasks[0]!.launches;
+  launches.push({ ...launches[0]!, launchKey: "correction-launch", issueId: "root", runId: "correction-run" });
+  const input = request("lead"); input.actor.runId = "correction-run";
+  const result = await chooseModelProfile(ctx as unknown as PluginContext, input);
+  expect(result.body.choice.authority).toBe("lead");
+  expect(ctx.issues.assertCheckoutOwner).toHaveBeenCalledWith({ companyId: "company", issueId: "root", actorAgentId: "physical", actorRunId: "correction-run" });
+  expect(ctx.issues.requestWakeup).not.toHaveBeenCalled();
 });
 it("preserves explicit owner choice against the lead and rejects stale versions", async () => {
   const stale = request();
