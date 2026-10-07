@@ -35,12 +35,21 @@ while the candidate stays unpromoted. Existing review settlements remain possibl
 after expiry; every subsequent departure checks the original deadline and the
 admission ledger. Reservations remain accounting holds, not provider ceilings.
 
-The root task has a `council-continuity` status document. Its content changes only
-when the waiting condition, progression, completion or required owner decision
-changes; a restarted job reads the existing document before writing. An unchanged
-condition creates no repeated revision or assignee wake. This is task-visible
-status, not an email, push or Slack notification. A failed document read/write is
-reported as a failed native job without starving other delegated missions.
+The root task receives immutable status documents for meaningful changes. The
+current observation and its exact document key are retained in plugin state and
+returned by the Council mission API. SDK document updates on the qualified host
+omit the required base revision; Council therefore consumes SDK creation/readback
+and plugin state without changing the SDK or injecting an operator credential.
+
+The job saves a sequence and document key before creation, reads that exact key
+afterwards, and confirms it in durable state. Restart finishes an outstanding
+status intent before recording another. Repeated conditions create no document
+or revision. A condition that recurs later receives its next sequence. Existing
+status documents are never updated or overwritten. Missing confirmed documents
+or mismatching bodies remain visible errors, with no replacement identity.
+This is task-visible status, not an email, push or Slack notification. A failed
+status read/write is reported as a failed native job without starving other
+missions; a status failure does not authorize any additional provider departure.
 
 The job uses a dedicated Council database scan, separate from the 50-row dashboard
 list. Up to 200 delegated missions are supported per pass. Above that bound it

@@ -1,3 +1,4 @@
+import { publishContinuityObservation, type ContinuityObservation as Observation } from "./continuity-observation.js";
 import { randomUUID } from "node:crypto";
 import type { PluginContext, PluginJobContext } from "@paperclipai/plugin-sdk";
 import { assertContinuityDeparture, type ContinuityCommand } from "./continuity-policy.js";
@@ -12,7 +13,6 @@ import { physicalAgent } from "./model-state.js";
 import { readOrdinaryRun, settleOrdinaryRunUsage } from "./g4-native.js";
 
 const CONTINUITY_JOB_KEY = "mission-continuity";
-type Observation = { state: "waiting" | "progressed" | "blocked" | "complete"; code: string; nextAction: string };
 const waiting = (code: string, nextAction: string): Observation => ({ state: "waiting", code, nextAction });
 const fresh = async (ctx: PluginContext, m: MissionRecord) => (await getMission(ctx, m.companyId, m.missionId))!;
 
@@ -103,16 +103,6 @@ export async function advanceContinuity(ctx: PluginContext, initial: MissionReco
   return advanceReview(ctx, m, job);
 }
 
-async function publishObservation(ctx: PluginContext, m: MissionRecord, observation: Observation) {
-  const labels = { waiting: "En attente", progressed: "En cours", blocked: "Décision requise", complete: "Parcours autorisé terminé" };
-  const body = `# Progression Council\n\n**État :** ${labels[observation.state]}\n\n${observation.nextAction}\n\nRéférence de diagnostic : \`${observation.code}\`\n`;
-  const key = "council-continuity";
-  const existing = await ctx.issues.documents.get(m.rootIssueId, key, m.companyId);
-  if (existing?.body === body) return;
-  await ctx.issues.documents.upsert({ companyId: m.companyId, issueId: m.rootIssueId, key, body,
-    title: "Progression Council", format: "markdown", changeSummary: observation.nextAction });
-}
-
 export function registerContinuityJob(ctx: PluginContext, list: () => Promise<MissionRecord[]>) {
   ctx.jobs.register(CONTINUITY_JOB_KEY, async job => {
     const unavailable: string[] = [];
@@ -125,7 +115,7 @@ export function registerContinuityJob(ctx: PluginContext, list: () => Promise<Mi
           ? waiting(code, "Council conserve la réservation et attend une lecture native concluante du coût terminal.")
           : { state: "blocked", code, nextAction: "Une décision du propriétaire est requise sur l'état conservé. Council n'autorise aucune répétition incertaine." };
       }
-      try { await publishObservation(ctx, m, observation); }
+      try { await publishContinuityObservation(ctx, m, observation); }
       catch { unavailable.push(m.missionId); }
     }
     if (unavailable.length) throw new MissionError(409, "continuity_status_unavailable", "Native status documents could not be read back; inspect the failed job", { missionIds: unavailable });
