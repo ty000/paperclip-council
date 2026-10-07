@@ -293,6 +293,16 @@ async function settleTask(ctx: PluginContext, initial: MissionRecord, task: Ordi
         reservationId: task.reservationId, settlementCommandId: task.settlementCommandId, wake: "claimed", creation: "claimed", settledAt } : item) } : round) } });
 }
 
+async function closeSettledCorrections(ctx: PluginContext, m: MissionRecord) {
+  for (const task of m.aggregate.n2!.ordinary!.tasks.filter(t => t.kind === "correction" && t.closedAt && t.issueId !== m.rootIssueId)) {
+    if (!task.settledAt || !task.issueId) throw new MissionError(409, "ordinary_correction_closure", "Operational correction requires exact terminal accounting");
+    const issue = await ctx.issues.get(task.issueId, m.companyId);
+    if (!issue || issue.projectId !== m.projectId || issue.assigneeAgentId !== physicalAgent(m, task.agentId, { issueId: task.issueId, runId: task.runId })
+        || !["blocked", "done"].includes(issue.status)) throw new MissionError(409, "ordinary_correction_closure", "Retain the exact verified operational correction task");
+    if (issue.status !== "done") await ctx.issues.update(issue.id, { status: "done" }, m.companyId);
+  }
+}
+
 async function applyVerdict(ctx: PluginContext, mission: MissionRecord, task: OrdinaryTask) {
   const state = mission.aggregate.n2!; const submission = state.submissions.find(item => item.submissionId === task.submissionId)!;
   const report = task.report!;
@@ -325,6 +335,7 @@ export async function reconcileOrdinaryN2(ctx: PluginContext, initial: MissionRe
   await assertNativeRunInventory(ctx, initial);
   let mission = await freshOrdinary(ctx, initial);
   mission = await reconcileReplacedCouncilSettlement(ctx, mission);
+  await closeSettledCorrections(ctx, mission);
   for (let step = 0; step < 12; step++) {
     const state = mission.aggregate.n2!;
     const task = state.ordinary!.tasks.find(item => !item.closedAt);
@@ -353,6 +364,7 @@ export async function reconcileOrdinaryN2(ctx: PluginContext, initial: MissionRe
       mission = await n2Cas(ctx, mission, { ...mission.aggregate, phase: "review_handoff", n2: { ...next,
         ordinary: { ...next.ordinary!, tasks: [...next.ordinary!.tasks.map(item => item.taskId === task.taskId ? { ...item, closedAt: new Date().toISOString() } : item), ...tasks] } },
         n3: { ...mission.aggregate.n3!, rounds: [...mission.aggregate.n3!.rounds, round] } });
+      await closeSettledCorrections(ctx, mission);
       continue;
     }
     await ctx.issues.update(task.issueId!, { status: "done" }, mission.companyId);
