@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { PluginApiRequestInput, PluginContext, PluginJobContext } from "@paperclipai/plugin-sdk";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/admission.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/admission.js")>();
@@ -21,13 +21,15 @@ vi.mock("../src/model-variants.js", () => ({ inspectVariant: vi.fn() }));
 import { AdmissionError, readAdmission, reserveAdmission, settleAdmission } from "../src/admission.js";
 import { verifyIntegratedCandidate } from "../src/integration.js";
 import { executeN1BoardCommand, handleN1AgentApi } from "../src/n1-missions.js";
-import { handleMissionApi, type MissionAggregate } from "../src/missions.js";
+import { getMission, handleMissionApi, canonicalPayloadHash, type MissionAggregate } from "../src/missions.js";
 import { reconcileTerminalN1Usage } from "./functional/n1-live.js";
 import { inspectVariant } from "../src/model-variants.js";
 import { MODEL_CATALOGUE } from "../src/model-catalogue.js";
 import { n1ResumeAdmissionFailure } from "../src/n1-resume-state.js";
 import type { N1State } from "../src/n1-missions.js";
 import * as nativeAdapter from "../src/decision-adapter.js";
+import { advanceContinuity } from "../src/continuity-runtime.js";
+import { chooseModelProfile } from "../src/model-api.js";
 
 const id = {
   company: randomUUID(),
@@ -2257,4 +2259,177 @@ describe("existing hierarchy N1 identity", () => {
     expect((await handleN1AgentApi(agentRequest(body, { agentId: id.lead, runId: id.leadRun }, coordinator), h.ctx)).status).toBe(200);
     expect(upsert).toHaveBeenCalledTimes(1);
   });
+});
+
+describe("one initial hierarchy lead resume", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function stoppedHierarchy() {
+    const value = withBoundLead(activeAggregate()), coordinator = randomUUID(), physicalLead = randomUUID();
+    const oldReservation = String(value.n1!.activationReservationId), nextRun = randomUUID();
+    value.nativeWakePolicy = { protocol: "council-native-wake-v2", rootBaseline: [], runLimit: 8 };
+    value.hierarchy = { protocol: "council-hierarchy-v1", maxContributions: 2, execution: "sequential", adoptExistingChildren: true,
+      leaves: plan.map((slot, i) => ({ ...slot, issueId: i ? id.childB : id.childA, parentId: id.root,
+        descriptionHash: "pinned", documentRevisionId: "work-v1", blockedByIssueIds: [], pendingBlockerIds: [] })) };
+    value.n1 = { ...value.n1!, rootDispatchMode: "native", rootUsageBaselineUnits: 0,
+      coordination: { issueId: coordinator, intentId: randomUUID(), state: "confirmed", commandId: randomUUID(),
+        commandHash: "original-creation-hash", ownerUserId: id.owner, preparedVersion: 3 },
+      contributions: plan.map((slot, i) => ({ ...slot, issueState: "confirmed", childIssueId: i ? id.childB : id.childA, parentIssueId: id.root })) };
+    Object.assign(value.modelSelection!.tasks[0]!.launches[0]!, { issueId: coordinator, agentId: physicalLead });
+    value.continuity = { protocol: "council-continuity-v1", enabled: false, authorizedBy: id.owner,
+      authorizedAt: new Date(0).toISOString(), deadline: new Date(Date.now() + 600_000).toISOString(),
+      mandateHash: canonicalPayloadHash(value.mandate), n3Slots: [], commands: {
+        "start-lead": { command: "start-lead", commandId: (value.n1 as N1State).coordination!.commandId, expectedVersion: 3 },
+        "reconcile-lead-usage": { command: "reconcile-lead-usage", commandId: randomUUID() },
+      } };
+    value.commandReceipts = [{ commandId: (value.n1 as N1State).coordination!.commandId, command: "start-lead",
+      actorType: "user", actorId: id.owner, payloadHash: canonicalPayloadHash(value.continuity.commands["start-lead"]),
+      appliedVersion: 4, result: { missionId: id.mission, version: 4 }, recordedAt: new Date(0).toISOString() }];
+    const h = harness(value, 17);
+    h.configGet.mockResolvedValue({ n1OperatingProfile: { ...nativeProfile, maxCorrections: 1 } } as never);
+    h.issues.set(coordinator, { ...nativeIssue({ id: coordinator, parentId: null, assigneeAgentId: physicalLead, status: "backlog" }), status: "blocked" } as never);
+    for (const [issueId, assigneeAgentId] of [[id.childA, id.contributorA], [id.childB, id.contributorB]]) {
+      h.issues.set(issueId!, nativeIssue({ id: issueId!, parentId: id.root, assigneeAgentId: assigneeAgentId!, status: "backlog" }));
+    }
+    const runs = [{ id: id.leadRun, issueId: coordinator, agentId: physicalLead, status: "succeeded",
+      startedAt: new Date(0).toISOString(), finishedAt: new Date(1).toISOString() }];
+    const childRuns: typeof runs = [];
+    h.getOrchestration.mockImplementation(async (...args: unknown[]) => {
+      const issueId = (args[0] as { issueId: string }).issueId;
+      return { issueId, companyId: id.company, runs: issueId === coordinator ? runs : issueId === id.childA ? childRuns : [],
+        costs: { inputTokens: 90, cachedInputTokens: 70, outputTokens: 10, costCents: 0 },
+        relations: {}, invocationBlocks: [], openBudgetIncidents: [] } as never;
+    });
+    const old = { reservationId: oldReservation, missionId: id.mission, status: "settled",
+      usage: { status: "known", units: 100 }, remainingExposure: { status: "known", units: 0 }, settlementReceipts: [{ commandId: randomUUID() }] };
+    const envelope = { ...nativeEnvelope([old]), companyId: id.company };
+    envelope.limits.maxCorrections = 1;
+    vi.mocked(readAdmission).mockImplementation(async () => envelope as never);
+    vi.mocked(reserveAdmission).mockImplementation(async (_ctx, input) => {
+      expect(n1ResumeAdmissionFailure(h.row().aggregate, envelope as never, input, id.owner, id.owner)).toBeNull();
+      let reservation = envelope.reservations.find(r => r.reservationId === input.reservationId);
+      if (!reservation) {
+        reservation = { reservationId: input.reservationId, missionId: id.mission, status: "reserved",
+          ownerReplacementCommandId: input.ownerReplacementCommandId };
+        envelope.reservations.push(reservation);
+      }
+      return { reservation, envelope } as never;
+    });
+    vi.mocked(inspectVariant).mockResolvedValue({ logicalAgentId: id.lead, agentId: physicalLead, roleKey: "lead",
+      profileId: "sol-medium", revision: "1", ready: true, expected: {}, observed: {}, gaps: [] });
+    h.update.mockImplementation(async (...args: unknown[]) => { Object.assign(h.issues.get(String(args[0]))!, args[1]); });
+    h.requestWakeup.mockImplementation(async () => {
+      runs.push({ ...runs[0]!, id: nextRun, status: "running", finishedAt: null as never });
+      return { queued: true, runId: nextRun };
+    });
+    vi.spyOn(nativeAdapter, "councilNativeRequest").mockImplementation(async (_ctx, _company, path) => {
+      const run = runs.find(item => path.endsWith(item.id))!;
+      return { status: 200, body: { ...run, companyId: id.company, nativeIssueId: null,
+        contextSnapshot: { issueId: coordinator }, usageJson: { usageSource: "per_run", inputTokens: 90, cachedInputTokens: 70, outputTokens: 10 } } };
+    });
+    const body: Record<string, unknown> = { command: "prepare-n1-resume", commandId: randomUUID(), expectedVersion: 17,
+      authorizeOneResume: true, authorizeContinuityResume: true, previousOwnerUserId: id.owner, reason: "Initial hierarchy lead profile binding repaired" };
+    const apply = () => executeN1BoardCommand(h.ctx, { companyId: id.company, missionId: id.mission, actorUserId: id.owner, body });
+    const job = { jobKey: "mission-continuity", runId: randomUUID(), trigger: "schedule", scheduledAt: new Date().toISOString() } as PluginJobContext;
+    const advance = async () => advanceContinuity(h.ctx, (await getMission(h.ctx, id.company, id.mission))!, job);
+    return { ...h, value, coordinator, physicalLead, nextRun, old, envelope, body, apply, advance, runs, childRuns };
+  }
+
+  it("retains creation, leaves and costs, then schedules one new bound lead that can select a child profile", async () => {
+    const h = stoppedHierarchy();
+    expect((await h.advance()).code).toBe("continuity_disabled");
+    await h.apply();
+    const prepared = h.row().aggregate, grant = (prepared.n1 as N1State).resume!;
+    expect(grant.lead).toMatchObject({ issueId: h.coordinator, priorRunId: id.leadRun, priorReservationId: h.old.reservationId });
+    expect(grant.contributions).toEqual([]);
+    expect(prepared.n1!.coordination).toEqual(h.value.n1!.coordination);
+    expect(prepared.n1!.contributions).toEqual(h.value.n1!.contributions);
+    expect(prepared.continuity).toEqual({ ...h.value.continuity, enabled: true, commands: {} });
+    expect(prepared.journal).toContainEqual(expect.objectContaining({ action: "n1_resume_continuity_authorized", priorCommands: h.value.continuity!.commands }));
+    expect(h.requestWakeup).not.toHaveBeenCalled(); expect(reserveAdmission).not.toHaveBeenCalled();
+    expect((await h.apply()).outcome).toBe("replayed");
+    expect((await h.advance()).code).toBe("start-lead");
+    const started = h.row().aggregate, launches = started.modelSelection!.tasks[0]!.launches;
+    expect(h.requestWakeup).toHaveBeenCalledExactlyOnceWith(h.coordinator, id.company,
+      expect.objectContaining({ idempotencyKey: `council:n1:${grant.lead.reservationId}` }));
+    expect(h.create).not.toHaveBeenCalled();
+    expect(started.n1!.coordination).toEqual(h.value.n1!.coordination);
+    expect(started.commandReceipts[0]).toEqual(h.value.commandReceipts[0]);
+    expect(started.continuity!.commands["start-lead"]!.commandId).not.toBe(h.value.continuity!.commands["start-lead"]!.commandId);
+    expect(started.hierarchy).toEqual(h.value.hierarchy); expect(started.mandate).toEqual(h.value.mandate);
+    expect(started.nativeWakePolicy).toEqual(h.value.nativeWakePolicy);
+    expect(started.n1!.activatedAt).toBe(h.value.n1!.activatedAt); expect(started.n1!.periodKey).toBe(h.value.n1!.periodKey);
+    expect(h.envelope.reservations[0]).toEqual(h.old); expect(h.envelope.reservations).toHaveLength(2);
+    expect(launches).toHaveLength(2); expect(launches[0]).toMatchObject(h.value.modelSelection!.tasks[0]!.launches[0]!);
+    expect(launches[1]).toMatchObject({ previousLaunchKey: h.old.reservationId, launchKey: grant.lead.reservationId,
+      issueId: h.coordinator, runId: h.nextRun, agentId: h.physicalLead, state: "bound", profileId: "sol-medium" });
+    const input = agentRequest({ command: "select-model-profile", expectedVersion: h.row().version, taskKey: id.contributionA,
+      interventionKey: id.contributionA, family: "implementation", profileId: "sol-medium", rationale: "Bounded first contribution" },
+      { agentId: h.physicalLead, runId: h.nextRun }, h.coordinator);
+    expect((await chooseModelProfile(h.ctx, input)).body.choice.authority).toBe("lead");
+    expect(h.assertCheckoutOwner).toHaveBeenLastCalledWith({ companyId: id.company, issueId: h.coordinator,
+      actorAgentId: h.physicalLead, actorRunId: h.nextRun });
+    expect((await h.advance()).code).toBe("native_lead_running"); expect(h.requestWakeup).toHaveBeenCalledTimes(1);
+    await expect(chooseModelProfile(h.ctx, { ...input, actor: { ...input.actor, runId: id.leadRun } })).rejects.toThrow();
+    Object.assign(h.runs[1]!, { status: "succeeded", finishedAt: new Date().toISOString() });
+    await expect(h.advance()).rejects.toMatchObject({ code: "continuity_candidate_missing" });
+    expect(settleAdmission).toHaveBeenCalledWith(h.ctx, expect.objectContaining({ reservationId: grant.lead.reservationId,
+      usage: expect.objectContaining({ units: 100 }), periodKey: h.value.n1!.periodKey }));
+    expect(h.row().aggregate.continuity!.commands["reconcile-lead-usage"]!.commandId)
+      .not.toBe(h.value.continuity!.commands["reconcile-lead-usage"]!.commandId);
+    expect(h.envelope.reservations[0]).toEqual(h.old); expect(h.requestWakeup).toHaveBeenCalledTimes(1);
+  });
+
+  const invalidCases: Array<[string, (h: ReturnType<typeof stoppedHierarchy>) => void]> = [
+    ["child dispatched", h => h.advanceMission(a => { (a.n1 as N1State).contributions[0]!.dispatchState = "requested"; return a; })],
+    ["child run", h => { h.childRuns.push({ ...h.runs[0]!, id: id.contributorRun, issueId: id.childA, agentId: id.contributorA }); }],
+    ["unknown cost", h => { h.old.usage.status = "unknown"; }],
+    ["unknown lead", h => h.advanceMission(a => { a.n1!.rootDispatchState = "unknown"; return a; })],
+    ["active lead", h => { h.runs[0]!.status = "running"; }],
+    ["unknown coordinator", h => h.advanceMission(a => { (a.n1 as N1State).coordination!.state = "claimed"; return a; })],
+    ["candidate", h => h.advanceMission(a => { a.n1!.candidate = {}; return a; })],
+    ["second resume", h => h.advanceMission(a => { a.n1!.resume = {}; return a; })],
+    ["continuity flag", h => { delete h.body.authorizeContinuityResume; }],
+    ["already enabled", h => h.advanceMission(a => { a.continuity!.enabled = true; return a; })],
+    ["deadline", h => h.advanceMission(a => { a.continuity!.deadline = new Date(0).toISOString(); return a; })],
+    ["mandate", h => h.advanceMission(a => { a.continuity!.mandateHash = "changed"; return a; })],
+    ["owner", h => h.advanceMission(a => { a.continuity!.authorizedBy = randomUUID(); return a; })],
+    ["review command", h => h.advanceMission(a => { a.continuity!.commands["start-review"] = { commandId: randomUUID() }; return a; })],
+    ["run limit", h => h.advanceMission(a => { a.nativeWakePolicy = { protocol: "council-native-wake-v2", rootBaseline: [], runLimit: 1 }; return a; })],
+  ];
+  it.each(invalidCases)("refuses %s without issuing a grant, reservation or wake", async (_kind, change) => {
+    const h = stoppedHierarchy(); change(h); h.body.expectedVersion = h.row().version;
+    const before = h.row();
+    await expect(h.apply()).rejects.toThrow();
+    expect(h.row()).toEqual(before); expect(h.create).not.toHaveBeenCalled();
+    expect(reserveAdmission).not.toHaveBeenCalled(); expect(h.requestWakeup).not.toHaveBeenCalled();
+  });
+
+  it("retains an uncertain resumed wake without another reservation, identity or departure", async () => {
+    const h = stoppedHierarchy(); await h.apply();
+    h.requestWakeup.mockRejectedValueOnce(new Error("lost wake response"));
+    await h.advance();
+    const claimed = h.row().aggregate;
+    expect(claimed.n1!.rootDispatchState).toBe("unknown");
+    await expect(h.advance()).rejects.toMatchObject({ code: "continuity_lead_effect_unknown" });
+    expect(h.row().aggregate).toEqual(claimed);
+    expect(h.requestWakeup).toHaveBeenCalledTimes(1); expect(reserveAdmission).toHaveBeenCalledTimes(1);
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it.each(["coordinator identity", "coordinator state", "stale start", "elapsed deadline"])(
+    "rechecks %s before the new reservation or wake", async kind => {
+      const h = stoppedHierarchy(); await h.apply();
+      const expectedVersion = h.row().version;
+      h.advanceMission(a => {
+        const state = a.n1 as N1State;
+        if (kind === "coordinator identity") state.coordination!.issueId = randomUUID();
+        if (kind === "coordinator state") state.coordination!.state = "claimed";
+        if (kind === "elapsed deadline") state.activatedAt = new Date(0).toISOString();
+        return a;
+      });
+      await expect(executeN1BoardCommand(h.ctx, { companyId: id.company, missionId: id.mission, actorUserId: id.owner,
+        body: { command: "start-lead", commandId: randomUUID(), expectedVersion: kind === "stale start" ? expectedVersion : h.row().version } })).rejects.toThrow();
+      expect(reserveAdmission).not.toHaveBeenCalled(); expect(h.requestWakeup).not.toHaveBeenCalled(); expect(h.create).not.toHaveBeenCalled();
+    });
 });

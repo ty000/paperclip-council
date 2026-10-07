@@ -8,6 +8,55 @@ import type { N1State } from "./n1-missions.js";
 
 import { settledResumeReservation as settled, type ResumeTarget, type N1Resume } from "./n1-resume-state.js";
 import { physicalAgent } from "./model-state.js";
+import { assertContinuityDeparture } from "./continuity-policy.js";
+import { assertNativeRunInventory } from "./native-runs.js";
+
+function assertUnstartedHierarchy(m: MissionRecord, state: N1State, owner: string) {
+  const coordinator = state.coordination;
+  const leaves = m.aggregate.hierarchy!.leaves!;
+  if (coordinator?.state !== "confirmed" || !coordinator.issueId || coordinator.issueId === m.rootIssueId
+      || coordinator.ownerUserId !== owner || owner !== m.ownerUserId || !leaves.length
+      || state.contributions.length !== leaves.length || !state.contributions.every(slot => unstartedLeaf(m, slot))) {
+    throw new MissionError(409, "hierarchy_resume_decision", "Only the confirmed original hierarchy coordinator before any leaf execution can resume once");
+  }
+}
+
+function unstartedLeaf(m: MissionRecord, slot: N1State["contributions"][number]) {
+  const leaf = m.aggregate.hierarchy!.leaves!.find(item => item.contributionId === slot.contributionId);
+  return leaf?.issueId === slot.childIssueId && leaf?.assigneeAgentId === slot.assigneeAgentId
+    && slot.issueState === "confirmed" && slot.dispatchState === undefined && slot.dispatchRunId == null
+    && slot.dispatchReservationId === undefined && slot.dispatchUsageBaselineUnits === undefined && !slot.commit;
+}
+
+async function assertHierarchyLeavesIdle(ctx: PluginContext, m: MissionRecord) {
+  for (const leaf of m.aggregate.hierarchy!.leaves!) {
+    const issue = await ctx.issues.get(leaf.issueId, m.companyId);
+    const summary = await ctx.issues.summaries.getOrchestration({ companyId: m.companyId, issueId: leaf.issueId, includeSubtree: false });
+    if (!issue || issue.companyId !== m.companyId || issue.projectId !== m.projectId || issue.checkoutRunId || issue.executionRunId
+        || summary.companyId !== m.companyId || summary.issueId !== leaf.issueId || summary.runs.length) {
+      throw new MissionError(409, "hierarchy_resume_leaf_started", "Every existing leaf must remain without a native run or lock");
+    }
+  }
+}
+
+/** The hierarchy exception is only for its initial lead, before any leaf execution. */
+async function hierarchyResumeContinuity(ctx: PluginContext, m: MissionRecord, state: N1State,
+  body: Record<string, unknown>, owner: string) {
+  assertUnstartedHierarchy(m, state, owner);
+  await assertHierarchyLeavesIdle(ctx, m);
+  await assertNativeRunInventory(ctx, m, true);
+  const policy = m.aggregate.continuity;
+  if (body.authorizeContinuityResume !== true || !policy || policy.enabled || policy.commands["start-review"]
+      || m.aggregate.nativeWakePolicy?.protocol !== "council-native-wake-v2") {
+    throw new MissionError(409, "hierarchy_resume_continuity", "Explicitly reauthorize only the suspended original continuity before review");
+  }
+  const continuity = { ...policy, enabled: true };
+  assertContinuityDeparture({ ...m, aggregate: { ...m.aggregate, continuity } });
+  const { "start-lead": start, "reconcile-lead-usage": reconcile, ...commands } = policy.commands;
+  return { continuity: { ...continuity, commands }, priorCommands: {
+    ...(start ? { "start-lead": start } : {}), ...(reconcile ? { "reconcile-lead-usage": reconcile } : {}),
+  } };
+}
 
 /** Readback only: this binds an explicitly operator-started run and never requests another wake. */
 export async function verifyResumedLeadRun(ctx: PluginContext, m: MissionRecord, runId: string) {
@@ -43,7 +92,6 @@ async function requireBlockedIssue(ctx: PluginContext, m: MissionRecord, issueId
 
 /** One explicit restart before a candidate exists; old effects, runs and costs are retained. */
 export async function prepareN1Resume(ctx: PluginContext, m: MissionRecord, body: Record<string, unknown>, owner: string) {
-  if (m.aggregate.hierarchy?.leaves) throw new MissionError(409, "hierarchy_resume_decision", "Operational hierarchy resume is not qualified by this nominal contract; retain all previous runs, identities and costs for an explicit decision");
   const state = m.aggregate.n1 as N1State | undefined;
   if (!state || state.resume || state.candidate || m.aggregate.n2 || m.aggregate.n5 || m.aggregate.n6
       || m.aggregate.phase !== "executing" || m.aggregate.control.status !== "active"
@@ -58,6 +106,7 @@ export async function prepareN1Resume(ctx: PluginContext, m: MissionRecord, body
   if (!envelope || envelope.reservations.some(r => r.missionId === m.missionId && !settled(r))) {
     throw new MissionError(409, "n1_resume_usage_unsettled", "All previous mission reservations must be settled without exposure");
   }
+  const hierarchy = m.aggregate.hierarchy?.leaves ? await hierarchyResumeContinuity(ctx, m, state, body, owner) : null;
   const check = async (issueId: string | undefined, runId: string | null | undefined,
     reservationId: string | undefined, baseline: number | undefined, contributionId?: string): Promise<ResumeTarget> => {
     const reservation = envelope.reservations.find(r => r.reservationId === reservationId);
@@ -81,11 +130,14 @@ export async function prepareN1Resume(ctx: PluginContext, m: MissionRecord, body
   }
   const resume: N1Resume = { commandId: String(body.commandId), authorizedBy: owner, previousOwnerUserId: m.ownerUserId,
     authorizedAt: new Date().toISOString(), reason: body.reason.trim(), lead, contributions };
-  return { ...m.aggregate, ownerUserId: owner, n1: { ...state, resume,
+  return { ...m.aggregate, ownerUserId: owner, ...(hierarchy ? { continuity: hierarchy.continuity } : {}), n1: { ...state, resume,
     activationReservationId: lead.reservationId, rootDispatchState: undefined, rootDispatchRunId: undefined,
     rootUsageBaselineUnits: undefined, contributions: state.contributions.map(slot => contributions.some(t => t.contributionId === slot.contributionId)
       ? { ...slot, dispatchState: undefined, dispatchRunId: undefined, dispatchReservationId: undefined, dispatchUsageBaselineUnits: undefined }
       : slot) },
-    journal: [...m.aggregate.journal, { action: "n1_resume_authorized", ...resume }] } satisfies MissionAggregate;
+    journal: [...m.aggregate.journal, { action: "n1_resume_authorized", ...resume }, ...(hierarchy ? [{
+      action: "n1_resume_continuity_authorized", commandId: resume.commandId, authorizedBy: owner,
+      priorCommands: hierarchy.priorCommands, deadline: hierarchy.continuity.deadline,
+    }] : [])] } satisfies MissionAggregate;
 }
 

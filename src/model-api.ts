@@ -5,6 +5,7 @@ import { getMission, MissionError } from "./missions.js";
 import { modelEstimates } from "./model-estimates.js";
 import { ModelSelectionError, physicalAgent, modelMeasurements, type ModelLaunch } from "./model-state.js";
 import { saveModelState, observeVariantRun } from "./model-runtime.js";
+import { leadIssueId } from "./hierarchy-contract.js";
 
 function text(value: unknown, field: string, limit = 200): string {
   if (typeof value !== "string" || !value.trim() || value !== value.trim() || value.length > limit) throw new ModelSelectionError("model_input_invalid", `${field} must be a bounded nonempty string`);
@@ -60,11 +61,12 @@ export async function chooseModelProfile(ctx: PluginContext, input: PluginApiReq
     if (input.actor.userId !== m.ownerUserId) throw new MissionError(403, "mission_owner_required", "Mission owner required");
     authority = "user"; actorId = input.actor.userId!;
   } else {
-    const lead = physicalAgent(m, m.aggregate.responsibilities.integrationLeadAgentId, { issueId: m.rootIssueId, runId: input.actor.runId });
+    const issueId = input.actor.runId && input.actor.runId === m.aggregate.n1?.rootDispatchRunId ? leadIssueId(m) : m.rootIssueId;
+    const lead = physicalAgent(m, m.aggregate.responsibilities.integrationLeadAgentId, { issueId, runId: input.actor.runId });
     const runs = [m.aggregate.n1?.rootDispatchRunId, m.aggregate.n2?.correction?.runId];
     if (!input.actor.agentId || input.actor.agentId !== lead || !input.actor.runId || !runs.includes(input.actor.runId)
-      || input.params.issueId !== m.rootIssueId) throw new MissionError(403, "integration_lead_required", "Only the admitted root lead may recommend another intervention's profile");
-    await ctx.issues.assertCheckoutOwner({ companyId: m.companyId, issueId: m.rootIssueId, actorAgentId: lead, actorRunId: input.actor.runId });
+      || input.params.issueId !== issueId) throw new MissionError(403, "integration_lead_required", "Only the admitted root lead may recommend another intervention's profile");
+    await ctx.issues.assertCheckoutOwner({ companyId: m.companyId, issueId, actorAgentId: lead, actorRunId: input.actor.runId });
     authority = "lead"; actorId = lead;
   }
   if (m.version !== body.expectedVersion) throw new ModelSelectionError("model_version_conflict", "Inspect the current mission version first");
