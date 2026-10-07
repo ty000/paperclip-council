@@ -36,7 +36,8 @@ it("preserves legacy contracts and rejects inconsistent draft authority", () => 
 });
 it("green CI plus a changes-requested review never becomes delivery or merge ready", () => {
   const { m, p } = fixture(); expect(inspectN5(m)).toMatchObject({ ready: false, mergeReady: false, contractConformant: true });
-  p.reviews!.state = "approved"; expect(inspectN5(m)).toMatchObject({ publicationReady: true, mergeReady: false });
+  p.reviews!.state = "approved"; expect(inspectN5(m)?.publicationReady).toBe(false);
+  p.feedbackReport!.reviews[0]!.state = "APPROVED"; expect(inspectN5(m)).toMatchObject({ publicationReady: true, mergeReady: false });
   p.observation!.draft = false; expect(inspectN5(m)).toMatchObject({ publicationReady: false, contractConformant: false });
 });
 it("keeps historical objections until the same author supersedes or dismisses them", () => {

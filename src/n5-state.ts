@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { n5Readiness } from "./n5-readiness.js";
 import type { MissionRecord } from "./missions.js";
 import type { N2Submission } from "./n2-missions.js";
 
@@ -31,28 +31,12 @@ export type N5State = {
   };
 };
 
-function currentAcceptance(mission: MissionRecord, p: NonNullable<N5State["publication"]>) {
-  const n2 = mission.aggregate.n2;
-  return n2?.status === "accepted" && n2.activeSubmissionId === p.submission.submissionId
-    && p.submission.mandateHash === createHash("sha256").update(JSON.stringify(mission.aggregate.mandate)).digest("hex");
-}
-
 export function inspectN5(mission: MissionRecord) {
   const n5 = mission.aggregate.n5;
   if (!n5) return null;
-  const p = n5.publication; const o = p?.observation;
-  const fresh = Boolean(o && !p?.readbackUnavailable && Date.now() - Date.parse(o.lastResolvedAt) <= 300_000);
-  const mergeReady = Boolean(o && p && (!mission.aggregate.n2?.ordinary || p.settledAt) && currentAcceptance(mission, p) && fresh && o.matchesCandidate && o.state === "open" && !o.draft
-    && p?.checks?.headSha === o.headSha && p.checks.state === "passed"
-    && p?.reviews?.headSha === o.headSha && p.reviews.state === "approved");
-  const contract = n5.authority.contract;
-  const contractConformant = Boolean(p && o && fresh && o.matchesCandidate && o.state === "open" && (!contract || o.draft === contract.draftOnly));
-  const publicationReady = Boolean(contract && contractConformant && p?.settledAt && currentAcceptance(mission, p)
-    && p.feedbackReport && p.feedbackReport.headSha === o?.headSha && Date.now() - Date.parse(p.feedbackReport.observedAt) <= 300_000
-    && p.checks?.headSha === o?.headSha && p.reviews?.headSha === o?.headSha && p.checks?.state === "passed" && p.reviews?.state === "approved");
-  const ready = contract ? publicationReady : mergeReady;
-  return { ...n5, ready, mergeReady, publicationReady, contractConformant, nativeReadbackFresh: fresh, checksSource: contract ? "publisher_run_report" : "attributed_actor_observation", reviewsSource: contract ? "publisher_run_report" : "attributed_actor_observation",
-    ...nextDeliveryAction(mission, n5, ready) };
+  const readiness = n5Readiness(mission, n5);
+  const source = n5.authority.contract ? "publisher_run_report" : "attributed_actor_observation";
+  return { ...n5, ...readiness, checksSource: source, reviewsSource: source, ...nextDeliveryAction(mission, n5, readiness.ready) };
 }
 
 function nextDeliveryAction(mission: MissionRecord, n5: N5State, ready: boolean) {
