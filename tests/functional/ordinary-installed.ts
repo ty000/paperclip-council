@@ -50,10 +50,11 @@ const hostImport = (path: string) => import(pathToFileURL(resolve(host, path)).h
 let database: any, db: any, app: any, workerManager: any;
 let server: ReturnType<typeof createServer> | undefined;
 let base = "";
-async function api(method: string, path: string, body?: any) {
+async function api(method: string, path: string, body?: any, allowedConflict?: string) {
   const response = await fetch(`${base}${path}`, { method, headers: { "content-type": "application/json" },
     ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(15000) });
   const value = await response.json();
+  if (response.status === 409 && value.code === allowedConflict) return value;
   assert(response.ok, `${method} ${path}: ${response.status} ${JSON.stringify(value)}`);
   return value;
 }
