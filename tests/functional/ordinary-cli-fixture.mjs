@@ -92,7 +92,7 @@ else if (inspection.task) {
     const review = inspection.n3.review;
     const slot = review.slots.find(slot => slot.slotId === task.slotId);
     const corrected = (await readFile(resolve(config.repoPath, "alpha.txt"), "utf8")).includes("corrected");
-    const findings = slot.perspective === "quality" && !corrected && !config.delivery ? [{ findingId: randomUUID(), classification: "blocking_defect",
+    const findings = slot.perspective === "quality" && !corrected && (!config.delivery || config.feedbackMode && inspection.n5Feedback?.reviewSubmissionId === task.submissionId) ? [{ findingId: randomUUID(), classification: "blocking_defect",
       criterionOrRisk: "Alpha must contain corrected marker", evidenceRefs: [`git:${review.subject.candidateCommit}:alpha.txt`],
       evidenceLimits: ["Deterministic fixture opinion; model judgment not qualified"], consequence: "The required marker is absent", recommendedAction: "Correct alpha.txt once" }] : [];
     const opinion = { opinionId: randomUUID(), slotId: task.slotId, subject: review.subject,
@@ -118,7 +118,7 @@ else if (inspection.task) {
     await new Promise(r => setTimeout(r, 400));
   } else {
     assert.equal(task.kind, "correction");
-    if (config.delivery) await rebindDeliveryPlan({ api, call, config });
+    if (config.delivery && !config.feedbackMode) await rebindDeliveryPlan({ api, call, config });
     await writeFile(resolve(config.repoPath, "alpha.txt"), "alpha corrected\n");
     git("add", "alpha.txt"); git("commit", "--amend", "-m", "fixture: bounded correction");
     const candidate = await uploadCandidate();

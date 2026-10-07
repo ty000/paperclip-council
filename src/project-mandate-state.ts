@@ -3,7 +3,7 @@ import type { PluginContext } from "@paperclipai/plugin-sdk";
 import type { MissionMandate } from "./missions.js";
 import type { N3OpinionSlot } from "./n3-opinions.js";
 
-export type ProjectPublication = { publisherAgentId: string; qaAgentId: string; repository: string; baseRef: string; headRefPrefix: string };
+export type ProjectPublication = { publisherAgentId: string; qaAgentId: string; repository: string; baseRef: string; headRefPrefix: string; contract?: import("./pr-contract.js").PrContract };
 export type ProjectMandateContent = {
   enabled: boolean; ownerUserId: string; leadAgentId: string;
   teamRosterId: string; teamRevision: string; councilRosterId: string; councilRevision: string;

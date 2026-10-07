@@ -11,7 +11,7 @@ import { currentOrdinaryTask, saveOrdinaryTask, type OrdinaryReport, type Ordina
 
 function assertOwnerResume(mission: MissionRecord, task: OrdinaryTask, run: Awaited<ReturnType<typeof readOrdinaryRun>>) {
   const continuation = mission.aggregate.n5?.continuation;
-  if (!task.runId && task.kind === "correction" && continuation
+  if (!task.runId && task.kind === "correction" && continuation && !continuation.delegatedFeedback
       && (run.contextSnapshot.resumeIntent !== true || Date.parse(run.startedAt!) < Date.parse(continuation.requestedAt))) {
     throw new MissionError(409, "ordinary_owner_resume_required", "The reserved post-publication correction must bind the owner's explicit root resume run");
   }
@@ -52,7 +52,7 @@ export async function executeOrdinaryN2Agent(ctx: PluginContext, initial: Missio
   const mission = binding.mission; const task = binding.task; const round = n3Round(mission)!;
   if (["inspect", "ordinary-inspect", "n3-inspect"].includes(String(body.command))) {
     return { missionId: mission.missionId, version: mission.version, phase: mission.aggregate.phase,
-      task, instructions: ordinaryTaskInstructions(mission, task), n2: inspectN2State(mission), n3: inspectN3(mission), rootIssueId: mission.rootIssueId };
+      task, instructions: ordinaryTaskInstructions(mission, task), n2: inspectN2State(mission), n3: inspectN3(mission), rootIssueId: mission.rootIssueId, n5Feedback: mission.aggregate.n5?.feedback };
   }
   const prior = runtimeReceipt(mission, runtimeUuid(body.commandId, "commandId"), task.agentId, canonicalPayloadHash(body));
   if (prior) {

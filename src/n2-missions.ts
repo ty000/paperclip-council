@@ -1,3 +1,4 @@
+import { feedbackCorrectionRound } from "./pr-contract.js";
 import { isLogicalActor, physicalAgent } from "./model-state.js";
 import { N3OpinionError } from "./n3-opinions.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -23,7 +24,7 @@ import {
 
 export type N2Submission = {
   submissionId: string;
-  ordinal: 1 | 2;
+  ordinal: 1 | 2 | 3;
   predecessorSubmissionId: string | null;
   attachmentId: string;
   byteSize: number;
@@ -59,7 +60,7 @@ export type N2Verdict = {
 };
 
 export type N2ReviewRound = {
-  round: 1 | 2;
+  round: 1 | 2 | 3;
   submissionId: string;
   reviewerAgentId: string;
   handoff: N2NativeHandoff;
@@ -130,7 +131,7 @@ function submissionFromCandidate(
   mission: MissionRecord,
   candidate: IntegratedCandidateVerification,
   input: {
-    ordinal: 1 | 2; predecessorSubmissionId: string | null; evidenceRevision: number;
+    ordinal: 1 | 2 | 3; predecessorSubmissionId: string | null; evidenceRevision: number;
     submissionId?: string; at?: string;
   },
 ): N2Submission {
@@ -441,7 +442,7 @@ export function applyN2Decision(
     return unknownApplication(state, rounds, input);
   }
   if (input.verdict === "changes_requested") {
-    if (state.correctionsUsed >= state.correctionLimit || round.round !== 1) {
+    if (state.correctionsUsed >= state.correctionLimit || round.round !== 1 && !feedbackCorrectionRound(mission, round.submissionId)) {
       throw new MissionError(409, "correction_limit_exceeded", "Only one ordinary correction is supported");
     }
     return {
@@ -544,7 +545,7 @@ export function prepareN2Resubmission(
     throw new MissionError(422, "correction_evidence_missing", "V2 must identify at least one materially corrected attributed path");
   }
   const submission = submissionFromCandidate(mission, candidate, {
-    ordinal: 2,
+    ordinal: mission.aggregate.n5?.continuation?.delegatedFeedback ? 3 : 2,
     predecessorSubmissionId: previous.submissionId,
     evidenceRevision: input.evidenceRevision,
     submissionId: input.submissionId,
@@ -587,7 +588,7 @@ export function startN2ResubmittedReview(
     ...state,
     submissions: [...state.submissions, submission],
     rounds: [...state.rounds, {
-      round: 2,
+      round: mission.aggregate.n5?.continuation?.delegatedFeedback ? 3 : 2,
       submissionId: submission.submissionId,
       reviewerAgentId: reviewer,
       handoff: {
@@ -1537,7 +1538,7 @@ export async function prepareN2Decision(
       || (decision.verdict === "approved" && decision.approvedCommit !== submission.candidateCommit)) {
     throw new MissionError(409, "n2_decision_target_mismatch", "Decision does not target the active N2 submission and confirmed reviewer run");
   }
-  if (decision.verdict === "changes_requested" && (round.round !== 1 || state.correctionsUsed >= state.correctionLimit)) {
+  if (decision.verdict === "changes_requested" && (round.round !== 1 && !feedbackCorrectionRound(mission, round.submissionId) || state.correctionsUsed >= state.correctionLimit)) {
     throw new MissionError(409, "correction_limit_exceeded", "Only one ordinary correction is supported");
   }
   if (decision.verdict === "approved") {
