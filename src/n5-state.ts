@@ -6,7 +6,8 @@ export type N5Plan = { documentId: string; revisionId: string; bodyHash: string;
   plannerAgentId: string; orchestratorAgentId: string; integrationLeadAgentId: string; qaAgentId: string };
 export type N5State = {
   plan: N5Plan;
-  authority: { publisherAgentId: string; repository: string; baseRef: string; headRef: string; authorizedBy: string; authorizedAt: string };
+  authority: { publisherAgentId: string; repository: string; baseRef: string; headRef: string; authorizedBy: string; authorizedAt: string;
+    publisherPreflight?: "publisher-run-report-v1" };
   planHistory?: Array<{ plan: N5Plan; reason: string; runId: string; at: string }>;
   continuation?: { requestId: string; reason: string; criteria: string[]; requestedBy: string; requestedAt: string;
     periodKey: string; previousApplication: NonNullable<MissionRecord["aggregate"]["n2"]>["application"];
@@ -18,6 +19,7 @@ export type N5State = {
     createdAt: string; claimedAt?: string; creation: "preparing" | "claimed" | "confirmed"; wake: "pending" | "claimed";
     state: "pending" | "unknown" | "opened"; claimCommandId?: string;
     readbackUnavailable?: string;
+    preflight?: import("./n5-publisher-preflight.js").PublisherPreflight;
     observation?: { observedAt: string; objectId: string; workProductId: string; documentRevisionId: string;
       url: string; headSha: string; baseRef: string; headRef: string; state: string; draft: boolean; lastResolvedAt: string;
       matchesCandidate: boolean };

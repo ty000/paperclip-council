@@ -4,6 +4,8 @@ import type { MissionRecord } from "../src/missions.js";
 vi.mock("../src/model-variants.js", () => ({ inspectVariant: vi.fn() }));
 vi.mock("../src/g4-native.js", async original => ({ ...await original(), readOrdinaryRun: vi.fn() }));
 vi.mock("../src/model-history.js", () => ({ collectInterventionHistory: vi.fn(), publishInterventionHistory: vi.fn() }));
+vi.mock("../src/workspace-preflight.js", async original => ({ ...await original(), assertWorkspacePreflight: vi.fn() }));
+import { assertWorkspacePreflight } from "../src/workspace-preflight.js";
 import { inspectVariant } from "../src/model-variants.js";
 import { readOrdinaryRun } from "../src/g4-native.js";
 import { collectInterventionHistory, publishInterventionHistory } from "../src/model-history.js";
@@ -50,6 +52,24 @@ beforeEach(() => {
     usageJson: { usageSource: "per_run", inputTokens: 20, outputTokens: 7 } }));
   vi.mocked(collectInterventionHistory).mockResolvedValue({ cutoff: "2026-10-05T11:00:00Z", parts: [], gaps: [{ source: "comments", reason: "deleted" }] } as never);
   vi.mocked(publishInterventionHistory).mockResolvedValue({ indexKey: "history-index", indexSha256: "hash", parts: [] });
+});
+it("refuses a protected workspace before selecting a variant or assigning a native child", async () => {
+  const f = fixture();
+  vi.mocked(assertWorkspacePreflight).mockRejectedValue(new Error("sandbox_git_write_failed"));
+  await expect(prepareVariantLaunch(f.ctx, f.get(), f.input)).rejects.toThrow("sandbox_git_write_failed");
+  expect(f.mocks.db.execute).not.toHaveBeenCalled(); expect(f.mocks.issues.update).not.toHaveBeenCalled();
+  expect(f.mocks.issues.requestWakeup).not.toHaveBeenCalled();
+});
+it("rechecks a prepared workspace before claiming a wake and retains its existing launch identity on refusal", async () => {
+  const f = fixture();
+  let m = (await prepareVariantLaunch(f.ctx, f.get(), f.input)).mission;
+  m = await bindVariantIssue(f.ctx, m, "launch-1", "issue");
+  const before = structuredClone(f.get()); const saves = f.mocks.db.execute.mock.calls.length;
+  vi.mocked(assertWorkspacePreflight).mockRejectedValue(new Error("sandbox_git_write_failed"));
+  await expect(claimVariantWake(f.ctx, m, "launch-1")).rejects.toThrow("sandbox_git_write_failed");
+  expect(f.get()).toEqual(before); expect(f.mocks.db.execute).toHaveBeenCalledTimes(saves);
+  expect(modelLaunch(f.get(), "launch-1")?.state).toBe("ready");
+  expect(f.mocks.issues.requestWakeup).not.toHaveBeenCalled();
 });
 async function start(f: ReturnType<typeof fixture>) {
   const prepared = await prepareVariantLaunch(f.ctx, f.get(), f.input);

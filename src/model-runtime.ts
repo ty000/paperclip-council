@@ -5,6 +5,7 @@ import { inspectVariant } from "./model-variants.js";
 import { ModelSelectionError, modelLaunch, type ModelLaunch, type ModelSelectionState, type ModelMeasurement } from "./model-state.js";
 import { readOrdinaryRun, suppressedBeforeProvider } from "./g4-native.js";
 import { collectInterventionHistory, publishInterventionHistory } from "./model-history.js";
+import { assertWorkspacePreflight } from "./workspace-preflight.js";
 
 type LaunchInput = { taskKey: string; interventionKey: string; launchKey: string; logicalAgentId: string; family: TaskFamily; issueId?: string | null; expectedRoles: readonly RoleKey[] };
 const terminal = new Set(["succeeded", "failed", "cancelled", "timed_out", "interrupted"]);
@@ -82,6 +83,7 @@ function assertRoleFamily(roleKey: string, revision: string, family: TaskFamily)
 export async function prepareVariantLaunch(ctx: PluginContext, initial: MissionRecord, input: LaunchInput) {
   let m = initial; const state = m.aggregate.modelSelection;
   if (!state) return { mission: m, binding: null };
+  await assertWorkspacePreflight(ctx, m);
   const replay = modelLaunch(m, input.launchKey);
   if (replay) {
     if (replay.logicalAgentId !== input.logicalAgentId || replay.taskKey !== input.taskKey || replay.interventionKey !== input.interventionKey) {
@@ -203,6 +205,7 @@ export async function claimVariantWake<T>(ctx: PluginContext, m: MissionRecord, 
   if (!launch) return persist ? persist(m, m.aggregate) : m;
   if (launch.state !== "ready" || !launch.issueId) throw new ModelSelectionError("model_launch_not_ready", "Persisted assignment and history must be ready before wake");
   await selectedVariant(ctx, m, launch.logicalAgentId, launch.profileId, launch.variantRevision);
+  await assertWorkspacePreflight(ctx, m);
   const issue = await idleIssue(ctx, m, launch.issueId);
   if (issue.assigneeAgentId !== launch.agentId) throw new ModelSelectionError("model_assignment_drift", "Issue assignment changed before wake");
   const state = m.aggregate.modelSelection!;

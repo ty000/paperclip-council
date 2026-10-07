@@ -62,6 +62,20 @@ function harness(config: Record<string, unknown> = { modelVariantsEnabled: true,
 beforeEach(() => vi.resetAllMocks());
 
 describe("mission native-variant eligibility", () => {
+  it("pins the explicit workspace preflight only on a newly created ordinary fixed-variant mission", async () => {
+    const profile = { codexHome: "/native/observed/home", codexCommand: "/tools/codex" };
+    const h = harness({ modelVariantsEnabled: true, n2RuntimeProfile: "ordinary-cli-v1", workspacePreflight: profile });
+    const result = await h.create();
+    expect(result.mission.aggregate.workspacePreflight).toEqual(profile);
+    h.getConfig.mockResolvedValue({ modelVariantsEnabled: true, n2RuntimeProfile: "ordinary-cli-v1", workspacePreflight: { codexHome: "/other/home" } } as never);
+    const replay = await h.create();
+    expect(replay.mission.aggregate.workspacePreflight).toEqual(profile);
+  });
+  it("refuses a preflight registration on an unsupported runtime rather than silently ignoring it", async () => {
+    const h = harness({ workspacePreflight: { codexHome: "/native/home" } });
+    await expect(h.create()).rejects.toMatchObject({ code: "workspace_preflight_profile_incompatible" });
+    expect(h.execute).not.toHaveBeenCalled();
+  });
   it.each(["lead", "contributor", "reviewer", "specialist"] as const)("rejects an old %s outside the catalogue before inserting the mission", async role => {
     const h = harness();
     vi.mocked(inspectVariant).mockImplementation(async (_ctx, _company, logicalId) => {

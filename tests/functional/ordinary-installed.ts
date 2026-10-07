@@ -32,6 +32,7 @@ const proof: any = { schema: "council-ordinary-installed-v1", outcome: "RUNNING"
   head: gitAt(repository, "rev-parse", "HEAD"), hostSha, runtime, timeline: [], checks: {},
   boundary: "Installed Council owns N2/N3 state, admission, dispatch and reconciliation. Only CLI model/content/usage are deterministic. Owner prepares N1 and closes finished N1 children with lead demand wakes disabled.",
   source: Object.fromEntries(await Promise.all([...new Set([fixture, fileURLToPath(import.meta.url), resolve(here, "ordinary-delivery-fixture.mjs"), resolve(here, "ordinary-delivery-scenario.ts"), resolve(here, "n6-scenario.ts"), resolve(here, "n6-coordination-fixture.mjs"), resolve(repository, "dist/worker.js"),
+    resolve(repository, "scripts/operations/workspace_preflight.py"), resolve(repository, "scripts/operations/publisher_preflight.py"),
     ...gitAt(repository, "ls-files", "src").split("\n").map(path => resolve(repository, path)),
     ...gitAt(repository, "ls-files", "--others", "--exclude-standard", "src").split("\n").filter(Boolean).map(path => resolve(repository, path))])].map(async p => [p, createHash("sha256").update(await readFile(p)).digest("hex")]))) };
 const record = (event: string, details: any = {}) => proof.timeline.push({ ordinal: proof.timeline.length + 1, at: new Date().toISOString(), event, ...details });
@@ -49,10 +50,11 @@ const hostImport = (path: string) => import(pathToFileURL(resolve(host, path)).h
 let database: any, db: any, app: any, workerManager: any;
 let server: ReturnType<typeof createServer> | undefined;
 let base = "";
-async function api(method: string, path: string, body?: any) {
+async function api(method: string, path: string, body?: any, allowedConflict?: string) {
   const response = await fetch(`${base}${path}`, { method, headers: { "content-type": "application/json" },
     ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(15000) });
   const value = await response.json();
+  if (response.status === 409 && value.code === allowedConflict) return value;
   assert(response.ok, `${method} ${path}: ${response.status} ${JSON.stringify(value)}`);
   return value;
 }

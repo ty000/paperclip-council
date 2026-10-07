@@ -20,6 +20,9 @@ normal Paperclip authority.
 The repository includes provider-free utilities for exact transfer preflight,
 bounded mission observation, durable context packets, finite session usage
 audits, compact saved tool outputs, and conservative before/after comparisons.
+See the [workspace sandbox preflight](docs/operations/WORKSPACE-PREFLIGHT.md) for
+the opt-in, provider-free Git gate on new ordinary fixed-profile missions.
+
 See the [token-efficiency operator guide](docs/operations/TOKEN-EFFICIENCY.md)
 for their explicit inputs, limits, evidence contracts, and manual adoption sequence.
 

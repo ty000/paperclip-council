@@ -1,6 +1,7 @@
 import type { ModelSelectionState } from "./model-state.js";
 import { ModelSelectionError } from "./model-state.js";
 import { inspectVariant } from "./model-variants.js";
+import { readWorkspacePreflightProfile, type WorkspacePreflightProfile } from "./workspace-preflight.js";
 import { inspectN6 } from "./n6-state.js";
 import { inspectN5 } from "./n5-state.js";
 import { inspectN3 } from "./n3-state.js";
@@ -100,6 +101,7 @@ export type MissionAggregate = {
   commandReceipts: MissionReceipt[];
   effectIntents: Array<Record<string, unknown>>;
   modelSelection?: ModelSelectionState;
+  workspacePreflight?: import("./workspace-preflight.js").WorkspacePreflightProfile;
   n1?: Record<string, unknown>;
   n2?: N2State;
   n3?: import("./n3-state.js").N3State;
@@ -526,6 +528,7 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
   let team: RosterSnapshot;
   let council: RosterSnapshot;
   let useVariants = false;
+  let workspacePreflight: WorkspacePreflightProfile | undefined;
   try {
     const issue = await ctx.issues.get(create.rootIssueId, companyId);
     if (!issue || issue.companyId !== companyId) throw new MissionError(404, "root_issue_not_found", "Root issue not found in this company");
@@ -553,6 +556,10 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
     council = validation.council;
     const variantConfig = await ctx.config.get(companyId);
     useVariants = variantConfig.modelVariantsEnabled === true && variantConfig.n2RuntimeProfile === "ordinary-cli-v1";
+    workspacePreflight = readWorkspacePreflightProfile(variantConfig.workspacePreflight);
+    if (workspacePreflight && !useVariants) {
+      throw new MissionError(422, "workspace_preflight_profile_incompatible", "Workspace preflight requires fixed variants and the ordinary CLI runtime");
+    }
     if (useVariants) {
       const ids = new Set([...team.revision.content.members, ...council.revision.content.members].map(member => member.agentId));
       for (const agentId of ids) {
@@ -582,6 +589,7 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
   if (useVariants) {
     aggregate.modelSelection = { protocol: "native-variants-v1", choices: [], tasks: [] };
   }
+  if (workspacePreflight) aggregate.workspacePreflight = workspacePreflight;
   const insert = await ctx.db.execute(
     missionInsertSql(ctx),
     [companyId, create.missionId, create.rootIssueId, create.projectId, ownerUserId,

@@ -35,18 +35,26 @@ export async function prepareOrdinaryDelivery(input: any) {
     work: ["alpha", "beta"].map(name => ({ assigneeAgentId: actors[name], sourceRefs: [`prepared:${name}`], ownedPaths: [`${name}.txt`],
       dependencies: [], evidenceRefs: [`git:${name}`], skills: ["native-git"], interface: "Complementary attributed candidate text" })) };
   const doc = await api("PUT", `/api/issues/${rootIssueId}/documents/plan`, { format: "markdown", body: JSON.stringify(plan), title: "Ordinary operational plan" });
-  await api("POST", `${missionPath}/commands`, { companyId, command: "configure-delivery", commandId: randomUUID(), expectedVersion: mission.version,
+  const configured = await api("POST", `${missionPath}/commands`, { companyId, command: "configure-delivery", commandId: randomUUID(), expectedVersion: mission.version,
     planRevisionId: doc.latestRevisionId, publisherAgentId: actors.publisher, repository: "ty000/paperclip-council", baseRef: "main", headRef: "codex/n5-fixture" });
+  assert.equal(configured.mission.aggregate.n5.authority.publisherPreflight, "publisher-run-report-v1");
   let correctionRequested = false;
+  let versionConflicts = 0;
+  const correctionIdentity = { commandId: randomUUID(), reservationId: randomUUID() };
   return {
     async advance(m: any) {
       if (correctionRequested || !m.aggregate.n5.publication?.settledAt) return;
-      correctionRequested = true;
+      m = (await get()).mission;
       assert.equal(m.aggregate.n2.correctionsUsed, 0);
       assert.equal(m.aggregate.n2.rounds[0].verdict.verdict, "approved");
-      const body = { companyId, command: "request-delivery-correction", commandId: randomUUID(), reservationId: randomUUID(), expectedVersion: m.version,
+      const body = { companyId, command: "request-delivery-correction", ...correctionIdentity, expectedVersion: m.version,
         reason: "Post-publication check requests the bounded alpha correction marker", criteria: ["alpha.txt contains corrected"] };
-      const claimed = await api("POST", `${missionPath}/commands`, body);
+      const claimed = await api("POST", `${missionPath}/commands`, body, "version_conflict");
+      if (claimed.code === "version_conflict") {
+        assert(++versionConflicts <= 5, "Correction fixture exhausted fresh-version conflict reconciliation");
+        return;
+      }
+      correctionRequested = true;
       assert.equal(claimed.effectPermission, "execute");
       const replay = await api("POST", `${missionPath}/commands`, body);
       assert.equal(replay.effectPermission, "none");
