@@ -1,9 +1,16 @@
+import { completionPolicy } from "./completion-contract.js";
+import { sourceBase, recordContributionProof, closeQualifiedContribution } from "./contribution-proof.js";
 import { prepareN1Resume, verifyResumedLeadRun } from "./n1-resume.js";
+import { finishN1Disposition } from "./native-wake-policy.js";
 import { settledResumeReservation, type N1Resume, type ResumeTarget } from "./n1-resume-state.js";
 import { physicalAgent, isLogicalActor } from "./model-state.js";
 import { contributionModelFamily, prepareVariantLaunch, bindVariantIssue, claimVariantWake, recordVariantWake, observeVariantRun } from "./model-runtime.js";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { randomUUID } from "node:crypto";
+import { assertProjectDeparture, assertProjectPaths } from "./project-mandate-guard.js";
+import { contributionCountAllowed, leadIssueId } from "./hierarchy-contract.js";
+import { prepareHierarchyCoordinator, type N1Coordination } from "./hierarchy-coordinator.js";
+import { assertHierarchySources, assertHierarchyDependencies, materializeHierarchyGuidance } from "./hierarchy-runtime.js";
 import {
   AdmissionError,
   configureAdmission,
@@ -47,17 +54,21 @@ type Slot = {
   issueState: "planned" | "creation_claimed" | "confirmed" | "unknown";
   intentId?: string;
   childIssueId?: string;
+  parentIssueId?: string;
   issueUnknown?: string;
   dispatchState?: "claimed" | "requested" | "unknown";
   dispatchReservationId?: string;
   dispatchRunId?: string | null;
   dispatchUsageBaselineUnits?: number;
+  proof?: import("./integration.js").ContributionBundleProof;
   commit?: string;
   authorRunId?: string;
   referenceRecovery?: { previousCommit: string; actorUserId: string; commandId: string };
 };
 
 export type N1State = {
+  sourceBaseCommit?: string;
+  coordination?: N1Coordination;
   resume?: N1Resume;
   periodKey: string;
   activationReservationId: string;
@@ -226,7 +237,7 @@ async function lead(ctx: PluginContext, mission: MissionRecord, input: PluginApi
   if (actor.actorType !== "agent" || !actor.agentId || !actor.runId || !isLogicalActor(mission, mission.aggregate.responsibilities.integrationLeadAgentId, actor.agentId, actor.runId)) {
     throw new MissionError(403, "integration_lead_required", "Active integration lead run required");
   }
-  if (input.params.issueId !== mission.rootIssueId) {
+  if (input.params.issueId !== leadIssueId(mission)) {
     throw new MissionError(403, "root_issue_required", "Command must address the mission root issue");
   }
   const dispatch = n1State(mission);
@@ -234,20 +245,20 @@ async function lead(ctx: PluginContext, mission: MissionRecord, input: PluginApi
       || actor.runId !== dispatch.rootDispatchRunId) {
     throw new MissionError(409, "root_dispatch_run_mismatch", "Integration Lead command requires its confirmed admitted run");
   }
-  const issue = await ctx.issues.get(mission.rootIssueId, mission.companyId);
+  const issue = await ctx.issues.get(leadIssueId(mission), mission.companyId);
   if (!issue || issue.companyId !== mission.companyId || issue.projectId !== mission.projectId
       || issue.assigneeAgentId !== actor.agentId || issue.status !== "in_progress") {
     throw new MissionError(409, "root_ownership_changed", "Root issue is not in progress under the integration lead");
   }
   await ctx.issues.assertCheckoutOwner({
-    issueId: mission.rootIssueId, companyId: mission.companyId,
+    issueId: leadIssueId(mission), companyId: mission.companyId,
     actorAgentId: actor.agentId, actorRunId: actor.runId,
   });
   return { agentId: actor.agentId, runId: actor.runId };
 }
 
 function readSlotPlan(value: unknown, mission: MissionRecord): Slot[] {
-  if (!Array.isArray(value) || value.length !== 2) {
+  if (!Array.isArray(value) || !contributionCountAllowed(mission, value.length)) {
     throw new MissionError(422, "two_contributors_required", "Exactly two contributions are required");
   }
   const allowed = new Set(mission.aggregate.compositions.team.members.map((member) => member.agentId));
@@ -275,20 +286,28 @@ function readSlotPlan(value: unknown, mission: MissionRecord): Slot[] {
       issueState: "planned" as const,
     };
   });
-  if (slots[0].contributionId === slots[1].contributionId || slots[0].assigneeAgentId === slots[1].assigneeAgentId) {
+  if (new Set(slots.map(slot => slot.contributionId)).size !== slots.length || !mission.aggregate.hierarchy && new Set(slots.map(slot => slot.assigneeAgentId)).size !== slots.length) {
     throw new MissionError(422, "distinct_contributors_required", "Contribution IDs and assignees must be distinct");
   }
   for (const slot of slots) {
+    assertProjectPaths(mission, slot.ownedPaths);
     if (!allowed.has(slot.assigneeAgentId) || slot.assigneeAgentId === integrationLead || slot.assigneeAgentId === reviewer) {
       throw new MissionError(422, "contributor_ineligible", "Contributor must be a distinct pinned team member");
     }
   }
-  for (const left of slots[0].ownedPaths) {
-    for (const right of slots[1].ownedPaths) {
+  for (const [index, slot] of slots.entries()) for (const other of slots.slice(index + 1)) {
+    for (const left of slot.ownedPaths) for (const right of other.ownedPaths) {
       if (ownershipsOverlap(left, right)) throw new MissionError(422, "ownership_overlap", "Contribution write ownership overlaps");
     }
   }
-  return slots;
+  const leaves = mission.aggregate.hierarchy?.leaves;
+  if (!leaves) return slots;
+  if (leaves.length !== slots.length || leaves.some((leaf, index) => {
+    const slot = slots[index]!;
+    return leaf.contributionId !== slot.contributionId || leaf.assigneeAgentId !== slot.assigneeAgentId || leaf.title !== slot.title
+      || canonicalPayloadHash(leaf.ownedPaths) !== canonicalPayloadHash(slot.ownedPaths);
+  })) throw new MissionError(409, "hierarchy_plan_changed", "Use exactly the pinned existing leaves in dependency order; no replacement or inferred scope");
+  return slots.map((slot, index) => ({ ...slot, childIssueId: leaves[index]!.issueId, parentIssueId: leaves[index]!.parentId }));
 }
 
 export function contributionDescription(input: {
@@ -296,6 +315,7 @@ export function contributionDescription(input: {
   contributionId: string;
   ownedPaths: string[];
   context?: string;
+  closeThroughCouncil?: boolean;
 }): string {
   return [
     "Council N1 contribution. Complete only this bounded child issue.",
@@ -309,7 +329,9 @@ export function contributionDescription(input: {
     "```sh",
     contributionCommand(input.missionId, input.contributionId),
     "```",
-    "Mark this Paperclip child issue done only after record-contribution succeeds.",
+    input.closeThroughCouncil
+      ? "Council manages this child through its SDK. If inspect.n1.proofPolicy exists, record the verified child bundle with the supplied command; Council parks it blocked until the admitted run succeeds and exact usage settles, then closes it. Finish your run; do not issue another status/comment wake."
+      : "Mark this Paperclip child issue done only after record-contribution succeeds.",
     "For any non-2xx response, preserve the HTTP status and sanitized JSON response body in your final report without exposing credentials.",
     "",
     "Plugins/skills à utiliser",
@@ -345,9 +367,12 @@ export function inspectN1State(mission: MissionRecord) {
             : "Integration Lead must publish a verified integrated Git bundle.";
   return {
     resume: state.resume ?? null,
+    ...(mission.aggregate.hierarchy ? { hierarchy: mission.aggregate.hierarchy, coordinationIssueId: leadIssueId(mission), rootIssueId: mission.rootIssueId } : {}),
     prerequisites: mission.aggregate.readiness.blockers,
+    ...(mission.aggregate.projectMandate ? { projectMandate: mission.aggregate.projectMandate } : {}),
     nextAction,
     participants: state.contributions,
+    ...(completionPolicy(mission) ? { proofPolicy: completionPolicy(mission), sourceBaseCommit: state.sourceBaseCommit } : {}),
     candidate: state.candidate ?? null,
     reservations: { activation: state.activationReservationId, periodKey: state.periodKey },
     blocker: unresolved?.issueUnknown ?? state.lastIntegrationFailure ?? null,
@@ -398,7 +423,7 @@ async function reconcileContributionUsage(
 async function assertRecoverySettled(ctx: PluginContext, mission: MissionRecord, state: N1State) {
   const envelope = await readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
   const bindings = [
-    { issueId: mission.rootIssueId, runId: state.rootDispatchRunId, reservationId: state.activationReservationId },
+    { issueId: leadIssueId(mission), runId: state.rootDispatchRunId, reservationId: state.activationReservationId },
     ...state.contributions.map(slot => ({ issueId: slot.childIssueId, runId: slot.dispatchRunId, reservationId: slot.dispatchReservationId })),
   ];
   for (const binding of bindings) {
@@ -438,7 +463,7 @@ function requireRecoveryState(mission: MissionRecord): N1State {
   if (!state || state.candidate || mission.aggregate.n2 || mission.aggregate.n5
       || !["executing", "integrating"].includes(mission.aggregate.phase)
       || mission.aggregate.control.status !== "active" || state.rootDispatchMode !== "native"
-      || state.rootDispatchState !== "requested" || state.contributions.length !== 2) {
+      || state.rootDispatchState !== "requested" || !contributionCountAllowed(mission, state.contributions.length)) {
     throw new MissionError(409, "recovery_unavailable", "Only a native mission stopped before its first candidate may recover");
   }
   return state;
@@ -452,7 +477,7 @@ async function assertRecoveryChild(ctx: PluginContext, mission: MissionRecord, c
   const child = contribution.childIssueId ? await ctx.issues.get(contribution.childIssueId, mission.companyId) : null;
   if (!contribution.commit || !contribution.authorRunId || contribution.authorRunId !== contribution.dispatchRunId
     || contribution.dispatchState !== "requested" || contribution.issueState !== "confirmed" || child?.status !== "done"
-    || child.companyId !== mission.companyId || child.projectId !== mission.projectId || child.parentId !== mission.rootIssueId
+    || child.companyId !== mission.companyId || child.projectId !== mission.projectId || child.parentId !== (contribution.parentIssueId ?? mission.rootIssueId)
     || child.assigneeAgentId !== physicalAgent(mission, contribution.assigneeAgentId, { issueId: contribution.childIssueId })) {
     throw new MissionError(409, "recovery_child_incomplete", "Recovery retains two attributed, completed native children");
   }
@@ -487,6 +512,7 @@ async function recoverIntegration(ctx: PluginContext, mission: MissionRecord, bo
       baseCommit, candidateCommit: boundedString(body.candidateCommit, "candidateCommit", 40),
       contributions: contributions.map(item => ({ contributionId: item.contributionId, commit: item.commit!, ownedPaths: item.ownedPaths })) as IntegratedCandidateInput["contributions"],
       missingReference: previousCommit,
+      ...(mission.aggregate.hierarchy ? { contributionPolicy: mission.aggregate.hierarchy } : {}),
     });
   } catch (error) {
     throw new MissionError(422, "recovery_git_verification_failed", error instanceof Error ? error.message : "Recovery Git proof failed");
@@ -524,6 +550,7 @@ async function recoverCandidate(ctx: PluginContext, mission: MissionRecord, body
       baseCommit, candidateCommit: boundedString(body.candidateCommit, "candidateCommit", 40),
       contributions: state.contributions.map(item => ({ contributionId: item.contributionId, commit: item.commit!, ownedPaths: item.ownedPaths })) as IntegratedCandidateInput["contributions"],
       integrationAdjustedPaths,
+      ...(mission.aggregate.hierarchy ? { contributionPolicy: mission.aggregate.hierarchy } : {}),
     });
   } catch (error) {
     throw new MissionError(422, "recovery_git_verification_failed", error instanceof Error ? error.message : "Recovery Git proof failed");
@@ -655,7 +682,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     const requestedUnits = integer(input.body.requestedUnits, "requestedUnits");
     const issue = await ctx.issues.get(slot.childIssueId, mission.companyId);
     if (!issue || issue.companyId !== mission.companyId || issue.projectId !== mission.projectId
-        || issue.parentId !== mission.rootIssueId || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
+        || issue.parentId !== (slot.parentIssueId ?? mission.rootIssueId) || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
         || issue.status !== "in_progress") {
       throw new MissionError(409, "child_ownership_changed", "Synthetic contribution run needs its mapped in-progress child issue");
     }
@@ -700,7 +727,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     const commandId = uuid(input.body.commandId, "commandId");
     const replay = receipt(mission, commandId, input.actorUserId!, canonicalPayloadHash(input.body));
     if (replay) return { outcome: "replayed" as const, mission, receipt: replay };
-    const state = n1State(mission);
+    let state = n1State(mission);
     if (!state || mission.aggregate.control.status !== "active" || state.rootDispatchState) {
       throw new MissionError(409, "root_dispatch_unavailable", "Root dispatch is unavailable or already claimed");
     }
@@ -720,25 +747,39 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
       });
       admission = reserved.envelope;
     }
-    const reservation = admission?.reservations.find((item) => item.reservationId === state.activationReservationId);
+    const activationReservationId = state.activationReservationId;
+    const reservation = admission?.reservations.find((item) => item.reservationId === activationReservationId);
     if (!reservation || reservation.missionId !== mission.missionId || reservation.status !== "reserved"
         || Date.now() < Date.parse(admission!.periodStart) || Date.now() >= Date.parse(admission!.periodEnd)) {
       throw new MissionError(409, "g4_reservation_unavailable", "Root launch requires its durable unsettled reservation");
     }
+    const coordination = state.coordination;
+    if (coordination) {
+      if (coordination.commandHash !== canonicalPayloadHash(input.body) || coordination.commandId !== commandId
+          || coordination.ownerUserId !== input.actorUserId || coordination.preparedVersion !== mission.version) {
+        throw new MissionError(409, "hierarchy_coordinator_command", "Resume only the exact original coordinator command at its recorded version");
+      }
+    } else requireFreshCommand(mission, input.body);
+    await assertProjectDeparture(ctx, mission);
+    mission = await prepareHierarchyCoordinator(ctx, mission, input.body, async (before, coordination) =>
+      cas(ctx, before, { ...before.aggregate, n1: { ...n1State(before)!, coordination } }, before.version));
+    state = n1State(mission)!;
+    const launchState = state;
+    const leadIssue = leadIssueId(mission);
     let rootUsageBaselineUnits: number | undefined;
     if (nativeProfile) {
       assertNativeEnvelope(admission!, nativeProfile);
       rootUsageBaselineUnits = await assertNativeLaunchAllowed(ctx, {
         companyId: mission.companyId,
-        issueId: mission.rootIssueId,
+        issueId: leadIssue,
         priorRunId: state.resume?.lead.priorRunId,
       });
     }
-    const root = await ctx.issues.get(mission.rootIssueId, mission.companyId);
+    const root = await ctx.issues.get(leadIssue, mission.companyId);
     const leadAgentId = mission.aggregate.responsibilities.integrationLeadAgentId;
     const leadAgent = await ctx.agents.get(leadAgentId, mission.companyId);
     if (!root || root.companyId !== mission.companyId || root.projectId !== mission.projectId
-        || root.assigneeAgentId !== physicalAgent(mission, leadAgentId, { issueId: mission.rootIssueId }) || !["backlog", "todo", ...(mission.aggregate.n6 || state.resume ? ["blocked"] : [])].includes(root.status)
+        || root.assigneeAgentId !== physicalAgent(mission, leadAgentId, { issueId: leadIssue }) || !["backlog", "todo", ...(mission.aggregate.n6 || state.resume ? ["blocked"] : [])].includes(root.status)
         || !leadAgent || leadAgent.companyId !== mission.companyId
         || !["active", "idle", "running"].includes(leadAgent.status)) {
       throw new MissionError(409, "root_dispatch_ineligible", "Root issue or lead is no longer eligible");
@@ -747,22 +788,21 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
       throw new MissionError(409, "native_agent_adapter_required",
         "Native N1 dispatch requires a codex_local agent configured with the cli engine");
     }
-    requireFreshCommand(mission, input.body);
     const prepared = await prepareVariantLaunch(ctx, mission, { taskKey: mission.rootIssueId, interventionKey: "lead",
-      launchKey: state.activationReservationId, logicalAgentId: leadAgentId, family: "orchestration", issueId: mission.rootIssueId, expectedRoles: ["lead"] });
-    mission = await bindVariantIssue(ctx, prepared.mission, state.activationReservationId, mission.rootIssueId);
-    const claim = await claimVariantWake(ctx, mission, state.activationReservationId, async (readyMission, claimedAggregate) => {
+      launchKey: state.activationReservationId, logicalAgentId: leadAgentId, family: "orchestration", issueId: leadIssue, expectedRoles: ["lead"] });
+    mission = await bindVariantIssue(ctx, prepared.mission, state.activationReservationId, leadIssue);
+    const claim = await claimVariantWake(ctx, mission, launchState.activationReservationId, async (readyMission, claimedAggregate) => {
       const readyState = n1State(readyMission);
       if (!readyState) throw new Error("N1 state disappeared before root dispatch claim");
       const next: MissionAggregate = {
         ...claimedAggregate,
         n1: { ...readyState, rootDispatchState: "claimed", rootUsageBaselineUnits },
         effectIntents: [...claimedAggregate.effectIntents, {
-          kind: "root_wakeup", state: "claimed", reservationId: state.activationReservationId,
-          issueId: readyMission.rootIssueId, assigneeAgentId: leadAgentId,
+          kind: "root_wakeup", state: "claimed", reservationId: launchState.activationReservationId,
+          issueId: leadIssueId(readyMission), assigneeAgentId: leadAgentId,
         }],
         journal: [...claimedAggregate.journal, {
-          action: "root_dispatch_claimed", reservationId: state.activationReservationId,
+          action: "root_dispatch_claimed", reservationId: launchState.activationReservationId,
           actorUserId: input.actorUserId, at: new Date().toISOString(),
         }],
       };
@@ -771,11 +811,11 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     if (claim.outcome !== "applied") return claim;
     let wake: { queued: boolean; runId: string | null } | null = null;
     try {
-      if (root.status === "backlog" || root.status === "blocked" && (mission.aggregate.n6 || state.resume)) {
-        await ctx.issues.update(mission.rootIssueId, { status: "todo" }, mission.companyId, { actorUserId: input.actorUserId! });
+      if (root.status === "backlog" || root.status === "blocked" && (mission.aggregate.n6 || launchState.resume)) {
+        await ctx.issues.update(leadIssue, { status: "todo" }, mission.companyId, { actorUserId: input.actorUserId! });
       }
-      wake = await ctx.issues.requestWakeup(mission.rootIssueId, mission.companyId, {
-        idempotencyKey: "council:n1:" + state.activationReservationId,
+      wake = await ctx.issues.requestWakeup(leadIssue, mission.companyId, {
+        idempotencyKey: "council:n1:" + launchState.activationReservationId,
         reason: "council_integration_lead_dispatch",
         actorUserId: input.actorUserId!,
       });
@@ -784,18 +824,18 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     }
     let afterClaim = await getMission(ctx, mission.companyId, mission.missionId);
     if (!afterClaim) throw new Error("Mission disappeared after root dispatch effect");
-    const finalMission = await recordVariantWake(ctx, afterClaim, state.activationReservationId, wake?.runId ?? null,
+    const finalMission = await recordVariantWake(ctx, afterClaim, launchState.activationReservationId, wake?.runId ?? null,
       async (before, aggregate, effectiveRunId) => {
         const afterState = n1State({ ...before, aggregate });
         if (!afterState) throw new Error("N1 state disappeared after root dispatch effect");
         const priorLaunch = before.aggregate.modelSelection && before.aggregate.modelSelection.tasks
-          .flatMap(task => task.launches).find(item => item.launchKey === state.activationReservationId);
+          .flatMap(task => task.launches).find(item => item.launchKey === launchState.activationReservationId);
         const confirmed = Boolean(effectiveRunId && (wake?.queued || priorLaunch?.state === "bound" && priorLaunch.runId === effectiveRunId));
         return cas(ctx, before, {
           ...aggregate,
           n1: { ...afterState, rootDispatchState: confirmed ? "requested" : "unknown", rootDispatchRunId: effectiveRunId, rootDispatchMode: "native" },
           effectIntents: aggregate.effectIntents.map((entry) =>
-            entry.kind === "root_wakeup" && entry.reservationId === state.activationReservationId
+            entry.kind === "root_wakeup" && entry.reservationId === launchState.activationReservationId
               ? { ...entry, state: confirmed ? "requested" : "unknown", queued: wake?.queued ?? null, runId: effectiveRunId }
               : entry),
         }, before.version);
@@ -839,13 +879,13 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     }
     const settlement = state.resume
       ? await settleOrdinaryRunUsage(ctx, { commandId, companyId: mission.companyId,
-        issueId: mission.rootIssueId, runId: state.rootDispatchRunId,
-        agentId: physicalAgent(mission, mission.aggregate.responsibilities.integrationLeadAgentId, { issueId: mission.rootIssueId, runId: state.rootDispatchRunId }),
+        issueId: leadIssueId(mission), runId: state.rootDispatchRunId,
+        agentId: physicalAgent(mission, mission.aggregate.responsibilities.integrationLeadAgentId, { issueId: leadIssueId(mission), runId: state.rootDispatchRunId }),
         periodKey: state.periodKey, reservationId: state.activationReservationId, expectedVersion: envelope.version })
       : await settleNativeRunUsage(ctx, {
       commandId,
       companyId: mission.companyId,
-      issueId: mission.rootIssueId,
+      issueId: leadIssueId(mission),
       runId: state.rootDispatchRunId,
       baselineUsageUnits: state.rootUsageBaselineUnits!,
       periodKey: state.periodKey,
@@ -880,6 +920,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
   const hash = canonicalPayloadHash(input.body);
   const prior = receipt(mission, commandId, input.actorUserId!, hash);
   if (prior) return { outcome: "replayed" as const, mission, receipt: prior };
+  await assertProjectDeparture(ctx, mission);
   requireFreshCommand(mission, input.body);
   if (mission.aggregate.phase !== "draft" || mission.aggregate.control.status !== "inactive") {
     throw new MissionError(409, "not_draft", "Only an inactive draft mission may activate");
@@ -890,14 +931,14 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
   const eligibleTeam = mission.aggregate.compositions.team.members.filter(
     (member) => member.agentId !== mission.aggregate.responsibilities.integrationLeadAgentId,
   );
-  if (eligibleTeam.length < 2) {
+  if (eligibleTeam.length < (mission.aggregate.hierarchy ? 1 : 2)) {
     throw new MissionError(422, "two_contributors_required", "Pinned team needs two contributors in addition to the lead");
   }
   if (mission.aggregate.n6) await (await import("./n6-guards.js")).assertN6LaunchReady(ctx, mission, input.body);
   const root = await ctx.issues.get(mission.rootIssueId, mission.companyId);
   if (!root || root.companyId !== mission.companyId || root.projectId !== mission.projectId
       || root.assigneeAgentId !== mission.aggregate.responsibilities.integrationLeadAgentId
-      || !["backlog", "todo", ...(mission.aggregate.n6 ? ["blocked"] : [])].includes(root.status)) {
+      || !["backlog", "todo", ...(mission.aggregate.n6 || mission.aggregate.hierarchy?.leaves ? ["blocked"] : [])].includes(root.status)) {
     throw new MissionError(409, "root_ownership_changed",
       "Root issue must be assigned to the integration lead and not already running");
   }
@@ -1077,12 +1118,12 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
     if (!state || mission.aggregate.control.status !== "active") {
       throw new MissionError(409, "mission_inactive", "Mission is not active");
     }
-    if (input.params.issueId !== mission.rootIssueId
+    if (input.params.issueId !== leadIssueId(mission)
         && !state.contributions.some((slot) => slot.childIssueId === input.params.issueId)) {
       throw new MissionError(404, "mission_issue_not_found", "This issue is not mapped to the mission");
     }
     if (body.command === "inspect") {
-      if (input.params.issueId === mission.rootIssueId) {
+      if (input.params.issueId === leadIssueId(mission)) {
         await lead(ctx, mission, input);
       } else {
         const slot = state.contributions.find((entry) => entry.childIssueId === input.params.issueId);
@@ -1106,10 +1147,15 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
     const commandId = uuid(body.commandId, "commandId");
     const hash = canonicalPayloadHash(body);
     const prior = receipt(mission, commandId, input.actor.agentId, hash);
-    if (prior) return { status: 200, body: { outcome: "replayed", mission, receipt: prior } };
+    if (prior) {
+      await finishN1Disposition(ctx, mission, input, body);
+      return { status: 200, body: { outcome: "replayed", mission, receipt: prior } };
+    }
     if (body.command === "plan") {
       const actor = await lead(ctx, mission, input);
       if (state.contributions.length !== 0) throw new MissionError(409, "plan_exists", "Contribution plan already exists");
+      await assertHierarchySources(ctx, mission);
+      const sourceBaseCommit = sourceBase(mission, body.sourceBaseCommit);
       const slots = readSlotPlan(body.contributions, mission);
       for (const slot of slots) {
         const agent = await ctx.agents.get(slot.assigneeAgentId, mission.companyId);
@@ -1119,7 +1165,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       }
       const next: MissionAggregate = {
         ...mission.aggregate,
-        n1: { ...state, contributions: slots },
+        n1: { ...state, contributions: slots, ...(sourceBaseCommit ? { sourceBaseCommit } : {}) },
         journal: [...mission.aggregate.journal, { action: "contribution_plan_recorded", actorAgentId: actor.agentId, runId: actor.runId, at: new Date().toISOString() }],
       };
       const result = await commandCas(ctx, mission, body, "agent", actor.agentId, next);
@@ -1134,6 +1180,15 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       if (slot.issueState !== "planned") {
         throw new MissionError(409, "creation_already_claimed", "Child creation already claimed; inspect and reconcile it");
       }
+      if (mission.aggregate.hierarchy?.leaves && slot.childIssueId) {
+        requireFreshCommand(mission, body);
+        await assertHierarchySources(ctx, mission);
+        await materializeHierarchyGuidance(ctx, mission, slot.childIssueId, contributionDescription({ missionId: mission.missionId,
+          contributionId, ownedPaths: slot.ownedPaths, closeThroughCouncil: true, context: mission.aggregate.mandate.objective }));
+        const contributions = state.contributions.map(item => item.contributionId === contributionId ? { ...item, issueState: "confirmed" as const } : item);
+        const result = await commandCas(ctx, mission, body, "agent", actor.agentId, { ...mission.aggregate, n1: { ...state, contributions } });
+        return { status: 200, body: result };
+      }
       const intentId = randomUUID();
       const intent: ContributionIssueIntent = {
         state: "creation_claimed", intentId, companyId: mission.companyId,
@@ -1142,6 +1197,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         title: slot.title,
         description: contributionDescription({
           missionId: mission.missionId,
+          closeThroughCouncil: Boolean(mission.aggregate.nativeWakePolicy),
           contributionId,
           ownedPaths: slot.ownedPaths,
           context: await readContributionContext(ctx, mission).catch(() => {
@@ -1200,8 +1256,8 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       const issue = await ctx.issues.get(slot.childIssueId, mission.companyId);
       const agent = await ctx.agents.get(slot.assigneeAgentId, mission.companyId);
       if (!issue || issue.companyId !== mission.companyId || issue.projectId !== mission.projectId
-          || issue.parentId !== mission.rootIssueId || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
-          || !["backlog", ...(resumed ? ["blocked"] : [])].includes(issue.status) || !agent || agent.companyId !== mission.companyId
+          || issue.parentId !== (slot.parentIssueId ?? mission.rootIssueId) || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
+          || !["backlog", ...(resumed || slot.parentIssueId ? ["blocked"] : [])].includes(issue.status) || !agent || agent.companyId !== mission.companyId
           || !["active", "idle", "running"].includes(agent.status)) {
         throw new MissionError(409, "native_dispatch_ineligible", "Native child or assignee is no longer eligible for dispatch");
       }
@@ -1209,16 +1265,19 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         const priorIssue = prior.childIssueId
           ? await ctx.issues.get(prior.childIssueId, mission.companyId)
           : null;
+        if (completionPolicy(mission) && !prior.proof?.closedAt) throw new MissionError(409, "prior_contribution_proof", "Observe the previous child verified proof and terminal closure before dispatch");
         if (!prior.commit || !prior.authorRunId || prior.dispatchState !== "requested"
             || !prior.dispatchReservationId || !prior.dispatchRunId
             || prior.authorRunId !== prior.dispatchRunId
             || !priorIssue || priorIssue.companyId !== mission.companyId
-            || priorIssue.projectId !== mission.projectId || priorIssue.parentId !== mission.rootIssueId
+            || priorIssue.projectId !== mission.projectId || priorIssue.parentId !== (prior.parentIssueId ?? mission.rootIssueId)
             || priorIssue.assigneeAgentId !== physicalAgent(mission, prior.assigneeAgentId, { issueId: prior.childIssueId }) || priorIssue.status !== "done") {
           throw new MissionError(409, "prior_contribution_incomplete",
             "Every earlier contribution must be attributed to its confirmed native run and its mapped child issue must be done");
         }
       }
+      await assertHierarchySources(ctx, mission);
+      await assertHierarchyDependencies(ctx, mission, slot.childIssueId!);
       const reservationId = uuid(body.reservationId, "reservationId");
       const requestedUnits = integer(body.requestedUnits, "requestedUnits");
       if (resumed && reservationId !== resumed.reservationId) {
@@ -1341,6 +1400,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       });
       const contribution = state.contributions.find(slot => slot.contributionId === body.contributionId)!;
       mission = await observeVariantRun(ctx, mission, contribution.dispatchReservationId!);
+      mission = await closeQualifiedContribution(ctx, mission, contribution.contributionId, (current, aggregate) => cas(ctx, current, aggregate, current.version));
       return { status: 200, body: { ...result, mission } };
     }
     if (body.command === "record-contribution") {
@@ -1359,7 +1419,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       if (slot.commit) throw new MissionError(409, "contribution_recorded", "Contribution was already recorded");
       const issue = await ctx.issues.get(slot.childIssueId, mission.companyId);
       if (!issue || issue.companyId !== mission.companyId || issue.projectId !== mission.projectId
-          || issue.parentId !== mission.rootIssueId || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
+          || issue.parentId !== (slot.parentIssueId ?? mission.rootIssueId) || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
           || issue.status !== "in_progress") {
         throw new MissionError(409, "child_ownership_changed", "Child issue is not in progress under the assigned contributor");
       }
@@ -1369,27 +1429,29 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       });
       const commit = boundedString(body.commit, "commit", 40);
       if (!COMMIT.test(commit)) throw new MissionError(422, "invalid_commit", "Contribution commit must be a Git SHA-1");
+      const proof = await recordContributionProof(ctx, mission, contributionId, commit, body.proof);
       const slots = state.contributions.map((entry) => entry.contributionId === contributionId
-        ? { ...entry, commit, authorRunId: input.actor.runId! } : entry);
+        ? { ...entry, commit, authorRunId: input.actor.runId!, ...(proof ? { proof } : {}) } : entry);
       const next: MissionAggregate = {
         ...mission.aggregate, n1: { ...state, contributions: slots },
         journal: [...mission.aggregate.journal, { action: "contribution_recorded", contributionId, commit, actorAgentId: input.actor.agentId, runId: input.actor.runId, at: new Date().toISOString() }],
       };
       const result = await commandCas(ctx, mission, body, "agent", input.actor.agentId, next);
+      await finishN1Disposition(ctx, result.mission, input, body);
       return { status: 200, body: result };
     }
     if (body.command === "publish") {
       const actor = await lead(ctx, mission, input);
       requireFreshCommand(mission, body);
       if (state.candidate) throw new MissionError(409, "candidate_exists", "Integrated candidate already published");
-      if (state.contributions.length !== 2 || state.contributions.some((slot) =>
+      if (!contributionCountAllowed(mission, state.contributions.length) || state.contributions.some((slot) =>
         !slot.commit || !slot.childIssueId || !slot.authorRunId || slot.dispatchState !== "requested" || !slot.dispatchReservationId)) {
         throw new MissionError(409, "contributions_incomplete", "Two attributed contributions and native child mappings are required");
       }
       for (const slot of state.contributions) {
         const issue = await ctx.issues.get(slot.childIssueId!, mission.companyId);
         if (!issue || issue.companyId !== mission.companyId || issue.projectId !== mission.projectId
-            || issue.parentId !== mission.rootIssueId || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
+            || issue.parentId !== (slot.parentIssueId ?? mission.rootIssueId) || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
             || issue.status !== "done") {
           throw new MissionError(409, "child_not_done", "Both mapped native child issues must be done before integration");
         }
@@ -1425,15 +1487,16 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       if (!COMMIT.test(baseCommit) || !COMMIT.test(candidateCommit) || !DIGEST.test(expectedSha256)) {
         throw new MissionError(422, "invalid_candidate_identity", "Candidate Git and digest identity is malformed");
       }
+      if (completionPolicy(mission) && (state.sourceBaseCommit !== baseCommit || state.contributions.some(s => !s.proof?.closedAt))) {
+        throw new MissionError(409, "contribution_proof_pending", "All closed child proofs and the original source base must bind integration");
+      }
       let verified: IntegratedCandidateVerification;
       try {
         verified = await verifyIntegratedCandidate(ctx, {
           companyId: mission.companyId, issueId: mission.rootIssueId,
           attachmentId, baseCommit, candidateCommit, expectedSha256,
-          contributions: [
-            { contributionId: state.contributions[0].contributionId, commit: state.contributions[0].commit!, ownedPaths: state.contributions[0].ownedPaths },
-            { contributionId: state.contributions[1].contributionId, commit: state.contributions[1].commit!, ownedPaths: state.contributions[1].ownedPaths },
-          ],
+          contributions: state.contributions.map(slot => ({ contributionId: slot.contributionId, commit: slot.commit!, ownedPaths: slot.ownedPaths })),
+          ...(mission.aggregate.hierarchy ? { contributionPolicy: mission.aggregate.hierarchy } : {}),
         });
       } catch (error) {
         const reason = error instanceof Error ? error.message : "Integrated Git verification failed";
@@ -1469,6 +1532,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         }],
       };
       const result = await commandCas(ctx, mission, body, "agent", actor.agentId, next);
+      await finishN1Disposition(ctx, result.mission, input, body);
       return { status: 200, body: result };
     }
     throw new MissionError(400, "unknown_command", "Unknown N1 agent command");

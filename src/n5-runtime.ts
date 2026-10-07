@@ -1,3 +1,4 @@
+import { parsePrContract, validateGithubFeedback, githubFeedbackStates } from "./pr-contract.js";
 import { n5PublisherInstructions } from "./n5-instructions.js";
 import { requestN5Correction, rebindN5Plan } from "./n5-continuation.js";
 import { acceptedN5Submission } from "./n5-preflight.js";
@@ -13,12 +14,19 @@ import { inspectN5, type N5State } from "./n5-state.js";
 import { bindVariantIssue, claimVariantWake, observeVariantRun, prepareVariantLaunch, recordVariantWake } from "./model-runtime.js";
 import { modelLaunch, physicalAgent } from "./model-state.js";
 import { validatePublisherPreflight } from "./n5-publisher-preflight.js";
+import { assertNativeRunInventory } from "./native-runs.js";
+import { assertContinuityDeparture } from "./continuity-policy.js";
+import { assertProjectDeparture, assertProjectPublication } from "./project-mandate-guard.js";
 
 const fresh = async (ctx: PluginContext, m: MissionRecord) => (await getMission(ctx, m.companyId, m.missionId))!;
 const save = (ctx: PluginContext, m: MissionRecord, n5: N5State) => n2Cas(ctx, m, { ...m.aggregate, n5 });
 function text(value: unknown, label: string) {
   if (typeof value !== "string" || !value.trim() || value !== value.trim() || value.length > 200) throw new MissionError(422, "n5_invalid_input", `${label} must be a bounded string`);
   return value;
+}
+function validatePublicationRefs(repository: string, baseRef: string, headRef: string) {
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) || baseRef === headRef
+      || [baseRef, headRef].some(ref => !/^[A-Za-z0-9][A-Za-z0-9_./-]*$/.test(ref) || ref.includes(".."))) throw new MissionError(422, "n5_repository_binding", "Explicit repository and distinct safe base/head refs required");
 }
 async function authorize(ctx: PluginContext, m: MissionRecord, body: Record<string, unknown>, actorId: string) {
   if (m.aggregate.n5?.publication) throw new MissionError(409, "n5_authority_frozen", "An admitted publication cannot be replaced or reset");
@@ -28,15 +36,17 @@ async function authorize(ctx: PluginContext, m: MissionRecord, body: Record<stri
   if (m.aggregate.n2?.ordinary && (agent.adapterType !== "codex_local" || agent.adapterConfig?.engine !== "cli")) throw new MissionError(422, "ordinary_cli_required", "Ordinary delivery requires an explicit CLI publisher");
   const repository = text(body.repository, "repository");
   const baseRef = text(body.baseRef, "baseRef"); const headRef = text(body.headRef, "headRef");
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) || baseRef === headRef
-      || [baseRef, headRef].some(ref => !/^[A-Za-z0-9][A-Za-z0-9_./-]*$/.test(ref) || ref.includes(".."))) throw new MissionError(422, "n5_repository_binding", "Explicit repository and distinct safe base/head refs required");
-  const plan = await readN5Plan(ctx, m, runtimeUuid(body.planRevisionId, "planRevisionId"));
+  validatePublicationRefs(repository, baseRef, headRef);
+  const contract = parsePrContract(body.contract);
+  if (contract && (!m.aggregate.projectMandate || !m.aggregate.continuity)) throw new MissionError(422, "pr_feedback_delegation", "Project mandate and durable ordinary continuity must delegate the feedback loop");
+  assertProjectPublication(m, { publisherAgentId, repository, baseRef, headRef, contract });
+  const plan = await readN5Plan(ctx, m, runtimeUuid(body.planRevisionId, "planRevisionId"), body.planDocumentKey === undefined ? undefined : text(body.planDocumentKey, "planDocumentKey"));
   const config = await ctx.config.get(m.companyId);
   const publisherPreflight = (m.aggregate.n2?.ordinary || config.n2RuntimeProfile === "ordinary-cli-v1")
     && config.n5PublisherPreflightEnabled !== false ? "publisher-run-report-v1" as const : undefined;
   return n2CommandCas(ctx, m, body, "user", actorId, { ...m.aggregate, n5: { plan,
     authority: { publisherAgentId, repository, baseRef, headRef, authorizedBy: actorId, authorizedAt: new Date().toISOString(),
-      ...(publisherPreflight ? { publisherPreflight } : {}) } } });
+      ...(publisherPreflight ? { publisherPreflight } : {}), ...(contract ? { contract } : {}) } } });
 }
 
 /** Persisted authority may admit exactly one publisher after acceptance; no per-delivery human gate. */
@@ -47,6 +57,8 @@ export async function startN5Publication(ctx: PluginContext, initial: MissionRec
   const updating = Boolean(continuation && !continuation.updateAdmitted && n5.publication?.settledAt
     && m.aggregate.n2?.status === "accepted" && m.aggregate.n2.activeSubmissionId !== continuation.previousPublication.submission.submissionId);
   if (n5.publication && !updating) return n5.publication.creation === "confirmed" ? resumeN5PreWake(ctx, m) : resumeN5Creation(ctx, m);
+  assertContinuityDeparture(m);
+  await assertProjectDeparture(ctx, m);
   if (m.aggregate.n2?.ordinary) {
     const publisher = await ctx.agents.get(n5.authority.publisherAgentId, m.companyId);
     if (!publisher || publisher.adapterType !== "codex_local" || publisher.adapterConfig?.engine !== "cli"
@@ -137,6 +149,7 @@ async function resumeN5PreWake(ctx: PluginContext, initial: MissionRecord, newly
 }
 
 export async function reconcileN5(ctx: PluginContext, initial: MissionRecord) {
+  await assertNativeRunInventory(ctx, initial);
   let m = initial;
   if (!m.aggregate.n5) return m;
   if (!m.aggregate.n5.publication || m.aggregate.n5.continuation && !m.aggregate.n5.continuation.updateAdmitted
@@ -154,7 +167,7 @@ export async function reconcileN5(ctx: PluginContext, initial: MissionRecord) {
     m = await observeVariantRun(ctx, m, p.reservationId);
     m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...p, settledAt: new Date().toISOString() } });
   }
-  if (m.aggregate.n2?.ordinary) await ctx.issues.update(p.issueId!, { status: "done" }, m.companyId);
+  if (m.aggregate.n2?.ordinary && (!m.aggregate.n5!.authority.contract || p.observation?.matchesCandidate && p.feedbackReport && p.observation.draft === m.aggregate.n5!.authority.contract.draftOnly)) await ctx.issues.update(p.issueId!, { status: "done" }, m.companyId);
   return m.aggregate.n5!.publication!.claimedAt ? refreshN5Observation(ctx, m) : m;
 }
 
@@ -218,6 +231,7 @@ export async function handleN5Agent(ctx: PluginContext, input: PluginApiRequestI
     const n5 = m.aggregate.n5!; let p = n5.publication!;
     if (body.command === "n5-claim-publication") {
       if (p.claimedAt) throw new MissionError(409, "n5_effect_already_claimed", "One publication intent is already consumed; correlate readback without another effect");
+      await assertNativeRunInventory(ctx, m);
       const candidate = acceptedN5Submission(m); await assertCurrentN5Plan(ctx, m);
       if (canonicalPayloadHash(candidate) !== canonicalPayloadHash(p.submission)) throw new MissionError(409, "n5_candidate_changed", "Accepted candidate changed");
       if (n5.authority.publisherPreflight) {
@@ -234,6 +248,13 @@ export async function handleN5Agent(ctx: PluginContext, input: PluginApiRequestI
       p = { ...p, state: "opened", readbackUnavailable: undefined, observation,
         checks: body.checks ? attributedObservation(body.checks, ["unknown", "pending", "passed", "failed"], input.actor, observation.headSha) as NonNullable<typeof p.checks> : undefined,
         reviews: body.reviews ? attributedObservation(body.reviews, ["unknown", "pending", "approved", "changes_requested"], input.actor, observation.headSha) as NonNullable<typeof p.reviews> : undefined };
+      if (n5.authority.contract) {
+        const report = validateGithubFeedback(m, body.feedbackReport, input.actor, observation);
+        const states = githubFeedbackStates(n5.authority.contract, report);
+        const common = { headSha: report.headSha, observedAt: report.observedAt, agentId: input.actor.agentId!, runId: input.actor.runId! };
+        p = { ...p, feedbackReport: report, checks: { ...common, state: states.checks, evidenceRefs: report.checks.map(c => c.evidenceUrl) },
+          reviews: { ...common, state: states.reviews, evidenceRefs: report.reviews.map(r => r.url) } };
+      }
     } else throw new MissionError(400, "n5_unknown_command", "Unknown delivery command");
     const result = await n2CommandCas(ctx, m, body, "agent", input.actor.agentId!, { ...m.aggregate, n5: { ...n5, publication: p } });
     await holdOrdinaryPublisher(ctx, m);
@@ -264,6 +285,7 @@ async function refreshN5Observation(ctx: PluginContext, m: MissionRecord, actor?
     if (!(error instanceof MissionError)) throw error;
     return save(ctx, m, { ...n5, publication: { ...p, readbackUnavailable: error.code } });
   }
+  if (n5.authority.contract && (body.checks || body.reviews)) throw new MissionError(409, "pr_feedback_report_required", "The PR contract derives states only from the admitted publisher report, never operator booleans");
   const sameHead = observation.headSha === p.observation?.headSha;
   const checks = actor && body.checks ? attributedObservation(body.checks, ["unknown", "pending", "passed", "failed"], actor, observation.headSha) as NonNullable<typeof p.checks> : sameHead ? p.checks : undefined;
   const reviews = actor && body.reviews ? attributedObservation(body.reviews, ["unknown", "pending", "approved", "changes_requested"], actor, observation.headSha) as NonNullable<typeof p.reviews> : sameHead ? p.reviews : undefined;

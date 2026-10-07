@@ -98,3 +98,23 @@ it("preserves a historical callback run when the original wake readback is null"
   expect(result.aggregate).not.toHaveProperty("modelSelection");
   expect(result.aggregate.n2!.ordinary!.tasks[0]).toMatchObject({ taskId: task.taskId, runId: callbackRun });
 });
+
+it("finishes a persisted settled operational correction without another dispatch after interrupted handoff", async () => {
+  const { mission, task } = fixture(false);
+  Object.assign(task, { kind: "correction", agentId: "lead", issueId: "correction-issue", runId: "correction-run", settledAt: "settled", closedAt: "verified-handoff" });
+  vi.mocked(getMission).mockResolvedValue(mission);
+  const update = vi.fn(); const requestWakeup = vi.fn();
+  const ctx = { issues: { get: vi.fn().mockResolvedValue({ id: task.issueId, projectId: mission.projectId, assigneeAgentId: "lead", status: "blocked" }), update, requestWakeup } } as unknown as PluginContext;
+  await reconcileOrdinaryN2(ctx, mission);
+  expect(update).toHaveBeenCalledWith(task.issueId, { status: "done" }, mission.companyId);
+  expect(requestWakeup).not.toHaveBeenCalled(); expect(reserveN2Run).not.toHaveBeenCalled();
+});
+it.each(["unsettled", "foreign-assignee"])("refuses operational correction closure with %s state", async kind => {
+  const { mission, task } = fixture(false);
+  Object.assign(task, { kind: "correction", agentId: "lead", issueId: "correction-issue", runId: "run", closedAt: "handoff", ...(kind === "unsettled" ? {} : { settledAt: "settled" }) });
+  vi.mocked(getMission).mockResolvedValue(mission);
+  const update = vi.fn();
+  const ctx = { issues: { get: vi.fn().mockResolvedValue({ id: task.issueId, projectId: mission.projectId, assigneeAgentId: "other", status: "blocked" }), update } } as unknown as PluginContext;
+  await expect(reconcileOrdinaryN2(ctx, mission)).rejects.toMatchObject({ code: "ordinary_correction_closure" });
+  expect(update).not.toHaveBeenCalled();
+});

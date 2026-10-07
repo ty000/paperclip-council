@@ -37,7 +37,8 @@ export type IntegratedCandidateInput = {
   expectedSha256: string;
   baseCommit: string;
   candidateCommit: string;
-  contributions: [IntegratedContributionInput, IntegratedContributionInput];
+  contributions: IntegratedContributionInput[];
+  contributionPolicy?: { protocol: "council-hierarchy-v1"; maxContributions: number };
   correctedPaths?: string[];
   /** Owner-declared changes in the integration commit, retained for later verification. */
   integrationAdjustedPaths?: string[];
@@ -273,7 +274,7 @@ async function contributionSegmentRoots(
   baseCommit: string,
   candidateCommit: string,
   repositoryPath: string,
-): Promise<[string, string]> {
+): Promise<string[]> {
   for (const contribution of contributions) {
     await requireGitCheck(
       "contribution-ancestry",
@@ -289,18 +290,19 @@ async function contributionSegmentRoots(
     );
   }
 
-  const mergeBase = (await git([
-    "merge-base",
-    contributions[0].commit,
-    contributions[1].commit,
-  ], repositoryPath)).trim();
-  if (mergeBase === contributions[1].commit) {
-    throw new Error("Contribution order must declare an ancestor before its descendant");
+  const roots: string[] = [];
+  for (const [index, contribution] of contributions.entries()) {
+    let root = baseCommit;
+    for (const [otherIndex, other] of contributions.entries()) {
+      if (index === otherIndex) continue;
+      const common = (await git(["merge-base", contribution.commit, other.commit], repositoryPath)).trim();
+      if (common !== other.commit) continue;
+      if (otherIndex > index) throw new Error("Contribution order must declare an ancestor before its descendant");
+      root = other.commit;
+    }
+    roots.push(root);
   }
-  return [
-    baseCommit,
-    mergeBase === contributions[0].commit ? contributions[0].commit : baseCommit,
-  ];
+  return roots;
 }
 
 function validateContributions(input: IntegratedCandidateInput): Array<{
@@ -308,8 +310,12 @@ function validateContributions(input: IntegratedCandidateInput): Array<{
   commit: string;
   ownedPaths: string[];
 }> {
-  if (!Array.isArray(input.contributions) || input.contributions.length !== 2) {
-    throw new Error("Exactly two contributions are required for an integrated candidate");
+  const policy = input.contributionPolicy;
+  if (policy && (policy.protocol !== "council-hierarchy-v1" || !Number.isSafeInteger(policy.maxContributions) || policy.maxContributions < 1 || policy.maxContributions > 12)) {
+    throw new Error("Invalid bounded contribution protocol");
+  }
+  if (!Array.isArray(input.contributions) || (policy ? input.contributions.length < 1 || input.contributions.length > policy.maxContributions : input.contributions.length !== 2)) {
+    throw new Error(policy ? "Contribution count exceeds its explicit hierarchy contract" : "Exactly two contributions are required for an integrated candidate");
   }
   const parsed = input.contributions.map((contribution, index) => {
     const contributionId = requiredString(contribution?.contributionId, `contributions[${index}].contributionId`);
@@ -328,16 +334,12 @@ function validateContributions(input: IntegratedCandidateInput): Array<{
     }
     return { contributionId, commit: contributionCommit, ownedPaths };
   });
-  if (parsed[0].contributionId === parsed[1].contributionId) {
-    throw new Error("Contribution IDs must be distinct");
-  }
-  if (parsed[0].commit === parsed[1].commit) {
-    throw new Error("Contribution commits must be distinct");
-  }
-  for (const left of parsed[0].ownedPaths) {
-    for (const right of parsed[1].ownedPaths) {
-      if (ownershipsOverlap(left, right)) {
-        throw new Error(`Contribution ownership overlaps at ${left} and ${right}`);
+  if (new Set(parsed.map(item => item.contributionId)).size !== parsed.length) throw new Error("Contribution IDs must be distinct");
+  if (new Set(parsed.map(item => item.commit)).size !== parsed.length) throw new Error("Contribution commits must be distinct");
+  for (const [index, leftContribution] of parsed.entries()) {
+    for (const rightContribution of parsed.slice(index + 1)) {
+      for (const left of leftContribution.ownedPaths) for (const right of rightContribution.ownedPaths) {
+        if (ownershipsOverlap(left, right)) throw new Error(`Contribution ownership overlaps at ${left} and ${right}`);
       }
     }
   }
@@ -346,7 +348,7 @@ function validateContributions(input: IntegratedCandidateInput): Array<{
 
 async function readIssueBoundBundle(
   ctx: PluginContext,
-  input: IntegratedCandidateInput,
+  input: Pick<IntegratedCandidateInput, "companyId" | "issueId" | "attachmentId" | "expectedByteSize">,
   expectedSha256: string,
 ): Promise<{ bytes: Buffer; sha256: string }> {
   const attachments = await ctx.issues.listAttachments(input.issueId, input.companyId);
@@ -383,6 +385,7 @@ async function importAndValidateRepository(
   baseCommit: string,
   candidateCommit: string,
   checks: IntegratedCandidateCheck[],
+  sourceRefs = ["refs/heads/base", "refs/heads/candidate"],
 ): Promise<void> {
   await writeFile(bundlePath, bytes, { mode: 0o600 });
   await git(["init", "--bare", repositoryPath], dirname(bundlePath));
@@ -399,8 +402,8 @@ async function importAndValidateRepository(
     "fetch",
     "--no-tags",
     bundlePath,
-    "refs/heads/base:refs/council/base",
-    "refs/heads/candidate:refs/council/candidate",
+    sourceRefs[0] + ":refs/council/base",
+    sourceRefs[1] + ":refs/council/candidate",
   ], repositoryPath, "required base or candidate ref is missing");
   const observedBase = (await git(["rev-parse", "refs/council/base^{commit}"], repositoryPath)).trim();
   const observedCandidate = (await git(["rev-parse", "refs/council/candidate^{commit}"], repositoryPath)).trim();
@@ -609,12 +612,12 @@ export async function verifyIntegratedCandidate(
     for (const contribution of verifiedContributions) {
       await verifyContributionTreePreservation(contribution, candidateCommit, repositoryPath, [...correctionPaths, ...integrationPaths]);
     }
-    checks.push({ name: "contribution-ancestry", status: "passed", detail: "two distinct contribution commits are included" });
+    checks.push({ name: "contribution-ancestry", status: "passed", detail: input.contributionPolicy ? `${contributions.length} distinct contribution commits are included` : "two distinct contribution commits are included" });
     checks.push({ name: "contribution-history-topology", status: "passed", detail: "each contribution is a bounded linear history rooted at base or a prior declared contribution" });
     checks.push({ name: "write-ownership", status: "passed", detail: "every contribution commit changed only its declared paths" });
     checks.push({ name: "contribution-tree-preservation", status: "passed", detail: correctionPaths.length || integrationPaths.length
       ? "contribution paths outside the explicit adjustments survive in the candidate tree"
-      : "both contributions survive in the candidate tree" });
+      : input.contributionPolicy ? "all contributions survive in the candidate tree" : "both contributions survive in the candidate tree" });
     if (correctionPaths.length > 0) {
       await verifyMaterialCorrection(verifiedContributions, correctionPaths, baseCommit, candidateCommit, repositoryPath);
       checks.push({
@@ -663,4 +666,25 @@ export async function verifyIntegratedCandidate(
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+}
+
+export type ContributionBundleProof = { protocol: "council-contribution-proof-v1"; attachmentId: string; sha256: string; byteSize: number;
+  segmentRootCommit: string; commit: string; changedPaths: string[]; checks: IntegratedCandidateCheck[]; verifiedAt: string; closureClaimedAt?: string; closedAt?: string };
+
+export async function verifyContributionBundle(ctx: PluginContext, input: Pick<IntegratedCandidateInput, "companyId" | "issueId" | "attachmentId" | "expectedSha256" | "baseCommit" | "candidateCommit"> & { contributionId: string; ownedPaths: string[] }): Promise<ContributionBundleProof> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.contributionId)) throw new Error("Contribution UUID required");
+  if (!Array.isArray(input.ownedPaths) || !input.ownedPaths.length || input.ownedPaths.length > MAX_OWNED_PATHS_PER_CONTRIBUTION) throw new Error("Bounded ownership required");
+  const baseCommit = commit(input.baseCommit, "baseCommit"), candidateCommit = commit(input.candidateCommit, "candidateCommit");
+  const ownedPaths = input.ownedPaths.map(p => ownedPath(p, "ownedPaths"));
+  const { bytes, sha256 } = await readIssueBoundBundle(ctx, input, digest(input.expectedSha256));
+  const root = await mkdtemp(resolve(tmpdir(), "paperclip-council-child-proof-"));
+  const checks: IntegratedCandidateCheck[] = [{ name: "child-bound-bundle", status: "passed", detail: `${bytes.byteLength} bytes; SHA-256 verified` }];
+  try {
+    const repository = resolve(root, "repository.git"), refs = ["base", "candidate"].map(ref => `refs/council/proof/${input.contributionId}/${ref}`);
+    await importAndValidateRepository(bytes, resolve(root, "child.bundle"), repository, baseCommit, candidateCommit, checks, refs);
+    const verified = await verifyContribution({ contributionId: input.contributionId, commit: candidateCommit, ownedPaths }, baseCommit, repository);
+    await requireGitCheck("child-diff-check", ["diff", "--check", baseCommit, candidateCommit], repository, "Whitespace errors in child contribution");
+    checks.push({ name: "linear-owned-child-history", status: "passed", detail: "Nonempty bounded linear history changes only declared owned paths" });
+    return { protocol: "council-contribution-proof-v1", attachmentId: input.attachmentId, sha256, byteSize: bytes.byteLength, segmentRootCommit: baseCommit, commit: candidateCommit, changedPaths: verified.changedPaths, checks, verifiedAt: new Date().toISOString() };
+  } finally { await rm(root, { recursive: true, force: true }); }
 }

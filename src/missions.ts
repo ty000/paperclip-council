@@ -1,15 +1,19 @@
+import { MissionError, canonicalPayloadHash } from "./mission-primitives.js";
+import { readContinuityObservation } from "./continuity-observation.js";
+import { configureContinuity } from "./continuity-configuration.js";
 import type { ModelSelectionState } from "./model-state.js";
+import { assertNativeRunInventory, initialNativeWakePolicy } from "./native-runs.js";
+import type { NativeWakePolicy } from "./native-wake-policy.js";
 import { ModelSelectionError } from "./model-state.js";
 import { inspectVariant } from "./model-variants.js";
 import { readWorkspacePreflightProfile, type WorkspacePreflightProfile } from "./workspace-preflight.js";
 import { inspectN6 } from "./n6-state.js";
 import { inspectN5 } from "./n5-state.js";
 import { inspectN3 } from "./n3-state.js";
-import { createHash } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { AdmissionError } from "./admission.js";
 import { executeN1BoardCommand, inspectN1State, readN1AdmissionForMission } from "./n1-missions.js";
-import { executeN2BoardCommand, inspectN2State, type N2State } from "./n2-missions.js";
+import { executeN2BoardCommand, inspectN2State, n2CommandCas, runtimeReceipt, runtimeUuid, type N2State } from "./n2-missions.js";
 import {
   RosterError,
   validateRosterPair,
@@ -62,7 +66,7 @@ export type MissionReceipt = {
   commandId: string;
   command: "bind-resumed-lead-run" | "prepare-n1-resume" | "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "fixture-bind-contribution-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish" | "recover-integration" | "recover-candidate"
     | "resume-settled-correction" | "replace-undispatched-correction" | "start-review" | "confirm-review-handoff" | "start-correction" | "prepare-resubmission"
-    | "start-resubmitted-review" | "settle-n2-usage" | "attest-transmission" | "reconcile-native-n2" | "release-native-correction" | "reconcile-ordinary-n2" | "replace-missing-opinion" | "replace-missing-verdict" | "recover-terminal-resubmission" | "ordinary-verdict";
+    | "start-resubmitted-review" | "settle-n2-usage" | "attest-transmission" | "reconcile-native-n2" | "release-native-correction" | "reconcile-ordinary-n2" | "replace-missing-opinion" | "replace-missing-verdict" | "recover-terminal-resubmission" | "ordinary-verdict" | "configure-continuity" | "suspend-continuity";
   actorType: "user" | "agent";
   actorId: string;
   payloadHash: string;
@@ -102,6 +106,11 @@ export type MissionAggregate = {
   effectIntents: Array<Record<string, unknown>>;
   modelSelection?: ModelSelectionState;
   workspacePreflight?: import("./workspace-preflight.js").WorkspacePreflightProfile;
+  continuity?: import("./continuity-policy.js").ContinuityPolicy;
+  projectMandate?: import("./project-mandate-state.js").ProjectMandateSnapshot;
+  completion?: import("./completion-contract.js").CompletionState;
+  hierarchy?: import("./hierarchy-contract.js").HierarchyState;
+  nativeWakePolicy?: import("./native-wake-policy.js").NativeWakePolicy;
   n1?: Record<string, unknown>;
   n2?: N2State;
   n3?: import("./n3-state.js").N3State;
@@ -169,17 +178,7 @@ type CreateInput = {
   mandate: MissionMandate;
 };
 
-export class MissionError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly code: string,
-    message: string,
-    public readonly details?: unknown,
-  ) {
-    super(message);
-    this.name = "MissionError";
-  }
-}
+export { MissionError, canonicalPayloadHash } from "./mission-primitives.js";
 
 function asRecord(value: unknown, label = "request body"): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -261,19 +260,6 @@ export function parseMissionCreateInput(value: unknown): CreateInput {
   };
 }
 
-function stable(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stable);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => [key, stable(entry)]));
-  }
-  return value;
-}
-
-export function canonicalPayloadHash(value: unknown): string {
-  return createHash("sha256").update(JSON.stringify(stable(value))).digest("hex");
-}
 
 function namespaceTable(ctx: PluginContext, name: "missions" | "roster_heads"): string {
   if (!/^[a-z_][a-z0-9_]*$/.test(ctx.db.namespace)) throw new Error("Unsafe plugin database namespace");
@@ -372,6 +358,15 @@ export async function getMissionByRootIssue(
   return rows[0] ? parseMissionRow(rows[0]) : null;
 }
 
+/** Only exact persisted N1 operational/leaf bindings, with ambiguity retained. */
+export async function getMissionByN1Issue(ctx: PluginContext, companyId: string, issueId: string): Promise<MissionRecord | null> {
+  const rows = await ctx.db.query<MissionRow>(`SELECT ${selectColumns} FROM ${table(ctx)} WHERE company_id = $1
+    AND (aggregate->'n1'->'coordination'->>'issueId' = $2 OR aggregate->'n1'->'contributions' @> $3::jsonb) LIMIT 2`,
+    [companyId, issueId, JSON.stringify([{ childIssueId: issueId }])]);
+  if (rows.length > 1) throw new MissionError(409, "n1_task_ambiguous", "N1 task must belong to one mission");
+  return rows[0] ? parseMissionRow(rows[0]) : null;
+}
+
 /** Exact source lookup for event recovery; no bounded dashboard list or new scheduler. */
 export async function getMissionsDependingOn(ctx: PluginContext, companyId: string, sourceMissionId: string): Promise<MissionRecord[]> {
   const rows = await ctx.db.query<MissionRow>(
@@ -386,6 +381,14 @@ export async function listMissions(ctx: PluginContext, companyId: string): Promi
     `SELECT ${selectColumns} FROM ${table(ctx)} WHERE company_id = $1 ORDER BY updated_at DESC, mission_id LIMIT ${MAX_LIST_ITEMS}`,
     [companyId],
   );
+  return rows.map(parseMissionRow);
+}
+
+/** Dedicated bounded scan: dashboard truncation cannot starve older delegated missions. */
+export async function listContinuityMissions(ctx: PluginContext): Promise<MissionRecord[]> {
+  const rows = await ctx.db.query<MissionRow>(`SELECT ${selectColumns} FROM ${table(ctx)}
+    WHERE aggregate->'continuity'->>'enabled' = 'true' ORDER BY company_id, mission_id LIMIT 201`, []);
+  if (rows.length > 200) throw new MissionError(409, "continuity_scan_bound", "More than 200 delegated missions require an explicit scan plan; no truncated progression");
   return rows.map(parseMissionRow);
 }
 
@@ -519,7 +522,7 @@ function existingCreationResult(mission: MissionRecord, commandId: string, actor
   });
 }
 
-async function createMission(ctx: PluginContext, companyId: string, actorUserId: string | null, body: unknown) {
+export async function createMission(ctx: PluginContext, companyId: string, actorUserId: string | null, body: unknown) {
   const ownerUserId = await requireOwner(ctx, companyId, actorUserId);
   const create = parseMissionCreateInput(body);
   const payloadHash = canonicalPayloadHash(create);
@@ -529,6 +532,7 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
   let council: RosterSnapshot;
   let useVariants = false;
   let workspacePreflight: WorkspacePreflightProfile | undefined;
+  let nativeWakePolicy: NativeWakePolicy | undefined;
   try {
     const issue = await ctx.issues.get(create.rootIssueId, companyId);
     if (!issue || issue.companyId !== companyId) throw new MissionError(404, "root_issue_not_found", "Root issue not found in this company");
@@ -574,6 +578,9 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
         if (!compatible) throw new ModelSelectionError("model_roster_role_mismatch", "Catalogue role must match the structured roster responsibility", { agentId, role });
       }
     }
+    if (variantConfig.n2RuntimeProfile === "ordinary-cli-v1" && variantConfig.nativeWakeGuardEnabled !== false) {
+      nativeWakePolicy = await initialNativeWakePolicy(ctx, companyId, create.rootIssueId, variantConfig.nativeRunLimit);
+    }
   } catch (error) {
     let appeared: MissionRecord | null = null;
     try {
@@ -590,6 +597,7 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
     aggregate.modelSelection = { protocol: "native-variants-v1", choices: [], tasks: [] };
   }
   if (workspacePreflight) aggregate.workspacePreflight = workspacePreflight;
+  if (nativeWakePolicy) aggregate.nativeWakePolicy = nativeWakePolicy;
   const insert = await ctx.db.execute(
     missionInsertSql(ctx),
     [companyId, create.missionId, create.rootIssueId, create.projectId, ownerUserId,
@@ -699,6 +707,7 @@ export function inspectMission(mission: MissionRecord) {
     prerequisites: n1?.prerequisites ?? mission.aggregate.readiness.blockers,
     nextAction: (mission.aggregate.n6 && !mission.aggregate.n1?.rootDispatchState ? inspectN6(mission)?.nextAction : undefined) ?? n2?.nextAction.label ?? n1?.nextAction ?? "Resolve and qualify G4 before adding any dispatch or activation command.",
     n1,
+    ...(mission.aggregate.completion ? { completion: mission.aggregate.completion } : {}),
     n2,
     n3: inspectN3(mission),
     n5: inspectN5(mission),
@@ -719,6 +728,19 @@ async function executeMissionRouteCommand(
   missionId: string | undefined,
 ) {
   const command = String(body.command);
+  if (missionId && ["configure-continuity", "suspend-continuity"].includes(command)) {
+    const ownerId = await requireOwner(ctx, companyId, actorUserId);
+    const mission = await getMission(ctx, companyId, missionId);
+    if (!mission || mission.ownerUserId !== ownerId) throw new MissionError(403, "mission_owner_required", "Exact mission owner required");
+    return configureContinuity(ctx, mission, ownerId, body, { n2CommandCas, runtimeReceipt, runtimeUuid });
+  }
+  if (missionId && command === "reconcile-native-runs") {
+    await requireOwner(ctx, companyId, actorUserId);
+    const mission = await getMission(ctx, companyId, missionId);
+    if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
+    await assertNativeRunInventory(ctx, mission);
+    return { outcome: "reconciled", mission };
+  }
   if (missionId && N1_BOARD_COMMANDS.has(command)) {
     return executeN1BoardCommand(ctx, { companyId, missionId, actorUserId, body });
   }
@@ -742,7 +764,8 @@ export async function handleMissionApi(input: PluginApiRequestInput, ctx: Plugin
       const missionId = uuid(input.params.missionId, "missionId");
       const mission = await getMission(ctx, companyId, missionId);
       if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
-      return { status: 200, body: await inspectMissionWithAdmission(ctx, mission) };
+      return { status: 200, body: { ...await inspectMissionWithAdmission(ctx, mission),
+        continuity: await readContinuityObservation(ctx, mission) } };
     }
     if (input.routeKey === "missions-command" || input.routeKey === "mission-command") {
       const body = asRecord(input.body);

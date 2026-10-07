@@ -1,4 +1,6 @@
+import { prepareHierarchyTasks, verifyHierarchyTasks } from "./hierarchy-scenario.js";
 import { prepareN6Scenario } from "./n6-scenario.js";
+import { qualifyNativeRunException } from "./native-run-exception-scenario.js";
 import assert from "node:assert/strict";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -6,7 +8,7 @@ import { access, chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 
 import { createServer } from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { installOrdinaryGitHubTransport, prepareOrdinaryDelivery } from "./ordinary-delivery-scenario.js";
+import { installOrdinaryGitHubTransport, nominalDeliveryObserver, prepareOrdinaryDelivery } from "./ordinary-delivery-scenario.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repository = resolve(here, "../..");
@@ -18,10 +20,20 @@ assert.equal(gitAt(host, "status", "--porcelain", "--untracked-files=no"), "");
 const n6Mode = process.env.COUNCIL_N6_DEPENDENCIES === "1";
 const coordinationMode = process.env.COUNCIL_N6_COORDINATION === "1";
 assert(!coordinationMode || n6Mode);
+const continuityMode = process.env.COUNCIL_CONTINUITY === "1";
+const projectIntakeMode = process.env.COUNCIL_PROJECT_INTAKE === "1";
 const deliveryMode = process.env.COUNCIL_ORDINARY_DELIVERY === "1";
+const hierarchyCount = Number(process.env.COUNCIL_HIERARCHY_COUNT ?? 0);
+assert([0, 1, 3].includes(hierarchyCount) && (!hierarchyCount || projectIntakeMode));
 assert(!(n6Mode && deliveryMode));
-const success = n6Mode ? "INSTALLED N6 DEPENDENCY PROVIDER-FREE VALIDATED" : deliveryMode ? "INSTALLED ORDINARY DELIVERY PROVIDER-FREE VALIDATED" : "INSTALLED ORDINARY COUNCIL PROVIDER-FREE VALIDATED";
-const artifactPrefix = n6Mode ? "n6-installed-" : deliveryMode ? "n5-ordinary-installed-" : "n2-ordinary-installed-";
+assert(!continuityMode || deliveryMode);
+assert(!projectIntakeMode || continuityMode);
+const feedbackMode = process.env.COUNCIL_PR_FEEDBACK === "1";
+assert(!feedbackMode || hierarchyCount === 3 && projectIntakeMode);
+const completionMode = process.env.COUNCIL_PROOF_COMPLETION === "1";
+assert(!completionMode || feedbackMode && hierarchyCount === 3);
+const success = completionMode ? "INSTALLED PROOF COMPLETION PROVIDER-FREE VALIDATED" : feedbackMode ? "INSTALLED PR FEEDBACK PROVIDER-FREE VALIDATED" : hierarchyCount ? "INSTALLED VARIABLE HIERARCHY PROVIDER-FREE VALIDATED" : n6Mode ? "INSTALLED N6 DEPENDENCY PROVIDER-FREE VALIDATED" : deliveryMode ? "INSTALLED ORDINARY DELIVERY PROVIDER-FREE VALIDATED" : "INSTALLED ORDINARY COUNCIL PROVIDER-FREE VALIDATED";
+const artifactPrefix = completionMode ? "proof-completion-installed-" : feedbackMode ? "pr-feedback-installed-" : hierarchyCount ? `hierarchy-${hierarchyCount}-installed-` : n6Mode ? "n6-installed-" : deliveryMode ? "n5-ordinary-installed-" : "n2-ordinary-installed-";
 const runtime = await mkdtemp("/tmp/council-ordinary-installed-");
 const output = resolve(repository, process.argv[2] ?? `artifacts/${artifactPrefix}${Date.now()}.json`);
 assert(output.startsWith(resolve(repository, `artifacts/${artifactPrefix}`)));
@@ -30,9 +42,9 @@ await access(output).then(() => { throw new Error("Evidence output already exist
 const fixture = resolve(here, "ordinary-cli-fixture.mjs");
 const proof: any = { schema: "council-ordinary-installed-v1", outcome: "RUNNING", startedAt: new Date().toISOString(),
   head: gitAt(repository, "rev-parse", "HEAD"), hostSha, runtime, timeline: [], checks: {},
-  boundary: "Installed Council owns N2/N3 state, admission, dispatch and reconciliation. Only CLI model/content/usage are deterministic. Owner prepares N1 and closes finished N1 children with lead demand wakes disabled.",
-  source: Object.fromEntries(await Promise.all([...new Set([fixture, fileURLToPath(import.meta.url), resolve(here, "ordinary-delivery-fixture.mjs"), resolve(here, "ordinary-delivery-scenario.ts"), resolve(here, "n6-scenario.ts"), resolve(here, "n6-coordination-fixture.mjs"), resolve(repository, "dist/worker.js"),
-    resolve(repository, "scripts/operations/workspace_preflight.py"), resolve(repository, "scripts/operations/publisher_preflight.py"),
+  boundary: "Installed Council owns N1 child completion/root waiting, N2/N3 state, admission, dispatch and reconciliation. Only CLI model/content/usage are deterministic. Owner prepares N1; Council finishes recorded children without implicit parent wakes and parks its verified candidate awaiting review. Agent demand wake policy remains enabled.",
+  source: Object.fromEntries(await Promise.all([...new Set([fixture, fileURLToPath(import.meta.url), resolve(here, "ordinary-delivery-fixture.mjs"), resolve(here, "ordinary-delivery-scenario.ts"), resolve(here, "n6-scenario.ts"), resolve(here, "n6-coordination-fixture.mjs"), resolve(repository, "dist/worker.js"), resolve(repository, "dist/contribution-command.js"),
+    resolve(repository, "scripts/operations/workspace_preflight.py"), resolve(repository, "scripts/operations/publisher_preflight.py"), resolve(repository, "scripts/operations/github_feedback.py"), resolve(here, "native-run-exception-scenario.ts"), resolve(here, "hierarchy-scenario.ts"),
     ...gitAt(repository, "ls-files", "src").split("\n").map(path => resolve(repository, path)),
     ...gitAt(repository, "ls-files", "--others", "--exclude-standard", "src").split("\n").filter(Boolean).map(path => resolve(repository, path))])].map(async p => [p, createHash("sha256").update(await readFile(p)).digest("hex")]))) };
 const record = (event: string, details: any = {}) => proof.timeline.push({ ordinal: proof.timeline.length + 1, at: new Date().toISOString(), event, ...details });
@@ -70,6 +82,7 @@ async function waitFor<T>(label: string, read: () => Promise<T>, ok: (v: T) => b
 
 try {
   const tables = await hostImport("packages/db/src/index.ts");
+  const { eq } = await hostImport("server/node_modules/drizzle-orm/index.js");
   const { createApp } = await hostImport("server/src/app.ts");
   const { createPluginWorkerManager } = await hostImport("server/src/services/plugin-worker-manager.ts");
   const { createStorageService } = await hostImport("server/src/storage/service.ts");
@@ -109,10 +122,10 @@ try {
   await chmod(fixture, 0o755);
   const fixtureConfig = resolve(runtime, "fixture.json");
   const actors: Record<string, string> = {};
-  for (const name of ["lead", "alpha", "beta", "product", "quality", "council", ...deliveryMode ? ["publisher"] : [], ...coordinationMode ? ["pm", "pmSuccessor", "facilitator"] : []]) {
+  for (const name of ["lead", "alpha", "beta", ...(hierarchyCount === 3 ? ["gamma"] : []), "product", "quality", "council", ...deliveryMode ? ["publisher"] : [], ...coordinationMode ? ["pm", "pmSuccessor", "facilitator"] : []]) {
     const agent = await api("POST", `/api/companies/${companyId}/agents`, { name: `Ordinary ${name}`, role: "engineer", adapterType: "codex_local",
       adapterConfig: { engine: "cli", command: fixture, model: "fixture-no-provider", cwd: repoPath,
-        env: { CODEX_HOME: resolve(runtime, `codex-${name}`), COUNCIL_ORDINARY_FIXTURE: fixtureConfig }, timeoutSec: 120 },
+        env: { CODEX_HOME: resolve(runtime, `codex-${name}`), COUNCIL_ORDINARY_FIXTURE: fixtureConfig }, timeoutSec: feedbackMode && name === "publisher" ? 400 : 120 },
       runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: true, maxConcurrentRuns: 1 } } });
     actors[name] = agent.id;
   }
@@ -145,7 +158,7 @@ try {
   const projectId = project.id;
   const rosters = `/api/plugins/${pluginId}/api/companies/${companyId}/rosters`;
   const team = await api("POST", rosters, { companyId, command: "create", roster: { kind: "team", name: "Team", projectId,
-    members: ["lead", "alpha", "beta"].map(name => ({ agentId: actors[name], responsibilities: [name === "lead" ? "integration_lead" : "contributor"] })),
+    members: ["lead", "alpha", "beta", ...(hierarchyCount === 3 ? ["gamma"] : [])].map(name => ({ agentId: actors[name], responsibilities: [name === "lead" ? "integration_lead" : "contributor"] })),
     integrationLeadAgentId: actors.lead, finalReviewerAgentId: null, requiredPerspectives: [] } });
   const council = await api("POST", rosters, { companyId, command: "create", roster: { kind: "council", name: "Council", projectId,
     members: [{ agentId: actors.council, responsibilities: ["final_reviewer"] }], integrationLeadAgentId: null, finalReviewerAgentId: actors.council, requiredPerspectives: ["integration_quality"] } });
@@ -154,53 +167,122 @@ try {
   const { nativeAdmissionConfiguration } = await import("../../src/g4-native.js");
   const admissionPath = `/api/plugins/${pluginId}/api/companies/${companyId}/admission`;
   await api("POST", admissionPath, { companyId, command: "configure", configuration: nativeAdmissionConfiguration(profile as any, companyId, randomUUID()) });
-  const root = await api("POST", `/api/companies/${companyId}/issues`, { title: "Ordinary N1 to N2", projectId, status: "backlog", assigneeAgentId: actors.lead });
-  const missionId = randomUUID();
+  const n3Slots = ["product", "quality"].map(perspective => ({ slotId: randomUUID(), perspective, specialistAgentId: actors[perspective], required: true, question: `${perspective} review of the exact candidate and alpha correction marker` }));
+  const mandate = { objective: "Two contributions and independent Council correction", acceptanceCriteria: hierarchyCount ? [`${hierarchyCount} existing attributed leaves`, "Native dependencies retained", "Reviewed authorized publication"] : deliveryMode ? ["Two attributed contributions", "Bounded post-publication correction remains within mandate"] : ["Alpha must contain corrected marker", "Two attributed contributions"],
+    commitments: ["Provider-free CLI fixture", "One correction maximum"], limits: { taskPolicy: "1000 tokens reserved", periodPolicy: "20000 token envelope", correctionLimit: 1, elapsedMinutes: 30 } };
+  let root: any, missionId = randomUUID(), created: any;
   const missions = `/api/plugins/${pluginId}/api/companies/${companyId}/missions`;
-  const missionPath = `${missions}/${missionId}`;
-  const created = await api("POST", missions, { companyId, command: "create", commandId: randomUUID(), missionId, rootIssueId: root.id, projectId,
+  let missionPath = `${missions}/${missionId}`;
+  if (projectIntakeMode) {
+    const historical = await api("POST", `/api/companies/${companyId}/issues`, { title: "Historical task retained", description: "Do not adopt without explicit inclusion", projectId, status: "backlog", assigneeAgentId: actors.lead });
+    const settings = await api("GET", "/api/instance/settings/experimental");
+    await api("PATCH", "/api/instance/settings/experimental", { ...settings, enableExternalObjects: true });
+    await writeFile(fixtureConfig, JSON.stringify({ pluginId, companyId, projectId, projectIntake: true, hierarchyCount, feedbackMode, completionMode, councilRepository: repository, repoPath, runtime, actors, baseCommit, delivery: true }));
+    const policyPath = `/api/plugins/${pluginId}/api/companies/${companyId}/projects/${projectId}/mandate`;
+    const policyBody = { companyId, commandId: randomUUID(), expectedVersion: 0, enabled: true, authorizeNewTasks: true,
+      teamRosterId: team.head.rosterId, councilRosterId: council.head.rosterId, n3Slots, template: mandate,
+      criteriaSource: "project-defaults", allowedPaths: ["alpha.txt", "beta.txt", ...(hierarchyCount === 3 ? ["gamma.txt"] : [])],
+      ...(completionMode ? { completion: { protocol: "council-proof-close-v1", result: "draft-pr" } } : {}),
+      ...(hierarchyCount ? { hierarchy: { protocol: "council-hierarchy-v1", maxContributions: hierarchyCount, execution: "sequential", adoptExistingChildren: true } } : {}),
+      publication: { publisherAgentId: actors.publisher, qaAgentId: actors.quality, repository: "ty000/paperclip-council", baseRef: "main", headRefPrefix: "codex/project-task", ...(feedbackMode ? { contract: { protocol: "council-pr-contract-v1", draftOnly: true, result: "draft-pr", feedback: "review-and-correct", requiredChecks: ["fixture-ci"] } } : {}) } };
+    const configured = await api("POST", policyPath, policyBody);
+    assert.equal((await api("POST", policyPath, policyBody)).outcome, "replayed");
+    const incomplete = await api("POST", `/api/companies/${companyId}/issues`, { title: "Incomplete task", projectId, status: "backlog", assigneeAgentId: actors.lead });
+    const hierarchy = await api("POST", `/api/companies/${companyId}/issues`, { title: "Existing hierarchy", description: "Retain existing children for lot #51", projectId, status: "backlog" });
+    const child = await api("POST", `/api/companies/${companyId}/issues`, { title: "Existing child retained", parentId: hierarchy.id, projectId, status: "backlog" });
+    await api("PATCH", `/api/issues/${hierarchy.id}`, { assigneeAgentId: actors.lead });
+    if (hierarchyCount) {
+      proof.hierarchyTasks = await prepareHierarchyTasks(api, companyId, projectId, actors, hierarchyCount);
+      root = proof.hierarchyTasks.root;
+    } else {
+    root = await api("POST", `/api/companies/${companyId}/issues`, { title: "Ordinary N1 to N2", description: "Produce two attributed complementary contributions and the reviewed publication", projectId, status: "backlog", assigneeAgentId: actors.lead });
+    }
+    created = await waitFor("scheduled project task admission", () => api("GET", `${missions}?companyId=${companyId}`),
+      view => view.missions?.some((item: any) => item.mission.rootIssueId === root.id && item.mission.aggregate.n1), 180000);
+    const admitted = created.missions.find((item: any) => item.mission.rootIssueId === root.id).mission;
+    missionId = admitted.missionId; missionPath = `${missions}/${missionId}`;
+    assert.equal(admitted.aggregate.projectMandate.revisionId, configured.policy.revisionId);
+    proof.projectIntake = { policy: configured.policy, historicalRootId: historical.id, incompleteRootId: incomplete.id, hierarchyRootId: hierarchy.id, childId: child.id,
+      createCommandsByOwner: 0, activationCommandsByOwner: 0, deliveryCommandsByOwner: 0, missionId };
+  } else {
+    root = await api("POST", `/api/companies/${companyId}/issues`, { title: "Ordinary N1 to N2", projectId, status: "backlog", assigneeAgentId: actors.lead });
+    created = await api("POST", missions, { companyId, command: "create", commandId: randomUUID(), missionId, rootIssueId: root.id, projectId,
     teamRosterId: team.head.rosterId, teamRevision: pair.team.revision.revision, councilRosterId: council.head.rosterId, councilRevision: pair.council.revision.revision,
-    mandate: { objective: "Two contributions and independent Council correction", acceptanceCriteria: deliveryMode ? ["Two attributed contributions", "Bounded post-publication correction remains within mandate"] : ["Alpha must contain corrected marker", "Two attributed contributions"],
-      commitments: ["Provider-free CLI fixture", "One correction maximum"], limits: { taskPolicy: "1000 tokens reserved", periodPolicy: "20000 token envelope", correctionLimit: 1, elapsedMinutes: 30 } } });
-  await writeFile(fixtureConfig, JSON.stringify({ pluginId, companyId, projectId, missionId, rootIssueId: root.id, repoPath, runtime, actors, baseCommit, delivery: deliveryMode, n6: n6Mode, coordination: coordinationMode }));
-  const activate = await api("POST", `${missionPath}/commands`, { companyId, command: "activate", commandId: randomUUID(), expectedVersion: created.mission.version,
+      mandate });
+    await writeFile(fixtureConfig, JSON.stringify({ pluginId, companyId, projectId, missionId, rootIssueId: root.id, repoPath, runtime, actors, baseCommit, delivery: deliveryMode, n6: n6Mode, coordination: coordinationMode }));
+  }
+  let delivery: any;
+  if (projectIntakeMode) delivery = nominalDeliveryObserver({ api, companyId, missionPath, runtime, proof });
+  else if (continuityMode) {
+    delivery = await prepareOrdinaryDelivery({ api, companyId, actors, rootIssueId: root.id, missionPath, runtime, proof, save, nominal: true });
+    created = await api("GET", `${missionPath}?companyId=${companyId}`);
+    created = await api("POST", `${missionPath}/commands`, { companyId, command: "configure-continuity", commandId: randomUUID(),
+      expectedVersion: created.mission.version, authorizeProgression: true, n3Slots });
+    proof.continuityAuthorization = created.mission.aggregate.continuity;
+  }
+  const activate = projectIntakeMode ? null : await api("POST", `${missionPath}/commands`, { companyId, command: "activate", commandId: randomUUID(), expectedVersion: created.mission.version,
     periodKey: profile.periodKey, reservationId: randomUUID(), requestedUnits: 1000 });
-  const started = await api("POST", `${missionPath}/commands`, { companyId, command: "start-lead", commandId: randomUUID(), expectedVersion: activate.mission.version });
-  assert.equal(started.outcome, "requested", JSON.stringify(started));
-  const rootRunId = started.mission.aggregate.n1.rootDispatchRunId;
-  // N1 preparation only: prevent its legacy parent-close notification from creating a second lead run.
-  await api("PATCH", `/api/agents/${actors.lead}`, { runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: false, maxConcurrentRuns: 1 } } });
+  let rootRunId: string;
+  if (continuityMode) {
+    const dispatched = await waitFor("scheduled lead dispatch", async () => (await api("GET", `${missionPath}?companyId=${companyId}`)).mission,
+      m => Boolean(m.aggregate.n1.rootDispatchRunId), 180000);
+    rootRunId = dispatched.aggregate.n1.rootDispatchRunId;
+  } else {
+    const started = await api("POST", `${missionPath}/commands`, { companyId, command: "start-lead", commandId: randomUUID(), expectedVersion: activate.mission.version });
+    assert.equal(started.outcome, "requested", JSON.stringify(started));
+    rootRunId = started.mission.aggregate.n1.rootDispatchRunId;
+  }
   await waitFor("real N1 prerequisite", async () => {
     const runs = await api("GET", `/api/companies/${companyId}/heartbeat-runs`);
     for (const run of runs) {
       assert(!["failed", "cancelled", "timed_out"].includes(run.status), `N1 ${run.id} ${run.status} ${run.error}`);
-      if (run.id !== rootRunId && run.status === "succeeded") {
-        const issueId = run.contextSnapshot?.issueId;
-        const issue = await api("GET", `/api/issues/${issueId}`);
-        if (issue.status !== "done") { await api("PATCH", `/api/issues/${issueId}`, { status: "done" }); record("owner_closed_finished_N1_child", { issueId, runId: run.id }); }
-      }
     }
     return runs.find((run: any) => run.id === rootRunId);
   }, run => run?.status === "succeeded", 120000);
   let mission = (await api("GET", `${missionPath}?companyId=${companyId}`)).mission;
-  const settleBody = { companyId, command: "reconcile-lead-usage", commandId: randomUUID(), expectedVersion: mission.version };
-  await waitFor("N1 source settlement", async () => {
-    const response = await fetch(`${base}${missionPath}/commands`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(settleBody) });
-    const body = await response.json();
-    if (response.ok) return body;
-    assert(["g4_usage_unavailable", "g4_run_not_terminal"].includes(body.code), JSON.stringify(body)); return null;
-  }, Boolean);
+  if (continuityMode) {
+    await waitFor("scheduled N1 settlement", async () => (await api("GET", `${missionPath}?companyId=${companyId}`)).mission,
+      m => m.aggregate.phase === "ready_for_review", 180000);
+    const jobs = await api("GET", `/api/plugins/${pluginId}/jobs`);
+    const job = jobs.find((j: any) => j.jobKey === "mission-continuity"); assert(job);
+    await waitFor("completed native job before restart", () => api("GET", `/api/plugins/${pluginId}/jobs/${job.id}/runs`),
+      runs => runs.length > 0 && runs.every((run: any) => run.status !== "running"), 30000);
+    const before = await api("GET", `/api/plugins/${pluginId}/dashboard`);
+    const beforeView = await api("GET", `${missionPath}?companyId=${companyId}`);
+    const pinned = beforeView.mission.aggregate.continuity;
+    await api("POST", `/api/plugins/${pluginId}/disable`, {});
+    await api("POST", `/api/plugins/${pluginId}/enable`, {});
+    const after = await api("GET", `/api/plugins/${pluginId}/dashboard`);
+    assert.notEqual(before.worker.pid, after.worker.pid);
+    const afterView = await api("GET", `${missionPath}?companyId=${companyId}`);
+    assert.deepEqual(afterView.mission.aggregate.continuity, pinned);
+    assert.deepEqual(afterView.continuity, beforeView.continuity);
+    assert.equal(afterView.continuity.documentObserved, true);
+    proof.continuityRestart = { beforePid: before.worker.pid, afterPid: after.worker.pid, pinned, observation: afterView.continuity };
+  } else {
+    const settleBody = { companyId, command: "reconcile-lead-usage", commandId: randomUUID(), expectedVersion: mission.version };
+    await waitFor("N1 source settlement", async () => {
+      const response = await fetch(`${base}${missionPath}/commands`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(settleBody) });
+      const body = await response.json();
+      if (response.ok) return body;
+      assert(["g4_usage_unavailable", "g4_run_not_terminal"].includes(body.code), JSON.stringify(body)); return null;
+    }, Boolean);
+  }
   mission = (await api("GET", `${missionPath}?companyId=${companyId}`)).mission;
   assert.equal(mission.aggregate.phase, "ready_for_review");
+  assert.equal(mission.aggregate.nativeWakePolicy.protocol, "council-native-wake-v2");
+  assert.equal((await api("GET", `/api/issues/${root.id}`)).status, "blocked");
+  const nativeChildren = await Promise.all(mission.aggregate.n1.contributions.map((slot: any) => api("GET", `/api/issues/${slot.childIssueId}`)));
+  assert(nativeChildren.every((issue: any) => issue.status === "done"));
+  assert.equal((await api("GET", `/api/agents/${actors.lead}`)).runtimeConfig.heartbeat.wakeOnDemand, true);
+  proof.nativeWaiting = { rootStatus: "blocked", childrenStatus: "done", leadDemandWakes: true, operatorChildCloses: 0 };
   proof.prerequisite = mission;
-  await api("PATCH", `/api/agents/${actors.lead}`, { runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: true, maxConcurrentRuns: 1 } } });
-  const delivery = deliveryMode ? await prepareOrdinaryDelivery({ api, companyId, actors, rootIssueId: root.id, missionPath, runtime, proof, save }) : undefined;
+  if (!continuityMode && deliveryMode) delivery = await prepareOrdinaryDelivery({ api, companyId, actors, rootIssueId: root.id, missionPath, runtime, proof, save });
   mission = (await api("GET", `${missionPath}?companyId=${companyId}`)).mission;
-  const n3Slots = ["product", "quality"].map(perspective => ({ slotId: randomUUID(), perspective, specialistAgentId: actors[perspective], required: true, question: `${perspective} review of the exact candidate and alpha correction marker` }));
   const n6 = n6Mode ? prepareN6Scenario({ api, companyId, projectId, actors, missions, missionPath, profile, runtime, fixtureConfig, proof, coordinationMode }) : undefined;
   const reviewBody = { companyId, command: "start-review", commandId: randomUUID(), expectedVersion: mission.version, submissionId: randomUUID(), n3Slots };
-  await api("POST", `${missionPath}/commands`, reviewBody);
-  record("ordinary_review_started");
+  if (!continuityMode) await api("POST", `${missionPath}/commands`, reviewBody);
+  record(continuityMode ? "waiting_for_scheduled_review" : "ordinary_review_started");
   await save();
   mission = await waitFor("installed ordinary acceptance", async () => {
     const value = (await api("GET", `${missionPath}?companyId=${companyId}`)).mission;
@@ -220,34 +302,87 @@ try {
     await delivery?.advance(value);
     await n6?.advance(value);
     return value;
-  }, value => delivery ? delivery.complete(value) : value.aggregate.n2?.status === "accepted", 120000);
+  }, value => completionMode ? value.aggregate.completion?.state === "closed" : delivery ? delivery.complete(value) : value.aggregate.n2?.status === "accepted", continuityMode ? feedbackMode ? 900000 : 300000 : 120000);
   await delivery?.finish();
   await n6?.finish();
-  await api("POST", `${missionPath}/commands`, { companyId, command: "reconcile-ordinary-n2" });
-  const replay = await api("POST", `${missionPath}/commands`, reviewBody);
-  assert.equal(replay.outcome, "replayed");
-  const after = await api("POST", `${missionPath}/commands`, { companyId, command: "reconcile-ordinary-n2" });
-  proof.mission = after.mission;
+  if (continuityMode) {
+    const final = await waitFor("scheduled complete observation", () => api("GET", `${missionPath}?companyId=${companyId}`),
+      view => view.continuity?.observation?.state === "complete" && view.continuity.documentObserved === true, 180000);
+    proof.mission = final.mission; proof.continuityFinalObservation = final.continuity;
+    const jobs = await api("GET", `/api/plugins/${pluginId}/jobs`);
+    const job = jobs.find((j: any) => j.jobKey === "mission-continuity");
+    proof.continuityJobRuns = await waitFor("final native job completion", () => api("GET", `/api/plugins/${pluginId}/jobs/${job.id}/runs`),
+      runs => runs.every((run: any) => run.status !== "running"), 30000);
+    assert(proof.continuityJobRuns.length >= 4);
+    assert(proof.continuityJobRuns.every((run: any) => run.trigger === "schedule" && run.status === "succeeded"));
+    proof.boundary += " Native scheduled jobs dispatch the admitted lead, settle N1 and start review from an explicit persisted owner delegation. Worker restart occurs after N1 settlement and before review. Observation after activation is read-only; no manual job trigger or owner transition.";
+  } else {
+    await api("POST", `${missionPath}/commands`, { companyId, command: "reconcile-ordinary-n2" });
+    const replay = await api("POST", `${missionPath}/commands`, reviewBody);
+    assert.equal(replay.outcome, "replayed");
+    const after = await api("POST", `${missionPath}/commands`, { companyId, command: "reconcile-ordinary-n2" });
+    proof.mission = after.mission;
+  }
   proof.runs = await api("GET", `/api/companies/${companyId}/heartbeat-runs`);
   proof.admission = (await api("GET", `${admissionPath}?companyId=${companyId}&periodKey=${profile.periodKey}`)).envelope;
-  assert.equal(proof.runs.length, coordinationMode ? 14 : n6Mode ? 11 : deliveryMode ? 12 : 10);
+  assert.equal(proof.runs.length, feedbackMode ? 16 : hierarchyCount ? hierarchyCount + 5 : continuityMode ? 7 : coordinationMode ? 14 : n6Mode ? 11 : deliveryMode ? 12 : 10);
   assert(proof.runs.every((run: any) => run.status === "succeeded"));
-  assert.equal(proof.mission.aggregate.n2.ordinary.tasks.length, 7);
+  assert.equal(proof.mission.aggregate.n2.ordinary.tasks.length, feedbackMode ? 10 : continuityMode ? 3 : 7);
   assert(proof.admission.reservations.every((item: any) => item.status === "settled"));
-  assert.equal(proof.admission.allowance.knownUsageUnits, coordinationMode ? 2100 : n6Mode ? 1650 : deliveryMode ? 1800 : 1500);
+  assert.equal(proof.admission.allowance.knownUsageUnits, feedbackMode ? 2400 : hierarchyCount ? (hierarchyCount + 5) * 150 : continuityMode ? 1050 : coordinationMode ? 2100 : n6Mode ? 1650 : deliveryMode ? 1800 : 1500);
   const { acceptedN5Submission } = await import("../../src/n5-preflight.js");
   proof.n5Handoff = acceptedN5Submission(proof.mission);
   const n2 = proof.mission.aggregate.n2;
-  assert.notEqual(n2.submissions[0].candidateCommit, n2.submissions[1].candidateCommit);
-  proof.candidateDiff = gitAt(repoPath, "diff", n2.submissions[0].candidateCommit, n2.submissions[1].candidateCommit);
-  assert.equal(Object.keys(proof.runningReportObservations ?? {}).length, 2);
+  if (!continuityMode) {
+    assert.notEqual(n2.submissions[0].candidateCommit, n2.submissions[1].candidateCommit);
+    proof.candidateDiff = gitAt(repoPath, "diff", n2.submissions[0].candidateCommit, n2.submissions[1].candidateCommit);
+    assert.equal(Object.keys(proof.runningReportObservations ?? {}).length, 2);
+  } else assert.equal(Object.keys(proof.runningReportObservations ?? {}).length, feedbackMode ? 3 : 1);
   proof.agentApiReadbacks = await Promise.all((await readdir(runtime)).filter(name => name.startsWith("api-")).map(async name => JSON.parse(await readFile(resolve(runtime, name), "utf8"))));
-  assert.equal(proof.agentApiReadbacks.length, 7);
+  assert.equal(proof.agentApiReadbacks.length, feedbackMode ? 10 : continuityMode ? 3 : 7);
   proof.gatewayRefusal = JSON.parse(await readFile(resolve(runtime, "gateway-refusal.json"), "utf8"));
   proof.issues = await Promise.all([...new Set(proof.mission.aggregate.n2.ordinary.tasks.map((task: any) => task.issueId))].map(id => api("GET", `/api/issues/${id}`)));
+  if (hierarchyCount) await verifyHierarchyTasks(api, proof, root.id);
+  if (completionMode) {
+    const c = proof.mission.aggregate.completion;
+    assert.equal(c.state, "closed"); assert.equal(c.notification.state, "confirmed");
+    const doc = await api("GET", `/api/issues/${root.id}/documents/${c.documentKey}`);
+    assert.equal(doc.latestRevisionId, c.documentRevisionId); assert.equal(doc.body, c.body);
+    const evidence = JSON.parse(doc.body); assert.equal(evidence.proofId, c.proofId);
+    assert.equal(evidence.submission.candidateCommit, proof.mission.aggregate.n2.submissions.at(-1).candidateCommit);
+    const comments = await api("GET", `/api/issues/${root.id}/comments`);
+    const matching = comments.filter((comment: any) => comment.body === c.notification.body);
+    assert.equal(matching.length, 1); assert.equal(matching[0].id, c.notification.commentId);
+    for (const slot of proof.mission.aggregate.n1.contributions) {
+      assert(slot.proof.closedAt && slot.proof.checks.every((check: any) => check.status === "passed"));
+      const held = JSON.parse(await readFile(resolve(runtime, `child-proof-${slot.authorRunId}.json`), "utf8"));
+      assert.equal(held.statusWhileRunning, "blocked");
+    }
+    proof.completion = { state: c, evidence, comment: matching[0], checks: { childrenHeldUntilTerminalProof: "PASS", parentResultProof: "PASS", singleNativeNotification: "PASS", noAdditionalRun: "PASS" } };
+    proof.boundary += " Explicit draft-result proof closure verifies child bundles before recording, holds children until exact succeeded run costs settle, closes all original parents bottom-up after dependencies and accepted exact-head publication, and confirms one agent-attributed native comment without another provider wake. No manual task transition after activation, no merge/deployment/install result inferred.";
+  }
+  if (projectIntakeMode) {
+    const view = await api("GET", `${missions}?companyId=${companyId}`);
+    assert.equal(view.missions.length, 1);
+    for (const id of [proof.projectIntake.incompleteRootId, proof.projectIntake.hierarchyRootId]) {
+      const interactions = await api("GET", `/api/issues/${id}/interactions`);
+      assert.equal(interactions.length, 1); assert.equal(interactions[0].addresseeUserId, "local-board");
+      assert.equal(interactions[0].continuationPolicy, "none");
+    }
+    assert.equal((await api("GET", `/api/issues/${proof.projectIntake.historicalRootId}`)).status, "backlog");
+    assert.equal((await api("GET", `/api/issues/${proof.projectIntake.childId}`)).status, "backlog");
+    assert.equal(proof.mission.aggregate.projectMandate.publication.headRefPrefix, "codex/project-task");
+    proof.projectIntake.checks = { oneMissionFromCreatedTask: "PASS", singleOwnerQuestions: "PASS", historicalAndChildTasksPreserved: "PASS", explicitPublicationAuthority: "PASS", noOwnerMissionTransitions: "PASS" };
+    proof.boundary += " The native job creates and admits the sole complete newly created manual Backlog task under a pinned project mandate, configures continuity and publication, and ignores historical tasks. Incomplete and existing-hierarchy roots each retain one native owner question, without model wake or duplicate child.";
+  }
   assert(proof.issues.every((issue: any) => issue.status === "done" && !issue.executionPolicy && !issue.executionState));
   assert(proof.issues.filter((issue: any) => issue.id !== root.id).every((issue: any) => !issue.parentId));
   proof.checks = { exactAgentApiBindings: "PASS", reportWhileRunningDoesNotAdmit: "PASS", realN1Prerequisite: "PASS", installedOrdinaryN2N3: "PASS", expectedCliRunsSucceeded: "PASS", replayNoExtraRun: "PASS", allReservationsSettled: "PASS", n5Handoff: "PASS" };
+  if (deliveryMode && !continuityMode) {
+    proof.admittedRunCount = proof.runs.length;
+    await qualifyNativeRunException({ api, db, tables, eq, companyId, actors, rootIssueId: root.id, pluginId, missionPath, admissionPath, profile, proof });
+    proof.boundary += " Native exception qualification seeds one heartbeat row, then uses installed APIs and a real plugin restart; it does not launch an external wake or provider.";
+  }
   proof.outcome = success;
 } catch (error) {
   proof.outcome = "BLOCKED"; proof.error = { message: String(error), stack: error instanceof Error ? error.stack : undefined };

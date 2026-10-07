@@ -1,16 +1,18 @@
-import { createHash } from "node:crypto";
+import { n5Readiness } from "./n5-readiness.js";
 import type { MissionRecord } from "./missions.js";
 import type { N2Submission } from "./n2-missions.js";
 
-export type N5Plan = { documentId: string; revisionId: string; bodyHash: string; mandateHash: string;
+export type N5Plan = { documentId: string; revisionId: string; bodyHash: string; mandateHash: string; documentKey?: string;
   plannerAgentId: string; orchestratorAgentId: string; integrationLeadAgentId: string; qaAgentId: string };
 export type N5State = {
   plan: N5Plan;
   authority: { publisherAgentId: string; repository: string; baseRef: string; headRef: string; authorizedBy: string; authorizedAt: string;
-    publisherPreflight?: "publisher-run-report-v1" };
+    publisherPreflight?: "publisher-run-report-v1"; contract?: import("./pr-contract.js").PrContract };
+  feedback?: import("./pr-contract.js").PublicationFeedback;
+  feedbackHistory?: import("./pr-contract.js").PublicationFeedback[];
   planHistory?: Array<{ plan: N5Plan; reason: string; runId: string; at: string }>;
   continuation?: { requestId: string; reason: string; criteria: string[]; requestedBy: string; requestedAt: string;
-    periodKey: string; previousApplication: NonNullable<MissionRecord["aggregate"]["n2"]>["application"];
+    delegatedFeedback?: boolean; periodKey: string; previousApplication: NonNullable<MissionRecord["aggregate"]["n2"]>["application"];
     previousPlan: N5Plan; previousPublication: NonNullable<N5State["publication"]>;
     reopen: { state: "claimed"; reservationId: string }; updateAdmitted?: boolean };
   publication?: { intentId: string; submission: N2Submission; issueId: string | null; runId: string | null;
@@ -19,6 +21,7 @@ export type N5State = {
     createdAt: string; claimedAt?: string; creation: "preparing" | "claimed" | "confirmed"; wake: "pending" | "claimed";
     state: "pending" | "unknown" | "opened"; claimCommandId?: string;
     readbackUnavailable?: string;
+    feedbackReport?: import("./pr-contract.js").GithubFeedback;
     preflight?: import("./n5-publisher-preflight.js").PublisherPreflight;
     observation?: { observedAt: string; objectId: string; workProductId: string; documentRevisionId: string;
       url: string; headSha: string; baseRef: string; headRef: string; state: string; draft: boolean; lastResolvedAt: string;
@@ -28,22 +31,12 @@ export type N5State = {
   };
 };
 
-function currentAcceptance(mission: MissionRecord, p: NonNullable<N5State["publication"]>) {
-  const n2 = mission.aggregate.n2;
-  return n2?.status === "accepted" && n2.activeSubmissionId === p.submission.submissionId
-    && p.submission.mandateHash === createHash("sha256").update(JSON.stringify(mission.aggregate.mandate)).digest("hex");
-}
-
 export function inspectN5(mission: MissionRecord) {
   const n5 = mission.aggregate.n5;
   if (!n5) return null;
-  const p = n5.publication; const o = p?.observation;
-  const fresh = Boolean(o && !p?.readbackUnavailable && Date.now() - Date.parse(o.lastResolvedAt) <= 300_000);
-  const ready = Boolean(o && p && (!mission.aggregate.n2?.ordinary || p.settledAt) && currentAcceptance(mission, p) && fresh && o.matchesCandidate && o.state === "open" && !o.draft
-    && p?.checks?.headSha === o.headSha && p.checks.state === "passed"
-    && p?.reviews?.headSha === o.headSha && p.reviews.state === "approved");
-  return { ...n5, ready, nativeReadbackFresh: fresh, checksSource: "attributed_actor_observation", reviewsSource: "attributed_actor_observation",
-    ...nextDeliveryAction(mission, n5, ready) };
+  const readiness = n5Readiness(mission, n5);
+  const source = n5.authority.contract ? "publisher_run_report" : "attributed_actor_observation";
+  return { ...n5, ...readiness, checksSource: source, reviewsSource: source, ...nextDeliveryAction(mission, n5, readiness.ready) };
 }
 
 function nextDeliveryAction(mission: MissionRecord, n5: N5State, ready: boolean) {

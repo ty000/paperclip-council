@@ -15,8 +15,8 @@ export async function installOrdinaryGitHubTransport(runtime: string, proof: any
       assert.equal(url, "https://api.github.com/repos/ty000/paperclip-council/pulls/4242");
       const remote = JSON.parse(await readFile(remotePath, "utf8"));
       proof.githubTransportCalls.push({ url, headSha: remote.headSha, at: new Date().toISOString() });
-      return new Response(JSON.stringify({ number: 4242, state: "open", draft: false, title: "Simulated GitHub transport",
-        head: { sha: remote.headSha, ref: "codex/n5-fixture" }, base: { ref: "main" }, updated_at: new Date().toISOString() }), { status: 200, headers: { "content-type": "application/json" } });
+      return new Response(JSON.stringify({ number: 4242, state: "open", draft: remote.draft === true, title: "Simulated GitHub transport",
+        head: { sha: remote.headSha, ref: remote.headRef ?? "codex/n5-fixture" }, base: { ref: "main" }, updated_at: new Date().toISOString() }), { status: 200, headers: { "content-type": "application/json" } });
     }
     assert(["127.0.0.1", "localhost"].includes(new URL(url).hostname), "Qualification forbids unsimulated outbound fetch");
     return original(input, init);
@@ -25,7 +25,7 @@ export async function installOrdinaryGitHubTransport(runtime: string, proof: any
 }
 
 export async function prepareOrdinaryDelivery(input: any) {
-  const { api, companyId, actors, rootIssueId, missionPath, runtime, proof, save } = input;
+  const { api, companyId, actors, rootIssueId, missionPath, runtime, proof, save, nominal = false } = input;
   const get = async () => api("GET", `${missionPath}?companyId=${companyId}`);
   const settings = await api("GET", "/api/instance/settings/experimental");
   await api("PATCH", "/api/instance/settings/experimental", { ...settings, enableExternalObjects: true });
@@ -38,12 +38,13 @@ export async function prepareOrdinaryDelivery(input: any) {
   const configured = await api("POST", `${missionPath}/commands`, { companyId, command: "configure-delivery", commandId: randomUUID(), expectedVersion: mission.version,
     planRevisionId: doc.latestRevisionId, publisherAgentId: actors.publisher, repository: "ty000/paperclip-council", baseRef: "main", headRef: "codex/n5-fixture" });
   assert.equal(configured.mission.aggregate.n5.authority.publisherPreflight, "publisher-run-report-v1");
+  if (nominal) return nominalDeliveryObserver(input);
   let correctionRequested = false;
   let versionConflicts = 0;
   const correctionIdentity = { commandId: randomUUID(), reservationId: randomUUID() };
   return {
     async advance(m: any) {
-      if (correctionRequested || !m.aggregate.n5.publication?.settledAt) return;
+      if (nominal || correctionRequested || !m.aggregate.n5.publication?.settledAt) return;
       m = (await get()).mission;
       assert.equal(m.aggregate.n2.correctionsUsed, 0);
       assert.equal(m.aggregate.n2.rounds[0].verdict.verdict, "approved");
@@ -66,9 +67,10 @@ export async function prepareOrdinaryDelivery(input: any) {
         rootBefore: beforeRoot, historicalPublication: claimed.mission.aggregate.n5.continuation.previousPublication };
       await save();
     },
-    complete: (m: any) => Boolean(m.aggregate.n5.continuation?.updateAdmitted && m.aggregate.n5.publication?.settledAt),
+    complete: (m: any) => nominal ? Boolean(m.aggregate.n5.publication?.settledAt && m.aggregate.n5.publication?.observation?.matchesCandidate) : Boolean(m.aggregate.n5.continuation?.updateAdmitted && m.aggregate.n5.publication?.settledAt),
     async finish() {
-      let view = await get(); const n5 = view.mission.aggregate.n5; const p = n5.publication;
+      const view = await get();
+      const n5 = view.mission.aggregate.n5; const p = n5.publication;
       assert.equal(p.operation, "update"); assert(p.settledAt);
       proof.publishers = await Promise.all((await readdir(runtime)).filter(name => name.startsWith("publisher-")).map(async name => JSON.parse(await readFile(resolve(runtime, name), "utf8"))));
       assert.equal(proof.publishers.length, 2);
@@ -104,4 +106,28 @@ export async function prepareOrdinaryDelivery(input: any) {
       proof.delivery = { refreshed, remote, final: view.n5, checks: { samePr: "PASS", changedHead: "PASS", oneCumulativeCorrection: "PASS", readyAfterSettlementAndFreshReadback: "PASS" } };
     },
   };
+}
+
+export function nominalDeliveryObserver(input: any) {
+  const { api, companyId, missionPath, runtime, proof } = input;
+  return { advance: async (_m: any) => {},
+    complete: (m: any) => Boolean((!m.aggregate.n5?.authority.contract || m.aggregate.n5.continuation?.updateAdmitted) && m.aggregate.n5?.publication?.settledAt && m.aggregate.n5.publication.observation?.matchesCandidate),
+    async finish() {
+      const view = await api("GET", `${missionPath}?companyId=${companyId}`);
+      assert.equal(view.n5.ready, true);
+      const remote = JSON.parse(await readFile(resolve(runtime, "github-transport.json"), "utf8"));
+      assert.equal(remote.createCount, 1); const feedback = Boolean(view.n5.authority.contract);
+      assert.equal(remote.updateCount, feedback ? 1 : 0);
+      assert.equal(view.mission.aggregate.n2.correctionsUsed, feedback ? 1 : 0);
+      if (feedback) {
+        assert.equal(remote.draft, true); assert.equal(view.n5.mergeReady, false); assert.equal(view.n5.publicationReady, true);
+        assert.equal(view.n5.continuation.delegatedFeedback, true);
+        assert.deepEqual(view.mission.aggregate.n2.rounds.map((r: any) => r.verdict.verdict), ["approved", "changes_requested", "approved"]);
+        const historical = view.n5.continuation.previousPublication;
+        assert.equal(historical.checks.state, "passed"); assert.equal(historical.reviews.state, "changes_requested");
+        assert.equal(historical.observation.url, view.n5.publication.observation.url);
+        assert.notEqual(historical.submission.candidateCommit, view.n5.publication.submission.candidateCommit);
+      }
+      proof.delivery = { remote, final: view.n5, checks: { nominalAuthorizedPublication: "PASS", noOwnerTransition: "PASS" } };
+    } };
 }

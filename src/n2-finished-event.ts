@@ -1,4 +1,5 @@
 import { physicalAgent } from "./model-state.js";
+import { assertNativeRunInventory } from "./native-runs.js";
 import { getMissionByN6WorkIssue } from "./missions.js";
 import { reconcileN6 } from "./n6-runtime.js";
 import { reconcileN5 } from "./n5-runtime.js";
@@ -176,6 +177,7 @@ export async function handleN2RunFinished(
 
 export function registerN2FinishedEventHandler(ctx: PluginContext) {
   return ctx.events.on("agent.run.finished", async (event) => {
+    await observeNativeFinished(ctx, event);
     const run = finishedRun(event);
     if (!run) return;
     const coordination = await getMissionByN6WorkIssue(ctx, event.companyId, run.issueId);
@@ -185,4 +187,27 @@ export function registerN2FinishedEventHandler(ctx: PluginContext) {
       ?? await getMissionByRootIssue(ctx, event.companyId, run.issueId);
     if (source) for (const target of await getMissionsDependingOn(ctx, source.companyId, source.missionId)) await reconcileN6(ctx, target);
   });
+}
+
+async function observeNativeFinished(ctx: PluginContext, event: PluginEvent) {
+  const identity = nativeFinishedIdentity(event);
+  if (!identity) return;
+  const issueId = identity.issueId;
+  let mission = await getMissionByN6WorkIssue(ctx, event.companyId, issueId)
+    ?? await getMissionByOrdinaryIssue(ctx, event.companyId, issueId) ?? await getMissionByRootIssue(ctx, event.companyId, issueId);
+  if (!mission) {
+    const issue = await ctx.issues.get(issueId, event.companyId);
+    if (issue?.parentId) mission = await getMissionByRootIssue(ctx, event.companyId, issue.parentId);
+  }
+  if (mission) await assertNativeRunInventory(ctx, mission);
+}
+
+function nativeFinishedIdentity(event: PluginEvent) {
+  const payload = event.payload as Record<string, unknown> | null;
+  if (!payload) return null;
+  const runId = uuid(payload.runId), issueId = uuid(payload.issueId), agentId = uuid(payload.agentId);
+  if (!runId || !issueId || !agentId) return null;
+  const fields = { entityType: "heartbeat_run", entityId: runId, actorType: "agent", actorId: agentId };
+  const matches = Object.entries(fields).every(([key, value]) => event[key as keyof typeof fields] === value);
+  return matches && ["succeeded", "failed", "cancelled", "timed_out", "interrupted"].includes(String(payload.status)) ? { runId, issueId, agentId } : null;
 }
