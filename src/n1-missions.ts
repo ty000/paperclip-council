@@ -1,3 +1,5 @@
+import { completionPolicy } from "./completion-contract.js";
+import { sourceBase, recordContributionProof, closeQualifiedContribution } from "./contribution-proof.js";
 import { prepareN1Resume, verifyResumedLeadRun } from "./n1-resume.js";
 import { finishN1Disposition } from "./native-wake-policy.js";
 import { settledResumeReservation, type N1Resume, type ResumeTarget } from "./n1-resume-state.js";
@@ -58,12 +60,14 @@ type Slot = {
   dispatchReservationId?: string;
   dispatchRunId?: string | null;
   dispatchUsageBaselineUnits?: number;
+  proof?: import("./integration.js").ContributionBundleProof;
   commit?: string;
   authorRunId?: string;
   referenceRecovery?: { previousCommit: string; actorUserId: string; commandId: string };
 };
 
 export type N1State = {
+  sourceBaseCommit?: string;
   coordination?: N1Coordination;
   resume?: N1Resume;
   periodKey: string;
@@ -326,7 +330,7 @@ export function contributionDescription(input: {
     contributionCommand(input.missionId, input.contributionId),
     "```",
     input.closeThroughCouncil
-      ? "Council closes this child through its SDK after the exact record-contribution succeeds. Finish your run; do not issue another status/comment wake. Terminal usage remains required before integration."
+      ? "Council manages this child through its SDK. If inspect.n1.proofPolicy exists, record the verified child bundle with the supplied command; Council parks it blocked until the admitted run succeeds and exact usage settles, then closes it. Finish your run; do not issue another status/comment wake."
       : "Mark this Paperclip child issue done only after record-contribution succeeds.",
     "For any non-2xx response, preserve the HTTP status and sanitized JSON response body in your final report without exposing credentials.",
     "",
@@ -368,6 +372,7 @@ export function inspectN1State(mission: MissionRecord) {
     ...(mission.aggregate.projectMandate ? { projectMandate: mission.aggregate.projectMandate } : {}),
     nextAction,
     participants: state.contributions,
+    ...(completionPolicy(mission) ? { proofPolicy: completionPolicy(mission), sourceBaseCommit: state.sourceBaseCommit } : {}),
     candidate: state.candidate ?? null,
     reservations: { activation: state.activationReservationId, periodKey: state.periodKey },
     blocker: unresolved?.issueUnknown ?? state.lastIntegrationFailure ?? null,
@@ -1150,6 +1155,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       const actor = await lead(ctx, mission, input);
       if (state.contributions.length !== 0) throw new MissionError(409, "plan_exists", "Contribution plan already exists");
       await assertHierarchySources(ctx, mission);
+      const sourceBaseCommit = sourceBase(mission, body.sourceBaseCommit);
       const slots = readSlotPlan(body.contributions, mission);
       for (const slot of slots) {
         const agent = await ctx.agents.get(slot.assigneeAgentId, mission.companyId);
@@ -1159,7 +1165,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       }
       const next: MissionAggregate = {
         ...mission.aggregate,
-        n1: { ...state, contributions: slots },
+        n1: { ...state, contributions: slots, ...(sourceBaseCommit ? { sourceBaseCommit } : {}) },
         journal: [...mission.aggregate.journal, { action: "contribution_plan_recorded", actorAgentId: actor.agentId, runId: actor.runId, at: new Date().toISOString() }],
       };
       const result = await commandCas(ctx, mission, body, "agent", actor.agentId, next);
@@ -1259,6 +1265,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         const priorIssue = prior.childIssueId
           ? await ctx.issues.get(prior.childIssueId, mission.companyId)
           : null;
+        if (completionPolicy(mission) && !prior.proof?.closedAt) throw new MissionError(409, "prior_contribution_proof", "Observe the previous child verified proof and terminal closure before dispatch");
         if (!prior.commit || !prior.authorRunId || prior.dispatchState !== "requested"
             || !prior.dispatchReservationId || !prior.dispatchRunId
             || prior.authorRunId !== prior.dispatchRunId
@@ -1393,6 +1400,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       });
       const contribution = state.contributions.find(slot => slot.contributionId === body.contributionId)!;
       mission = await observeVariantRun(ctx, mission, contribution.dispatchReservationId!);
+      mission = await closeQualifiedContribution(ctx, mission, contribution.contributionId, (current, aggregate) => cas(ctx, current, aggregate, current.version));
       return { status: 200, body: { ...result, mission } };
     }
     if (body.command === "record-contribution") {
@@ -1421,8 +1429,9 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       });
       const commit = boundedString(body.commit, "commit", 40);
       if (!COMMIT.test(commit)) throw new MissionError(422, "invalid_commit", "Contribution commit must be a Git SHA-1");
+      const proof = await recordContributionProof(ctx, mission, contributionId, commit, body.proof);
       const slots = state.contributions.map((entry) => entry.contributionId === contributionId
-        ? { ...entry, commit, authorRunId: input.actor.runId! } : entry);
+        ? { ...entry, commit, authorRunId: input.actor.runId!, ...(proof ? { proof } : {}) } : entry);
       const next: MissionAggregate = {
         ...mission.aggregate, n1: { ...state, contributions: slots },
         journal: [...mission.aggregate.journal, { action: "contribution_recorded", contributionId, commit, actorAgentId: input.actor.agentId, runId: input.actor.runId, at: new Date().toISOString() }],
@@ -1477,6 +1486,9 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       const expectedSha256 = boundedString(body.expectedSha256, "expectedSha256", 64);
       if (!COMMIT.test(baseCommit) || !COMMIT.test(candidateCommit) || !DIGEST.test(expectedSha256)) {
         throw new MissionError(422, "invalid_candidate_identity", "Candidate Git and digest identity is malformed");
+      }
+      if (completionPolicy(mission) && (state.sourceBaseCommit !== baseCommit || state.contributions.some(s => !s.proof?.closedAt))) {
+        throw new MissionError(409, "contribution_proof_pending", "All closed child proofs and the original source base must bind integration");
       }
       let verified: IntegratedCandidateVerification;
       try {
