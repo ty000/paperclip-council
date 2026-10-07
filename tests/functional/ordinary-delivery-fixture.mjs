@@ -53,7 +53,7 @@ export async function publishDelivery({ api, call, config, issueId, runId, git }
   assert(!remote.intents.includes(p.intentId));
   if (p.operation === "update") { assert.equal(p.targetUrl, remote.url); assert.equal(remote.createCount, 1); remote.updateCount++; }
   else { assert.equal(remote.createCount, 0); remote.createCount++; }
-  remote.headSha = p.submission.candidateCommit; remote.intents.push(p.intentId);
+  remote.headSha = p.submission.candidateCommit; remote.headRef = view.delivery.authority.headRef; remote.intents.push(p.intentId);
   // This file is the explicitly simulated GitHub publication transport, after the real one-shot claim.
   await writeFile(path, JSON.stringify(remote));
   await api("POST", `/api/issues/${issueId}/work-products`, { type: "pull_request", provider: "github", title: "Simulated ordinary delivery", url: remote.url, createdByRunId: runId });

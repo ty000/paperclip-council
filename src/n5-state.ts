@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { MissionRecord } from "./missions.js";
 import type { N2Submission } from "./n2-missions.js";
 
-export type N5Plan = { documentId: string; revisionId: string; bodyHash: string; mandateHash: string;
+export type N5Plan = { documentId: string; revisionId: string; bodyHash: string; mandateHash: string; documentKey?: string;
   plannerAgentId: string; orchestratorAgentId: string; integrationLeadAgentId: string; qaAgentId: string };
 export type N5State = {
   plan: N5Plan;

@@ -24,6 +24,14 @@ async function api(method, path, body, expected) {
   return value;
 }
 const route = `/api/plugins/private.paperclip-council/api/issues/${issueId}/council/commands`;
+if (config.projectIntake && !config.missionId) {
+  assert.equal(agentId, config.actors.lead);
+  const discovered = await api("POST", route, { command: "inspect" });
+  assert(discovered.missionId);
+  config.missionId = discovered.missionId;
+  config.rootIssueId = issueId;
+  await writeFile(process.env.COUNCIL_ORDINARY_FIXTURE, JSON.stringify(config));
+}
 const coordinationActor = [config.actors.pm, config.actors.pmSuccessor, config.actors.facilitator].includes(agentId);
 const call = body => api("POST", route, { missionId: coordinationActor || issueId === config.n6RootIssueId ? config.n6MissionId : config.missionId, ...body });
 const pause = () => new Promise(r => setTimeout(r, 150));

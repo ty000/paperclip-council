@@ -11,6 +11,8 @@ import { reconcileN5 } from "./n5-runtime.js";
 import { inspectN5 } from "./n5-state.js";
 import { physicalAgent } from "./model-state.js";
 import { readOrdinaryRun, settleOrdinaryRunUsage } from "./g4-native.js";
+import { reconcileProjectTasks } from "./project-task-intake.js";
+import { assertProjectDeparture } from "./project-mandate-guard.js";
 
 const CONTINUITY_JOB_KEY = "mission-continuity";
 const waiting = (code: string, nextAction: string): Observation => ({ state: "waiting", code, nextAction });
@@ -30,6 +32,7 @@ async function prepareCommand(ctx: PluginContext, m: MissionRecord, command: Con
 }
 
 async function delegatedCommand(ctx: PluginContext, initial: MissionRecord, command: ContinuityCommand, job: PluginJobContext) {
+  if (command !== "reconcile-lead-usage") await assertProjectDeparture(ctx, initial);
   const { mission: m, body } = await prepareCommand(ctx, initial, command, job);
   const policy = m.aggregate.continuity!;
   // The owner delegation and original payload are persisted before execution.
@@ -105,6 +108,9 @@ export async function advanceContinuity(ctx: PluginContext, initial: MissionReco
 
 export function registerContinuityJob(ctx: PluginContext, list: () => Promise<MissionRecord[]>) {
   ctx.jobs.register(CONTINUITY_JOB_KEY, async job => {
+    let intakeFailure: string | null = null;
+    try { await reconcileProjectTasks(ctx); }
+    catch (error) { intakeFailure = error instanceof MissionError ? error.code : "project_intake_scan_unavailable"; }
     const unavailable: Array<{ missionId: string; code: string }> = [];
     for (const m of await list()) {
       let observation: Observation;
@@ -119,5 +125,6 @@ export function registerContinuityJob(ctx: PluginContext, list: () => Promise<Mi
       catch (error) { unavailable.push({ missionId: m.missionId, code: error instanceof MissionError ? error.code : "native_status_transport_unavailable" }); }
     }
     if (unavailable.length) throw new MissionError(409, "continuity_status_unavailable", `Native status readback failed (${unavailable.map(item => item.code).join(", ")}); inspect the retained job`, { failures: unavailable });
+    if (intakeFailure) throw new MissionError(409, "project_intake_scan_failed", "Project intake failed; existing delegated missions were still observed", { code: intakeFailure });
   });
 }

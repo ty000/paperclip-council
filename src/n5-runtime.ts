@@ -15,6 +15,7 @@ import { modelLaunch, physicalAgent } from "./model-state.js";
 import { validatePublisherPreflight } from "./n5-publisher-preflight.js";
 import { assertNativeRunInventory } from "./native-runs.js";
 import { assertContinuityDeparture } from "./continuity-policy.js";
+import { assertProjectDeparture, assertProjectPublication } from "./project-mandate-guard.js";
 
 const fresh = async (ctx: PluginContext, m: MissionRecord) => (await getMission(ctx, m.companyId, m.missionId))!;
 const save = (ctx: PluginContext, m: MissionRecord, n5: N5State) => n2Cas(ctx, m, { ...m.aggregate, n5 });
@@ -32,7 +33,8 @@ async function authorize(ctx: PluginContext, m: MissionRecord, body: Record<stri
   const baseRef = text(body.baseRef, "baseRef"); const headRef = text(body.headRef, "headRef");
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) || baseRef === headRef
       || [baseRef, headRef].some(ref => !/^[A-Za-z0-9][A-Za-z0-9_./-]*$/.test(ref) || ref.includes(".."))) throw new MissionError(422, "n5_repository_binding", "Explicit repository and distinct safe base/head refs required");
-  const plan = await readN5Plan(ctx, m, runtimeUuid(body.planRevisionId, "planRevisionId"));
+  assertProjectPublication(m, { publisherAgentId, repository, baseRef, headRef });
+  const plan = await readN5Plan(ctx, m, runtimeUuid(body.planRevisionId, "planRevisionId"), body.planDocumentKey === undefined ? undefined : text(body.planDocumentKey, "planDocumentKey"));
   const config = await ctx.config.get(m.companyId);
   const publisherPreflight = (m.aggregate.n2?.ordinary || config.n2RuntimeProfile === "ordinary-cli-v1")
     && config.n5PublisherPreflightEnabled !== false ? "publisher-run-report-v1" as const : undefined;
@@ -50,6 +52,7 @@ export async function startN5Publication(ctx: PluginContext, initial: MissionRec
     && m.aggregate.n2?.status === "accepted" && m.aggregate.n2.activeSubmissionId !== continuation.previousPublication.submission.submissionId);
   if (n5.publication && !updating) return n5.publication.creation === "confirmed" ? resumeN5PreWake(ctx, m) : resumeN5Creation(ctx, m);
   assertContinuityDeparture(m);
+  await assertProjectDeparture(ctx, m);
   if (m.aggregate.n2?.ordinary) {
     const publisher = await ctx.agents.get(n5.authority.publisherAgentId, m.companyId);
     if (!publisher || publisher.adapterType !== "codex_local" || publisher.adapterConfig?.engine !== "cli"

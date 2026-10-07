@@ -5,6 +5,7 @@ import { physicalAgent, isLogicalActor } from "./model-state.js";
 import { contributionModelFamily, prepareVariantLaunch, bindVariantIssue, claimVariantWake, recordVariantWake, observeVariantRun } from "./model-runtime.js";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { randomUUID } from "node:crypto";
+import { assertProjectDeparture, assertProjectPaths } from "./project-mandate-guard.js";
 import {
   AdmissionError,
   configureAdmission,
@@ -280,6 +281,7 @@ function readSlotPlan(value: unknown, mission: MissionRecord): Slot[] {
     throw new MissionError(422, "distinct_contributors_required", "Contribution IDs and assignees must be distinct");
   }
   for (const slot of slots) {
+    assertProjectPaths(mission, slot.ownedPaths);
     if (!allowed.has(slot.assigneeAgentId) || slot.assigneeAgentId === integrationLead || slot.assigneeAgentId === reviewer) {
       throw new MissionError(422, "contributor_ineligible", "Contributor must be a distinct pinned team member");
     }
@@ -350,6 +352,7 @@ export function inspectN1State(mission: MissionRecord) {
   return {
     resume: state.resume ?? null,
     prerequisites: mission.aggregate.readiness.blockers,
+    ...(mission.aggregate.projectMandate ? { projectMandate: mission.aggregate.projectMandate } : {}),
     nextAction,
     participants: state.contributions,
     candidate: state.candidate ?? null,
@@ -884,6 +887,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
   const hash = canonicalPayloadHash(input.body);
   const prior = receipt(mission, commandId, input.actorUserId!, hash);
   if (prior) return { outcome: "replayed" as const, mission, receipt: prior };
+  await assertProjectDeparture(ctx, mission);
   requireFreshCommand(mission, input.body);
   if (mission.aggregate.phase !== "draft" || mission.aggregate.control.status !== "inactive") {
     throw new MissionError(409, "not_draft", "Only an inactive draft mission may activate");
