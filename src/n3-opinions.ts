@@ -236,23 +236,12 @@ function validateSynthesisVerdict(
   }
 }
 
-export function startN3ReviewRound(input: {
-  subject: N3CandidateSubject;
-  authorAgentIds: string[];
-  finalReviewerAgentId: string;
-  slots: N3OpinionSlot[];
-}): N3ReviewRound {
-  const subject = validateSubject(input.subject);
-  const authorAgentIds = boundedList(input.authorAgentIds, "authorAgentIds", { min: 1, max: 20 })
-    .map((agentId) => identifier(agentId, "authorAgentId"));
-  const finalReviewerAgentId = identifier(input.finalReviewerAgentId, "finalReviewerAgentId");
-  if (authorAgentIds.includes(finalReviewerAgentId)) {
-    throw new N3OpinionError("reviewer_conflict", "The final reviewer cannot be an author of the candidate");
-  }
-  if (!Array.isArray(input.slots) || input.slots.length < 2 || input.slots.length > N3_SPECIALIST_PERSPECTIVES.length) {
+export function normalizeN3Slots(inputSlots: N3OpinionSlot[], authorAgentIds: string[], finalReviewerAgentId: string): N3OpinionSlot[] {
+  if (authorAgentIds.includes(finalReviewerAgentId)) throw new N3OpinionError("reviewer_conflict", "The final reviewer cannot be an author");
+  if (!Array.isArray(inputSlots) || inputSlots.length < 2 || inputSlots.length > N3_SPECIALIST_PERSPECTIVES.length) {
     throw new N3OpinionError("invalid_n3_slots", "N3 requires two to seven selected specialist slots");
   }
-  const slots = input.slots.map((slot, index): N3OpinionSlot => {
+  const slots = inputSlots.map((slot, index): N3OpinionSlot => {
     if (!N3_SPECIALIST_PERSPECTIVES.includes(slot.perspective)) {
       throw new N3OpinionError("invalid_n3_slots", `slots[${index}].perspective is not prepared`);
     }
@@ -279,6 +268,23 @@ export function startN3ReviewRound(input: {
   if (slots.filter((slot) => slot.required).length < 2) {
     throw new N3OpinionError("invalid_n3_slots", "The representative N3 round requires at least two required perspectives");
   }
+  return slots;
+}
+
+export function startN3ReviewRound(input: {
+  subject: N3CandidateSubject;
+  authorAgentIds: string[];
+  finalReviewerAgentId: string;
+  slots: N3OpinionSlot[];
+}): N3ReviewRound {
+  const subject = validateSubject(input.subject);
+  const authorAgentIds = boundedList(input.authorAgentIds, "authorAgentIds", { min: 1, max: 20 })
+    .map((agentId) => identifier(agentId, "authorAgentId"));
+  const finalReviewerAgentId = identifier(input.finalReviewerAgentId, "finalReviewerAgentId");
+  if (authorAgentIds.includes(finalReviewerAgentId)) {
+    throw new N3OpinionError("reviewer_conflict", "The final reviewer cannot be an author of the candidate");
+  }
+  const slots = normalizeN3Slots(input.slots, authorAgentIds, finalReviewerAgentId);
   return {
     schemaVersion: 1,
     subject,

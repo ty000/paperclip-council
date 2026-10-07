@@ -1,3 +1,4 @@
+import { assertContinuityDeparture } from "./continuity-policy.js";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import type { MissionAggregate, MissionRecord } from "./missions.js";
 import { MODEL_CATALOGUE, roleTemplate, validateModelCatalogue, type TaskFamily, type ProfileId, type RoleKey } from "./model-catalogue.js";
@@ -82,6 +83,7 @@ function assertRoleFamily(roleKey: string, revision: string, family: TaskFamily)
 
 /** Called only by existing authorized dispatchers. This function never grants another attempt or wakes an agent. */
 export async function prepareVariantLaunch(ctx: PluginContext, initial: MissionRecord, input: LaunchInput) {
+  assertContinuityDeparture(initial);
   await assertNativeRunInventory(ctx, initial, true);
   let m = initial; const state = m.aggregate.modelSelection;
   if (!state) return { mission: m, binding: null };
@@ -203,6 +205,7 @@ export function claimVariantWake<T>(ctx: PluginContext, m: MissionRecord, launch
   persist: (mission: MissionRecord, aggregate: MissionAggregate) => Promise<T>): Promise<T>;
 export async function claimVariantWake<T>(ctx: PluginContext, m: MissionRecord, launchKey: string,
   persist?: (mission: MissionRecord, aggregate: MissionAggregate) => Promise<T>): Promise<MissionRecord | T> {
+  assertContinuityDeparture(m);
   await assertNativeRunInventory(ctx, m, true);
   const launch = modelLaunch(m, launchKey);
   if (!launch) return persist ? persist(m, m.aggregate) : m;

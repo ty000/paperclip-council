@@ -25,7 +25,7 @@ export async function installOrdinaryGitHubTransport(runtime: string, proof: any
 }
 
 export async function prepareOrdinaryDelivery(input: any) {
-  const { api, companyId, actors, rootIssueId, missionPath, runtime, proof, save } = input;
+  const { api, companyId, actors, rootIssueId, missionPath, runtime, proof, save, nominal = false } = input;
   const get = async () => api("GET", `${missionPath}?companyId=${companyId}`);
   const settings = await api("GET", "/api/instance/settings/experimental");
   await api("PATCH", "/api/instance/settings/experimental", { ...settings, enableExternalObjects: true });
@@ -43,7 +43,7 @@ export async function prepareOrdinaryDelivery(input: any) {
   const correctionIdentity = { commandId: randomUUID(), reservationId: randomUUID() };
   return {
     async advance(m: any) {
-      if (correctionRequested || !m.aggregate.n5.publication?.settledAt) return;
+      if (nominal || correctionRequested || !m.aggregate.n5.publication?.settledAt) return;
       m = (await get()).mission;
       assert.equal(m.aggregate.n2.correctionsUsed, 0);
       assert.equal(m.aggregate.n2.rounds[0].verdict.verdict, "approved");
@@ -66,9 +66,18 @@ export async function prepareOrdinaryDelivery(input: any) {
         rootBefore: beforeRoot, historicalPublication: claimed.mission.aggregate.n5.continuation.previousPublication };
       await save();
     },
-    complete: (m: any) => Boolean(m.aggregate.n5.continuation?.updateAdmitted && m.aggregate.n5.publication?.settledAt),
+    complete: (m: any) => nominal ? Boolean(m.aggregate.n5.publication?.settledAt && m.aggregate.n5.publication?.observation?.matchesCandidate) : Boolean(m.aggregate.n5.continuation?.updateAdmitted && m.aggregate.n5.publication?.settledAt),
     async finish() {
-      let view = await get(); const n5 = view.mission.aggregate.n5; const p = n5.publication;
+      let view = await get();
+      if (nominal) {
+        assert.equal(view.n5.ready, true);
+        const remote = JSON.parse(await readFile(resolve(runtime, "github-transport.json"), "utf8"));
+        assert.equal(remote.createCount, 1); assert.equal(remote.updateCount, 0);
+        assert.equal(view.mission.aggregate.n2.correctionsUsed, 0);
+        proof.delivery = { remote, final: view.n5, checks: { nominalAuthorizedPublication: "PASS", noOwnerTransition: "PASS" } };
+        return;
+      }
+      const n5 = view.mission.aggregate.n5; const p = n5.publication;
       assert.equal(p.operation, "update"); assert(p.settledAt);
       proof.publishers = await Promise.all((await readdir(runtime)).filter(name => name.startsWith("publisher-")).map(async name => JSON.parse(await readFile(resolve(runtime, name), "utf8"))));
       assert.equal(proof.publishers.length, 2);
