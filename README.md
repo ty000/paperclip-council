@@ -5,12 +5,17 @@ Paperclip workflows. This standalone package extracts the demonstrated
 `private.paperclip-council` integration without importing from a Paperclip
 monorepo workspace.
 
-The `0.7.18` source candidate adds an opt-in receiver for the separate Linear
-intake plugin. It requires an exact project mandate, explicit contributor/write
-paths, complete native readback and a fresh authenticated source attestation at
-the shared N1 admission boundary. Native qualification is in progress; no
-operational installation or activation is claimed. See
+Version `0.7.18` adds an opt-in receiver for the separate Linear intake plugin.
+It requires an enabled project mandate, explicit contributor/write paths,
+complete native readback and fresh authenticated source observations before
+preparation and at the shared N1 admission boundary. The installed path is
+qualified in an isolated native host with deterministic Linear and CLI model
+transports, through settled N1 `ready_for_review`, before N2. No operational
+installation or activation is claimed. See
 [the Lot 4 contract and evidence boundary](docs/LINEAR-INTAKE-LOT4.md).
+The initial receiver requires an executable descendant, preserves terminal
+history and blocks external source references. Later remote Linear changes do
+not automatically revoke an already admitted mission.
 
 The legacy decision adapter exposes an agent-authenticated route. It resolves a dedicated
 Council agent API key from Paperclip's secret store and submits either a native

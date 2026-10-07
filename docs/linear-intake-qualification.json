@@ -1,0 +1,344 @@
+{
+  "schema": "linear-council-receiver-qualification.v1",
+  "outcome": "NATIVE LINEAR COUNCIL ADMISSION VALIDATED",
+  "startedAt": "2026-10-07T22:54:32.660Z",
+  "finishedAt": "2026-10-07T23:01:03.889Z",
+  "layer": "installed-native-host-workers-bus-scheduled-jobs-admission-runs-and-accounting-with-deterministic-linear-and-model-transports",
+  "candidates": {
+    "intake": {
+      "version": "0.4.0",
+      "commit": "00c314181043a76ffbadad1721494f49893079ea",
+      "base": "0488cb7b799d015db69760e5a4603a333f3f4637",
+      "sdk": "2026.1005.0",
+      "ci": "https://github.com/ty000/paperclip-linear-intake/actions/runs/37697670054"
+    },
+    "council": {
+      "version": "0.7.18",
+      "commit": "1b5269ce8ca10a680f27a737b6a075b385477b30",
+      "base": "751a82bce5436e7c54cda05e9db9fc92db072534",
+      "sdk": "2026.916.1",
+      "ci": "https://github.com/ty000/paperclip-council/actions/runs/37699064473"
+    },
+    "host": {
+      "commit": "61b3fd57a695614dc4a37e2303f426a34a9795cf",
+      "trackedUnchanged": true
+    }
+  },
+  "checks": {
+    "completeImportBeforeAdmission": "PASS",
+    "disabledMandateNoAdmission": "PASS",
+    "pendingResponseNoAdmission": "PASS",
+    "restartOriginalIdentity": "PASS",
+    "earlyBoardAdmissionRefused": "PASS",
+    "oneAdmissionAttempt": "PASS",
+    "dependencyOrder": "PASS",
+    "historicalTerminalPreserved": "PASS",
+    "existingAccountingSettled": "PASS",
+    "nativeScheduledJobs": "PASS",
+    "noImporterWake": "PASS",
+    "noProvider": "PASS"
+  },
+  "cleanup": {
+    "serverStopped": true,
+    "databaseStopped": true,
+    "hostTrackedUnchanged": true,
+    "runtimeRetained": true
+  },
+  "packageBytesUnchanged": true,
+  "observed": {
+    "importedTasks": 4,
+    "rootDescriptionCharacters": 36300,
+    "preAdmission": {
+      "missions": 0,
+      "runs": 0,
+      "wakeRequests": 0,
+      "reservations": 0
+    },
+    "disabledMandate": {
+      "missions": 0,
+      "runs": 0,
+      "wakeRequests": 0,
+      "reservations": 0
+    },
+    "pendingSource": {
+      "missions": 0,
+      "runs": 0,
+      "wakeRequests": 0,
+      "reservations": 0
+    },
+    "earlyBoardRefusal": {
+      "status": 409,
+      "reason": "linear_source_pending",
+      "reservations": 0
+    },
+    "intakes": 1,
+    "retainedRequests": 1,
+    "retainedRequestAttempts": 1,
+    "missions": 1,
+    "successfulNativeRuns": 3,
+    "order": {
+      "alphaRunId": "26c7c043-3e73-40aa-9d93-d452952094b3",
+      "betaRunId": "d76fec7d-c7de-4336-b49a-b952011bd8b6",
+      "historicalRuns": 0,
+      "originalRootRuns": 0
+    },
+    "phase": "ready_for_review",
+    "n2Started": false,
+    "settledInitialReservations": 3,
+    "knownUsageUnits": 450,
+    "usageIsDeterministic": true,
+    "budgetConfigurationReceipts": 1,
+    "challenges": [
+      {
+        "stage": "preparation",
+        "generation": 1,
+        "consumed": true,
+        "responseStatus": "confirmed"
+      },
+      {
+        "stage": "admission",
+        "generation": 1,
+        "consumed": true,
+        "responseStatus": "confirmed"
+      }
+    ]
+  },
+  "verification": {
+    "intakePackageTests": 476,
+    "intakePostgresTests": 169,
+    "councilTests": 980,
+    "councilSkipped": 1,
+    "repositoryStaticGates": "PASS",
+    "councilAdditionalRawFallowVerdict": "fail",
+    "councilIntroducedNoncriticalComplexityFindings": 6,
+    "introducedDeadCodeOrCriticalComplexity": 0,
+    "intakeCiRuntimeBytesMatch": true
+  },
+  "evidence": {
+    "privateProof": ".runtime/lot4/native-zeQZ4v/proof.json",
+    "privateProofSha256": "b6336e50687010fecc183c2c45037c29126dc3bf4459e0f2442af794b375b8b1",
+    "manifestHashEncoding": "SHA-256 of UTF-8 JSON with sorted keys and compact separators; evidence-only, distinct from protocol hashing",
+    "completePackageManifestSha256": {
+      "council": "4acc2021c4ee688dc75bcd619cb2a652bd30a1395b7bea54efef65016999e707",
+      "intake": "ed0f16816ed81c263fb4ce554877057af0591815854fdc3b5daf755013176063"
+    },
+    "completePackageManifestEntries": {
+      "council": 523,
+      "intake": 127
+    },
+    "builtRuntimeSha256": {
+      "council": {
+        "dist/admission-owner-replacement.js": "d3254ac7c585cb24d652815f97a46aaa8fcbc94725baa1528a29c90bf3e43903",
+        "dist/admission.js": "bb29d33e5d66373a8c2f1f5dedce61922ed2a3392bb8833642b3919d5b42dc8b",
+        "dist/completion-contract.js": "2e40fc45e688a97d80d6bd478085c77af08adc15949853184cf0ced876c13650",
+        "dist/completion-evidence.js": "cd399b39b51675329f62e80d59a4d60e4c1d700ee6d80ae88e172f718c478cf6",
+        "dist/completion-runtime.js": "91b9b5625c42cf39b66af34309a1520443f7d4f90306e19a7f52e9547e4e48d0",
+        "dist/continuity-configuration.js": "1bc87b4ee60f22cc839670b177367eb187c13bb8cb5c824cda814c00831d7e00",
+        "dist/continuity-observation.js": "4b38e498b674b1a92c0d6b4155fa48b666e905676a450fedc6f39bc7779b603e",
+        "dist/continuity-policy.js": "898352486cd162f797c19d20961c6045cee8bcd7afabf25d529fc71189671826",
+        "dist/continuity-runtime.js": "2977c22b75be594980baccf7ed5b4c0b78890b76205398118facfc0cc58303b8",
+        "dist/contracts.js": "427a6852d1b4fbc59c12b396120836e73895fb11bee3ec3841f58f9c9f32499d",
+        "dist/contribution-closure.js": "94e82919d26e1bd51c507ac1eaa5b1ab600fda03ae222460128a177a42a3c481",
+        "dist/contribution-command.js": "cf5cef99a8dcc41b07703700e693c4198f1e8b19b7596b3b82255ad3da81d517",
+        "dist/contribution-context.js": "237111364ad50f4c25ad79f65d888e69690fcdfb95390b12df437f9ba918f956",
+        "dist/contribution-effects.js": "f820b63763c47d958970aca3d43b7c3b5705a67026fbb95c2371b0c885e150dd",
+        "dist/contribution-proof.js": "eb08ec3d43d9f1cc0da4a772c8e3606cd31099e6f49b610bbedbc43e893574eb",
+        "dist/coordination-presentation.js": "5c84425cb2854539056ec8da099e91c0a03aad9d7faa6e39305ea00ebc85fc3d",
+        "dist/decision-adapter.js": "3cfe7c419dba71eddbc4bef9bab6f109d8ddedab2d59b2656d23d63adfcd3f6f",
+        "dist/decision-receipts.js": "c39ed1cf12319c4d0b08d4b8c92f0c0f344869cc3fdfaa1e025c99e90edb99d0",
+        "dist/delivery-manifest.js": "20d52cff50d643ca468d88b1da5149d379f80fce89b256e24e023ac44110017f",
+        "dist/delivery-presentation.js": "25bca79eb9c20e12030c451b595c5cb6e73aca8ab1d7691d3c46ba03b69c6f62",
+        "dist/foundation-probe.js": "653e6193169e0455e348c42d40f5ec037ba7b5ef2cd700a68ce3ecf34fc60795",
+        "dist/g4-native.js": "c049c4776f534b5e027f338059139ab706f6f5465b7f16b972bf16aeba2fc358",
+        "dist/hierarchy-contract.js": "13d66aec946259e16c07df613453bfc9d6588d8663494b0191e5565aaf5b5b36",
+        "dist/hierarchy-coordinator.js": "77547474b3fd18e4687d45ad6e64c95d7e34a7ccc20f13f1bbacf18e7498a0c5",
+        "dist/hierarchy-intake.js": "05f0b02b56288d2871b6693b55ac470947ebea86d01d411d4fd1e184e00d9e3a",
+        "dist/hierarchy-runtime.js": "b568d227c0857e97ba7a6958f181ad1c054fff3afe7cb79da70b08c68f1967a6",
+        "dist/index.js": "48e7cf941873cee9cc1b995edb58dc238f3c5ffcfef5e4a30b54af6b57fb9899",
+        "dist/integration.js": "ecfa27701cbf3548dd24f594b3e0baf8c50fc59ca9a232bae9c1df02cd28c06a",
+        "dist/linear-intake-admission-guard.js": "e758a4384bb7ca580bc2838bf5f0ceb5eb5547f6530edfdf590f12d45a566ca6",
+        "dist/linear-intake-contract.js": "ca0d8af4f5fe51b92a5fe81ee6fa4e0007c701dd81a843ef6c0939351294afd2",
+        "dist/linear-intake-preparation.js": "f3bc0645a60403753dc81cac15ca0521d939638b03a8b40cfe2be0d0ec802322",
+        "dist/linear-intake-revalidation-contract.js": "81426cc585b4fcecef56a45cefa09d0f5cd171d36a4cc8a8b09ce0ccada2f06d",
+        "dist/linear-intake-revalidation.js": "ab339f34411d816852219d89d7e2fe915d8ad0d9c57b7a7c945a78d207c7b0b8",
+        "dist/linear-intake-validation.js": "52603f34249e7204c56dcdd7c1d6960f383cec2278bc9835fbf0944f6c713903",
+        "dist/manifest.js": "250b61f664fddd8282e0e74be148fed81d1f4788c8e6aa415759c12db3e86491",
+        "dist/mission-primitives.js": "2bb856d6b55788a0083bc92a33a6ab3ae132966e89aef5384b3747fe1c067c6c",
+        "dist/mission-tool.js": "8c6cd7ab30770072289f770ba3267eeeb38a721ba5b8abe8a1ea73319e5e8e83",
+        "dist/missions.js": "7d2684d4f7c9ade92d573eda9a5c255e2f917358da9605c6401c6cfe90865455",
+        "dist/model-api.js": "e10181f4c41b094b43fd9bb127278be84042d4eceb091dad8a0922999f09a04e",
+        "dist/model-catalogue.js": "b209111879b1670bdbb6e4f9c5a9b75b8f32acc21021ecfd0231c491ca45bcc3",
+        "dist/model-charters.js": "48f574b59174962cc89df2d8728bf617d39a5defd4dd2e80cebe6f49b93ac019",
+        "dist/model-estimates.js": "1e0d399932805ae0a0193fea966708998b5e0d9487b3429be7403d47a933f456",
+        "dist/model-history.js": "cdb265e9e677ca3db6fee6034f30df29fde95344968207bb64aaf8e1695860f5",
+        "dist/model-runtime.js": "6b1610112031c6fee4a381ccd5821597a1bbb35821305c0d4cc9183a480bdedc",
+        "dist/model-state.js": "b4ee8ec8c4244d1c35b8e7ceca1329ec23350aecebdc84a55dca39962320c7f5",
+        "dist/model-variants.js": "8834e9743e2e5cde2730bbd1c89890600b12b5a9978c43997063510521032be9",
+        "dist/n1-missions.js": "49a3908c5c437ca5f58f94ee57fcfc3b5e7a086905d66089356633d893b9dc42",
+        "dist/n1-resume-prepared.js": "65a8dfdb27a3b18c069e0bc64f0dcfa6f6ea5c5ca15ced5f2207a64c6cfcf3c6",
+        "dist/n1-resume-state.js": "2596e17e0f40e3b669b09b19ae9c2cbfdbe4db55908541d63e9a2b11c49e55fa",
+        "dist/n1-resume.js": "5b8e511ea3d1d5a239734bfa3daf9839abed371150a09a6848e07c695549952d",
+        "dist/n2-correction-resume.js": "6c603b222f50de091a1cfbc71dcd3ec393309364ab4e39ded26034ac7ef1055e",
+        "dist/n2-finished-event.js": "a9103a7a179010a306a562395e3c564e75ea264881c03b372b111c2208135e48",
+        "dist/n2-missions.js": "be94caf0b5ff9307ce54e24ee5271692dbb8c7ea351cfc542b839f5196bc3be9",
+        "dist/n2-native-report.js": "05a9493f03ece2b48f60dd928a081725f410b721b8697261e6b8d446c9f7e7b7",
+        "dist/n2-native-runtime.js": "4cad9317c5c234777bc3724c1dfe35d9077370ae9173fa65d5afaf3b44435fb0",
+        "dist/n2-ordinary-agent.js": "7f3f128b5a61307af66d965b9e2439a897d890a1033efbcb617d7a5b625702ff",
+        "dist/n2-ordinary-instructions.js": "dc9ba9ebfe40bfd27f3f2a201197fbe0bc88a338542e55a0d064003ab51886e0",
+        "dist/n2-ordinary-replacement.js": "9405f7d254d699eea455f504a246743524af71f62e6f3ad1806bd24969a9c2ef",
+        "dist/n2-ordinary-report.js": "b33f9ad70b295e77dfd5ca922b7a361472f371bc4a22801ca44c9c252a836024",
+        "dist/n2-ordinary-runtime.js": "9918dcb27d5bcbfebe26b9be2f85ae71ef35c65d4c1c9904532ddee5d1a72e9a",
+        "dist/n2-ordinary-state.js": "26d53edfc29a286cbb43775873a5de55b906b624b940f661938f28bb299b1540",
+        "dist/n2-undispatched-correction.js": "bdc7a757f9d1d143e25eb305fa31c0ada1f8d60bff8e744ac52ece717c8126ac",
+        "dist/n3-opinions.js": "841573185aa6cf18d9e27c437da8c77028efc4379afc87c1a14bc19df77ca945",
+        "dist/n3-runtime.js": "90a258722ed9dfae90ad9262ea1d4e12fdeaf53ed20743076a9b47628ae68581",
+        "dist/n3-state.js": "12e97a2bc96c5127bc7bf5f4187930144af0302ce27c04198cc4542d8b0fd6f1",
+        "dist/n5-continuation.js": "15d9479363532be847ccb2c321d3207d36d54750ecbfe005feeeca41c4d1d4e4",
+        "dist/n5-instructions.js": "262ed52552b657d25986cf90fee2c47f1a948ae46ae45d64dbd7705289105a2f",
+        "dist/n5-native.js": "f7433d1d5e26c450f50a9088acef4881b27210a4c985d49487eae4c16f6f8def",
+        "dist/n5-preflight.js": "a964f5e925c4f940aa4dd9295c338a296b9f1179a0808ff725e5ecd2406f19a2",
+        "dist/n5-publisher-preflight.js": "a95ebba56815a8a1392d12b402b6b9dc359bb7ec8c9de118737e8b405b9bb36c",
+        "dist/n5-readiness.js": "2689eb752dffd3e373622a4419d49bfaa2cd8f94ceac6db9274ccbaa50dd97c3",
+        "dist/n5-runtime.js": "197df4b96d30be76ded5a8a8f1fb527fd2c6c93ba8d72844eefba66a7d05990a",
+        "dist/n5-state.js": "d0887a7156c56da7ddaed19fc75497c8a117f855e2355c4e2276507ef00d9e14",
+        "dist/n6-accounting.js": "28a2bfa1d682442a4013d16294128221c8a5cf80f795ba2d03c83d5fde743739",
+        "dist/n6-context.js": "ec609b3cc27efeb591231dc569ad03076a97731806ba0ce0603e4072e152a43a",
+        "dist/n6-coordination-state.js": "d53668d944bd5cd1182e2e6af89b83236a6ded67f45765f8f979379efcd6bc7c",
+        "dist/n6-guards.js": "c750d87c09a857cffee8acf964063d4a100d9843da4ae901b8fb26090c46732b",
+        "dist/n6-rebind.js": "2ac6362ed6b8f48be022f24bb7f30b800979fda727c96bfe95bc24b03b2f21c5",
+        "dist/n6-runtime.js": "35dc1fefc90ffe38910e28a9fd1a7e30392c6abe23e4b3743546bc8695454efd",
+        "dist/n6-state.js": "24116d1c6afee46050a4e15727bd20df6d55cee7c9c00d1827cba6f97d81c55d",
+        "dist/n6-work-api.js": "b020a4e9e1f1b11b7e9c747a66e91b49e7245efa7e9fba83e0f9f08028c7ab95",
+        "dist/n6-work-instructions.js": "b44058e3e5445e94f4a173435f617e2ef9a7fe087db915fb74b664020ae6e09e",
+        "dist/n6-work-runtime.js": "68be686ecc248baeb262e2476088ea93aefd9f50607758c34b05f14cb09cb9c6",
+        "dist/native-run-bindings.js": "6b1d73a90a01570aed7559746d0af70b3ca0601117a54b72fde7e3cf37d66472",
+        "dist/native-runs.js": "f0d385cf2b8fb13c5df950bc52f89be0a383958714e5b25caaba4a7113eb5421",
+        "dist/native-wake-policy.js": "df4d89e8302cfc9352507ad3c5fbcd2adecb8a072faeb4610a9e23affd2f9366",
+        "dist/ordinary-review-tasks.js": "3e1f89e64d03dea06bf823bc1d42ded828c6922f42e36e30bded1361e4c40a52",
+        "dist/pr-contract.js": "b37acc075577697ef161ec507241d09f843c84fb8ece0de097d77f7c24d3105a",
+        "dist/pr-feedback-runtime.js": "afae39bbb8ea5629ad83cef9fe6550808c6e00ea7e118edc12aa75797dc14c05",
+        "dist/pr-feedback.js": "9524b0edef99ae6b8d0fb4c9afd675d2cbcf69684adfe91e530e939066a2d69e",
+        "dist/project-intake-rebind.js": "1a32312f0630a1ad1645962e07abc33a3db54ed128e90fcc58a1361693c5977f",
+        "dist/project-mandate-configuration.js": "4fc88bc0314dceb71c986504ffbd21365a3dcfef65aaef795224c35cdaa36bed",
+        "dist/project-mandate-guard.js": "cfb699b18dd0d673b6d0afa782fe03f25730f510f554f4a1a4681fa9f9e18133",
+        "dist/project-mandate-state.js": "8c6e634787b2b8f20a0e3c29c8a022ceac152726c448996fd3874dc986f1ea55",
+        "dist/project-task-intake.js": "07ade293a613938a52214eade8752e2516872bca0d16c5ed85f4ddcb6a375844",
+        "dist/public-response.js": "5a8f094168bdc5e4f2f0915882b978418cf947d3c61a057b85c8e13dc1f232aa",
+        "dist/rosters.js": "52a9bba9d23a7ade7feea8958948f03b3a4b16bc155ab599cfffbd1da04351ad",
+        "dist/ui/coordination-panel.js": "3f57ca0b7dfa6df70c407569d2285c9482149a193e2ecff4a047ca0d2f3c0ba1",
+        "dist/ui/decision-receipts.js": "9eeb3319105d5f4ab7461d9cd4b53b8749e70849214b59dbfc83d1f18b318613",
+        "dist/ui/index.js": "2265dd608f673317bd44cca6eb56c871a2e58dab36de810e98e903ebf252ffe7",
+        "dist/ui/model-profiles-panel.js": "e6b4084330561f03fb2a12415a330eb6391ac283d115d5d25aa54d53458a2687",
+        "dist/worker.js": "a6bf1170bb677d2ba5dd7db3641dd9e5cbb2a23eba609d8d28308a65596016a2",
+        "dist/workspace-preflight.js": "a4eb7ce09ebc051e696e2da9a32a1285ea141a6408074c6b96a5686678ddd96a"
+      },
+      "intake": {
+        "dist/config.js": "e69e6b07c9b01cf0f835664962ac51c3b01a4d02475e00a27cf2d015967abac2",
+        "dist/content-digest.js": "7c97d21056ee3ff8cc634ff3b72cab65b5f5b012e0be22b6aa4a442b40a9fa8f",
+        "dist/council-handoff-contract.js": "13210f2718e2a92756dd93c17b2224216132cab534dcc2bcca00fbaa3e1ecdd9",
+        "dist/council-handoff-ledger.js": "91c4154f94d286274b3ff0fc3bcb17e368d51dc1a89a6643fdc91ebcf817e814",
+        "dist/council-handoff.js": "5b496e74430b5a65c32352c1a268fc894ab1b88fbf4dfb73bc2a8846496b1a99",
+        "dist/gateway-native-call.js": "a7fb24247c09d29ad4d8eb5752a54f115bdd0e41401f474d4f0647ac7347b594",
+        "dist/gateway-transport.js": "4d01aae274fde36c5f12da7b100d26fb8b69c234bb9b24af83f48b4b1a24c0eb",
+        "dist/gateway.js": "2c0a739e6ef067a179bd2496adc51a7309e323c6c896d419665adf5aca9e49e2",
+        "dist/import-actions.js": "7a29a8aafe3b52ab2341a2f627776615ff8bdcb700be9d12ed8a63e8efee9559",
+        "dist/import-effects.js": "ce93e60c4fc0f398fa9ebfcfabd22e28214c972b1cfc7ddda1bc60e4fbf90c40",
+        "dist/import-engine.js": "e55c61ccd5d808bec426befd1c6fe57b85d0a562d31cfb54200a78d35143e443",
+        "dist/import-native.js": "d6868aa40b7c3f2cc7dd8b315a4db14a9ea00657d75c2dbecdd732e47793660b",
+        "dist/import-plan.js": "5b1ecceb37f603f2b4867e7b3e860e81a13cb2be47e64d7c67a440a17a058ecc",
+        "dist/import-runtime.js": "fd34880db50a8ca351e34f474c124f4ee2395110783f77d3114b5b5e267a0d81",
+        "dist/import-state.js": "8fe7d8a772ee0df0bf719a5e54eba224a383bcb3a200ec7cbec60983fb8e49c9",
+        "dist/import-store.js": "ec5d6aeda96b8193277c5f3761ee4cac31a0868362cd6de0be793de7957ab159",
+        "dist/intake-actions.js": "a17963934f9c627c625ca070a43fbf02d65a6f3abaa456e8ac67750244c5c4e5",
+        "dist/intake-authority.js": "2375d38f2125521067b89bd5b40b4c152b2827315b8a5facbfaba2d8a7e30a20",
+        "dist/intake-config.js": "8b852fe3399bd8aa428efcd37f81d724e8817bf9bce54c80d1c3d92ab8061016",
+        "dist/intake-runtime.js": "2512f2328c2c27c564ce8f61a3ec46406d013ae993effcbfd744135fcabba2db",
+        "dist/intake-source.js": "aa14b4fa36bd02d3edf2542b899e392b482de644bc9b232bde3d629d1b67439e",
+        "dist/intake-state.js": "b927a15d9d3448e1156edd5dd841dda613108756f1474cf4a6e279395342f976",
+        "dist/intake-store.js": "91f0b796cc865b932a619acb27441a96af5d62d790f7c73cf90475b96b767c85",
+        "dist/manifest.js": "7fe5f4b986eba7748b1acc28467d8c625b4a38e9a0a0bb82eded80e75f3a3451",
+        "dist/source-client.js": "39ac24658a9cd5b5f599edc24aa8da7d81bea48ac328546e9d34925e5ac2537d",
+        "dist/source-family.js": "6be647e09966ae5a949d58cde70171183d7fdd95c68962fc255cf9779a26ca2b",
+        "dist/source-graph.js": "16fc444a62f24c8636f81bac7a6b83b54056684eef149a01816baef1ae6e84bf",
+        "dist/source-payload.js": "6fb802cce3682c86c6a11c3da4ac32f6fe3065e5a24a63307277466acedfb127",
+        "dist/source-probe.js": "834c3ee8a4bee48f35e74727223edfeeb3e6b57c201f8307769765a2a7ebd62e",
+        "dist/webhook-event.js": "28e7530c011f6c9a06fa9b5ded16ae5ed9f995bc7a55c0976e9b74dfaa88551e",
+        "dist/worker.js": "01ec0ba6ed3b5e1256b1ec2b6ac40dd55a6fd1cc5170403f52e340a0c6c899dc"
+      }
+    },
+    "migrationsSha256": {
+      "council": {
+        "migrations/001_foundation_probe.sql": "f59c729d115d08fe91062eecd92e55ac57919dbe917af88fc628e4f71efbf7d2",
+        "migrations/002_revisioned_rosters.sql": "a81cdd28d5d069057267a389999bf4ebf820dcadd3b2daf621f1ab030dc055df",
+        "migrations/003_missions.sql": "a8058452db90d51f2b90b857997e0d53c4abb798dd4034d89ce79161370cafe2",
+        "migrations/004_decision_receipts.sql": "12b6c589b6b3222f6ac5da6ea9e697cd006e8225cd4d58bafc222f6315b3501e",
+        "migrations/005_admission.sql": "d559a942d2f7b58eca05f4e697137ba4c6bf75f9f46fce9bdb3a40a6eac35ce7",
+        "migrations/006_project_mandates.sql": "dd6abfc339d821de18cdfb7b62399a23ab4cec6108fcdd3fcd05b0bd590e062c",
+        "migrations/007_linear_intake_revalidation.sql": "373274d5465ed5970ff0b33963dad2c215bd7ffaf65a95c3bfb3c23a20a72ade"
+      },
+      "intake": {
+        "migrations/001_intake.sql": "690f7c31c8aa5b7dc3a539201ef346a58e55e8861aac6a0bbb9710bcda9befb0",
+        "migrations/002_native_import.sql": "ba290b292f0f091629905d81eaadf5bf34de753eea9fd74357d3b0efcb13fa4f"
+      }
+    }
+  },
+  "limits": [
+    "Deterministic Linear MCP HTTP and CLI model content/usage; no real Linear or model provider.",
+    "Restart of the Council worker only, while the preparation challenge is pending.",
+    "One root, two executable descendants, one cancelled historical descendant; stop before N2.",
+    "Explicit local-board identity/membership/admin fixture only; no plugin business state seeded with SQL.",
+    "No operational installation, webhook activation, credential enrollment or real ticket import.",
+    "Standalone roots, terminal-only families and external source blocker references remain blocked.",
+    "Later remote Linear changes do not automatically revoke an already admitted mission."
+  ],
+  "retainedFailedCampaigns": [
+    {
+      "directory": "native-Y9jynL",
+      "proofSha256": "5dfcc5740576640517b800c0ade68fc78ea7fb6c5cd9abe4489aaae4a5a8e9c4",
+      "councilCommit": "3ef5f5f204373b79f2aeab45ca90b2735a8b5a76",
+      "intakeCommit": "b52a2a67fdcb9ee926910acad931820993075fb7",
+      "outcome": "BLOCKED",
+      "error": "Bounded observation timed out: authenticated revalidation reaches real intake worker",
+      "cleanup": {
+        "serverStopped": true,
+        "databaseStopped": true,
+        "hostTrackedUnchanged": true,
+        "runtimeRetained": true
+      },
+      "packageBytesUnchanged": null,
+      "sourceResponseConfirmed": false
+    },
+    {
+      "directory": "native-OIyLOi",
+      "proofSha256": "ecaf60afcdefc84df53da8ba9f192dbe6cc45e2b4f9529456e0986040a50c611",
+      "councilCommit": "ecc1477eed87c9f5c8472b53bb98e671d7cb174f",
+      "intakeCommit": "6aa7e814610bf61e68719ee13f2ae0243a0387e0",
+      "outcome": "BLOCKED",
+      "error": "Bounded observation timed out: draft before source admission receipt",
+      "cleanup": {
+        "serverStopped": true,
+        "databaseStopped": true,
+        "hostTrackedUnchanged": true,
+        "runtimeRetained": true
+      },
+      "packageBytesUnchanged": true,
+      "sourceResponseConfirmed": true
+    },
+    {
+      "directory": "native-x3WMog",
+      "proofSha256": "d24e8fbff2354acf021b216488f3a6245bcf99ab93fe88182dfbf001c4302b43",
+      "councilCommit": "ca57f8c8fe0e598c5e63843229103b59bfa77ce2",
+      "intakeCommit": "00c314181043a76ffbadad1721494f49893079ea",
+      "outcome": "BLOCKED",
+      "error": "Bounded observation timed out: native Council subtree reaches settled N1",
+      "cause": "fixture forced PAPERCLIP_IN_WORKTREE=1; native wake suppressed with original identity retained",
+      "cleanup": {
+        "serverStopped": true,
+        "databaseStopped": true,
+        "hostTrackedUnchanged": true,
+        "runtimeRetained": true
+      },
+      "packageBytesUnchanged": true
+    }
+  ]
+}
