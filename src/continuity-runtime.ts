@@ -1,3 +1,4 @@
+import { leadIssueId } from "./hierarchy-contract.js";
 import { publishContinuityObservation, type ContinuityObservation as Observation } from "./continuity-observation.js";
 import { randomUUID } from "node:crypto";
 import type { PluginContext, PluginJobContext } from "@paperclipai/plugin-sdk";
@@ -45,8 +46,8 @@ async function delegatedCommand(ctx: PluginContext, initial: MissionRecord, comm
 async function settleNonAdvancingLead(ctx: PluginContext, initial: MissionRecord, state: N1State, job: PluginJobContext) {
   const { mission: m, body } = await prepareCommand(ctx, initial, "reconcile-lead-usage", job);
   const { envelope } = await nativeN2Profile(ctx, m);
-  await settleOrdinaryRunUsage(ctx, { companyId: m.companyId, issueId: m.rootIssueId, runId: state.rootDispatchRunId!,
-    agentId: physicalAgent(m, m.aggregate.responsibilities.integrationLeadAgentId, { issueId: m.rootIssueId, runId: state.rootDispatchRunId }),
+  await settleOrdinaryRunUsage(ctx, { companyId: m.companyId, issueId: leadIssueId(m), runId: state.rootDispatchRunId!,
+    agentId: physicalAgent(m, m.aggregate.responsibilities.integrationLeadAgentId, { issueId: leadIssueId(m), runId: state.rootDispatchRunId }),
     commandId: String(body.commandId), reservationId: state.activationReservationId, periodKey: state.periodKey,
     expectedVersion: envelope.version });
 }
@@ -59,8 +60,8 @@ async function advanceN1(ctx: PluginContext, m: MissionRecord, state: N1State, j
   if (state.rootDispatchState !== "requested" || !state.rootDispatchRunId) {
     throw new MissionError(409, "continuity_lead_effect_unknown", "Inspect the original lead wake; no repeated departure is authorized");
   }
-  const run = await readOrdinaryRun(ctx, { companyId: m.companyId, issueId: m.rootIssueId, runId: state.rootDispatchRunId,
-    agentId: physicalAgent(m, m.aggregate.responsibilities.integrationLeadAgentId, { issueId: m.rootIssueId, runId: state.rootDispatchRunId }) });
+  const run = await readOrdinaryRun(ctx, { companyId: m.companyId, issueId: leadIssueId(m), runId: state.rootDispatchRunId,
+    agentId: physicalAgent(m, m.aggregate.responsibilities.integrationLeadAgentId, { issueId: leadIssueId(m), runId: state.rootDispatchRunId }) });
   if (["queued", "running", "scheduled_retry"].includes(run.status)) return waiting("native_lead_running", "Council attend la fin du run admis du lead.");
   if (run.status !== "succeeded" || !state.candidate) {
     await settleNonAdvancingLead(ctx, m, state, job);

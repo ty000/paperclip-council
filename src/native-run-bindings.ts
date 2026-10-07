@@ -1,6 +1,7 @@
 import type { MissionRecord } from "./missions.js";
 import type { N1State } from "./n1-missions.js";
 import { physicalAgent } from "./model-state.js";
+import { leadIssueId } from "./hierarchy-contract.js";
 
 export type NativeRunBinding = { issueId: string; agentId: string; reservationId: string; runId?: string | null; pending: boolean };
 
@@ -22,7 +23,7 @@ function n1Bindings(m: MissionRecord) {
   const state = m.aggregate.n1 as N1State | undefined;
   if (!state) return [];
   const lead = m.aggregate.responsibilities.integrationLeadAgentId;
-  return [...binding(m, m.rootIssueId, lead, state.rootDispatchRunId, state.activationReservationId,
+  return [...binding(m, leadIssueId(m), lead, state.rootDispatchRunId, state.activationReservationId,
     ["claimed", "unknown"].includes(state.rootDispatchState ?? "")),
     ...state.contributions.flatMap(slot => binding(m, slot.childIssueId, slot.assigneeAgentId, slot.dispatchRunId,
       slot.dispatchReservationId!, ["claimed", "unknown"].includes(slot.dispatchState ?? ""))),

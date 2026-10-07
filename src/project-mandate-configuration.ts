@@ -1,4 +1,6 @@
+import { readTaskIntake, rebindUnstartedTask } from "./project-intake-rebind.js";
 import { operatingProfileHash } from "./project-mandate-state.js";
+import { parseHierarchyPolicy } from "./hierarchy-contract.js";
 import { randomUUID } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { canonicalPayloadHash, MissionError, parseMissionMandate } from "./missions.js";
@@ -78,7 +80,8 @@ async function policyContent(ctx: PluginContext, companyId: string, projectId: s
   return { enabled: body.enabled === true, ownerUserId: ownerId, leadAgentId, teamRosterId: pair.team.head.rosterId, teamRevision,
     councilRosterId: pair.council.head.rosterId, councilRevision, n3Slots, template, criteriaSource: body.criteriaSource,
     allowedPaths: paths(body.allowedPaths), publication: await publication(ctx, companyId, body.publication),
-    operatingProfileHash: operatingProfileHash(config), baselineRootIds: await baseline(ctx, companyId, projectId, body.includedRootIssueIds) };
+    operatingProfileHash: operatingProfileHash(config), baselineRootIds: await baseline(ctx, companyId, projectId, body.includedRootIssueIds),
+    ...(body.hierarchy === undefined ? {} : { hierarchy: parseHierarchyPolicy(body.hierarchy) }) };
 }
 
 export async function handleProjectMandate(ctx: PluginContext, input: PluginApiRequestInput) {
@@ -87,10 +90,17 @@ export async function handleProjectMandate(ctx: PluginContext, input: PluginApiR
   if (input.actor.actorType !== "user" || !ownerId || input.actor.userId !== ownerId) throw new MissionError(403, "project_owner_required", "Company responsible owner required");
   const project = await ctx.projects.get(projectId, companyId);
   if (!project || project.companyId !== companyId || project.archivedAt) throw new MissionError(422, "project_unavailable", "Exact active company project required");
-  if (input.method === "GET") return { status: 200, body: { policy: await readProjectMandate(ctx, companyId, projectId) } };
+  if (input.method === "GET") return { status: 200, body: { policy: await readProjectMandate(ctx, companyId, projectId),
+    ...(input.query.rootIssueId ? { intake: await readTaskIntake(ctx, companyId, projectId, runtimeUuid(input.query.rootIssueId, "rootIssueId")) } : {}) } };
   if (!input.body || typeof input.body !== "object" || Array.isArray(input.body)) throw new MissionError(422, "project_mandate_input", "Policy object required");
   const body = input.body as Record<string, any>;
   const commandId = runtimeUuid(body.commandId, "commandId"), hash = canonicalPayloadHash(body);
+  if (body.command === "rebind-unstarted-task") {
+    runtimeUuid(body.rootIssueId, "rootIssueId"); runtimeUuid(body.policyRevisionId, "policyRevisionId");
+    const policy = await readProjectMandate(ctx, companyId, projectId);
+    if (!policy) throw new MissionError(409, "project_policy_missing", "Explicit current project mandate required");
+    return { status: 200, body: { ...await rebindUnstartedTask(ctx, policy, ownerId, body), policy } };
+  }
   const prior = await ctx.db.query<any>(`SELECT * FROM ${projectTable(ctx, "project_mandates")} WHERE company_id = $1 AND project_id = $2 AND command_id = $3`, [companyId, projectId, commandId]);
   if (prior[0]) {
     if (prior[0].payload_hash !== hash || prior[0].authorized_by !== ownerId) throw new MissionError(409, "project_command_conflict", "Retain the original policy command and payload");

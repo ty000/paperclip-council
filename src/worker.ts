@@ -27,7 +27,7 @@ import {
 } from "./decision-receipts.js";
 import { ApprovalPreflightError, verifyApprovalCandidate } from "./delivery-manifest.js";
 import { handleFoundationProbe } from "./foundation-probe.js";
-import { getMissionByOrdinaryIssue, getMissionByRootIssue, handleMissionApi, MissionError } from "./missions.js";
+import { getMissionByN1Issue, getMissionByOrdinaryIssue, getMissionByRootIssue, handleMissionApi, MissionError } from "./missions.js";
 import { handleN1AdmissionApi, handleN1AgentApi } from "./n1-missions.js";
 import { handleN2AgentApi, prepareN2Decision, recordN2Decision } from "./n2-missions.js";
 import { registerN2FinishedEventHandler } from "./n2-finished-event.js";
@@ -204,6 +204,15 @@ export async function handleDecision(
   }
 }
 
+async function handleInspection(input: PluginApiRequestInput, context: PluginContext) {
+  const mission = await getMissionByRootIssue(context, input.companyId, input.params.issueId)
+    ?? await getMissionByN1Issue(context, input.companyId, input.params.issueId);
+  if (mission && !(input.body as Record<string, unknown>).missionId) {
+    input = { ...input, body: { ...(input.body as Record<string, unknown>), missionId: mission.missionId } };
+  }
+  return mission?.aggregate.n2 && input.params.issueId === mission.rootIssueId ? handleN2AgentApi(input, context) : handleN1AgentApi(input, context);
+}
+
 async function handleMissionAgentCommand(input: PluginApiRequestInput, context: PluginContext) {
   const command = input.body && typeof input.body === "object" && !Array.isArray(input.body)
     ? (input.body as Record<string, unknown>).command : null;
@@ -219,13 +228,7 @@ async function handleMissionAgentCommand(input: PluginApiRequestInput, context: 
       throw error;
     }
   }
-  if (command === "inspect") {
-    const mission = await getMissionByRootIssue(context, input.companyId, input.params.issueId);
-    if (mission && !(input.body as Record<string, unknown>).missionId) {
-      input = { ...input, body: { ...(input.body as Record<string, unknown>), missionId: mission.missionId } };
-    }
-    if (mission?.aggregate.n2) return handleN2AgentApi(input, context);
-  }
+  if (command === "inspect") return handleInspection(input, context);
   if (["ordinary-inspect", "ordinary-verdict", "confirm-review-handoff", "prepare-resubmission", "attest-transmission", "attest-n3-transmission", "n3-synthesize"].includes(command as string)) {
     return handleN2AgentApi(input, context);
   }

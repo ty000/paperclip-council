@@ -11,6 +11,7 @@ export type ProjectMandateContent = {
   criteriaSource: "project-defaults" | "task-document"; allowedPaths: string[];
   publication: ProjectPublication | null; operatingProfileHash: string;
   baselineRootIds: string[];
+  hierarchy?: import("./hierarchy-contract.js").HierarchyPolicy;
 };
 export type ProjectMandate = { companyId: string; projectId: string; version: number; revisionId: string;
   authorizedBy: string; content: ProjectMandateContent };

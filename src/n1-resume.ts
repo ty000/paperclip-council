@@ -1,3 +1,4 @@
+import { leadIssueId } from "./hierarchy-contract.js";
 import { randomUUID } from "node:crypto";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { readAdmission } from "./admission.js";
@@ -21,9 +22,9 @@ export async function verifyResumedLeadRun(ctx: PluginContext, m: MissionRecord,
       || reservation.ownerReplacementCommandId !== state.resume.commandId) {
     throw new MissionError(409, "n1_resume_binding_unreserved", "The original resume reservation must remain held");
   }
-  const run = await readOrdinaryRun(ctx, { companyId: m.companyId, issueId: m.rootIssueId, runId,
-    agentId: physicalAgent(m, m.aggregate.responsibilities.integrationLeadAgentId, { issueId: m.rootIssueId }) });
-  const summary = await ctx.issues.summaries.getOrchestration({ companyId: m.companyId, issueId: m.rootIssueId, includeSubtree: false });
+  const run = await readOrdinaryRun(ctx, { companyId: m.companyId, issueId: leadIssueId(m), runId,
+    agentId: physicalAgent(m, m.aggregate.responsibilities.integrationLeadAgentId, { issueId: leadIssueId(m) }) });
+  const summary = await ctx.issues.summaries.getOrchestration({ companyId: m.companyId, issueId: leadIssueId(m), includeSubtree: false });
   const expected = new Set([state.resume.lead.priorRunId, runId]);
   if (expected.size !== 2 || summary.runs.length !== 2 || summary.runs.some(r => !expected.has(r.id))
       || !run.startedAt || Date.parse(run.startedAt) < Date.parse(state.resume.authorizedAt)) {
@@ -42,6 +43,7 @@ async function requireBlockedIssue(ctx: PluginContext, m: MissionRecord, issueId
 
 /** One explicit restart before a candidate exists; old effects, runs and costs are retained. */
 export async function prepareN1Resume(ctx: PluginContext, m: MissionRecord, body: Record<string, unknown>, owner: string) {
+  if (m.aggregate.hierarchy?.leaves) throw new MissionError(409, "hierarchy_resume_decision", "Operational hierarchy resume is not qualified by this nominal contract; retain all previous runs, identities and costs for an explicit decision");
   const state = m.aggregate.n1 as N1State | undefined;
   if (!state || state.resume || state.candidate || m.aggregate.n2 || m.aggregate.n5 || m.aggregate.n6
       || m.aggregate.phase !== "executing" || m.aggregate.control.status !== "active"
@@ -68,7 +70,7 @@ export async function prepareN1Resume(ctx: PluginContext, m: MissionRecord, body
     return { issueId, priorRunId: runId, priorReservationId: reservationId,
       priorUsageBaselineUnits: baseline!, reservationId: randomUUID(), ...(contributionId ? { contributionId } : {}) };
   };
-  const lead = await check(m.rootIssueId, state.rootDispatchRunId, state.activationReservationId, state.rootUsageBaselineUnits);
+  const lead = await check(leadIssueId(m), state.rootDispatchRunId, state.activationReservationId, state.rootUsageBaselineUnits);
   const contributions: ResumeTarget[] = [];
   for (const slot of state.contributions) {
     if (slot.issueState !== "confirmed" || slot.dispatchState && slot.dispatchState !== "requested") {
