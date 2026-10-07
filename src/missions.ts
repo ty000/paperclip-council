@@ -1,3 +1,4 @@
+import { configureContinuity } from "./continuity-configuration.js";
 import type { ModelSelectionState } from "./model-state.js";
 import { assertNativeRunInventory, initialNativeWakePolicy } from "./native-runs.js";
 import type { NativeWakePolicy } from "./native-wake-policy.js";
@@ -64,7 +65,7 @@ export type MissionReceipt = {
   commandId: string;
   command: "bind-resumed-lead-run" | "prepare-n1-resume" | "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "fixture-bind-contribution-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish" | "recover-integration" | "recover-candidate"
     | "resume-settled-correction" | "replace-undispatched-correction" | "start-review" | "confirm-review-handoff" | "start-correction" | "prepare-resubmission"
-    | "start-resubmitted-review" | "settle-n2-usage" | "attest-transmission" | "reconcile-native-n2" | "release-native-correction" | "reconcile-ordinary-n2" | "replace-missing-opinion" | "replace-missing-verdict" | "recover-terminal-resubmission" | "ordinary-verdict";
+    | "start-resubmitted-review" | "settle-n2-usage" | "attest-transmission" | "reconcile-native-n2" | "release-native-correction" | "reconcile-ordinary-n2" | "replace-missing-opinion" | "replace-missing-verdict" | "recover-terminal-resubmission" | "ordinary-verdict" | "configure-continuity" | "suspend-continuity";
   actorType: "user" | "agent";
   actorId: string;
   payloadHash: string;
@@ -104,6 +105,7 @@ export type MissionAggregate = {
   effectIntents: Array<Record<string, unknown>>;
   modelSelection?: ModelSelectionState;
   workspacePreflight?: import("./workspace-preflight.js").WorkspacePreflightProfile;
+  continuity?: import("./continuity-policy.js").ContinuityPolicy;
   nativeWakePolicy?: import("./native-wake-policy.js").NativeWakePolicy;
   n1?: Record<string, unknown>;
   n2?: N2State;
@@ -389,6 +391,14 @@ export async function listMissions(ctx: PluginContext, companyId: string): Promi
     `SELECT ${selectColumns} FROM ${table(ctx)} WHERE company_id = $1 ORDER BY updated_at DESC, mission_id LIMIT ${MAX_LIST_ITEMS}`,
     [companyId],
   );
+  return rows.map(parseMissionRow);
+}
+
+/** Dedicated bounded scan: dashboard truncation cannot starve older delegated missions. */
+export async function listContinuityMissions(ctx: PluginContext): Promise<MissionRecord[]> {
+  const rows = await ctx.db.query<MissionRow>(`SELECT ${selectColumns} FROM ${table(ctx)}
+    WHERE aggregate->'continuity'->>'enabled' = 'true' ORDER BY company_id, mission_id LIMIT 201`, []);
+  if (rows.length > 200) throw new MissionError(409, "continuity_scan_bound", "More than 200 delegated missions require an explicit scan plan; no truncated progression");
   return rows.map(parseMissionRow);
 }
 
@@ -727,6 +737,12 @@ async function executeMissionRouteCommand(
   missionId: string | undefined,
 ) {
   const command = String(body.command);
+  if (missionId && ["configure-continuity", "suspend-continuity"].includes(command)) {
+    const ownerId = await requireOwner(ctx, companyId, actorUserId);
+    const mission = await getMission(ctx, companyId, missionId);
+    if (!mission || mission.ownerUserId !== ownerId) throw new MissionError(403, "mission_owner_required", "Exact mission owner required");
+    return configureContinuity(ctx, mission, ownerId, body);
+  }
   if (missionId && command === "reconcile-native-runs") {
     await requireOwner(ctx, companyId, actorUserId);
     const mission = await getMission(ctx, companyId, missionId);
