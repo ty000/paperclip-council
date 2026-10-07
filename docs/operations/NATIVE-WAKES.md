@@ -1,6 +1,6 @@
 # Council-owned waiting states
 
-New ordinary missions pin `council-native-wake-v1` unless the owner explicitly
+New ordinary missions pin `council-native-wake-v2` unless the owner explicitly
 sets `nativeWakeGuardEnabled: false` before creation. Existing missions retain
 their previous contract. Agent heartbeat/demand wake configuration is unchanged.
 
@@ -38,3 +38,46 @@ change Paperclip, the SDK, execution policies through unsupported fields or
 agent-wide settings. An admission reservation is an accounting/launch guard,
 **not a hard provider token ceiling**. Restart continuity and delayed settlement
 are tracked separately in #49.
+
+## Native run inventory and exception accounting
+
+V2 snapshots only completed pre-mandate root run identities; active roots cannot
+be silently adopted. Their historical costs remain the responsibility of the
+explicit initial accounting source, rather than being declared free. Existing
+V1 missions keep their waiting contract and are not retroactively upgraded.
+
+Before preparation/wake claims, ordinary reconciliation and a publisher write
+claim, Council reads the bounded native inventory of its root and mapped work,
+review and publisher issues. An exact stored physical run binding must also have
+its actual mission reservation. A claimed wake without a bound run remains
+uncertain under the existing reservation; it cannot be classified as a foreign
+run or repeated with another key. The optional `nativeRunLimit` is explicitly
+configured and pinned at creation; no numerical run ceiling is invented when
+it is absent. Old and replacement runs both consume that ceiling.
+
+A foreign run is stored by immutable run/mission/issue/agent identity in the
+existing admission document's `unadmittedRuns` ledger. This records an exception,
+not a retrospective permission. Terminal `per_run` input plus output tokens
+qualify its cost; cached input is part of input, not added twice. Cumulative,
+absent, active or unqualified readback remains unknown and makes the accounted
+total unknown. No reservation amount is substituted as an actual cost or exact
+exposure cap. Only the host's exact pre-provider suppression evidence can qualify
+a zero cost. Known cost growth is added once; a lower later read is rejected,
+and a missing later read preserves the previous known units. Neither settlement
+nor reconfiguration erases exception history.
+
+An exception keeps the period blocked even after its terminal cost becomes known.
+Owner command `reconcile-native-runs` can refresh this readback without a new
+provider departure or effect key. Finished events observe foreign failures and
+successes too. Period changes are refused for a mission's existing ledger.
+The inventory is limited to 64 mapped issues and 256 runs per issue; invalid,
+duplicate or oversized native inventories stop launches. This is a fail-closed
+observation guard, not a global interceptor of external/manual/timer/provider
+wakes. A wake can occur after a read; it is retained when next observed.
+
+Qualification distinguishes the actual deterministic CLI cycle from a seeded
+foreign heartbeat row. The latter proves installed native readback, durable
+unknown cost across an actual worker restart and exact cost reconciliation once;
+it is not proof of an external provider wake. Autonomous periodic observation,
+late cost persistence and visible exception handling are delivered separately
+in #49. Resolving an unadmitted run does not implicitly authorize another attempt.

@@ -94,6 +94,13 @@ export type AdmissionDocument = {
   limits: AdmissionLimits;
   reservations: AdmissionReservation[];
   commandReceipts: AdmissionCommandReceipt[];
+  unadmittedRuns?: UnadmittedRunFact[];
+};
+
+export type UnadmittedRunFact = {
+  missionId: string; runId: string; issueId: string; agentId: string; nativeStatus: string;
+  usage: AdmissionUsage; remainingExposure: AdmissionRemainingExposure; lastKnownUsageUnits: number;
+  observedAt: string;
 };
 
 export type AdmissionBlocker = {
@@ -105,7 +112,8 @@ export type AdmissionBlocker = {
     | "unsettled_exposure_unknown"
     | "period_inactive"
     | "period_allowance_exhausted"
-    | "parallelism_exhausted";
+    | "parallelism_exhausted"
+    | "unadmitted_native_run";
   message: string;
 };
 
@@ -335,6 +343,12 @@ function parseDocument(value: unknown): AdmissionDocument {
       throw new Error("Admission reservation usage baseline is missing or invalid");
     }
   }
+  if (document.unadmittedRuns !== undefined && !Array.isArray(document.unadmittedRuns)) throw new Error("Invalid native exception ledger");
+  for (const run of document.unadmittedRuns ?? []) {
+    for (const key of ["missionId", "runId", "issueId", "agentId"] as const) uuid(run[key], key);
+    units(run.lastKnownUsageUnits, "native run previous known usage");
+    parseUsage(run.usage); parseRemainingExposure(run.remainingExposure);
+  }
   return document;
 }
 
@@ -346,6 +360,7 @@ function reservationExposureUnits(reservation: AdmissionReservation): number | n
 
 function blockersFor(document: AdmissionDocument): AdmissionBlocker[] {
   const blockers: AdmissionBlocker[] = [];
+  if (document.unadmittedRuns?.length) blockers.push({ code: "unadmitted_native_run", message: "Native runs without Council admission are retained; no new departure is authorized." });
   const now = Date.now();
   if (now < new Date(document.periodStart).valueOf() || now >= new Date(document.periodEnd).valueOf()) {
     blockers.push({ code: "period_inactive", message: "The configured admission period is not active." });
@@ -371,6 +386,7 @@ function blockersFor(document: AdmissionDocument): AdmissionBlocker[] {
 }
 
 function accountedUnits(document: AdmissionDocument): number | null {
+  if (document.unadmittedRuns?.some(run => run.usage.status === "unknown" || run.remainingExposure.status === "unknown")) return null;
   if (document.allowance.status !== "known" || document.exposure.status !== "known") return null;
   let result = document.allowance.knownUsageUnits + document.exposure.units;
   for (const reservation of document.reservations) {
@@ -414,6 +430,7 @@ function documentFromSnapshot(snapshot: AdmissionSnapshot): AdmissionDocument {
     limits: snapshot.limits,
     reservations: snapshot.reservations,
     commandReceipts: snapshot.commandReceipts,
+    ...(snapshot.unadmittedRuns ? { unadmittedRuns: snapshot.unadmittedRuns } : {}),
   };
 }
 
@@ -448,6 +465,39 @@ async function casDocument(
   );
   if (result.rowCount !== 1) return null;
   return requireAdmission(ctx, current.companyId, current.periodKey);
+}
+
+/** Record an observed exception, never manufacture an admission after a run. */
+export async function recordUnadmittedRun(ctx: PluginContext, input: {
+  companyId: string; periodKey: string; missionId: string; runId: string; issueId: string; agentId: string;
+  nativeStatus: string; usage: AdmissionUsage; remainingExposure: AdmissionRemainingExposure;
+}) {
+  const current = await requireAdmission(ctx, uuid(input.companyId, "companyId"), requiredString(input.periodKey, "periodKey", 200));
+  const identity = { missionId: uuid(input.missionId, "missionId"), runId: uuid(input.runId, "runId"),
+    issueId: uuid(input.issueId, "issueId"), agentId: uuid(input.agentId, "agentId") };
+  const facts = current.unadmittedRuns ?? [];
+  const old = facts.find(run => run.runId === identity.runId);
+  if (old && Object.entries(identity).some(([key, value]) => old[key as keyof typeof identity] !== value)) {
+    throw new AdmissionError(409, "unadmitted_run_identity_conflict", "Observed native run changed its immutable exception binding");
+  }
+  const usage = parseUsage(input.usage); const remainingExposure = parseRemainingExposure(input.remainingExposure);
+  const known = usage.status === "known" ? usage.units : old?.lastKnownUsageUnits ?? 0;
+  if (known < (old?.lastKnownUsageUnits ?? 0)) throw new AdmissionError(409, "unadmitted_usage_decreased", "Retain the previously observed cost; a smaller read cannot erase it");
+  const next = { ...identity, nativeStatus: requiredString(input.nativeStatus, "nativeStatus", 64), usage, remainingExposure, lastKnownUsageUnits: known };
+  if (old && payloadHash(next) === payloadHash({ ...old, observedAt: undefined })) return current;
+  if (!old && facts.length >= 128) throw new AdmissionError(409, "unadmitted_run_limit", "Native exception ledger is full; no new launch is permitted");
+  let allowance = current.allowance;
+  if (allowance.status === "known") {
+    const total = allowance.knownUsageUnits + known - (old?.lastKnownUsageUnits ?? 0);
+    if (!Number.isSafeInteger(total)) throw new AdmissionError(409, "unadmitted_usage_overflow", "Observed total cannot be safely represented; stop admission");
+    allowance = { ...allowance, knownUsageUnits: total };
+  }
+  const fact: UnadmittedRunFact = { ...next, observedAt: new Date().toISOString() };
+  const document = { ...documentFromSnapshot(current), allowance,
+    unadmittedRuns: old ? facts.map(run => run.runId === fact.runId ? fact : run) : [...facts, fact] };
+  const updated = await casDocument(ctx, current, document);
+  if (!updated) throw new AdmissionError(409, "version_conflict", "Admission changed during native exception accounting; reread before continuing");
+  return updated;
 }
 
 function configurePayload(input: AdmissionConfigureInput) {
@@ -486,7 +536,7 @@ export async function configureAdmission(ctx: PluginContext, input: AdmissionCon
     if (existing.commandReceipts.length >= MAX_RECEIPTS) {
       throw new AdmissionError(409, "command_limit_reached", `Admission command receipt limit of ${MAX_RECEIPTS} is reached`);
     }
-    if (existing.reservations.length > 0) {
+    if (existing.reservations.length > 0 || existing.unadmittedRuns?.length) {
       throw new AdmissionError(409, "configuration_in_use", "A period with reservation history cannot be reconfigured");
     }
     const at = new Date().toISOString();

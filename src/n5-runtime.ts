@@ -13,6 +13,7 @@ import { inspectN5, type N5State } from "./n5-state.js";
 import { bindVariantIssue, claimVariantWake, observeVariantRun, prepareVariantLaunch, recordVariantWake } from "./model-runtime.js";
 import { modelLaunch, physicalAgent } from "./model-state.js";
 import { validatePublisherPreflight } from "./n5-publisher-preflight.js";
+import { assertNativeRunInventory } from "./native-runs.js";
 
 const fresh = async (ctx: PluginContext, m: MissionRecord) => (await getMission(ctx, m.companyId, m.missionId))!;
 const save = (ctx: PluginContext, m: MissionRecord, n5: N5State) => n2Cas(ctx, m, { ...m.aggregate, n5 });
@@ -137,6 +138,7 @@ async function resumeN5PreWake(ctx: PluginContext, initial: MissionRecord, newly
 }
 
 export async function reconcileN5(ctx: PluginContext, initial: MissionRecord) {
+  await assertNativeRunInventory(ctx, initial);
   let m = initial;
   if (!m.aggregate.n5) return m;
   if (!m.aggregate.n5.publication || m.aggregate.n5.continuation && !m.aggregate.n5.continuation.updateAdmitted
@@ -218,6 +220,7 @@ export async function handleN5Agent(ctx: PluginContext, input: PluginApiRequestI
     const n5 = m.aggregate.n5!; let p = n5.publication!;
     if (body.command === "n5-claim-publication") {
       if (p.claimedAt) throw new MissionError(409, "n5_effect_already_claimed", "One publication intent is already consumed; correlate readback without another effect");
+      await assertNativeRunInventory(ctx, m);
       const candidate = acceptedN5Submission(m); await assertCurrentN5Plan(ctx, m);
       if (canonicalPayloadHash(candidate) !== canonicalPayloadHash(p.submission)) throw new MissionError(409, "n5_candidate_changed", "Accepted candidate changed");
       if (n5.authority.publisherPreflight) {

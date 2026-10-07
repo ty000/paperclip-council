@@ -2,7 +2,8 @@ import type { PluginContext, PluginApiRequestInput } from "@paperclipai/plugin-s
 import { MissionError, type MissionRecord } from "./missions.js";
 import { physicalAgent } from "./model-state.js";
 
-export type NativeWakePolicy = { protocol: "council-native-wake-v1" };
+export type NativeWakePolicy = { protocol: "council-native-wake-v1" }
+  | { protocol: "council-native-wake-v2"; rootBaseline: Array<{ runId: string; agentId: string }>; runLimit?: number };
 
 function matchesIssue(issue: Awaited<ReturnType<PluginContext["issues"]["get"]>>, m: MissionRecord, issueId: string, agentId: string) {
   const bindings = { id: issueId, companyId: m.companyId, projectId: m.projectId, assigneeAgentId: agentId,

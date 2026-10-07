@@ -1,4 +1,5 @@
 import { physicalAgent } from "./model-state.js";
+import { assertNativeRunInventory } from "./native-runs.js";
 import { replaceUndispatchedCorrection } from "./n2-undispatched-correction.js";
 import { resumeSettledCorrection } from "./n2-correction-resume.js";
 import type { RoleKey } from "./model-catalogue.js";
@@ -325,6 +326,7 @@ async function applyVerdict(ctx: PluginContext, mission: MissionRecord, task: Or
 
 /** One durable, sequential dispatcher; explicit owner reconciliation resumes events, never uncertain effects. */
 export async function reconcileOrdinaryN2(ctx: PluginContext, initial: MissionRecord) {
+  await assertNativeRunInventory(ctx, initial);
   let mission = await freshOrdinary(ctx, initial);
   mission = await reconcileReplacedCouncilSettlement(ctx, mission);
   for (let step = 0; step < 12; step++) {

@@ -1,4 +1,5 @@
 import { prepareN6Scenario } from "./n6-scenario.js";
+import { qualifyNativeRunException } from "./native-run-exception-scenario.js";
 import assert from "node:assert/strict";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -32,7 +33,7 @@ const proof: any = { schema: "council-ordinary-installed-v1", outcome: "RUNNING"
   head: gitAt(repository, "rev-parse", "HEAD"), hostSha, runtime, timeline: [], checks: {},
   boundary: "Installed Council owns N1 child completion/root waiting, N2/N3 state, admission, dispatch and reconciliation. Only CLI model/content/usage are deterministic. Owner prepares N1; Council finishes recorded children without implicit parent wakes and parks its verified candidate awaiting review. Agent demand wake policy remains enabled.",
   source: Object.fromEntries(await Promise.all([...new Set([fixture, fileURLToPath(import.meta.url), resolve(here, "ordinary-delivery-fixture.mjs"), resolve(here, "ordinary-delivery-scenario.ts"), resolve(here, "n6-scenario.ts"), resolve(here, "n6-coordination-fixture.mjs"), resolve(repository, "dist/worker.js"),
-    resolve(repository, "scripts/operations/workspace_preflight.py"), resolve(repository, "scripts/operations/publisher_preflight.py"),
+    resolve(repository, "scripts/operations/workspace_preflight.py"), resolve(repository, "scripts/operations/publisher_preflight.py"), resolve(here, "native-run-exception-scenario.ts"),
     ...gitAt(repository, "ls-files", "src").split("\n").map(path => resolve(repository, path)),
     ...gitAt(repository, "ls-files", "--others", "--exclude-standard", "src").split("\n").filter(Boolean).map(path => resolve(repository, path))])].map(async p => [p, createHash("sha256").update(await readFile(p)).digest("hex")]))) };
 const record = (event: string, details: any = {}) => proof.timeline.push({ ordinal: proof.timeline.length + 1, at: new Date().toISOString(), event, ...details });
@@ -70,6 +71,7 @@ async function waitFor<T>(label: string, read: () => Promise<T>, ok: (v: T) => b
 
 try {
   const tables = await hostImport("packages/db/src/index.ts");
+  const { eq } = await hostImport("server/node_modules/drizzle-orm/index.js");
   const { createApp } = await hostImport("server/src/app.ts");
   const { createPluginWorkerManager } = await hostImport("server/src/services/plugin-worker-manager.ts");
   const { createStorageService } = await hostImport("server/src/storage/service.ts");
@@ -185,7 +187,7 @@ try {
   }, Boolean);
   mission = (await api("GET", `${missionPath}?companyId=${companyId}`)).mission;
   assert.equal(mission.aggregate.phase, "ready_for_review");
-  assert.equal(mission.aggregate.nativeWakePolicy.protocol, "council-native-wake-v1");
+  assert.equal(mission.aggregate.nativeWakePolicy.protocol, "council-native-wake-v2");
   assert.equal((await api("GET", `/api/issues/${root.id}`)).status, "blocked");
   const nativeChildren = await Promise.all(mission.aggregate.n1.contributions.map((slot: any) => api("GET", `/api/issues/${slot.childIssueId}`)));
   assert(nativeChildren.every((issue: any) => issue.status === "done"));
@@ -246,6 +248,11 @@ try {
   assert(proof.issues.every((issue: any) => issue.status === "done" && !issue.executionPolicy && !issue.executionState));
   assert(proof.issues.filter((issue: any) => issue.id !== root.id).every((issue: any) => !issue.parentId));
   proof.checks = { exactAgentApiBindings: "PASS", reportWhileRunningDoesNotAdmit: "PASS", realN1Prerequisite: "PASS", installedOrdinaryN2N3: "PASS", expectedCliRunsSucceeded: "PASS", replayNoExtraRun: "PASS", allReservationsSettled: "PASS", n5Handoff: "PASS" };
+  if (deliveryMode) {
+    proof.admittedRunCount = proof.runs.length;
+    await qualifyNativeRunException({ api, db, tables, eq, companyId, actors, rootIssueId: root.id, pluginId, missionPath, admissionPath, profile, proof });
+    proof.boundary += " Native exception qualification seeds one heartbeat row, then uses installed APIs and a real plugin restart; it does not launch an external wake or provider.";
+  }
   proof.outcome = success;
 } catch (error) {
   proof.outcome = "BLOCKED"; proof.error = { message: String(error), stack: error instanceof Error ? error.stack : undefined };
