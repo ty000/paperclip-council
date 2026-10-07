@@ -8,9 +8,12 @@ import { readNativeG4Profile } from "./g4-native.js";
 import { handleN5Board } from "./n5-runtime.js";
 import { operatingProfileHash } from "./project-mandate-state.js";
 import { assertProjectDeparture } from "./project-mandate-guard.js";
+import { prepareHierarchy } from "./hierarchy-intake.js";
+import type { HierarchyState } from "./hierarchy-contract.js";
 import { listProjectMandates, projectIssues, projectMandateRow, projectTable, type ProjectMandate, type ProjectMandateSnapshot } from "./project-mandate-state.js";
 
 type IntakeState = { createBody?: Record<string, unknown>; snapshot?: ProjectMandateSnapshot;
+  hierarchy?: HierarchyState;
   commands: Record<string, Record<string, unknown>>; questions: Record<string, { message: string; confirmed: boolean }>;
   plan?: { key: string; body: string } };
 type Intake = { companyId: string; rootIssueId: string; projectId: string; revisionId: string; missionId: string; version: number; state: IntakeState };
@@ -49,11 +52,11 @@ async function question(ctx: PluginContext, initial: Intake, policy: ProjectMand
 }
 
 async function pinTask(ctx: PluginContext, intake: Intake, policy: ProjectMandate, issues: Awaited<ReturnType<typeof projectIssues>>) {
-  const root = issues.find(issue => issue.id === intake.rootIssueId);
-  if (!root || root.parentId || root.status !== "backlog" || root.originKind !== "manual" || root.assigneeAgentId !== policy.content.leadAgentId) {
+  const root = await ctx.issues.get(intake.rootIssueId, intake.companyId);
+  if (!root || root.parentId || !["backlog", ...(policy.content.hierarchy?.adoptExistingChildren ? ["blocked"] : [])].includes(root.status) || root.originKind !== "manual" || root.assigneeAgentId !== policy.content.leadAgentId) {
     throw new MissionError(409, "project_task_eligibility", "Use a manual parentless task in Backlog assigned to the declared project lead");
   }
-  if (issues.some(issue => issue.parentId === root.id)) throw new MissionError(409, "project_hierarchy_pending", "Existing children are retained. Their governed adoption requires the hierarchy lot #51; do not duplicate the backlog");
+  const hierarchy = await prepareHierarchy(ctx, policy, root.id, issues);
   if (!root.title.trim() || !root.description?.trim()) throw new MissionError(422, "project_task_description", "Describe the expected result in this task before admission");
   if (root.title.length + root.description.length > 8000) throw new MissionError(422, "project_task_description", "Task source exceeds the bounded 8000 character mission objective");
   const existing = await getMissionByRootIssue(ctx, intake.companyId, intake.rootIssueId);
@@ -67,7 +70,7 @@ async function pinTask(ctx: PluginContext, intake: Intake, policy: ProjectMandat
     authorizedBy: policy.authorizedBy, operatingProfileHash: policy.content.operatingProfileHash, mandateHash: canonicalPayloadHash(mandate),
     allowedPaths: policy.content.allowedPaths, publication: policy.content.publication,
     source: { rootIssueId: root.id, title: root.title, descriptionHash: canonicalPayloadHash(root.description), taskDocumentRevisionId } };
-  return save(ctx, intake, { ...intake.state, createBody, snapshot });
+  return save(ctx, intake, { ...intake.state, createBody, snapshot, ...(hierarchy ? { hierarchy } : {}) });
 }
 
 async function taskCriteria(ctx: PluginContext, intake: Intake, policy: ProjectMandate) {
@@ -96,7 +99,7 @@ async function preparePublication(ctx: PluginContext, initial: Intake, m: Missio
     const body = JSON.stringify({ missionId: m.missionId, mandateHash: canonicalPayloadHash(m.aggregate.mandate),
       plannerAgentId: policy.content.leadAgentId, orchestratorAgentId: policy.content.leadAgentId, integrationLeadAgentId: policy.content.leadAgentId,
       qaAgentId: publication.qaAgentId, work: n1.contributions.map(slot => ({ assigneeAgentId: slot.assigneeAgentId,
-        sourceRefs: [`issue:${slot.childIssueId}`, `git:${slot.commit}`], ownedPaths: slot.ownedPaths, dependencies: [],
+        sourceRefs: [`issue:${slot.childIssueId}`, `git:${slot.commit}`], ownedPaths: slot.ownedPaths, dependencies: m.aggregate.hierarchy?.leaves?.find(leaf => leaf.issueId === slot.childIssueId)?.blockedByIssueIds.map(id => `issue:${id}`) ?? [],
         evidenceRefs: [`git:${slot.commit}`], skills: [], interface: slot.title })) });
     intake = await save(ctx, intake, { ...intake.state, plan: { key: `council-plan-${m.missionId}`, body } });
   }
@@ -129,7 +132,8 @@ async function advance(ctx: PluginContext, initial: Intake, latest: ProjectManda
     // Replays use the persisted full payload. The root is never recreated.
     await createMission(ctx, intake.companyId, policy.authorizedBy, intake.state.createBody);
     let m = (await getMission(ctx, intake.companyId, intake.missionId))!;
-    if (!m.aggregate.projectMandate) m = await n2Cas(ctx, m, { ...m.aggregate, projectMandate: intake.state.snapshot! });
+    if (!m.aggregate.projectMandate) m = await n2Cas(ctx, m, { ...m.aggregate, projectMandate: intake.state.snapshot!,
+      ...(intake.state.hierarchy ? { hierarchy: intake.state.hierarchy } : {}) });
     else if (canonicalPayloadHash(m.aggregate.projectMandate) !== canonicalPayloadHash(intake.state.snapshot)) throw new MissionError(409, "project_snapshot_conflict", "Original task and project snapshot changed");
     await assertProjectDeparture(ctx, m);
     if (!m.aggregate.continuity) {
@@ -155,7 +159,7 @@ async function activateTask(ctx: PluginContext, intake: Intake, m: MissionRecord
   const doc = source.taskDocumentRevisionId ? await ctx.issues.documents.get(m.rootIssueId, "council-task", m.companyId) : null;
   if (root?.title !== source.title || canonicalPayloadHash(root.description) !== source.descriptionHash
       || source.taskDocumentRevisionId && doc?.latestRevisionId !== source.taskDocumentRevisionId
-      || issues.some(issue => issue.parentId === m.rootIssueId)) {
+      || !m.aggregate.hierarchy?.leaves && issues.some(issue => issue.parentId === m.rootIssueId)) {
     throw new MissionError(409, "project_task_source_changed", "Task source or children changed after the pinned intake; retain the original mission without activation");
   }
   const profile = await readNativeG4Profile(ctx, m.companyId);
@@ -170,7 +174,7 @@ export async function reconcileProjectTasks(ctx: PluginContext) {
   for (const policy of await listProjectMandates(ctx)) {
     if (!policy.content.enabled) continue;
     const issues = await projectIssues(ctx, policy.companyId, policy.projectId);
-    for (const root of issues.filter(issue => !issue.parentId && issue.originKind === "manual" && issue.status === "backlog"
+    for (const root of issues.filter(issue => !issue.parentId && issue.originKind === "manual" && ["backlog", ...(policy.content.hierarchy?.adoptExistingChildren ? ["blocked"] : [])].includes(issue.status)
       && issue.assigneeAgentId === policy.content.leadAgentId && !policy.content.baselineRootIds.includes(issue.id))) {
       await ctx.db.execute(`INSERT INTO ${projectTable(ctx, "project_task_intakes")} (company_id, root_issue_id, project_id, policy_revision_id, mission_id, state)
         VALUES ($1, $2, $3, $4, $5, $6::jsonb) ON CONFLICT DO NOTHING`, [policy.companyId, root.id, policy.projectId, policy.revisionId, randomUUID(), JSON.stringify({ commands: {}, questions: {} })]);

@@ -48,7 +48,7 @@ async function requireCli(ctx: PluginContext, mission: MissionRecord, agentId: s
 async function assertRootIdle(ctx: PluginContext, mission: MissionRecord) {
   const root = await ctx.issues.get(mission.rootIssueId, mission.companyId);
   const summary = await ctx.issues.summaries.getOrchestration({ companyId: mission.companyId, issueId: mission.rootIssueId, includeSubtree: false });
-  if (!root || root.assigneeAgentId !== physicalAgent(mission, mission.aggregate.responsibilities.integrationLeadAgentId, { issueId: mission.rootIssueId })
+  if (!root || root.assigneeAgentId !== (mission.aggregate.hierarchy?.leaves ? mission.aggregate.responsibilities.integrationLeadAgentId : physicalAgent(mission, mission.aggregate.responsibilities.integrationLeadAgentId, { issueId: mission.rootIssueId }))
       || root.status !== (mission.aggregate.nativeWakePolicy ? "blocked" : "in_progress")
       || root.executionPolicy || root.executionState || summary.runs.some(run => ["queued", "running"].includes(run.status))) {
     throw new MissionError(409, "ordinary_root_not_idle", "Root must remain under its lead, without native review policy/state or active run");
@@ -363,7 +363,7 @@ export async function reconcileOrdinaryN2(ctx: PluginContext, initial: MissionRe
     mission = await saveOrdinaryTask(ctx, mission, { ...task, closedAt: new Date().toISOString() });
     if (mission.aggregate.n2!.status === "accepted") {
       mission = await reconcileReplacedCouncilSettlement(ctx, mission);
-      await ctx.issues.update(mission.rootIssueId, { status: "done" }, mission.companyId);
+      if (!mission.aggregate.hierarchy) await ctx.issues.update(mission.rootIssueId, { status: "done" }, mission.companyId);
       return mission;
     }
   }

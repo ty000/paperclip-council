@@ -1,13 +1,14 @@
 import type { PluginContext, PluginApiRequestInput } from "@paperclipai/plugin-sdk";
 import { MissionError, type MissionRecord } from "./missions.js";
 import { physicalAgent } from "./model-state.js";
+import { leadIssueId } from "./hierarchy-contract.js";
 
 export type NativeWakePolicy = { protocol: "council-native-wake-v1" }
   | { protocol: "council-native-wake-v2"; rootBaseline: Array<{ runId: string; agentId: string }>; runLimit?: number };
 
 function matchesIssue(issue: Awaited<ReturnType<PluginContext["issues"]["get"]>>, m: MissionRecord, issueId: string, agentId: string) {
   const bindings = { id: issueId, companyId: m.companyId, projectId: m.projectId, assigneeAgentId: agentId,
-    parentId: issueId === m.rootIssueId ? null : m.rootIssueId };
+    parentId: issueId === leadIssueId(m) ? null : m.aggregate.hierarchy?.leaves?.find(leaf => leaf.issueId === issueId)?.parentId ?? m.rootIssueId };
   return Boolean(issue && Object.entries(bindings).every(([key, expected]) => (issue[key as keyof typeof issue] ?? null) === expected));
 }
 
@@ -38,10 +39,21 @@ export async function finishN1Disposition(ctx: PluginContext, m: MissionRecord, 
     await observeStatus(ctx, m, slot.childIssueId!, agentId, "done");
   }
   if (body.command === "publish") {
-    const agentId = physicalAgent(m, m.aggregate.responsibilities.integrationLeadAgentId, { issueId: m.rootIssueId, runId: state.rootDispatchRunId });
-    if (!state.candidate || state.rootDispatchRunId !== input.actor.runId || input.actor.agentId !== agentId || input.params.issueId !== m.rootIssueId) {
+    const issueId = leadIssueId(m);
+    const agentId = physicalAgent(m, m.aggregate.responsibilities.integrationLeadAgentId, { issueId, runId: state.rootDispatchRunId });
+    if (!state.candidate || state.rootDispatchRunId !== input.actor.runId || input.actor.agentId !== agentId || input.params.issueId !== issueId) {
       throw new MissionError(409, "native_candidate_disposition", "Only the recorded candidate's exact lead run may park the root");
     }
-    await observeStatus(ctx, m, m.rootIssueId, agentId, "blocked");
+    await observeStatus(ctx, m, issueId, agentId, "blocked");
+    if (issueId !== m.rootIssueId) {
+      const root = await ctx.issues.get(m.rootIssueId, m.companyId);
+      if (!root || root.parentId || root.assigneeAgentId !== m.aggregate.responsibilities.integrationLeadAgentId
+          || !["backlog", "blocked"].includes(root.status) || root.checkoutRunId || root.executionRunId) {
+        throw new MissionError(409, "hierarchy_root_wait_unknown", "Original product root must remain waiting under its declared lead");
+      }
+      if (root.status !== "blocked") await ctx.issues.update(root.id, { status: "blocked" }, m.companyId);
+      const after = await ctx.issues.get(root.id, m.companyId);
+      if (after?.status !== "blocked") throw new MissionError(409, "hierarchy_root_wait_unknown", "Product root waiting state was not observed");
+    }
   }
 }

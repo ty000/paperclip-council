@@ -29,7 +29,7 @@ if (config.projectIntake && !config.missionId) {
   const discovered = await api("POST", route, { command: "inspect" });
   assert(discovered.missionId);
   config.missionId = discovered.missionId;
-  config.rootIssueId = issueId;
+  config.rootIssueId = discovered.n1.rootIssueId ?? issueId;
   await writeFile(process.env.COUNCIL_ORDINARY_FIXTURE, JSON.stringify(config));
 }
 const coordinationActor = [config.actors.pm, config.actors.pmSuccessor, config.actors.facilitator].includes(agentId);
@@ -126,7 +126,7 @@ else if (inspection.task) {
     summary = { fixture: "ordinary-correction", taskId: task.taskId, candidateCommit: candidate.candidateCommit };
   }
 } else if (agentId === config.actors.lead) {
-  const contributions = ["alpha", "beta"].map(name => ({ contributionId: randomUUID(), assigneeAgentId: config.actors[name], title: name, ownedPaths: [`${name}.txt`] }));
+  const contributions = inspection.n1.hierarchy?.leaves ?? ["alpha", "beta"].map(name => ({ contributionId: randomUUID(), assigneeAgentId: config.actors[name], title: name, ownedPaths: [`${name}.txt`] }));
   await command("plan", { contributions });
   for (const slot of contributions) await command("materialize", { contributionId: slot.contributionId });
   for (const slot of contributions) {
@@ -138,12 +138,17 @@ else if (inspection.task) {
     await observe(async () => { try { return await call(body); } catch (e) { if (["g4_usage_unavailable", "g4_run_not_terminal"].includes(e.response?.code)) return null; throw e; } }, Boolean, "child costs");
     await observe(() => api("GET", `/api/issues/${item.childIssueId}`), issue => issue.status === "done", "Council finishes the exact recorded child");
   }
-  git("commit", "--allow-empty", "-m", "fixture: integrate two contributions");
+  git("commit", "--allow-empty", "-m", `fixture: integrate ${contributions.length} contributions`);
   const candidate = await uploadCandidate();
   await command("publish", candidate);
   summary = { fixture: "N1 real CLI prerequisite", candidateCommit: candidate.candidateCommit };
 } else {
-  const name = agentId === config.actors.alpha ? "alpha" : "beta";
+  const name = Object.entries(config.actors).find(([name, id]) => ["alpha", "beta", "gamma"].includes(name) && id === agentId)?.[0];
+  assert(name);
+  if (config.hierarchyCount) {
+    const guidance = await api("GET", `/api/issues/${issueId}/documents/council-execution-${config.missionId}`);
+    assert(guidance.body.includes("record-contribution"));
+  }
   await writeFile(resolve(config.repoPath, `${name}.txt`), `${name} contribution\n`);
   git("add", `${name}.txt`); git("commit", "-m", `fixture: ${name} contribution`);
   const slot = inspection.n1.participants.find(slot => slot.assigneeAgentId === agentId);

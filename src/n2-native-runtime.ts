@@ -141,6 +141,7 @@ async function verifyTransmissionCandidate(ctx: PluginContext, mission: MissionR
   await verifyIntegratedCandidate(ctx, { companyId: mission.companyId, issueId: mission.rootIssueId,
     attachmentId: submission.attachmentId, expectedSha256: submission.sha256, baseCommit: submission.baseCommit,
     integrationAdjustedPaths: n1.candidate?.integrationAdjustedPaths,
+    ...(mission.aggregate.hierarchy ? { contributionPolicy: mission.aggregate.hierarchy } : {}),
     candidateCommit: submission.candidateCommit, contributions: contributions as [typeof contributions[number], typeof contributions[number]] });
 }
 

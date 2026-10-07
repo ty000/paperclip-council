@@ -3,6 +3,7 @@ import { canonicalPayloadHash, MissionError } from "./mission-primitives.js";
 import type { MissionRecord } from "./missions.js";
 import { operatingProfileHash } from "./project-mandate-state.js";
 import { readProjectMandate } from "./project-mandate-state.js";
+import { assertHierarchySources } from "./hierarchy-runtime.js";
 
 export async function assertProjectDeparture(ctx: PluginContext, m: MissionRecord) {
   const pinned = m.aggregate.projectMandate;
@@ -15,6 +16,13 @@ export async function assertProjectDeparture(ctx: PluginContext, m: MissionRecor
       || pinned.mandateHash !== canonicalPayloadHash(m.aggregate.mandate)) {
     throw new MissionError(409, "project_authority_changed", "Retain the pinned project revision and existing effects; no new departure is delegated");
   }
+  const hierarchy = m.aggregate.hierarchy;
+  const actual = hierarchy ? { protocol: hierarchy.protocol, maxContributions: hierarchy.maxContributions,
+    execution: hierarchy.execution, adoptExistingChildren: hierarchy.adoptExistingChildren } : null;
+  if (canonicalPayloadHash(actual) !== canonicalPayloadHash(policy.content.hierarchy ?? null)) {
+    throw new MissionError(409, "hierarchy_authority_changed", "Hierarchy policy exceeds the original project authority");
+  }
+  await assertHierarchySources(ctx, m);
 }
 
 export function assertProjectPaths(m: MissionRecord, paths: string[]) {

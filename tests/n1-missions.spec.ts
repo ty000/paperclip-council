@@ -2223,3 +2223,38 @@ describe.each(["recover-integration", "recover-candidate"])("owner recovery: %s"
     expect(h.row().aggregate.journal.at(-1)).toMatchObject({ integrationAdjustedPaths: ["alpha.txt"] });
   });
 });
+
+describe("existing hierarchy N1 identity", () => {
+  it("uses the admitted coordinator and materializes guidance without replacing an existing nested leaf", async () => {
+    const value = activeAggregate(), coordinator = randomUUID(), group = randomUUID();
+    value.hierarchy = { protocol: "council-hierarchy-v1", maxContributions: 3, execution: "sequential", adoptExistingChildren: true,
+      leaves: [{ contributionId: id.contributionA, issueId: id.childA, parentId: group, assigneeAgentId: id.contributorA,
+        title: "Existing alpha", ownedPaths: ["alpha.txt"], descriptionHash: "pinned", documentRevisionId: "v1", blockedByIssueIds: [], pendingBlockerIds: [] }] };
+    value.n1 = { ...(value.n1 as N1State), coordination: { issueId: coordinator, intentId: randomUUID(), state: "confirmed",
+      commandId: randomUUID(), commandHash: "pinned", ownerUserId: id.owner, preparedVersion: 1 } };
+    const h = harness(value);
+    h.issues.set(coordinator, nativeIssue({ id: coordinator, parentId: null, assigneeAgentId: id.lead, status: "in_progress" }));
+    h.issues.set(id.childA, nativeIssue({ id: id.childA, parentId: group, assigneeAgentId: id.contributorA, status: "backlog" }));
+    const contributions = [{ contributionId: id.contributionA, assigneeAgentId: id.contributorA, title: "Existing alpha", ownedPaths: ["alpha.txt"] }];
+    const wrong = await handleN1AgentApi(agentRequest({ command: "plan", commandId: randomUUID(), expectedVersion: 1, contributions }, { agentId: id.lead, runId: id.leadRun }, id.root), h.ctx);
+    expect(wrong.status).toBe(404);
+    const plan = await handleN1AgentApi(agentRequest({ command: "plan", commandId: randomUUID(), expectedVersion: 1, contributions }, { agentId: id.lead, runId: id.leadRun }, coordinator), h.ctx);
+    expect(plan.status).toBe(200);
+    const slot = (h.row().aggregate.n1 as N1State).contributions[0]!;
+    expect(slot).toMatchObject({ childIssueId: id.childA, parentIssueId: group, issueState: "planned" });
+    let doc: any = null;
+    h.documentGet.mockImplementation(async () => doc);
+    const upsert = vi.fn(async (body: any) => { doc = { ...body, latestRevisionId: "execution-v1" }; });
+    (h.ctx.issues.documents as any).upsert = upsert;
+    const before = structuredClone(h.issues.get(id.childA));
+    const body = { command: "materialize", commandId: randomUUID(), expectedVersion: h.row().version, contributionId: id.contributionA };
+    const materialized = await handleN1AgentApi(agentRequest(body, { agentId: id.lead, runId: id.leadRun }, coordinator), h.ctx);
+    expect(materialized.status).toBe(200);
+    expect(upsert).toHaveBeenCalledTimes(1); expect(doc.key).toBe(`council-execution-${id.mission}`);
+    expect(doc.body).toContain("record-contribution"); expect(h.issues.get(id.childA)).toEqual(before);
+    expect(h.create).not.toHaveBeenCalled(); expect(h.update).not.toHaveBeenCalled();
+    expect((h.row().aggregate.n1 as N1State).contributions[0]!.issueState).toBe("confirmed");
+    expect((await handleN1AgentApi(agentRequest(body, { agentId: id.lead, runId: id.leadRun }, coordinator), h.ctx)).status).toBe(200);
+    expect(upsert).toHaveBeenCalledTimes(1);
+  });
+});
