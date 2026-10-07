@@ -1,5 +1,6 @@
 import { readTaskIntake, rebindUnstartedTask } from "./project-intake-rebind.js";
 import { operatingProfileHash } from "./project-mandate-state.js";
+import { parsePrContract } from "./pr-contract.js";
 import { parseHierarchyPolicy } from "./hierarchy-contract.js";
 import { randomUUID } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
@@ -42,7 +43,8 @@ async function publication(ctx: PluginContext, companyId: string, value: unknown
       throw new MissionError(422, "project_publication_actor", "Declared publisher and QA must be available CLI actors in this company");
     }
   }
-  return result;
+  const contract = parsePrContract(v.contract);
+  return { ...result, ...(contract ? { contract } : {}) };
 }
 async function baseline(ctx: PluginContext, companyId: string, projectId: string, included: unknown) {
   const include = included === undefined ? [] : included;

@@ -36,6 +36,28 @@ async function preflightPublicationClaim({ view, p, call, config, issueId, runId
   return claim;
 }
 
+async function waitForUpdatedNativeHead(api, issueId, objectId, remote, p) {
+  if (p.operation === "update") {
+    const entry = (await api("GET", `/api/issues/${issueId}/external-objects`)).find(entry => entry.object.id === objectId);
+    if (entry.object.data.headSha !== remote.headSha) {
+      const waitUntil = Date.parse(entry.object.nextRefreshAt) + 50;
+      assert(waitUntil - Date.now() <= 305000);
+      while (Date.now() < waitUntil) await new Promise(r => setTimeout(r, Math.min(10000, waitUntil - Date.now())));
+      await api("POST", `/api/issues/${issueId}/external-objects/refresh`, { objectIds: [objectId] });
+    }
+  }
+}
+
+function feedbackFor(view, p, config, issueId, runId, remote) {
+  return { protocol: "publisher-github-feedback-v1", provenance: "publisher_run_report",
+    missionId: config.missionId, intentId: p.intentId, issueId, runId, observedAt: new Date().toISOString(), url: remote.url,
+    repository: view.delivery.authority.repository, headSha: remote.headSha, baseRef: view.delivery.authority.baseRef, headRef: remote.headRef, draft: true,
+    checks: [{ name: "fixture-ci", state: "passed", evidenceUrl: remote.url }],
+    reviews: [{ id: p.operation === "update" ? 2 : 1, author: "fixture-reviewer", headSha: remote.headSha,
+      state: p.operation === "update" ? "APPROVED" : "CHANGES_REQUESTED", body: p.operation === "update" ? "The alpha marker is corrected" : "Material defect: alpha.txt must contain corrected marker",
+      url: remote.url + "#pullrequestreview-" + (p.operation === "update" ? 2 : 1), submittedAt: new Date().toISOString() }] };
+}
+
 export async function publishDelivery({ api, call, config, issueId, runId, git }) {
   let view = await call({ command: "n5-inspect" });
   const p = view.delivery.publication;
@@ -53,6 +75,7 @@ export async function publishDelivery({ api, call, config, issueId, runId, git }
   assert(!remote.intents.includes(p.intentId));
   if (p.operation === "update") { assert.equal(p.targetUrl, remote.url); assert.equal(remote.createCount, 1); remote.updateCount++; }
   else { assert.equal(remote.createCount, 0); remote.createCount++; }
+  remote.draft = view.delivery.authority.contract?.draftOnly === true;
   remote.headSha = p.submission.candidateCommit; remote.headRef = view.delivery.authority.headRef; remote.intents.push(p.intentId);
   // This file is the explicitly simulated GitHub publication transport, after the real one-shot claim.
   await writeFile(path, JSON.stringify(remote));
@@ -61,8 +84,11 @@ export async function publishDelivery({ api, call, config, issueId, runId, git }
   const objects = await api("GET", `/api/issues/${issueId}/external-objects`);
   const objectId = objects.find(entry => entry.object.providerKey === "github").object.id;
   const refresh = await api("POST", `/api/issues/${issueId}/external-objects/refresh`, { objectIds: [objectId] });
+  if (config.feedbackMode) await waitForUpdatedNativeHead(api, issueId, objectId, remote, p);
   view = await call({ command: "n5-inspect" });
+  const feedbackReport = config.feedbackMode ? feedbackFor(view, p, config, issueId, runId, remote) : undefined;
   const body = { command: "n5-observe-delivery", commandId: randomUUID(), expectedVersion: view.version,
+    ...(feedbackReport ? { feedbackReport } : {}),
     checks: { headSha: remote.headSha, state: "passed", evidenceRefs: ["fixture:exact-head-check"] },
     reviews: { headSha: remote.headSha, state: "approved", evidenceRefs: ["fixture:exact-head-review"] } };
   let observation;

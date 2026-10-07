@@ -15,7 +15,7 @@ export async function installOrdinaryGitHubTransport(runtime: string, proof: any
       assert.equal(url, "https://api.github.com/repos/ty000/paperclip-council/pulls/4242");
       const remote = JSON.parse(await readFile(remotePath, "utf8"));
       proof.githubTransportCalls.push({ url, headSha: remote.headSha, at: new Date().toISOString() });
-      return new Response(JSON.stringify({ number: 4242, state: "open", draft: false, title: "Simulated GitHub transport",
+      return new Response(JSON.stringify({ number: 4242, state: "open", draft: remote.draft === true, title: "Simulated GitHub transport",
         head: { sha: remote.headSha, ref: remote.headRef ?? "codex/n5-fixture" }, base: { ref: "main" }, updated_at: new Date().toISOString() }), { status: 200, headers: { "content-type": "application/json" } });
     }
     assert(["127.0.0.1", "localhost"].includes(new URL(url).hostname), "Qualification forbids unsimulated outbound fetch");
@@ -111,13 +111,23 @@ export async function prepareOrdinaryDelivery(input: any) {
 export function nominalDeliveryObserver(input: any) {
   const { api, companyId, missionPath, runtime, proof } = input;
   return { advance: async (_m: any) => {},
-    complete: (m: any) => Boolean(m.aggregate.n5?.publication?.settledAt && m.aggregate.n5.publication.observation?.matchesCandidate),
+    complete: (m: any) => Boolean((!m.aggregate.n5?.authority.contract || m.aggregate.n5.continuation?.updateAdmitted) && m.aggregate.n5?.publication?.settledAt && m.aggregate.n5.publication.observation?.matchesCandidate),
     async finish() {
       const view = await api("GET", `${missionPath}?companyId=${companyId}`);
       assert.equal(view.n5.ready, true);
       const remote = JSON.parse(await readFile(resolve(runtime, "github-transport.json"), "utf8"));
-      assert.equal(remote.createCount, 1); assert.equal(remote.updateCount, 0);
-      assert.equal(view.mission.aggregate.n2.correctionsUsed, 0);
+      assert.equal(remote.createCount, 1); const feedback = Boolean(view.n5.authority.contract);
+      assert.equal(remote.updateCount, feedback ? 1 : 0);
+      assert.equal(view.mission.aggregate.n2.correctionsUsed, feedback ? 1 : 0);
+      if (feedback) {
+        assert.equal(remote.draft, true); assert.equal(view.n5.mergeReady, false); assert.equal(view.n5.publicationReady, true);
+        assert.equal(view.n5.continuation.delegatedFeedback, true);
+        assert.deepEqual(view.mission.aggregate.n2.rounds.map((r: any) => r.verdict.verdict), ["approved", "changes_requested", "approved"]);
+        const historical = view.n5.continuation.previousPublication;
+        assert.equal(historical.checks.state, "passed"); assert.equal(historical.reviews.state, "changes_requested");
+        assert.equal(historical.observation.url, view.n5.publication.observation.url);
+        assert.notEqual(historical.submission.candidateCommit, view.n5.publication.submission.candidateCommit);
+      }
       proof.delivery = { remote, final: view.n5, checks: { nominalAuthorizedPublication: "PASS", noOwnerTransition: "PASS" } };
     } };
 }

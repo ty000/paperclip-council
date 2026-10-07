@@ -1,3 +1,5 @@
+import { feedbackCorrectionRound } from "./pr-contract.js";
+import { prepareFeedbackContinuation } from "./pr-feedback.js";
 import { physicalAgent } from "./model-state.js";
 import { assertNativeRunInventory } from "./native-runs.js";
 import { replaceUndispatchedCorrection } from "./n2-undispatched-correction.js";
@@ -16,21 +18,13 @@ import { recordCouncilOrdinaryReadback } from "./decision-receipts.js";
 import { canonicalPayloadHash, MissionError, type MissionRecord } from "./missions.js";
 import { n2Cas, n2CommandCas, n2SubmissionResultReference, nativeN2Profile, prepareN2Decision, prepareResubmission,
   recordN2Decision, reserveN2Run, runtimeReceipt, runtimeUuid, startN2Review, startN2ResubmittedReview } from "./n2-missions.js";
-import { freshN3Round } from "./n3-runtime.js";
-import { n3Round, type N3NativeRound } from "./n3-state.js";
+import { ordinaryRound, reviewTasks } from "./ordinary-review-tasks.js";
+import { n3Round } from "./n3-state.js";
 import type { N3OpinionSlot } from "./n3-opinions.js";
 import { currentOrdinaryTask, freshOrdinary, ordinaryReceiptSubject, ordinaryTask, saveOrdinaryTask, validateOrdinaryReport,
   type OrdinaryTask } from "./n2-ordinary-state.js";
 import { readOrdinaryRunSummary } from "./n2-ordinary-report.js";
 
-function ordinaryRound(mission: MissionRecord, submission: Parameters<typeof freshN3Round>[1], slots: N3OpinionSlot[]): N3NativeRound {
-  const { transmission: _unused, ...round } = freshN3Round(mission, submission, slots);
-  return round;
-}
-function reviewTasks(mission: MissionRecord, round: N3NativeRound) {
-  return [...round.review.slots.map(slot => ordinaryTask("specialist", round.review.subject.submissionId, slot.specialistAgentId, slot.slotId)),
-    ordinaryTask("council", round.review.subject.submissionId, mission.aggregate.responsibilities.finalReviewerAgentId)];
-}
 function taskRoles(task: OrdinaryTask, slots: N3OpinionSlot[]): RoleKey[] {
   if (task.kind === "correction") return ["lead"];
   if (task.kind === "council") return ["generalist-reviewer"];
@@ -299,6 +293,16 @@ async function settleTask(ctx: PluginContext, initial: MissionRecord, task: Ordi
         reservationId: task.reservationId, settlementCommandId: task.settlementCommandId, wake: "claimed", creation: "claimed", settledAt } : item) } : round) } });
 }
 
+async function closeSettledCorrections(ctx: PluginContext, m: MissionRecord) {
+  for (const task of m.aggregate.n2!.ordinary!.tasks.filter(t => t.kind === "correction" && t.closedAt && t.issueId !== m.rootIssueId)) {
+    if (!task.settledAt || !task.issueId) throw new MissionError(409, "ordinary_correction_closure", "Operational correction requires exact terminal accounting");
+    const issue = await ctx.issues.get(task.issueId, m.companyId);
+    if (!issue || issue.projectId !== m.projectId || issue.assigneeAgentId !== physicalAgent(m, task.agentId, { issueId: task.issueId, runId: task.runId })
+        || !["blocked", "done"].includes(issue.status)) throw new MissionError(409, "ordinary_correction_closure", "Retain the exact verified operational correction task");
+    if (issue.status !== "done") await ctx.issues.update(issue.id, { status: "done" }, m.companyId);
+  }
+}
+
 async function applyVerdict(ctx: PluginContext, mission: MissionRecord, task: OrdinaryTask) {
   const state = mission.aggregate.n2!; const submission = state.submissions.find(item => item.submissionId === task.submissionId)!;
   const report = task.report!;
@@ -319,9 +323,11 @@ async function applyVerdict(ctx: PluginContext, mission: MissionRecord, task: Or
   const latest = mission.aggregate.n2!;
   const tasks = latest.ordinary!.tasks.map(item => item.taskId === task.taskId ? { ...item, receiptRecordedAt: new Date().toISOString() } : item);
   if (report.verdict === "changes_requested" && !tasks.some(item => item.kind === "correction")) {
-    tasks.push({ ...correctionTask, reservationId: latest.correction!.reservationId!, issueId: mission.rootIssueId, creation: "confirmed" });
+    tasks.push({ ...correctionTask, reservationId: latest.correction!.reservationId!,
+      ...(mission.aggregate.hierarchy || feedbackCorrectionRound(mission, task.submissionId) ? {} : { issueId: mission.rootIssueId, creation: "confirmed" as const }) });
   }
-  return n2Cas(ctx, mission, { ...mission.aggregate, n2: { ...latest, ordinary: { ...latest.ordinary!, tasks } } });
+  const aggregate = prepareFeedbackContinuation(mission, report.verdict, operationId);
+  return n2Cas(ctx, mission, { ...aggregate, n2: { ...latest, ordinary: { ...latest.ordinary!, tasks } } });
 }
 
 /** One durable, sequential dispatcher; explicit owner reconciliation resumes events, never uncertain effects. */
@@ -329,6 +335,7 @@ export async function reconcileOrdinaryN2(ctx: PluginContext, initial: MissionRe
   await assertNativeRunInventory(ctx, initial);
   let mission = await freshOrdinary(ctx, initial);
   mission = await reconcileReplacedCouncilSettlement(ctx, mission);
+  await closeSettledCorrections(ctx, mission);
   for (let step = 0; step < 12; step++) {
     const state = mission.aggregate.n2!;
     const task = state.ordinary!.tasks.find(item => !item.closedAt);
@@ -357,13 +364,14 @@ export async function reconcileOrdinaryN2(ctx: PluginContext, initial: MissionRe
       mission = await n2Cas(ctx, mission, { ...mission.aggregate, phase: "review_handoff", n2: { ...next,
         ordinary: { ...next.ordinary!, tasks: [...next.ordinary!.tasks.map(item => item.taskId === task.taskId ? { ...item, closedAt: new Date().toISOString() } : item), ...tasks] } },
         n3: { ...mission.aggregate.n3!, rounds: [...mission.aggregate.n3!.rounds, round] } });
+      await closeSettledCorrections(ctx, mission);
       continue;
     }
     await ctx.issues.update(task.issueId!, { status: "done" }, mission.companyId);
     mission = await saveOrdinaryTask(ctx, mission, { ...task, closedAt: new Date().toISOString() });
     if (mission.aggregate.n2!.status === "accepted") {
       mission = await reconcileReplacedCouncilSettlement(ctx, mission);
-      if (!mission.aggregate.hierarchy) await ctx.issues.update(mission.rootIssueId, { status: "done" }, mission.companyId);
+      if (!mission.aggregate.hierarchy && !mission.aggregate.n5?.authority.contract) await ctx.issues.update(mission.rootIssueId, { status: "done" }, mission.companyId);
       return mission;
     }
   }
