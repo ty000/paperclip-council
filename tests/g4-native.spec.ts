@@ -67,6 +67,19 @@ it("refuses unresolved native blockers before any launch claim, including a know
   await expect(assertNativeLaunchAllowed(ctx, { companyId, issueId, priorRunId: runId })).rejects.toMatchObject({ code: "native_issue_blocked" });
 });
 
+it.each(["exact", "missing", "foreign", "duplicate", "active", "failed"])("checks every historical lead identity before another launch: %s", async kind => {
+  const second = "30000000-0000-4000-8000-000000000004";
+  const runs = [summary().runs[0]!, { ...summary().runs[0]!, id: second }];
+  if (kind === "missing") runs.pop();
+  if (kind === "foreign") runs[1]!.id = "30000000-0000-4000-8000-000000000005";
+  if (kind === "duplicate") runs[1]!.id = runId;
+  if (kind === "active") runs[0]!.status = "running";
+  if (kind === "failed") runs[0]!.status = "failed";
+  const result = assertNativeLaunchAllowed(context({}, summary({ runs })), { companyId, issueId, priorRunIds: [runId, second] });
+  if (kind === "exact") await expect(result).resolves.toBe(130);
+  else await expect(result).rejects.toMatchObject({ code: "native_run_already_exists" });
+});
+
 function settledEnvelope(input: { commandId?: string; runId?: string; baselineUsageUnits?: number } = {}) {
   const commandId = input.commandId ?? settlementCommandId;
   const settledRunId = input.runId ?? runId;

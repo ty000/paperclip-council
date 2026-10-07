@@ -2,7 +2,23 @@ import type { PluginContext } from "@paperclipai/plugin-sdk";
 import type { MissionRecord } from "./missions.js";
 import { canonicalPayloadHash, MissionError } from "./mission-primitives.js";
 import { projectIssues } from "./project-mandate-state.js";
-import { physicalAgent } from "./model-state.js";
+import { physicalAgent, modelLaunchGuidance } from "./model-state.js";
+
+/** Only exact suffixes attributable to this issue's persisted launches are Council context. */
+function descriptionMatchesSource(m: MissionRecord, issueId: string, description: string | null, expectedHash: string) {
+  if (canonicalPayloadHash(description) === expectedHash) return true;
+  if (description === null) return false;
+  const suffixes = (m.aggregate.modelSelection?.tasks ?? []).flatMap(task => task.launches)
+    .filter(launch => launch.issueId === issueId).map(launch => `\n\n${modelLaunchGuidance(m, launch, issueId)}`);
+  let source = description;
+  while (suffixes.length) {
+    const index = suffixes.findIndex(suffix => source.endsWith(suffix));
+    if (index < 0) return false;
+    source = source.slice(0, -suffixes.splice(index, 1)[0]!.length);
+    if (canonicalPayloadHash(source) === expectedHash || source === "" && canonicalPayloadHash(null) === expectedHash) return true;
+  }
+  return false;
+}
 
 /** All sources remain native. Changes require a new owner decision, never inferred adoption. */
 export async function assertHierarchySources(ctx: PluginContext, m: MissionRecord) {
@@ -20,7 +36,8 @@ export async function assertHierarchySources(ctx: PluginContext, m: MissionRecor
     const agentId = node.assigneeAgentId && leaf ? physicalAgent(m, node.assigneeAgentId, { issueId: node.issueId }) : node.assigneeAgentId;
     const relations = await ctx.issues.relations.get(node.issueId, m.companyId);
     if (!issue || issue.id !== node.issueId || issue.companyId !== m.companyId || issue.projectId !== m.projectId
-        || !issues.some(item => item.id === issue.id) || issue.parentId !== node.parentId || issue.title !== node.title || canonicalPayloadHash(issue.description) !== node.descriptionHash
+        || !issues.some(item => item.id === issue.id) || issue.parentId !== node.parentId || issue.title !== node.title
+        || !descriptionMatchesSource(m, issue.id, issue.description, node.descriptionHash)
         || issue.assigneeAgentId !== agentId || canonicalPayloadHash(relations.blockedBy.map(item => item.id).sort()) !== canonicalPayloadHash(node.blockedByIssueIds)) {
       throw new MissionError(409, "hierarchy_source_changed", "Pinned task identity, result, assignment or native dependencies changed; no replacement or blocker removal");
     }

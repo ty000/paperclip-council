@@ -294,7 +294,7 @@ function orchestrationUsageUnits(summary: PluginIssueOrchestrationSummary): numb
 
 export async function assertNativeLaunchAllowed(
   ctx: PluginContext,
-  input: { companyId: string; issueId: string; priorRunId?: string },
+  input: { companyId: string; issueId: string; priorRunId?: string; priorRunIds?: string[] },
 ): Promise<number> {
   const summary = await readNativeOrchestration(ctx, input);
   if (summary.relations?.[input.issueId]?.blockedBy?.some(issue => issue.status !== "done")) {
@@ -310,10 +310,12 @@ export async function assertNativeLaunchAllowed(
       openBudgetIncidents: summary.openBudgetIncidents,
     });
   }
-  const resumed = input.priorRunId && summary.runs.length === 1
-    && summary.runs[0].id === input.priorRunId && summary.runs[0].issueId === input.issueId
-    && summary.runs[0].status === "succeeded" && summary.runs[0].finishedAt;
-  if (input.priorRunId ? !resumed : summary.runs.length > 0) {
+  const prior = input.priorRunIds ?? (input.priorRunId ? [input.priorRunId] : []);
+  const resumed = prior.length > 0 && new Set(prior).size === prior.length && summary.runs.length === prior.length
+    && new Set(summary.runs.map(run => run.id)).size === prior.length
+    && summary.runs.every(run => prior.includes(run.id) && run.issueId === input.issueId
+      && run.status === "succeeded" && run.finishedAt);
+  if (prior.length ? !resumed : summary.runs.length > 0) {
     throw new AdmissionError(409, "native_run_already_exists", "The target issue already has a native run; a new launch is not admissible");
   }
   return orchestrationUsageUnits(summary);

@@ -14,22 +14,24 @@ vi.mock("../src/admission.js", async (importOriginal) => {
 
 vi.mock("../src/integration.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/integration.js")>();
-  return { ...actual, verifyIntegratedCandidate: vi.fn() };
+  return { ...actual, verifyIntegratedCandidate: vi.fn(), verifyContributionBundle: vi.fn() };
 });
 vi.mock("../src/model-variants.js", () => ({ inspectVariant: vi.fn() }));
 
 import { AdmissionError, readAdmission, reserveAdmission, settleAdmission } from "../src/admission.js";
-import { verifyIntegratedCandidate } from "../src/integration.js";
+import { verifyIntegratedCandidate, verifyContributionBundle } from "../src/integration.js";
 import { executeN1BoardCommand, handleN1AgentApi } from "../src/n1-missions.js";
 import { getMission, handleMissionApi, canonicalPayloadHash, type MissionAggregate } from "../src/missions.js";
 import { reconcileTerminalN1Usage } from "./functional/n1-live.js";
 import { inspectVariant } from "../src/model-variants.js";
 import { MODEL_CATALOGUE } from "../src/model-catalogue.js";
-import { n1ResumeAdmissionFailure } from "../src/n1-resume-state.js";
+import { n1ResumeAdmissionFailure, type N1Resume } from "../src/n1-resume-state.js";
 import type { N1State } from "../src/n1-missions.js";
 import * as nativeAdapter from "../src/decision-adapter.js";
 import { advanceContinuity } from "../src/continuity-runtime.js";
 import { chooseModelProfile } from "../src/model-api.js";
+import { operatingProfileHash } from "../src/project-mandate-state.js";
+import { assertHierarchySources } from "../src/hierarchy-runtime.js";
 
 const id = {
   company: randomUUID(),
@@ -2431,5 +2433,260 @@ describe("one initial hierarchy lead resume", () => {
       await expect(executeN1BoardCommand(h.ctx, { companyId: id.company, missionId: id.mission, actorUserId: id.owner,
         body: { command: "start-lead", commandId: randomUUID(), expectedVersion: kind === "stale start" ? expectedVersion : h.row().version } })).rejects.toThrow();
       expect(reserveAdmission).not.toHaveBeenCalled(); expect(h.requestWakeup).not.toHaveBeenCalled(); expect(h.create).not.toHaveBeenCalled();
+    });
+});
+
+describe("hierarchy source integrity through two physical contribution dispatches", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function composedHierarchy(profile = nativeProfile) {
+    const value = withBoundLead(activeAggregate()), coordinator = randomUUID();
+    const physical = [randomUUID(), randomUUID()], childRuns = [randomUUID(), randomUUID()];
+    const config = { n1OperatingProfile: { ...profile, maxCorrections: 1 }, modelVariantsEnabled: true, n2RuntimeProfile: "ordinary-cli-v1" };
+    const hierarchy = { protocol: "council-hierarchy-v1" as const, maxContributions: 2, execution: "sequential" as const, adoptExistingChildren: true };
+    const product = [nativeIssue({ id: id.root, parentId: null, assigneeAgentId: id.lead, status: "backlog" }),
+      ...[id.childA, id.childB].map((issueId, i) => nativeIssue({ id: issueId, parentId: id.root, assigneeAgentId: plan[i]!.assigneeAgentId, status: "backlog" }))]
+      .map((issue, i) => ({ ...issue, title: `Product ${i}`, description: `Immutable product requirements ${i}.` }));
+    const nodes = product.map((issue, i) => ({ issueId: issue.id, parentId: issue.parentId, title: issue.title,
+      descriptionHash: canonicalPayloadHash(issue.description), assigneeAgentId: issue.assigneeAgentId, blockedByIssueIds: i === 2 ? [id.childA] : [] }));
+    value.hierarchy = { ...hierarchy, nodes, leaves: plan.map((slot, i) => ({ ...slot, ...nodes[i + 1]!, parentId: id.root,
+      assigneeAgentId: slot.assigneeAgentId, documentRevisionId: "work-v1", pendingBlockerIds: i ? [id.childA] : [] })) };
+    value.n1 = { ...value.n1!, sourceBaseCommit: "b".repeat(40), rootDispatchMode: "native", rootUsageBaselineUnits: 0,
+      coordination: { issueId: coordinator, intentId: randomUUID(), state: "confirmed", commandId: randomUUID(),
+        commandHash: "original", ownerUserId: id.owner, preparedVersion: 1 },
+      contributions: plan.map((slot, i) => ({ ...slot, issueState: "confirmed", childIssueId: i ? id.childB : id.childA, parentIssueId: id.root })) };
+    value.modelSelection!.tasks[0]!.launches[0]!.issueId = coordinator;
+    value.nativeWakePolicy = { protocol: "council-native-wake-v2", rootBaseline: [], runLimit: 8 };
+    value.projectMandate = { projectId: id.project, revisionId: randomUUID(), version: 1, authorizedBy: id.owner,
+      operatingProfileHash: operatingProfileHash(config), mandateHash: canonicalPayloadHash(value.mandate), allowedPaths: ["src"], publication: null,
+      completion: { protocol: "council-proof-close-v1", result: "accepted-candidate" },
+      source: { rootIssueId: id.root, title: product[0]!.title, descriptionHash: nodes[0]!.descriptionHash, taskDocumentRevisionId: null } };
+    const h = harness(value);
+    for (const issue of product) h.issues.set(issue.id, issue);
+    h.issues.set(coordinator, nativeIssue({ id: coordinator, parentId: null, assigneeAgentId: id.lead, status: "in_progress" }));
+    h.configGet.mockResolvedValue(config as never);
+    h.query.mockImplementation(async (...args: unknown[]) => String(args[0]).includes("project_mandates") ? [{
+      company_id: id.company, project_id: id.project, version: 1, revision_id: value.projectMandate!.revisionId, authorized_by: id.owner,
+      content: { enabled: true, hierarchy, completion: value.projectMandate!.completion },
+    }] as never : [h.row()]);
+    h.list.mockImplementation(async () => [...h.issues.values()] as never);
+    h.documentGet.mockImplementation(async () => ({ latestRevisionId: "work-v1" }));
+    const relations = vi.fn(async (issueId: string) => ({ blockedBy: issueId === id.childB ? [{ id: id.childA, status: h.issues.get(id.childA)!.status }] : [], blocks: [] }));
+    h.ctx.issues.relations = { get: relations } as never;
+    const runs: Array<{ id: string; issueId: string; agentId: string; status: string; startedAt: string; finishedAt: string | null }> = [{ id: id.leadRun, issueId: coordinator, agentId: id.lead, status: "running",
+      startedAt: new Date(0).toISOString(), finishedAt: null as string | null }];
+    h.getOrchestration.mockImplementation(async (...args: unknown[]) => {
+      const issueId = (args[0] as { issueId: string }).issueId;
+      const observed = runs.filter(run => run.issueId === issueId);
+      return { issueId, companyId: id.company, runs: observed,
+        costs: { inputTokens: observed.length * 90, cachedInputTokens: observed.length * 70, outputTokens: observed.length * 10, costCents: 0 }, relations: {}, invocationBlocks: [], openBudgetIncidents: [] } as never;
+    });
+    const envelope = { ...nativeEnvelope([{ reservationId: value.n1!.activationReservationId, missionId: id.mission, status: "reserved" }]), companyId: id.company };
+    envelope.limits.maxCorrections = 1;
+    vi.mocked(readAdmission).mockImplementation(async () => envelope as never);
+    vi.mocked(reserveAdmission).mockImplementation(async (_ctx, input) => {
+      let reservation = envelope.reservations.find(item => item.reservationId === input.reservationId);
+      if (input.ownerReplacementCommandId) expect(n1ResumeAdmissionFailure(h.row().aggregate, envelope as never, input, id.owner, id.owner)).toBeNull();
+      if (!reservation) { reservation = { ...input, status: "reserved", usage: null, lastKnownUsageUnits: 0,
+        remainingExposure: { status: "known", units: input.requestedUnits }, settlementReceipts: [] }; envelope.reservations.push(reservation); }
+      return { reservation, envelope } as never;
+    });
+    vi.mocked(settleAdmission).mockImplementation(async (_ctx, input) => {
+      Object.assign(envelope.reservations.find(item => item.reservationId === input.reservationId)!, { status: "settled", usage: input.usage, remainingExposure: input.remainingExposure });
+      return { envelope, outcome: "settled" } as never;
+    });
+    vi.mocked(inspectVariant).mockImplementation(async (_ctx, _company, logicalAgentId, profileId, revision) => ({
+      logicalAgentId, agentId: logicalAgentId === id.lead ? id.lead : physical[logicalAgentId === id.contributorA ? 0 : 1]!,
+      roleKey: logicalAgentId === id.lead ? "lead" : "contributor-1",
+      profileId, revision: revision!, ready: true, expected: {}, observed: {}, gaps: [],
+    }));
+    h.update.mockImplementation(async (...args: unknown[]) => { Object.assign(h.issues.get(String(args[0]))!, args[1]); });
+    h.requestWakeup.mockImplementation(async (...args: unknown[]) => {
+      const issueId = String(args[0]), i = issueId === id.childA ? 0 : 1;
+      const runId = issueId === coordinator ? randomUUID() : childRuns[i]!;
+      h.issues.get(issueId)!.status = "in_progress";
+      runs.push({ id: runId, issueId, agentId: issueId === coordinator ? id.lead : physical[i]!, status: "running", startedAt: new Date().toISOString(), finishedAt: null });
+      return { queued: true, runId };
+    });
+    vi.spyOn(nativeAdapter, "councilNativeRequest").mockImplementation(async (_ctx, _company, path) => {
+      const run = runs.find(item => path.endsWith(item.id))!;
+      return { status: 200, body: { ...run, companyId: id.company, nativeIssueId: null, contextSnapshot: { issueId: run.issueId },
+        usageJson: { usageSource: "per_run", inputTokens: 90, cachedInputTokens: 70, outputTokens: 10 } } };
+    });
+    vi.mocked(verifyContributionBundle).mockImplementation(async (_ctx, input) => ({ protocol: "council-contribution-proof-v1",
+      attachmentId: input.attachmentId, sha256: input.expectedSha256, byteSize: 100, segmentRootCommit: input.baseCommit, commit: input.candidateCommit,
+      changedPaths: input.ownedPaths, checks: [], verifiedAt: new Date().toISOString() }));
+    const request = (body: Record<string, unknown>) => agentRequest({ commandId: randomUUID(), expectedVersion: h.row().version, ...body }, { agentId: id.lead, runId: String(h.row().aggregate.n1!.rootDispatchRunId) }, coordinator);
+    const choose = (i: number) => chooseModelProfile(h.ctx, request({ command: "select-model-profile", taskKey: plan[i]!.contributionId,
+      interventionKey: plan[i]!.contributionId, family: "implementation", profileId: "sol-medium", rationale: "Bounded product contribution" }));
+    const dispatch = (i: number, reservationId = randomUUID()) => handleN1AgentApi(request({ command: "dispatch", contributionId: plan[i]!.contributionId,
+      reservationId, requestedUnits: profile.runReservationUnits }), h.ctx);
+    const read = async () => (await getMission(h.ctx, id.company, id.mission))!;
+    const deliverFirst = async () => {
+      const reported = await handleN1AgentApi(agentRequest({ command: "record-contribution", commandId: randomUUID(), expectedVersion: h.row().version,
+        contributionId: id.contributionA, commit: "c".repeat(40), proof: { attachmentId: randomUUID(), expectedSha256: "d".repeat(64), segmentRootCommit: "b".repeat(40) } },
+        { agentId: physical[0]!, runId: childRuns[0]! }, id.childA), h.ctx);
+      expect(reported.status).toBe(200); expect(h.issues.get(id.childA)!.status).toBe("blocked");
+      Object.assign(runs.find(run => run.id === childRuns[0])!, { status: "succeeded", finishedAt: new Date().toISOString() });
+      expect((await handleN1AgentApi(request({ command: "reconcile-usage", contributionId: id.contributionA }), h.ctx)).status).toBe(200);
+      expect(h.issues.get(id.childA)!.status).toBe("done");
+    };
+    return { ...h, value, product, coordinator, physical, runs, childRuns, envelope, choose, dispatch, read, deliverFirst };
+  }
+
+  async function secondStoppedHierarchy() {
+    const h = composedHierarchy({ ...nativeProfile, periodAllowanceUnits: 64_000_000, runReservationUnits: 4_000_000 });
+    const childReservation = randomUUID(), secondRun = randomUUID(), secondReservation = randomUUID(), firstGrantId = randomUUID();
+    Object.assign(h.envelope.allowance, { periodUnits: 64_000_000, taskUnits: 4_000_000, knownUsageUnits: 9_664_122 });
+    await h.choose(0);
+    h.documentGet.mockImplementation(async () => ({ latestRevisionId: h.product[1]!.description.includes("Council profile launch") ? "unavailable" : "work-v1" }));
+    expect(await h.dispatch(0, childReservation)).toMatchObject({ status: 409, body: { code: "hierarchy_source_changed" } });
+    h.documentGet.mockResolvedValue({ latestRevisionId: "work-v1" });
+    Object.assign(h.runs[0]!, { status: "succeeded", finishedAt: new Date(1).toISOString() });
+    h.runs.push({ ...h.runs[0]!, id: secondRun });
+    Object.assign(h.envelope.reservations[0]!, { status: "settled", usage: { status: "known", units: 3_689_328 }, remainingExposure: { status: "known", units: 0 } });
+    h.envelope.reservations.push({ reservationId: secondReservation, missionId: id.mission, effectId: firstGrantId, ownerReplacementCommandId: firstGrantId,
+      status: "settled", attempt: { kind: "resume", ordinal: 1 }, usage: { status: "known", units: 5_974_794 }, remainingExposure: { status: "known", units: 0 } });
+    const firstGrant: N1Resume = { commandId: firstGrantId, authorizedBy: id.owner, previousOwnerUserId: id.owner,
+      authorizedAt: new Date(0).toISOString(), reason: "First explicit operator restart after binding repair", contributions: [],
+      lead: { issueId: h.coordinator, priorRunId: id.leadRun, priorReservationId: String(h.value.n1!.activationReservationId),
+        priorUsageBaselineUnits: 0, reservationId: secondReservation } };
+    h.advanceMission(a => {
+      const state = a.n1 as N1State;
+      Object.assign(state, { resume: firstGrant, activationReservationId: secondReservation, rootDispatchRunId: secondRun, rootUsageBaselineUnits: 3_689_328 });
+      Object.assign(a.nativeWakePolicy!, { runLimit: 16 }); a.mandate.limits.correctionLimit = 1;
+      a.projectMandate!.mandateHash = canonicalPayloadHash(a.mandate);
+      a.continuity = { protocol: "council-continuity-v1", enabled: false, authorizedBy: id.owner, authorizedAt: state.activatedAt,
+        deadline: new Date(Date.now() + 600_000).toISOString(), mandateHash: canonicalPayloadHash(a.mandate), n3Slots: [],
+        commands: { "start-lead": { command: "start-lead", commandId: randomUUID() } } };
+      a.commandReceipts.push({ commandId: firstGrantId, command: "prepare-n1-resume", actorType: "user", actorId: id.owner,
+        payloadHash: "first-grant", appliedVersion: 18, result: { missionId: id.mission, version: 18 }, recordedAt: new Date(0).toISOString() });
+      a.modelSelection!.tasks[0]!.launches.push({ ...a.modelSelection!.tasks[0]!.launches[0]!, launchKey: secondReservation,
+        previousLaunchKey: String(h.value.n1!.activationReservationId), runId: secondRun });
+      return a;
+    });
+    while (h.row().version < 28) h.advanceMission(a => a);
+    h.issues.get(h.coordinator)!.status = "blocked" as never;
+    const body = { command: "prepare-n1-resume", commandId: randomUUID(), expectedVersion: 28,
+      authorizeOneResume: true, authorizeContinuityResume: true, previousOwnerUserId: id.owner, reason: "Explicit operator restart after second defect" };
+    const apply = () => executeN1BoardCommand(h.ctx, { companyId: id.company, missionId: id.mission, actorUserId: id.owner, body });
+    const job = { jobKey: "mission-continuity", runId: randomUUID(), trigger: "schedule", scheduledAt: new Date().toISOString() } as PluginJobContext;
+    const advance = () => h.read().then(m => advanceContinuity(h.ctx, m, job));
+    vi.mocked(reserveAdmission).mockClear();
+    return { ...h, firstGrant, childReservation, body, apply, advance };
+  }
+
+  it("resumes version 28 with all old leads, then consumes the same prepared child hold before its successor", async () => {
+    const h = await secondStoppedHierarchy(), before = h.row().aggregate, oldReservations = structuredClone(h.envelope.reservations);
+    expect(h.row().version).toBe(28); expect((await h.advance()).code).toBe("continuity_disabled");
+    await h.apply();
+    const granted = h.row().aggregate, state = granted.n1 as N1State;
+    expect(state.resumeHistory).toEqual([h.firstGrant]);
+    expect(state.resume!.preparedContributions).toEqual([{ contributionId: id.contributionA, issueId: id.childA, reservationId: h.childReservation }]);
+    expect(granted.mandate).toEqual(before.mandate); expect(granted.hierarchy).toEqual(before.hierarchy);
+    expect(granted.nativeWakePolicy).toEqual(before.nativeWakePolicy); expect(granted.continuity!.deadline).toBe(before.continuity!.deadline);
+    expect(state.activatedAt).toBe(before.n1!.activatedAt); expect(h.envelope.reservations).toEqual(oldReservations);
+    expect(granted.effectIntents).toEqual(before.effectIntents); expect(granted.modelSelection).toEqual(before.modelSelection);
+    expect((await h.apply()).outcome).toBe("replayed"); expect(h.requestWakeup).not.toHaveBeenCalled();
+    expect((await h.advance()).code).toBe("start-lead");
+    expect((await h.advance()).code).toBe("native_lead_running");
+    expect((await h.apply()).outcome).toBe("replayed"); expect(h.requestWakeup).toHaveBeenCalledTimes(1);
+    expect(reserveAdmission).toHaveBeenCalledWith(h.ctx, expect.objectContaining({ attempt: { kind: "resume", ordinal: 2 }, ownerReplacementCommandId: h.body.commandId }));
+    expect(h.runs.filter(run => run.issueId === h.coordinator)).toHaveLength(3);
+    expect(await h.dispatch(0)).toMatchObject({ status: 409, body: { code: "n1_prepared_reservation_mismatch" } });
+    expect(h.envelope.reservations).toHaveLength(4); expect(h.requestWakeup).toHaveBeenCalledTimes(1);
+    expect(await h.dispatch(0, h.childReservation)).toMatchObject({ status: 200, body: { outcome: "requested" } });
+    expect(h.envelope.reservations.filter(r => r.reservationId === h.childReservation)).toHaveLength(1);
+    expect(h.envelope.reservations).toHaveLength(4);
+    expect(await h.dispatch(1)).toMatchObject({ status: 409, body: { code: "prior_contribution_proof" } });
+    await h.deliverFirst(); await h.choose(1);
+    expect(await h.dispatch(1)).toMatchObject({ status: 200, body: { outcome: "requested" } });
+    expect(h.envelope.reservations).toHaveLength(5); expect(h.requestWakeup).toHaveBeenCalledTimes(3);
+    expect(h.create).not.toHaveBeenCalled(); expect(h.row().aggregate.n1!.resumeHistory).toEqual([h.firstGrant]);
+    expect(h.row().aggregate.commandReceipts).toEqual(expect.arrayContaining(before.commandReceipts));
+    expect(h.envelope.reservations[0]).toEqual(oldReservations[0]); expect(h.envelope.reservations[2]).toEqual(oldReservations[2]);
+  });
+
+  it("retains every grant on a further explicit pre-leaf restart without imposing another resume ceiling", async () => {
+    const h = await secondStoppedHierarchy(); await h.apply(); await h.advance();
+    const secondGrant = structuredClone((h.row().aggregate.n1 as N1State).resume!);
+    Object.assign(h.runs.at(-1)!, { status: "succeeded", finishedAt: new Date().toISOString() });
+    Object.assign(h.envelope.reservations.at(-1)!, { status: "settled", usage: { status: "known", units: 100 }, remainingExposure: { status: "known", units: 0 } });
+    h.issues.get(h.coordinator)!.status = "blocked" as never;
+    h.advanceMission(a => { a.continuity!.enabled = false; return a; });
+    Object.assign(h.body, { commandId: randomUUID(), expectedVersion: h.row().version, reason: "Further explicit operator decision" });
+    await h.apply();
+    expect(h.row().aggregate.n1!.resumeHistory).toEqual([h.firstGrant, secondGrant]);
+    expect((h.row().aggregate.n1 as N1State).resume!.preparedContributions).toEqual(secondGrant.preparedContributions);
+    await h.advance();
+    expect(h.requestWakeup).toHaveBeenCalledTimes(2); expect(h.runs.filter(run => run.issueId === h.coordinator)).toHaveLength(4);
+    expect(reserveAdmission).toHaveBeenLastCalledWith(h.ctx, expect.objectContaining({ attempt: { kind: "resume", ordinal: 3 } }));
+  });
+
+  it.each(["unknown lead", "unknown child", "child wake claimed", "child dispatched", "unknown usage", "unknown hold", "admission blocked", "run limit", "deadline"])(
+    "refuses the second operator grant with %s without a new wake or reservation", async kind => {
+      const h = await secondStoppedHierarchy();
+      h.advanceMission(a => {
+        if (kind === "unknown lead") a.n1!.rootDispatchState = "unknown";
+        if (kind === "child dispatched") (a.n1 as N1State).contributions[0]!.dispatchState = "claimed";
+        if (kind === "unknown child" || kind === "child wake claimed") a.modelSelection!.tasks[1]!.launches[0]!.state = kind === "unknown child" ? "unknown" : "wake_claimed";
+        if (kind === "run limit") Object.assign(a.nativeWakePolicy!, { runLimit: 2 });
+        if (kind === "deadline") a.continuity!.deadline = new Date(0).toISOString();
+        return a;
+      });
+      if (kind === "unknown usage") Object.assign(h.envelope.reservations[0]!, { usage: { status: "unknown" } });
+      if (kind === "unknown hold") Object.assign(h.envelope.reservations[1]!, { remainingExposure: { status: "unknown" } });
+      if (kind === "admission blocked") Object.assign(h.envelope, { blockers: [{ code: "exposure_unknown" }] });
+      h.body.expectedVersion = h.row().version;
+      const before = h.row(); await expect(h.apply()).rejects.toThrow();
+      expect(h.row()).toEqual(before); expect(h.requestWakeup).not.toHaveBeenCalled(); expect(reserveAdmission).not.toHaveBeenCalled();
+    });
+
+  it("dispatches both profiled leaves through unchanged pinned sources, dependency proof and exact settlement", async () => {
+    const h = composedHierarchy(), initialHierarchy = structuredClone(h.value.hierarchy);
+    await h.choose(0); await h.choose(1);
+    expect(await h.dispatch(0)).toMatchObject({ status: 200, body: { outcome: "requested" } });
+    expect(await h.dispatch(1)).toMatchObject({ status: 409, body: { code: "prior_contribution_proof" } });
+    await h.deliverFirst();
+    expect(await h.dispatch(1)).toMatchObject({ status: 200, body: { outcome: "requested" } });
+    await expect(assertHierarchySources(h.ctx, await h.read())).resolves.toBeUndefined();
+    expect(h.row().aggregate.hierarchy).toEqual(initialHierarchy);
+    expect(h.requestWakeup).toHaveBeenCalledTimes(2); expect(h.create).not.toHaveBeenCalled();
+    expect(h.envelope.reservations).toHaveLength(3);
+    expect(h.envelope.reservations[1]).toMatchObject({ status: "settled", usage: { units: 100 }, remainingExposure: { units: 0 } });
+    for (const [i, issue] of h.product.slice(1).entries()) {
+      expect(issue.description).toContain(`Immutable product requirements ${i + 1}.\n\nCouncil profile launch`);
+      expect(issue.assigneeAgentId).toBe(h.physical[i]);
+    }
+  });
+
+  it("reuses the reserved ready binding after a failed departure without another effect identity", async () => {
+    const h = composedHierarchy(), reservationId = randomUUID(); await h.choose(0);
+    h.documentGet.mockImplementation(async () => ({ latestRevisionId: h.product[1]!.description.includes("Council profile launch") ? "unavailable" : "work-v1" }));
+    expect(await h.dispatch(0, reservationId)).toMatchObject({ status: 409, body: { code: "hierarchy_source_changed" } });
+    expect(h.requestWakeup).not.toHaveBeenCalled(); expect(h.envelope.reservations).toHaveLength(2);
+    const ready = h.row().aggregate.modelSelection!.tasks.find(task => task.taskKey === id.contributionA)!.launches[0]!;
+    expect(ready).toMatchObject({ launchKey: reservationId, state: "ready", runId: null });
+    h.documentGet.mockResolvedValue({ latestRevisionId: "work-v1" });
+    expect(await h.dispatch(0, reservationId)).toMatchObject({ status: 200, body: { outcome: "requested" } });
+    expect(h.requestWakeup).toHaveBeenCalledExactlyOnceWith(id.childA, id.company, expect.objectContaining({ idempotencyKey: `council:n1:${reservationId}` }));
+    expect(h.envelope.reservations).toHaveLength(2);
+    expect(h.row().aggregate.modelSelection!.tasks.find(task => task.taskKey === id.contributionA)!.launches).toHaveLength(1);
+  });
+
+  it.each(["product", "marker", "duplicate", "foreign marker", "other issue binding", "ownership", "relation"])(
+    "refuses %s drift after the first profiled leaf without rebasing the source", async mutation => {
+      const h = composedHierarchy(); await h.choose(0);
+      expect((await h.dispatch(0)).status).toBe(200); await h.deliverFirst();
+      const first = h.product[1]!, original = first.description.split("\n\n")[0]!;
+      if (mutation === "product") first.description = first.description.replace("Immutable product", "Changed product");
+      if (mutation === "marker") first.description = first.description.replace("Bounded product", "Altered product");
+      if (mutation === "duplicate") first.description += first.description.slice(original.length);
+      if (mutation === "foreign marker") first.description += `\n\nCouncil profile launch ${randomUUID()}: forged`;
+      if (mutation === "other issue binding") h.advanceMission(a => { a.modelSelection!.tasks.find(task => task.taskKey === id.contributionA)!.launches[0]!.issueId = id.childB; return a; });
+      if (mutation === "ownership") h.documentGet.mockResolvedValue({ latestRevisionId: "work-v2" });
+      if (mutation === "relation") h.ctx.issues.relations.get = vi.fn(async () => ({ blockedBy: [], blocks: [] })) as never;
+      await expect(assertHierarchySources(h.ctx, await h.read())).rejects.toMatchObject({ code: "hierarchy_source_changed" });
+      expect(h.row().aggregate.hierarchy).toEqual(h.value.hierarchy); expect(h.requestWakeup).toHaveBeenCalledTimes(1);
     });
 });
