@@ -13,13 +13,41 @@ export async function rebindDeliveryPlan({ api, call, config }) {
     planRevisionId: next.latestRevisionId, reason: "Attach the bounded post-publication correction to the same delegated plan" });
 }
 
+async function preflightPublicationClaim({ view, p, call, config, issueId, runId }) {
+  const claim = { command: "n5-claim-publication", commandId: randomUUID(), expectedVersion: view.version };
+  if (view.delivery.authority.publisherPreflight) {
+    let denied;
+    try { await call({ ...claim, commandId: randomUUID() }); }
+    catch (error) { denied = error.response?.code; }
+    assert.equal(denied, "n5_publisher_preflight_required");
+    const refusalView = await call({ command: "n5-inspect" });
+    assert.equal(refusalView.delivery.publication.claimedAt, undefined);
+    claim.expectedVersion = refusalView.version;
+    // Explicitly simulated GitHub access in this deterministic transport. The
+    // installed plugin still verifies real run/intent/candidate attribution.
+    claim.preflight = { protocol: "publisher-run-report-v1", provenance: "publisher_run_report", status: "pass",
+      missionId: config.missionId, intentId: p.intentId, issueId, runId,
+      repository: view.delivery.authority.repository, candidateCommit: p.submission.candidateCommit,
+      baseCommit: p.submission.baseCommit, baseRef: view.delivery.authority.baseRef, headRef: view.delivery.authority.headRef,
+      remoteHead: p.operation === "update" ? view.delivery.continuation.previousPublication.submission.candidateCommit : null,
+      observedAt: new Date().toISOString(), publicationWriteObserved: false, providerTurnsStartedByProbe: 0,
+      checks: Object.fromEntries(["gitTool", "ghTool", "workspaceIdentity", "localCandidate", "originIdentity", "trackedFilesClean", "repositoryRead", "pushPermissionReported", "remoteBase", "remoteHeadLease"].map(key => [key, true])) };
+  }
+  return claim;
+}
+
 export async function publishDelivery({ api, call, config, issueId, runId, git }) {
   let view = await call({ command: "n5-inspect" });
   const p = view.delivery.publication;
   assert.equal(git("rev-parse", "HEAD"), p.submission.candidateCommit);
-  const claim = { command: "n5-claim-publication", commandId: randomUUID(), expectedVersion: view.version };
+  const claim = await preflightPublicationClaim({ view, p, call, config, issueId, runId });
   assert.equal((await call(claim)).effectPermission, "execute");
   assert.equal((await call(claim)).effectPermission, "none");
+  if (view.delivery.authority.publisherPreflight) {
+    const accepted = await call({ command: "n5-inspect" });
+    assert.equal(accepted.delivery.publication.preflight.runId, runId);
+    assert.equal(accepted.delivery.publication.preflight.provenance, "publisher_run_report");
+  }
   const path = resolve(config.runtime, "github-transport.json");
   const remote = JSON.parse(await readFile(path, "utf8"));
   assert(!remote.intents.includes(p.intentId));

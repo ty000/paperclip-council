@@ -12,6 +12,7 @@ import { assertCurrentN5Plan, observeN5Native, readN5Plan } from "./n5-native.js
 import { inspectN5, type N5State } from "./n5-state.js";
 import { bindVariantIssue, claimVariantWake, observeVariantRun, prepareVariantLaunch, recordVariantWake } from "./model-runtime.js";
 import { modelLaunch, physicalAgent } from "./model-state.js";
+import { validatePublisherPreflight } from "./n5-publisher-preflight.js";
 
 const fresh = async (ctx: PluginContext, m: MissionRecord) => (await getMission(ctx, m.companyId, m.missionId))!;
 const save = (ctx: PluginContext, m: MissionRecord, n5: N5State) => n2Cas(ctx, m, { ...m.aggregate, n5 });
@@ -30,8 +31,12 @@ async function authorize(ctx: PluginContext, m: MissionRecord, body: Record<stri
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) || baseRef === headRef
       || [baseRef, headRef].some(ref => !/^[A-Za-z0-9][A-Za-z0-9_./-]*$/.test(ref) || ref.includes(".."))) throw new MissionError(422, "n5_repository_binding", "Explicit repository and distinct safe base/head refs required");
   const plan = await readN5Plan(ctx, m, runtimeUuid(body.planRevisionId, "planRevisionId"));
+  const config = await ctx.config.get(m.companyId);
+  const publisherPreflight = (m.aggregate.n2?.ordinary || config.n2RuntimeProfile === "ordinary-cli-v1")
+    && config.n5PublisherPreflightEnabled !== false ? "publisher-run-report-v1" as const : undefined;
   return n2CommandCas(ctx, m, body, "user", actorId, { ...m.aggregate, n5: { plan,
-    authority: { publisherAgentId, repository, baseRef, headRef, authorizedBy: actorId, authorizedAt: new Date().toISOString() } } });
+    authority: { publisherAgentId, repository, baseRef, headRef, authorizedBy: actorId, authorizedAt: new Date().toISOString(),
+      ...(publisherPreflight ? { publisherPreflight } : {}) } } });
 }
 
 /** Persisted authority may admit exactly one publisher after acceptance; no per-delivery human gate. */
@@ -215,6 +220,12 @@ export async function handleN5Agent(ctx: PluginContext, input: PluginApiRequestI
       if (p.claimedAt) throw new MissionError(409, "n5_effect_already_claimed", "One publication intent is already consumed; correlate readback without another effect");
       const candidate = acceptedN5Submission(m); await assertCurrentN5Plan(ctx, m);
       if (canonicalPayloadHash(candidate) !== canonicalPayloadHash(p.submission)) throw new MissionError(409, "n5_candidate_changed", "Accepted candidate changed");
+      if (n5.authority.publisherPreflight) {
+        const bindings = validatePublisherPreflight(m, body.preflight, input.actor.runId!);
+        p = { ...p, preflight: { protocol: "publisher-run-report-v1", provenance: "publisher_run_report",
+          runId: input.actor.runId!, agentId: input.actor.agentId!, recordedAt: new Date().toISOString(),
+          reportSha256: canonicalPayloadHash(body.preflight), ...bindings } };
+      }
       p = { ...p, state: "unknown", claimedAt: new Date().toISOString(), claimCommandId: String(body.commandId) };
     } else if (body.command === "n5-observe-delivery") {
       if (!p.claimedAt) throw new MissionError(409, "n5_intent_required", "Persist the one-shot publication intent before any effect");

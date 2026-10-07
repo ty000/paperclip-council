@@ -94,7 +94,7 @@ beforeEach(() => {
   vi.mocked(observeVariantRun).mockImplementation(async (_ctx, m) => m);
   vi.mocked(nativeN2Profile).mockResolvedValue({ profile: { periodKey: "period" }, envelope: { version: 1, reservations: [] } } as never);
   vi.mocked(readAdmission).mockResolvedValue({ version: 1 } as never);
-  vi.mocked(acceptedN5Submission).mockReturnValue({ submissionId, candidateCommit: "a".repeat(40) } as never);
+  vi.mocked(acceptedN5Submission).mockReturnValue({ submissionId, candidateCommit: "a".repeat(40), baseCommit: "b".repeat(40) } as never);
   vi.mocked(createContributionIssueEffect).mockImplementation(async (_ctx, intent) => ({ state: "confirmed", issue: { id: randomUUID(), assigneeAgentId: intent.assigneeAgentId } }) as never);
   vi.mocked(reconcileContributionIssueEffect).mockResolvedValue({ state: "absent" } as never);
   vi.mocked(readOrdinaryRun).mockImplementation(async (_ctx, identity) => ({ id: identity.runId, agentId: identity.agentId, status: "running", startedAt: "now", finishedAt: null }) as never);
@@ -140,6 +140,28 @@ it("launches and attributes a physical publisher while retaining its logical aut
   await reconcileN5(ctx as unknown as PluginContext, current);
   expect(settleOrdinaryRunUsage).toHaveBeenCalledWith(ctx, expect.objectContaining({ agentId: physical, reservationId: p.reservationId, runId: p.runId }));
   expect(observeVariantRun).toHaveBeenCalledWith(ctx, expect.anything(), p.reservationId);
+});
+it("requires fresh preflight before the one-shot publication claim and never grants another effect on replay", async () => {
+  const ctx = context(); current.aggregate.n5!.authority.publisherPreflight = "publisher-run-report-v1";
+  await reconcileN5(ctx as unknown as PluginContext, current);
+  const p = current.aggregate.n5!.publication!;
+  const input = request(p.issueId!, physical, p.runId!, "n5-claim-publication");
+  input.body = { ...input.body as object, commandId: randomUUID(), expectedVersion: current.version };
+  const refusal = await handleN5Agent(ctx as unknown as PluginContext, input);
+  expect(refusal).toMatchObject({ status: 409, body: { code: "n5_publisher_preflight_required" } });
+  expect(current.aggregate.n5!.publication!.claimedAt).toBeUndefined();
+  expect(n2CommandCas).not.toHaveBeenCalled();
+  input.body = { ...input.body as object, commandId: randomUUID(), expectedVersion: current.version,
+    preflight: { protocol: "publisher-run-report-v1", provenance: "publisher_run_report", status: "pass",
+      missionId: current.missionId, intentId: p.intentId, issueId: p.issueId, runId: p.runId,
+      repository: "owner/repo", candidateCommit: p.submission.candidateCommit, baseCommit: p.submission.baseCommit,
+      baseRef: "main", headRef: "delivery", remoteHead: null, observedAt: new Date().toISOString(),
+      publicationWriteObserved: false, providerTurnsStartedByProbe: 0,
+      checks: Object.fromEntries(["gitTool", "ghTool", "workspaceIdentity", "localCandidate", "originIdentity", "trackedFilesClean", "repositoryRead", "pushPermissionReported", "remoteBase", "remoteHeadLease"].map(key => [key, true])) } };
+  expect(await handleN5Agent(ctx as unknown as PluginContext, input)).toMatchObject({ status: 200, body: { effectPermission: "execute" } });
+  expect(current.aggregate.n5!.publication!.preflight).toMatchObject({ protocol: "publisher-run-report-v1", provenance: "publisher_run_report", runId: p.runId, agentId: physical });
+  expect(await handleN5Agent(ctx as unknown as PluginContext, input)).toMatchObject({ status: 200, body: { effectPermission: "none" } });
+  expect(n2CommandCas).toHaveBeenCalledTimes(1);
 });
 
 it("keeps an uncertain publisher wake and never selects or launches a replacement", async () => {

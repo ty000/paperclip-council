@@ -85,8 +85,13 @@ is available, that its skills are mounted, or that it can complete a model turn,
 commit, push or create a PR. Re-register only after observing a changed effective
 native home; never infer it from an interactive shell's home.
 
-The GitHub publisher's actual credential/capability projection and its automated
-pre-issue refusal remain in [#47](https://github.com/ty000/paperclip-council/issues/47).
+The publisher's configuration is checked before admission/child creation. Its
+GitHub projection is now checked **inside the already admitted publisher run**,
+before any publication write, entirely within Council; see
+[PUBLISHER-PREFLIGHT.md](PUBLISHER-PREFLIGHT.md). This split is deliberate: the
+public host's grant-inspection routes require an operator identity, and Council
+does not store/use an operator token or change Paperclip/its SDK. The run remains
+subject to the existing admission and accounting, including a failed preflight.
 Publication authority, draft compliance and subsequent corrections are tracked
 separately in [#52](https://github.com/ty000/paperclip-council/issues/52). This
 tranche can be installed independently with the new gate unconfigured; package

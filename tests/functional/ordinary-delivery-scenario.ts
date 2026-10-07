@@ -35,8 +35,9 @@ export async function prepareOrdinaryDelivery(input: any) {
     work: ["alpha", "beta"].map(name => ({ assigneeAgentId: actors[name], sourceRefs: [`prepared:${name}`], ownedPaths: [`${name}.txt`],
       dependencies: [], evidenceRefs: [`git:${name}`], skills: ["native-git"], interface: "Complementary attributed candidate text" })) };
   const doc = await api("PUT", `/api/issues/${rootIssueId}/documents/plan`, { format: "markdown", body: JSON.stringify(plan), title: "Ordinary operational plan" });
-  await api("POST", `${missionPath}/commands`, { companyId, command: "configure-delivery", commandId: randomUUID(), expectedVersion: mission.version,
+  const configured = await api("POST", `${missionPath}/commands`, { companyId, command: "configure-delivery", commandId: randomUUID(), expectedVersion: mission.version,
     planRevisionId: doc.latestRevisionId, publisherAgentId: actors.publisher, repository: "ty000/paperclip-council", baseRef: "main", headRef: "codex/n5-fixture" });
+  assert.equal(configured.mission.aggregate.n5.authority.publisherPreflight, "publisher-run-report-v1");
   let correctionRequested = false;
   return {
     async advance(m: any) {
