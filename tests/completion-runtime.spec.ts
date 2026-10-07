@@ -114,3 +114,13 @@ it("a changed accepted candidate cannot consume a retained proof closure", async
   await expect(reconcileCompletion(c.ctx, f.m)).rejects.toMatchObject({ code: "completion_subject_changed" });
   expect(c.update).not.toHaveBeenCalled(); expect(c.createComment).not.toHaveBeenCalled();
 });
+it("retains completed/cancelled imported branches as history without claiming or closing them again", async () => {
+  f.m.aggregate.hierarchy.nodes.push(
+    { issueId: "historical-parent", parentId: "root", assigneeAgentId: null, historicalStatus: "cancelled" },
+    { issueId: "historical-child", parentId: "historical-parent", assigneeAgentId: null, historicalStatus: "done" });
+  const c = context(); c.issues["historical-parent"].status = "cancelled"; c.issues["historical-child"].status = "done";
+  const result = await reconcileCompletion(c.ctx, f.m);
+  expect(c.update.mock.calls.map(call => call[0])).toEqual(["group", "root", "coordinator"]);
+  expect(result.aggregate.completion?.closedNodeIds).toEqual(["group", "root"]);
+  expect(c.issues["historical-parent"].status).toBe("cancelled"); expect(c.issues["historical-child"].status).toBe("done");
+});

@@ -26,6 +26,7 @@
     "ui": "./dist/ui/"
   },
   "scripts": {
+    "qualification:native:linear-intake": "node scripts/qualification/run-linear-intake-native.mjs",
     "build": "tsc && node ./esbuild.config.mjs",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",

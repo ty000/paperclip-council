@@ -3,6 +3,7 @@ import { operatingProfileHash } from "./project-mandate-state.js";
 import { parseCompletionPolicy } from "./completion-contract.js";
 import { parsePrContract } from "./pr-contract.js";
 import { parseHierarchyPolicy } from "./hierarchy-contract.js";
+import { parseLinearIntakePolicy } from "./linear-intake-contract.js";
 import { randomUUID } from "node:crypto";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { canonicalPayloadHash, MissionError, parseMissionMandate } from "./missions.js";
@@ -87,9 +88,12 @@ async function policyContent(ctx: PluginContext, companyId: string, projectId: s
   const { objective: _objective, ...template } = mandate;
   if (template.limits.correctionLimit > (profile.maxCorrections ?? 0)) throw new MissionError(422, "project_correction_policy", "Project policy cannot exceed the existing operating correction bound");
   if (!["project-defaults", "task-document"].includes(body.criteriaSource)) throw new MissionError(422, "project_criteria_policy", "Explicit criteria source required");
+  const allowedPaths = paths(body.allowedPaths), delivery = await deliveryPolicy(ctx, companyId, body);
+  const linearIntake = parseLinearIntakePolicy(body.linearIntake, { allowedPaths, hierarchy: delivery.hierarchy, criteriaSource: body.criteriaSource },
+    pair.team.revision.content.members.map(member => member.agentId).filter(id => id !== leadAgentId));
   return { enabled: body.enabled === true, ownerUserId: ownerId, leadAgentId, teamRosterId: pair.team.head.rosterId, teamRevision,
     councilRosterId: pair.council.head.rosterId, councilRevision, n3Slots, template, criteriaSource: body.criteriaSource,
-    allowedPaths: paths(body.allowedPaths), ...await deliveryPolicy(ctx, companyId, body),
+    allowedPaths, ...delivery, ...(linearIntake ? { linearIntake } : {}),
     operatingProfileHash: operatingProfileHash(config), baselineRootIds: await baseline(ctx, companyId, projectId, body.includedRootIssueIds),
     };
 }

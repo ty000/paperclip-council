@@ -33,7 +33,8 @@ function nativeNodeMatches(issue: Awaited<ReturnType<PluginContext["issues"]["ge
 }
 async function closeProductParent(ctx: PluginContext, m: MissionRecord, node: import("./hierarchy-contract.js").HierarchyNode) {
   for (const child of m.aggregate.hierarchy!.nodes!.filter(child => child.parentId === node.issueId)) {
-    if ((await ctx.issues.get(child.issueId, m.companyId))?.status !== "done") throw new MissionError(409, "completion_child_pending", "Parent closure requires all necessary native children done");
+    const expectedStatus = child.historicalStatus ?? "done";
+    if ((await ctx.issues.get(child.issueId, m.companyId))?.status !== expectedStatus) throw new MissionError(409, "completion_child_pending", "Necessary children must be done; imported history must retain its original terminal state");
   }
   const relations = await ctx.issues.relations.get(node.issueId, m.companyId);
   if (relations.blockedBy.some(b => !["done", "cancelled"].includes(b.status))) throw new MissionError(409, "completion_dependency_pending", "Native blockers are preserved and must resolve before closing each parent");
@@ -57,7 +58,7 @@ async function closeCoordinator(ctx: PluginContext, m: MissionRecord) {
 }
 async function closeProductNodes(ctx: PluginContext, m: MissionRecord) {
   const leaves = new Set((m.aggregate.n1 as N1State).contributions.map(s => s.childIssueId));
-  const pending = m.aggregate.hierarchy!.nodes!.filter(n => !leaves.has(n.issueId));
+  const pending = m.aggregate.hierarchy!.nodes!.filter(n => !leaves.has(n.issueId) && !n.historicalStatus);
   for (let step = 0; pending.length && step < 32; step++) {
     const index = pending.findIndex(n => !pending.some(child => child.parentId === n.issueId));
     if (index < 0) throw new MissionError(409, "completion_parent_cycle", "No parent can close before its necessary children");

@@ -13,12 +13,14 @@ export type ProjectMandateContent = {
   baselineRootIds: string[];
   completion?: import("./completion-contract.js").CompletionPolicy;
   hierarchy?: import("./hierarchy-contract.js").HierarchyPolicy;
+  linearIntake?: import("./linear-intake-contract.js").LinearIntakePolicy;
 };
 export type ProjectMandate = { companyId: string; projectId: string; version: number; revisionId: string;
   authorizedBy: string; content: ProjectMandateContent };
 export type ProjectMandateSnapshot = { projectId: string; revisionId: string; version: number; authorizedBy: string;
   operatingProfileHash: string; mandateHash: string; allowedPaths: string[]; publication: ProjectPublication | null;
   completion?: import("./completion-contract.js").CompletionPolicy;
+  linearIntake?: { subject: import("./linear-intake-contract.js").LinearSourceSubject; bodySha256: string };
   source: { rootIssueId: string; title: string; descriptionHash: string; taskDocumentRevisionId: string | null } };
 
 export function projectTable(ctx: PluginContext, name: "project_mandates" | "project_task_intakes") {

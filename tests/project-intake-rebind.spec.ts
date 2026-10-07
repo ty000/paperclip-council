@@ -21,7 +21,7 @@ describe("explicit unstarted intake revision", () => {
     expect((await rebindUnstartedTask(f.ctx, f.policy, "owner", f.body)).outcome).toBe("replayed"); expect(f.execute).toHaveBeenCalledTimes(1);
     await expect(rebindUnstartedTask(f.ctx, f.policy, "owner", { ...f.body, authorizeRebind: false })).rejects.toMatchObject({ code: "project_rebind_identity" });
   });
-  it.each(["createBody", "snapshot", "plan", "commands"])("refuses %s preparation or uncertainty without changing any state", async field => {
+  it.each(["createBody", "snapshot", "plan", "commands", "linearIntake"])("refuses %s preparation or uncertainty without changing any state", async field => {
     const f = fixture(); f.row().state[field] = { original: "retained" };
     await expect(rebindUnstartedTask(f.ctx, f.policy, "owner", f.body)).rejects.toMatchObject({ code: "project_rebind_unavailable" });
     expect(f.execute).not.toHaveBeenCalled();

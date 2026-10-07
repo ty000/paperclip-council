@@ -1,5 +1,6 @@
 {
   "entry": [
+    "tests/functional/linear-intake-installed.ts",
     "src/ui/index.tsx",
     "tests/receipts/crash-child.ts",
     "tests/receipts/ui-fixture.tsx",
