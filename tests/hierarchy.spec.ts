@@ -20,7 +20,7 @@ function fixture() {
   ].map(issue => ({ ...issue, companyId: "company", projectId: "project" }));
   const documents = new Map(["a", "b", "c"].map(id => [id, { latestRevisionId: `${id}-v1`, body: JSON.stringify({ ownedPaths: [`src/${id}`] }) }]));
   const blockers = new Map<string, any[]>([["root", [{ id: "group", status: "blocked" }]], ["b", [{ id: "a", status: "backlog" }]]]);
-  const ctx = { issues: { list: async () => issues, documents: { get: async (id: string) => documents.get(id) },
+  const ctx = { issues: { list: async () => issues, get: async (id: string) => issues.find(issue => issue.id === id), documents: { get: async (id: string) => documents.get(id) },
     relations: { get: async (id: string) => ({ blockedBy: blockers.get(id) ?? [], blocks: [] }) } } } as unknown as PluginContext;
   return { ctx, policy, issues, documents, blockers };
 }
@@ -62,6 +62,13 @@ describe("explicit native hierarchy contract", () => {
     f.blockers.set("a", [{ id: "external", status: "blocked" }]);
     await expect(prepareHierarchy(f.ctx, f.policy, "root", f.issues)).rejects.toMatchObject({ code: "hierarchy_external_dependency" });
   });
+  it("pins full task sources rather than the truncated list preview", async () => {
+    const f = fixture(); f.issues.find(issue => issue.id === "a").description = "A full result ".repeat(200);
+    const previews = f.issues.map(issue => ({ ...issue, description: issue.description.slice(0, 1200) }));
+    const hierarchy = await prepareHierarchy(f.ctx, f.policy, "root", previews);
+    f.ctx.issues.list = vi.fn(async () => previews);
+    await expect(assertHierarchySources(f.ctx, { companyId: "company", projectId: "project", aggregate: { hierarchy } } as MissionRecord)).resolves.toBeUndefined();
+  });
 });
 
 describe("durable operational coordinator", () => {
@@ -71,8 +78,8 @@ describe("durable operational coordinator", () => {
       aggregate: { hierarchy: { leaves: [{ issueId: "child" }] }, responsibilities: { integrationLeadAgentId: "lead" }, n1: {}, mandate: {} } } as MissionRecord;
     let issue: any;
     const create = vi.fn(async (input: any) => { issue = { ...input, id: "coordinator", parentId: null }; throw new Error("lost response"); });
-    const list = vi.fn().mockResolvedValueOnce([]).mockImplementation(async () => [issue]);
-    const ctx = { issues: { create, list } } as unknown as PluginContext;
+    const list = vi.fn().mockResolvedValueOnce([]).mockImplementation(async () => [{ ...issue, description: "List preview only" }]);
+    const ctx = { issues: { create, list, get: async () => issue } } as unknown as PluginContext;
     const persist = async (before: MissionRecord, coordination: N1Coordination) => m = { ...before, version: before.version + 1,
       aggregate: { ...before.aggregate, n1: { ...before.aggregate.n1, coordination } } };
     await expect(prepareHierarchyCoordinator(ctx, m, body, persist)).rejects.toMatchObject({ code: "hierarchy_coordinator_unknown" });

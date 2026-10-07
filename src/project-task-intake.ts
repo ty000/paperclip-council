@@ -52,7 +52,7 @@ async function question(ctx: PluginContext, initial: Intake, policy: ProjectMand
 }
 
 async function pinTask(ctx: PluginContext, intake: Intake, policy: ProjectMandate, issues: Awaited<ReturnType<typeof projectIssues>>) {
-  const root = issues.find(issue => issue.id === intake.rootIssueId);
+  const root = await ctx.issues.get(intake.rootIssueId, intake.companyId);
   if (!root || root.parentId || !["backlog", ...(policy.content.hierarchy?.adoptExistingChildren ? ["blocked"] : [])].includes(root.status) || root.originKind !== "manual" || root.assigneeAgentId !== policy.content.leadAgentId) {
     throw new MissionError(409, "project_task_eligibility", "Use a manual parentless task in Backlog assigned to the declared project lead");
   }

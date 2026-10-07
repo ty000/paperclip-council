@@ -37,7 +37,7 @@ export async function prepareHierarchyCoordinator(ctx: PluginContext, initial: M
     } catch { /* Correlate an uncertain response without a second create. */ }
   }
   const matches = await ctx.issues.list({ companyId: m.companyId, projectId: m.projectId, originKind, originId: intent.intentId, includePluginOperations: true, limit: 2 });
-  const issue = matches[0];
+  const issue = matches.length === 1 ? await ctx.issues.get(matches[0]!.id, m.companyId) : null;
   if (matches.length !== 1 || !issue || issue.parentId || issue.companyId !== m.companyId || issue.projectId !== m.projectId
       || issue.assigneeAgentId !== m.aggregate.responsibilities.integrationLeadAgentId || issue.status !== "backlog"
       || issue.originId !== intent.intentId || issue.originKind !== originKind || issue.description !== instructions(m)) {

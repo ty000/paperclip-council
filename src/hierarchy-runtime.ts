@@ -15,11 +15,12 @@ export async function assertHierarchySources(ctx: PluginContext, m: MissionRecor
     throw new MissionError(409, "hierarchy_source_changed", "A new descendant is outside the pinned hierarchy; retain all tasks without another departure");
   }
   for (const node of hierarchy.nodes) {
-    const issue = issues.find(item => item.id === node.issueId);
+    const issue = await ctx.issues.get(node.issueId, m.companyId);
     const leaf = hierarchy.leaves?.find(item => item.issueId === node.issueId);
     const agentId = node.assigneeAgentId && leaf ? physicalAgent(m, node.assigneeAgentId, { issueId: node.issueId }) : node.assigneeAgentId;
     const relations = await ctx.issues.relations.get(node.issueId, m.companyId);
-    if (!issue || issue.parentId !== node.parentId || issue.title !== node.title || canonicalPayloadHash(issue.description) !== node.descriptionHash
+    if (!issue || issue.id !== node.issueId || issue.companyId !== m.companyId || issue.projectId !== m.projectId
+        || !issues.some(item => item.id === issue.id) || issue.parentId !== node.parentId || issue.title !== node.title || canonicalPayloadHash(issue.description) !== node.descriptionHash
         || issue.assigneeAgentId !== agentId || canonicalPayloadHash(relations.blockedBy.map(item => item.id).sort()) !== canonicalPayloadHash(node.blockedByIssueIds)) {
       throw new MissionError(409, "hierarchy_source_changed", "Pinned task identity, result, assignment or native dependencies changed; no replacement or blocker removal");
     }

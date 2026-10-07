@@ -63,10 +63,18 @@ function order(leaves: HierarchyLeaf[]) {
 
 export async function prepareHierarchy(ctx: PluginContext, policy: ProjectMandate, rootId: string, issues: Awaited<ReturnType<typeof projectIssues>>): Promise<HierarchyState | undefined> {
   const contract = policy.content.hierarchy;
-  const tree = descendants(rootId, issues);
-  if (!tree.length) return contract;
+  const previews = descendants(rootId, issues);
+  if (!previews.length) return contract;
   if (!contract?.adoptExistingChildren) throw new MissionError(409, "project_hierarchy_pending", "Existing children are retained; their adoption requires explicit hierarchy authority in the project mandate");
-  if ([issues.find(item => item.id === rootId)!, ...tree].some(issue => !["backlog", "blocked"].includes(issue.status) || issue.checkoutRunId || issue.executionRunId)) {
+  const sources = await Promise.all([issues.find(item => item.id === rootId)!, ...previews].map(async preview => {
+    const issue = await ctx.issues.get(preview.id, policy.companyId);
+    if (!issue || issue.id !== preview.id || issue.companyId !== policy.companyId || issue.projectId !== policy.projectId || issue.parentId !== preview.parentId) {
+      throw new MissionError(409, "hierarchy_source_changed", "Exact full native hierarchy readback required; list descriptions are previews");
+    }
+    return issue;
+  }));
+  const [root, ...tree] = sources;
+  if (sources.some(issue => !["backlog", "blocked"].includes(issue.status) || issue.checkoutRunId || issue.executionRunId)) {
     throw new MissionError(409, "hierarchy_existing_execution", "Adoption requires waiting tasks without active native locks; historical results remain pending an evidence decision");
   }
   const leafIssues = tree.filter(issue => !tree.some(child => child.parentId === issue.id));
@@ -80,7 +88,7 @@ export async function prepareHierarchy(ctx: PluginContext, policy: ProjectMandat
     if (left.ownedPaths.some(a => right.ownedPaths.some(b => ownershipsOverlap(a, b)))) throw new MissionError(422, "hierarchy_ownership_overlap", "Existing leaf write ownership overlaps; the owner must resolve the scope");
   }
   const nodes = [];
-  for (const issue of [issues.find(item => item.id === rootId)!, ...tree]) {
+  for (const issue of [root!, ...tree]) {
     const relations = await ctx.issues.relations.get(issue.id, policy.companyId);
     nodes.push({ issueId: issue.id, parentId: issue.parentId, title: issue.title, descriptionHash: canonicalPayloadHash(issue.description),
       assigneeAgentId: issue.assigneeAgentId, blockedByIssueIds: relations.blockedBy.map(blocker => blocker.id).sort() });
