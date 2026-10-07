@@ -11,6 +11,7 @@ import {
   settleNativeSequentialRunUsage,
 } from "./g4-native.js";
 import { verifyIntegratedCandidate, type IntegratedCandidateVerification } from "./integration.js";
+import { contributionCountAllowed } from "./hierarchy-contract.js";
 import {
   canonicalPayloadHash,
   getMission,
@@ -1353,7 +1354,7 @@ export async function prepareResubmission(
 ) {
   const state = storedN2(mission);
   const n1 = mission.aggregate.n1 as { candidate?: IntegratedCandidateVerification; contributions?: Array<{ contributionId?: string; commit?: string; ownedPaths?: string[] }> } | undefined;
-  if (!n1?.contributions || n1.contributions.length !== 2 || n1.contributions.some((entry) => !entry.contributionId || !entry.commit || !entry.ownedPaths)) {
+  if (!n1?.contributions || !contributionCountAllowed(mission, n1.contributions.length) || n1.contributions.some((entry) => !entry.contributionId || !entry.commit || !entry.ownedPaths)) {
     throw new MissionError(409, "n1_evidence_unavailable", "N1 contribution evidence is unavailable for V2 verification");
   }
   const attachmentId = runtimeUuid(body.attachmentId, "attachmentId");
@@ -1378,6 +1379,7 @@ export async function prepareResubmission(
     expectedSha256,
     correctedPaths,
     integrationAdjustedPaths: n1.candidate?.integrationAdjustedPaths,
+    ...(mission.aggregate.hierarchy ? { contributionPolicy: mission.aggregate.hierarchy } : {}),
     contributions: n1.contributions.map((entry) => ({
       contributionId: entry.contributionId!, commit: entry.commit!, ownedPaths: entry.ownedPaths!,
     })) as [

@@ -22,7 +22,7 @@ export async function readN5Plan(ctx: PluginContext, mission: MissionRecord, rev
   if (!plan || Array.isArray(plan) || plan.missionId !== mission.missionId || plan.mandateHash !== mandateHash
       || roles.some(role => typeof plan[role] !== "string")
       || plan.integrationLeadAgentId !== mission.aggregate.responsibilities.integrationLeadAgentId
-      || !Array.isArray(plan.work) || plan.work.length < 2 || !plan.work.every((work: ObjectRecord) =>
+      || !Array.isArray(plan.work) || plan.work.length < (mission.aggregate.hierarchy ? 1 : 2) || !plan.work.every((work: ObjectRecord) =>
         typeof work.assigneeAgentId === "string" && Array.isArray(work.sourceRefs) && work.sourceRefs.length
         && Array.isArray(work.ownedPaths) && work.ownedPaths.length && Array.isArray(work.dependencies)
         && Array.isArray(work.evidenceRefs) && Array.isArray(work.skills) && typeof work.interface === "string")) {

@@ -1,3 +1,4 @@
+import { prepareHierarchyTasks, verifyHierarchyTasks } from "./hierarchy-scenario.js";
 import { prepareN6Scenario } from "./n6-scenario.js";
 import { qualifyNativeRunException } from "./native-run-exception-scenario.js";
 import assert from "node:assert/strict";
@@ -22,11 +23,13 @@ assert(!coordinationMode || n6Mode);
 const continuityMode = process.env.COUNCIL_CONTINUITY === "1";
 const projectIntakeMode = process.env.COUNCIL_PROJECT_INTAKE === "1";
 const deliveryMode = process.env.COUNCIL_ORDINARY_DELIVERY === "1";
+const hierarchyCount = Number(process.env.COUNCIL_HIERARCHY_COUNT ?? 0);
+assert([0, 1, 3].includes(hierarchyCount) && (!hierarchyCount || projectIntakeMode));
 assert(!(n6Mode && deliveryMode));
 assert(!continuityMode || deliveryMode);
 assert(!projectIntakeMode || continuityMode);
-const success = n6Mode ? "INSTALLED N6 DEPENDENCY PROVIDER-FREE VALIDATED" : deliveryMode ? "INSTALLED ORDINARY DELIVERY PROVIDER-FREE VALIDATED" : "INSTALLED ORDINARY COUNCIL PROVIDER-FREE VALIDATED";
-const artifactPrefix = n6Mode ? "n6-installed-" : deliveryMode ? "n5-ordinary-installed-" : "n2-ordinary-installed-";
+const success = hierarchyCount ? "INSTALLED VARIABLE HIERARCHY PROVIDER-FREE VALIDATED" : n6Mode ? "INSTALLED N6 DEPENDENCY PROVIDER-FREE VALIDATED" : deliveryMode ? "INSTALLED ORDINARY DELIVERY PROVIDER-FREE VALIDATED" : "INSTALLED ORDINARY COUNCIL PROVIDER-FREE VALIDATED";
+const artifactPrefix = hierarchyCount ? `hierarchy-${hierarchyCount}-installed-` : n6Mode ? "n6-installed-" : deliveryMode ? "n5-ordinary-installed-" : "n2-ordinary-installed-";
 const runtime = await mkdtemp("/tmp/council-ordinary-installed-");
 const output = resolve(repository, process.argv[2] ?? `artifacts/${artifactPrefix}${Date.now()}.json`);
 assert(output.startsWith(resolve(repository, `artifacts/${artifactPrefix}`)));
@@ -37,7 +40,7 @@ const proof: any = { schema: "council-ordinary-installed-v1", outcome: "RUNNING"
   head: gitAt(repository, "rev-parse", "HEAD"), hostSha, runtime, timeline: [], checks: {},
   boundary: "Installed Council owns N1 child completion/root waiting, N2/N3 state, admission, dispatch and reconciliation. Only CLI model/content/usage are deterministic. Owner prepares N1; Council finishes recorded children without implicit parent wakes and parks its verified candidate awaiting review. Agent demand wake policy remains enabled.",
   source: Object.fromEntries(await Promise.all([...new Set([fixture, fileURLToPath(import.meta.url), resolve(here, "ordinary-delivery-fixture.mjs"), resolve(here, "ordinary-delivery-scenario.ts"), resolve(here, "n6-scenario.ts"), resolve(here, "n6-coordination-fixture.mjs"), resolve(repository, "dist/worker.js"),
-    resolve(repository, "scripts/operations/workspace_preflight.py"), resolve(repository, "scripts/operations/publisher_preflight.py"), resolve(here, "native-run-exception-scenario.ts"),
+    resolve(repository, "scripts/operations/workspace_preflight.py"), resolve(repository, "scripts/operations/publisher_preflight.py"), resolve(here, "native-run-exception-scenario.ts"), resolve(here, "hierarchy-scenario.ts"),
     ...gitAt(repository, "ls-files", "src").split("\n").map(path => resolve(repository, path)),
     ...gitAt(repository, "ls-files", "--others", "--exclude-standard", "src").split("\n").filter(Boolean).map(path => resolve(repository, path))])].map(async p => [p, createHash("sha256").update(await readFile(p)).digest("hex")]))) };
 const record = (event: string, details: any = {}) => proof.timeline.push({ ordinal: proof.timeline.length + 1, at: new Date().toISOString(), event, ...details });
@@ -115,7 +118,7 @@ try {
   await chmod(fixture, 0o755);
   const fixtureConfig = resolve(runtime, "fixture.json");
   const actors: Record<string, string> = {};
-  for (const name of ["lead", "alpha", "beta", "product", "quality", "council", ...deliveryMode ? ["publisher"] : [], ...coordinationMode ? ["pm", "pmSuccessor", "facilitator"] : []]) {
+  for (const name of ["lead", "alpha", "beta", ...(hierarchyCount === 3 ? ["gamma"] : []), "product", "quality", "council", ...deliveryMode ? ["publisher"] : [], ...coordinationMode ? ["pm", "pmSuccessor", "facilitator"] : []]) {
     const agent = await api("POST", `/api/companies/${companyId}/agents`, { name: `Ordinary ${name}`, role: "engineer", adapterType: "codex_local",
       adapterConfig: { engine: "cli", command: fixture, model: "fixture-no-provider", cwd: repoPath,
         env: { CODEX_HOME: resolve(runtime, `codex-${name}`), COUNCIL_ORDINARY_FIXTURE: fixtureConfig }, timeoutSec: 120 },
@@ -151,7 +154,7 @@ try {
   const projectId = project.id;
   const rosters = `/api/plugins/${pluginId}/api/companies/${companyId}/rosters`;
   const team = await api("POST", rosters, { companyId, command: "create", roster: { kind: "team", name: "Team", projectId,
-    members: ["lead", "alpha", "beta"].map(name => ({ agentId: actors[name], responsibilities: [name === "lead" ? "integration_lead" : "contributor"] })),
+    members: ["lead", "alpha", "beta", ...(hierarchyCount === 3 ? ["gamma"] : [])].map(name => ({ agentId: actors[name], responsibilities: [name === "lead" ? "integration_lead" : "contributor"] })),
     integrationLeadAgentId: actors.lead, finalReviewerAgentId: null, requiredPerspectives: [] } });
   const council = await api("POST", rosters, { companyId, command: "create", roster: { kind: "council", name: "Council", projectId,
     members: [{ agentId: actors.council, responsibilities: ["final_reviewer"] }], integrationLeadAgentId: null, finalReviewerAgentId: actors.council, requiredPerspectives: ["integration_quality"] } });
@@ -161,7 +164,7 @@ try {
   const admissionPath = `/api/plugins/${pluginId}/api/companies/${companyId}/admission`;
   await api("POST", admissionPath, { companyId, command: "configure", configuration: nativeAdmissionConfiguration(profile as any, companyId, randomUUID()) });
   const n3Slots = ["product", "quality"].map(perspective => ({ slotId: randomUUID(), perspective, specialistAgentId: actors[perspective], required: true, question: `${perspective} review of the exact candidate and alpha correction marker` }));
-  const mandate = { objective: "Two contributions and independent Council correction", acceptanceCriteria: deliveryMode ? ["Two attributed contributions", "Bounded post-publication correction remains within mandate"] : ["Alpha must contain corrected marker", "Two attributed contributions"],
+  const mandate = { objective: "Two contributions and independent Council correction", acceptanceCriteria: hierarchyCount ? [`${hierarchyCount} existing attributed leaves`, "Native dependencies retained", "Reviewed authorized publication"] : deliveryMode ? ["Two attributed contributions", "Bounded post-publication correction remains within mandate"] : ["Alpha must contain corrected marker", "Two attributed contributions"],
     commitments: ["Provider-free CLI fixture", "One correction maximum"], limits: { taskPolicy: "1000 tokens reserved", periodPolicy: "20000 token envelope", correctionLimit: 1, elapsedMinutes: 30 } };
   let root: any, missionId = randomUUID(), created: any;
   const missions = `/api/plugins/${pluginId}/api/companies/${companyId}/missions`;
@@ -170,11 +173,12 @@ try {
     const historical = await api("POST", `/api/companies/${companyId}/issues`, { title: "Historical task retained", description: "Do not adopt without explicit inclusion", projectId, status: "backlog", assigneeAgentId: actors.lead });
     const settings = await api("GET", "/api/instance/settings/experimental");
     await api("PATCH", "/api/instance/settings/experimental", { ...settings, enableExternalObjects: true });
-    await writeFile(fixtureConfig, JSON.stringify({ pluginId, companyId, projectId, projectIntake: true, repoPath, runtime, actors, baseCommit, delivery: true }));
+    await writeFile(fixtureConfig, JSON.stringify({ pluginId, companyId, projectId, projectIntake: true, hierarchyCount, repoPath, runtime, actors, baseCommit, delivery: true }));
     const policyPath = `/api/plugins/${pluginId}/api/companies/${companyId}/projects/${projectId}/mandate`;
     const policyBody = { companyId, commandId: randomUUID(), expectedVersion: 0, enabled: true, authorizeNewTasks: true,
       teamRosterId: team.head.rosterId, councilRosterId: council.head.rosterId, n3Slots, template: mandate,
-      criteriaSource: "project-defaults", allowedPaths: ["alpha.txt", "beta.txt"],
+      criteriaSource: "project-defaults", allowedPaths: ["alpha.txt", "beta.txt", ...(hierarchyCount === 3 ? ["gamma.txt"] : [])],
+      ...(hierarchyCount ? { hierarchy: { protocol: "council-hierarchy-v1", maxContributions: hierarchyCount, execution: "sequential", adoptExistingChildren: true } } : {}),
       publication: { publisherAgentId: actors.publisher, qaAgentId: actors.quality, repository: "ty000/paperclip-council", baseRef: "main", headRefPrefix: "codex/project-task" } };
     const configured = await api("POST", policyPath, policyBody);
     assert.equal((await api("POST", policyPath, policyBody)).outcome, "replayed");
@@ -182,7 +186,12 @@ try {
     const hierarchy = await api("POST", `/api/companies/${companyId}/issues`, { title: "Existing hierarchy", description: "Retain existing children for lot #51", projectId, status: "backlog" });
     const child = await api("POST", `/api/companies/${companyId}/issues`, { title: "Existing child retained", parentId: hierarchy.id, projectId, status: "backlog" });
     await api("PATCH", `/api/issues/${hierarchy.id}`, { assigneeAgentId: actors.lead });
+    if (hierarchyCount) {
+      proof.hierarchyTasks = await prepareHierarchyTasks(api, companyId, projectId, actors, hierarchyCount);
+      root = proof.hierarchyTasks.root;
+    } else {
     root = await api("POST", `/api/companies/${companyId}/issues`, { title: "Ordinary N1 to N2", description: "Produce two attributed complementary contributions and the reviewed publication", projectId, status: "backlog", assigneeAgentId: actors.lead });
+    }
     created = await waitFor("scheduled project task admission", () => api("GET", `${missions}?companyId=${companyId}`),
       view => view.missions?.some((item: any) => item.mission.rootIssueId === root.id && item.mission.aggregate.n1), 180000);
     const admitted = created.missions.find((item: any) => item.mission.rootIssueId === root.id).mission;
@@ -311,11 +320,11 @@ try {
   }
   proof.runs = await api("GET", `/api/companies/${companyId}/heartbeat-runs`);
   proof.admission = (await api("GET", `${admissionPath}?companyId=${companyId}&periodKey=${profile.periodKey}`)).envelope;
-  assert.equal(proof.runs.length, continuityMode ? 7 : coordinationMode ? 14 : n6Mode ? 11 : deliveryMode ? 12 : 10);
+  assert.equal(proof.runs.length, hierarchyCount ? hierarchyCount + 5 : continuityMode ? 7 : coordinationMode ? 14 : n6Mode ? 11 : deliveryMode ? 12 : 10);
   assert(proof.runs.every((run: any) => run.status === "succeeded"));
   assert.equal(proof.mission.aggregate.n2.ordinary.tasks.length, continuityMode ? 3 : 7);
   assert(proof.admission.reservations.every((item: any) => item.status === "settled"));
-  assert.equal(proof.admission.allowance.knownUsageUnits, continuityMode ? 1050 : coordinationMode ? 2100 : n6Mode ? 1650 : deliveryMode ? 1800 : 1500);
+  assert.equal(proof.admission.allowance.knownUsageUnits, hierarchyCount ? (hierarchyCount + 5) * 150 : continuityMode ? 1050 : coordinationMode ? 2100 : n6Mode ? 1650 : deliveryMode ? 1800 : 1500);
   const { acceptedN5Submission } = await import("../../src/n5-preflight.js");
   proof.n5Handoff = acceptedN5Submission(proof.mission);
   const n2 = proof.mission.aggregate.n2;
@@ -328,6 +337,7 @@ try {
   assert.equal(proof.agentApiReadbacks.length, continuityMode ? 3 : 7);
   proof.gatewayRefusal = JSON.parse(await readFile(resolve(runtime, "gateway-refusal.json"), "utf8"));
   proof.issues = await Promise.all([...new Set(proof.mission.aggregate.n2.ordinary.tasks.map((task: any) => task.issueId))].map(id => api("GET", `/api/issues/${id}`)));
+  if (hierarchyCount) await verifyHierarchyTasks(api, proof, root.id);
   if (projectIntakeMode) {
     const view = await api("GET", `${missions}?companyId=${companyId}`);
     assert.equal(view.missions.length, 1);

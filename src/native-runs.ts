@@ -54,7 +54,7 @@ export async function assertNativeRunInventory(ctx: PluginContext, m: MissionRec
   const policy = m.aggregate.nativeWakePolicy;
   if (policy?.protocol !== "council-native-wake-v2") return;
   const bindings = nativeRunBindings(m);
-  const issueIds = [...new Set([m.rootIssueId, ...bindings.map(binding => binding.issueId)])];
+  const issueIds = [...new Set([m.rootIssueId, ...(m.aggregate.hierarchy?.nodes ?? []).map(node => node.issueId), ...bindings.map(binding => binding.issueId)])];
   if (issueIds.length > 64) throw new MissionError(409, "native_run_inventory_bound", "Owned issue inventory exceeds its observation bound; no launch permitted");
   const summaries = (await Promise.all(issueIds.map(id => issueRuns(ctx, m.companyId, id)))).flat();
   const { periodKey } = (await readNativeG4Profile(ctx, m.companyId)) ?? {};

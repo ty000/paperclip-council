@@ -37,7 +37,8 @@ export type IntegratedCandidateInput = {
   expectedSha256: string;
   baseCommit: string;
   candidateCommit: string;
-  contributions: [IntegratedContributionInput, IntegratedContributionInput];
+  contributions: IntegratedContributionInput[];
+  contributionPolicy?: { protocol: "council-hierarchy-v1"; maxContributions: number };
   correctedPaths?: string[];
   /** Owner-declared changes in the integration commit, retained for later verification. */
   integrationAdjustedPaths?: string[];
@@ -273,7 +274,7 @@ async function contributionSegmentRoots(
   baseCommit: string,
   candidateCommit: string,
   repositoryPath: string,
-): Promise<[string, string]> {
+): Promise<string[]> {
   for (const contribution of contributions) {
     await requireGitCheck(
       "contribution-ancestry",
@@ -289,18 +290,19 @@ async function contributionSegmentRoots(
     );
   }
 
-  const mergeBase = (await git([
-    "merge-base",
-    contributions[0].commit,
-    contributions[1].commit,
-  ], repositoryPath)).trim();
-  if (mergeBase === contributions[1].commit) {
-    throw new Error("Contribution order must declare an ancestor before its descendant");
+  const roots: string[] = [];
+  for (const [index, contribution] of contributions.entries()) {
+    let root = baseCommit;
+    for (const [otherIndex, other] of contributions.entries()) {
+      if (index === otherIndex) continue;
+      const common = (await git(["merge-base", contribution.commit, other.commit], repositoryPath)).trim();
+      if (common !== other.commit) continue;
+      if (otherIndex > index) throw new Error("Contribution order must declare an ancestor before its descendant");
+      root = other.commit;
+    }
+    roots.push(root);
   }
-  return [
-    baseCommit,
-    mergeBase === contributions[0].commit ? contributions[0].commit : baseCommit,
-  ];
+  return roots;
 }
 
 function validateContributions(input: IntegratedCandidateInput): Array<{
@@ -308,8 +310,12 @@ function validateContributions(input: IntegratedCandidateInput): Array<{
   commit: string;
   ownedPaths: string[];
 }> {
-  if (!Array.isArray(input.contributions) || input.contributions.length !== 2) {
-    throw new Error("Exactly two contributions are required for an integrated candidate");
+  const policy = input.contributionPolicy;
+  if (policy && (policy.protocol !== "council-hierarchy-v1" || !Number.isSafeInteger(policy.maxContributions) || policy.maxContributions < 1 || policy.maxContributions > 12)) {
+    throw new Error("Invalid bounded contribution protocol");
+  }
+  if (!Array.isArray(input.contributions) || (policy ? input.contributions.length < 1 || input.contributions.length > policy.maxContributions : input.contributions.length !== 2)) {
+    throw new Error(policy ? "Contribution count exceeds its explicit hierarchy contract" : "Exactly two contributions are required for an integrated candidate");
   }
   const parsed = input.contributions.map((contribution, index) => {
     const contributionId = requiredString(contribution?.contributionId, `contributions[${index}].contributionId`);
@@ -328,16 +334,12 @@ function validateContributions(input: IntegratedCandidateInput): Array<{
     }
     return { contributionId, commit: contributionCommit, ownedPaths };
   });
-  if (parsed[0].contributionId === parsed[1].contributionId) {
-    throw new Error("Contribution IDs must be distinct");
-  }
-  if (parsed[0].commit === parsed[1].commit) {
-    throw new Error("Contribution commits must be distinct");
-  }
-  for (const left of parsed[0].ownedPaths) {
-    for (const right of parsed[1].ownedPaths) {
-      if (ownershipsOverlap(left, right)) {
-        throw new Error(`Contribution ownership overlaps at ${left} and ${right}`);
+  if (new Set(parsed.map(item => item.contributionId)).size !== parsed.length) throw new Error("Contribution IDs must be distinct");
+  if (new Set(parsed.map(item => item.commit)).size !== parsed.length) throw new Error("Contribution commits must be distinct");
+  for (const [index, leftContribution] of parsed.entries()) {
+    for (const rightContribution of parsed.slice(index + 1)) {
+      for (const left of leftContribution.ownedPaths) for (const right of rightContribution.ownedPaths) {
+        if (ownershipsOverlap(left, right)) throw new Error(`Contribution ownership overlaps at ${left} and ${right}`);
       }
     }
   }
@@ -609,12 +611,12 @@ export async function verifyIntegratedCandidate(
     for (const contribution of verifiedContributions) {
       await verifyContributionTreePreservation(contribution, candidateCommit, repositoryPath, [...correctionPaths, ...integrationPaths]);
     }
-    checks.push({ name: "contribution-ancestry", status: "passed", detail: "two distinct contribution commits are included" });
+    checks.push({ name: "contribution-ancestry", status: "passed", detail: input.contributionPolicy ? `${contributions.length} distinct contribution commits are included` : "two distinct contribution commits are included" });
     checks.push({ name: "contribution-history-topology", status: "passed", detail: "each contribution is a bounded linear history rooted at base or a prior declared contribution" });
     checks.push({ name: "write-ownership", status: "passed", detail: "every contribution commit changed only its declared paths" });
     checks.push({ name: "contribution-tree-preservation", status: "passed", detail: correctionPaths.length || integrationPaths.length
       ? "contribution paths outside the explicit adjustments survive in the candidate tree"
-      : "both contributions survive in the candidate tree" });
+      : input.contributionPolicy ? "all contributions survive in the candidate tree" : "both contributions survive in the candidate tree" });
     if (correctionPaths.length > 0) {
       await verifyMaterialCorrection(verifiedContributions, correctionPaths, baseCommit, candidateCommit, repositoryPath);
       checks.push({
