@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
-import { MissionError, type MissionRecord } from "./missions.js";
+import { MissionError } from "./mission-primitives.js";
+import type { MissionRecord } from "./missions.js";
 
 export type ContinuityObservation = { state: "waiting" | "progressed" | "blocked" | "complete"; code: string; nextAction: string };
 type StoredObservation = { companyId: string; missionId: string; sequence: number; documentKey: string;

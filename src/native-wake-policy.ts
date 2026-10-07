@@ -1,6 +1,7 @@
 import { completionPolicy } from "./completion-contract.js";
 import type { PluginContext, PluginApiRequestInput } from "@paperclipai/plugin-sdk";
-import { MissionError, type MissionRecord } from "./missions.js";
+import { MissionError } from "./mission-primitives.js";
+import type { MissionRecord } from "./missions.js";
 import { physicalAgent } from "./model-state.js";
 import { leadIssueId } from "./hierarchy-contract.js";
 

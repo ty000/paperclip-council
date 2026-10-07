@@ -2,7 +2,8 @@ import type { PluginContext, PluginIssueRunSummary } from "@paperclipai/plugin-s
 import { readAdmission, recordUnadmittedRun, type AdmissionUsage, type AdmissionRemainingExposure } from "./admission.js";
 import { councilNativeRequest } from "./decision-adapter.js";
 import { exactRunUsageUnits, readNativeG4Profile, suppressedBeforeProvider, type NativeRunReadback } from "./g4-native.js";
-import { MissionError, type MissionRecord } from "./missions.js";
+import { MissionError } from "./mission-primitives.js";
+import type { MissionRecord } from "./missions.js";
 import { nativeRunBindings } from "./native-run-bindings.js";
 import type { NativeWakePolicy } from "./native-wake-policy.js";
 

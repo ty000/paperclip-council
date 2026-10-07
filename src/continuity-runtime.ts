@@ -1,6 +1,6 @@
 import { completionPolicy } from "./completion-contract.js";
 import { reconcileCompletion } from "./completion-runtime.js";
-import { reconcilePublicationFeedback } from "./pr-feedback.js";
+import { reconcilePublicationFeedback } from "./pr-feedback-runtime.js";
 import { leadIssueId } from "./hierarchy-contract.js";
 import { publishContinuityObservation, type ContinuityObservation as Observation } from "./continuity-observation.js";
 import { randomUUID } from "node:crypto";

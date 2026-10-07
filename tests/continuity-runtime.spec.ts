@@ -3,12 +3,13 @@ import type { PluginContext, PluginJobContext } from "@paperclipai/plugin-sdk";
 import type { MissionRecord } from "../src/missions.js";
 import { advanceContinuity, registerContinuityJob } from "../src/continuity-runtime.js";
 import { assertContinuityDeparture } from "../src/continuity-policy.js";
+import { canonicalPayloadHash } from "../src/mission-primitives.js";
 
 const f = vi.hoisted(() => ({ mission: null as unknown as MissionRecord, run: { status: "running" },
   board: vi.fn(), review: vi.fn(), reconcile: vi.fn(), delivery: vi.fn(), inventory: vi.fn(), settle: vi.fn() }));
 vi.mock("../src/project-task-intake.js", () => ({ reconcileProjectTasks: async () => {} }));
-vi.mock("../src/missions.js", () => ({ getMission: async () => structuredClone(f.mission), canonicalPayloadHash: (value: unknown) => JSON.stringify(value),
-  MissionError: class extends Error { constructor(public status: number, public code: string, message: string) { super(message); } } }));
+vi.mock("../src/missions.js", async () => ({ ...await import("../src/mission-primitives.js"),
+  getMission: async () => structuredClone(f.mission) }));
 vi.mock("../src/n1-missions.js", () => ({ executeN1BoardCommand: (...args: unknown[]) => f.board(...args) }));
 vi.mock("../src/n2-missions.js", () => ({ n2Cas: async (_ctx: unknown, m: MissionRecord, aggregate: MissionRecord["aggregate"]) => {
   f.mission = { ...m, version: m.version + 1, aggregate }; return structuredClone(f.mission);
@@ -37,7 +38,7 @@ beforeEach(() => {
     aggregate: { mandate: { objective: "exact mandate" }, control: { status: "active" }, phase: "executing", journal: [],
       responsibilities: { integrationLeadAgentId: "lead" },
       n1: { periodKey: "period", activationReservationId: "original-reservation" },
-      continuity: { protocol: "council-continuity-v1", enabled: true, authorizedBy: "owner", mandateHash: JSON.stringify({ objective: "exact mandate" }),
+      continuity: { protocol: "council-continuity-v1", enabled: true, authorizedBy: "owner", mandateHash: canonicalPayloadHash({ objective: "exact mandate" }),
         authorizedAt: new Date().toISOString(), deadline: new Date(Date.now() + 60000).toISOString(), n3Slots: [], commands: {} } } } as unknown as MissionRecord;
 });
 

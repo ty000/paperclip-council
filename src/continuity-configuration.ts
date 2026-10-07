@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
-import { canonicalPayloadHash, MissionError, type MissionRecord } from "./missions.js";
-import { n2CommandCas, runtimeReceipt, runtimeUuid } from "./n2-missions.js";
+import { canonicalPayloadHash, MissionError } from "./mission-primitives.js";
+import type { MissionRecord } from "./missions.js";
 import { normalizeN3Slots, type N3OpinionSlot } from "./n3-opinions.js";
 
-export async function configureContinuity(ctx: PluginContext, m: MissionRecord, actorId: string, body: Record<string, unknown>) {
+type ContinuityCommands = Pick<typeof import("./n2-missions.js"), "n2CommandCas" | "runtimeReceipt" | "runtimeUuid">;
+
+export async function configureContinuity(ctx: PluginContext, m: MissionRecord, actorId: string, body: Record<string, unknown>, commands: ContinuityCommands) {
+  const { n2CommandCas, runtimeReceipt, runtimeUuid } = commands;
   const prior = runtimeReceipt(m, runtimeUuid(body.commandId, "commandId"), actorId, canonicalPayloadHash(body));
   if (prior) return { outcome: "replayed", mission: m, receipt: prior };
   if (body.command === "suspend-continuity") {

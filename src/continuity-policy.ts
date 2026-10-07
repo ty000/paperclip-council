@@ -1,5 +1,6 @@
 import type { N3OpinionSlot } from "./n3-opinions.js";
-import { canonicalPayloadHash, MissionError, type MissionRecord } from "./missions.js";
+import { canonicalPayloadHash, MissionError } from "./mission-primitives.js";
+import type { MissionRecord } from "./missions.js";
 
 export type ContinuityCommand = "start-lead" | "reconcile-lead-usage" | "start-review";
 export type ContinuityPolicy = {

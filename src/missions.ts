@@ -13,7 +13,7 @@ import { inspectN3 } from "./n3-state.js";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { AdmissionError } from "./admission.js";
 import { executeN1BoardCommand, inspectN1State, readN1AdmissionForMission } from "./n1-missions.js";
-import { executeN2BoardCommand, inspectN2State, type N2State } from "./n2-missions.js";
+import { executeN2BoardCommand, inspectN2State, n2CommandCas, runtimeReceipt, runtimeUuid, type N2State } from "./n2-missions.js";
 import {
   RosterError,
   validateRosterPair,
@@ -732,7 +732,7 @@ async function executeMissionRouteCommand(
     const ownerId = await requireOwner(ctx, companyId, actorUserId);
     const mission = await getMission(ctx, companyId, missionId);
     if (!mission || mission.ownerUserId !== ownerId) throw new MissionError(403, "mission_owner_required", "Exact mission owner required");
-    return configureContinuity(ctx, mission, ownerId, body);
+    return configureContinuity(ctx, mission, ownerId, body, { n2CommandCas, runtimeReceipt, runtimeUuid });
   }
   if (missionId && command === "reconcile-native-runs") {
     await requireOwner(ctx, companyId, actorUserId);

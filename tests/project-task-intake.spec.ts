@@ -13,7 +13,8 @@ vi.mock("../src/missions.js", async importOriginal => ({ ...await importOriginal
   createMission: async (_ctx: unknown, _company: unknown, _owner: unknown, body: any) => { await f.create(body);
     if (!f.mission) f.mission = { companyId: "company", projectId: "project", rootIssueId: "root", missionId: body.missionId, ownerUserId: "owner", version: 1,
       aggregate: { phase: "draft", mandate: body.mandate } } as MissionRecord; } }));
-vi.mock("../src/n2-missions.js", () => ({ n2Cas: async (_ctx: unknown, m: MissionRecord, aggregate: MissionRecord["aggregate"]) => {
+vi.mock("../src/n2-missions.js", () => ({ n2CommandCas: vi.fn(), runtimeReceipt: vi.fn(), runtimeUuid: vi.fn(),
+  n2Cas: async (_ctx: unknown, m: MissionRecord, aggregate: MissionRecord["aggregate"]) => {
   f.mission = { ...m, version: m.version + 1, aggregate }; return structuredClone(f.mission);
 } }));
 vi.mock("../src/continuity-configuration.js", () => ({ configureContinuity: async (_ctx: unknown, m: MissionRecord, _owner: unknown, body: any) => {

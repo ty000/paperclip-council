@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { canonicalPayloadHash, createMission, getMission, getMissionByRootIssue, MissionError, parseMissionMandate, type MissionRecord } from "./missions.js";
-import { n2Cas } from "./n2-missions.js";
+import { n2Cas, n2CommandCas, runtimeReceipt, runtimeUuid } from "./n2-missions.js";
 import { executeN1BoardCommand, type N1State } from "./n1-missions.js";
 import { configureContinuity } from "./continuity-configuration.js";
 import { readNativeG4Profile } from "./g4-native.js";
@@ -140,7 +140,7 @@ async function advance(ctx: PluginContext, initial: Intake, latest: ProjectManda
     if (!m.aggregate.continuity) {
       const prepared = await command(ctx, intake, m, "configure-continuity", { authorizeProgression: true, n3Slots: policy.content.n3Slots });
       intake = prepared.intake;
-      await configureContinuity(ctx, m, policy.authorizedBy, prepared.body);
+      await configureContinuity(ctx, m, policy.authorizedBy, prepared.body, { n2CommandCas, runtimeReceipt, runtimeUuid });
       m = (await getMission(ctx, intake.companyId, intake.missionId))!;
     }
     const activated = await activateTask(ctx, intake, m, policy, issues);
