@@ -60,6 +60,19 @@ already-observed run (`commandId`, `expectedVersion`, `runId`); it never wakes a
 agent or reserves another run. It requires the existing resume reservation and
 exactly the original run plus the new run, with matching native identity.
 
+From 0.7.16, a hierarchy's **initial coordinator lead** can use this same owner
+command once before any contributor has run. All leaves must already be
+materialized, the coordinator must be confirmed, and the previous lead run and
+all reservations must be successful/settled with no unknown exposure. Include
+`authorizeContinuityResume: true` to rearm the suspended original delegation;
+its owner, mandate, deadline, period, run limit and specialist selection remain
+unchanged. The old lead/settlement command payloads are archived in the journal,
+and the next continuity job admits a fresh lead attempt on the same coordinator.
+Its original creation receipt, children, physical run bindings and consumed costs
+are retained. Hierarchy resumes after contributor execution or review remain
+unsupported. Pending native interactions must be handled separately without an
+unadmitted continuation wake; this command never answers them.
+
 An ordinary correction cancelled by Paperclip's exact pre-provider
 `legacy_disposition_repair_suppressed` guard can be recovered once through
 owner command `replace-undispatched-correction`. Supply `commandId`,

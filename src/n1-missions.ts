@@ -735,6 +735,20 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     if (!Number.isFinite(activatedAt) || Date.now() >= activatedAt + mission.aggregate.mandate.limits.elapsedMinutes * 60_000) {
       throw new MissionError(409, "elapsed_limit_exceeded", "Mission elapsed limit blocks root dispatch");
     }
+    const coordination = state.coordination;
+    const reuseCoordinator = Boolean(coordination && state.resume);
+    if (reuseCoordinator) {
+      requireFreshCommand(mission, input.body);
+      if (coordination!.state !== "confirmed" || coordination!.issueId !== state.resume!.lead.issueId
+          || coordination!.ownerUserId !== input.actorUserId || state.resume!.contributions.length) {
+        throw new MissionError(409, "hierarchy_coordinator_command", "Resume only the exact confirmed coordinator from the owner grant");
+      }
+    } else if (coordination) {
+      if (coordination.commandHash !== canonicalPayloadHash(input.body) || coordination.commandId !== commandId
+          || coordination.ownerUserId !== input.actorUserId || coordination.preparedVersion !== mission.version) {
+        throw new MissionError(409, "hierarchy_coordinator_command", "Resume only the exact original coordinator command at its recorded version");
+      }
+    } else requireFreshCommand(mission, input.body);
     let admission = await readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
     if (state.resume && admission) {
       requireFreshCommand(mission, input.body);
@@ -753,15 +767,8 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
         || Date.now() < Date.parse(admission!.periodStart) || Date.now() >= Date.parse(admission!.periodEnd)) {
       throw new MissionError(409, "g4_reservation_unavailable", "Root launch requires its durable unsettled reservation");
     }
-    const coordination = state.coordination;
-    if (coordination) {
-      if (coordination.commandHash !== canonicalPayloadHash(input.body) || coordination.commandId !== commandId
-          || coordination.ownerUserId !== input.actorUserId || coordination.preparedVersion !== mission.version) {
-        throw new MissionError(409, "hierarchy_coordinator_command", "Resume only the exact original coordinator command at its recorded version");
-      }
-    } else requireFreshCommand(mission, input.body);
     await assertProjectDeparture(ctx, mission);
-    mission = await prepareHierarchyCoordinator(ctx, mission, input.body, async (before, coordination) =>
+    if (!reuseCoordinator) mission = await prepareHierarchyCoordinator(ctx, mission, input.body, async (before, coordination) =>
       cas(ctx, before, { ...before.aggregate, n1: { ...n1State(before)!, coordination } }, before.version));
     state = n1State(mission)!;
     const launchState = state;
