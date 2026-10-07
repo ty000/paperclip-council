@@ -2,6 +2,7 @@ import type { MissionRecord } from "./missions.js";
 import type { N1State } from "./n1-missions.js";
 import { physicalAgent } from "./model-state.js";
 import { leadIssueId } from "./hierarchy-contract.js";
+import { n1ResumeGrants } from "./n1-resume-state.js";
 
 export type NativeRunBinding = { issueId: string; agentId: string; reservationId: string; runId?: string | null; pending: boolean };
 
@@ -12,7 +13,7 @@ function binding(m: MissionRecord, issueId: string | null | undefined, logicalAg
 }
 
 function resumeBindings(m: MissionRecord, state: N1State, lead: string) {
-  const targets = state.resume ? [state.resume.lead, ...state.resume.contributions] : [];
+  const targets = n1ResumeGrants(state).flatMap(grant => [grant.lead, ...grant.contributions]);
   return targets.flatMap(target => {
     const slot = state.contributions.find(item => item.contributionId === target.contributionId);
     return binding(m, target.issueId, slot?.assigneeAgentId ?? lead, target.priorRunId, target.priorReservationId);

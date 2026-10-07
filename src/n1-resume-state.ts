@@ -5,7 +5,20 @@ import type { N1State } from "./n1-missions.js";
 export type ResumeTarget = { issueId: string; priorRunId: string; priorReservationId: string;
   priorUsageBaselineUnits: number; reservationId: string; contributionId?: string };
 export type N1Resume = { commandId: string; authorizedBy: string; previousOwnerUserId: string;
-  authorizedAt: string; reason: string; lead: ResumeTarget; contributions: ResumeTarget[] };
+  authorizedAt: string; reason: string; lead: ResumeTarget; contributions: ResumeTarget[];
+  preparedContributions?: Array<{ contributionId: string; issueId: string; reservationId: string }> };
+
+export function n1ResumeGrants(state: N1State): N1Resume[] {
+  return [...(state.resumeHistory ?? []), ...(state.resume ? [state.resume] : [])];
+}
+
+export function priorLeadRunIds(state: N1State): string[] {
+  return n1ResumeGrants(state).map(grant => grant.lead.priorRunId);
+}
+
+export function n1ResumeOrdinal(state: N1State): number {
+  return (state.resumeHistory?.length ?? 0) + 1;
+}
 
 export function settledResumeReservation(r: AdmissionSnapshot["reservations"][number]) {
   return r.status === "settled" && r.usage?.status === "known"
@@ -29,7 +42,7 @@ export function n1ResumeAdmissionFailure(m: MissionAggregate, envelope: Admissio
   if (!state || !grant || !target || !receipt || !prior) return "n1_resume_grant_required";
   const authority = [grant.commandId === input.ownerReplacementCommandId, grant.authorizedBy === owner,
     owner === currentOwner, receipt.command === "prepare-n1-resume", receipt.actorType === "user", receipt.actorId === owner].every(Boolean);
-  const binding = [input.attempt.kind === "resume", input.attempt.ordinal === 1,
+  const binding = [input.attempt.kind === "resume", input.attempt.ordinal === n1ResumeOrdinal(state),
     input.effectId === (target.contributionId ?? grant.commandId), m.phase === "executing", !state.candidate,
     unusedTarget(state, target), prior.missionId === input.missionId, settledResumeReservation(prior)].every(Boolean);
   return authority && binding ? null : "n1_resume_grant_required";

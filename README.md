@@ -52,13 +52,13 @@ Existing files are preserved. New commits are attributed only to the newly admit
 runs; their exact native `per_run` usage is settled separately from historical costs.
 Owner candidate recovery after a resume accepts only the original and admitted
 resume runs, all successful and with both historical and current reservations settled.
-Unknown effects, a second resume and automatic retries remain refused. This command
+Unknown effects, a second non-hierarchy resume and automatic retries remain refused. This command
 does not extend the period envelope or authorize a later review/publication.
 Native blocker relations are checked before claiming a wake. If an existing wake
 has an unknown result, `bind-resumed-lead-run` lets the owner reconcile the exact
 already-observed run (`commandId`, `expectedVersion`, `runId`); it never wakes an
 agent or reserves another run. It requires the existing resume reservation and
-exactly the original run plus the new run, with matching native identity.
+exactly the historical admitted lead runs plus the new run, with matching native identity.
 
 From 0.7.16, a hierarchy's **initial coordinator lead** can use this same owner
 command once before any contributor has run. All leaves must already be
@@ -72,6 +72,25 @@ Its original creation receipt, children, physical run bindings and consumed cost
 are retained. Hierarchy resumes after contributor execution or review remain
 unsupported. Pending native interactions must be handled separately without an
 unadmitted continuation wake; this command never answers them.
+
+From 0.7.17, that same public owner command also accepts a further **explicit
+pre-leaf hierarchy resume**. It retains the current grant in `n1.resume` and all
+previous grants in `n1.resumeHistory`; every previous lead must be successful,
+settled and present in the exact native inventory. The owner supplies a fresh
+`commandId`, current `expectedVersion`, `authorizeOneResume: true`,
+`authorizeContinuityResume: true`, `previousOwnerUserId` and a bounded `reason`.
+No agent/job can invent that grant, and replay never creates another wake.
+The unchanged native run limit, period allowance, concurrency and original deadline
+bound each new departure; this adds no automatic retry or separate resume ceiling.
+
+A child with an initial reserved allowance and exact `ready` physical binding may
+remain prepared only if it has never claimed a wake or started a run. Inspection
+exposes its original IDs in `n1.resume.preparedContributions`. The resumed lead must
+pass that exact `reservationId` to `dispatch`; a replacement is rejected before any
+new admission/effect. The existing reservation is replayed even while both concurrent
+slots are held. Unknown effects/usage, partial child execution, changed sources or
+an exhausted admission still block. Pending native questions are handled separately
+without a continuation wake; non-hierarchy recovery keeps its existing single grant.
 
 From 0.7.17, hierarchy source checks distinguish the pinned product description
 from exact Council profile guidance appended for that issue's persisted launch.

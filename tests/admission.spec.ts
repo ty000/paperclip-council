@@ -101,6 +101,53 @@ function reservation(overrides: Record<string, unknown> = {}) {
 }
 
 describe("G4 admission envelopes", () => {
+  it.each([100, 80])("admits only the exact second owner grant within the existing %i-unit envelope and reuses the prepared hold", async periodUnits => {
+    const store = admissionStore(), owner = randomUUID(), issueId = randomUUID();
+    const config = knownConfiguration({ allowance: { status: "known", source: "fixture", periodUnits, taskUnits: 60, knownUsageUnits: 0 },
+      limits: { maxConcurrent: 2, maxRetries: 0, maxCorrections: 1 } });
+    let state: any = {}, receipts: any[] = [];
+    const query = store.query.getMockImplementation()!;
+    store.query.mockImplementation(async (sql, params) => sql.includes(".missions")
+      ? [{ owner_user_id: owner, aggregate: { phase: "executing", n1: state, commandReceipts: receipts } }] as never
+      : query(sql, params));
+    const ctx = { ...store.context(), companies: { get: async () => ({ defaultResponsibleUserId: owner }) } } as unknown as PluginContext;
+    let envelope = await configureAdmission(ctx, config).then(r => r.envelope);
+    const initial = reservation({ expectedVersion: envelope.version });
+    envelope = await reserveAdmission(ctx, initial).then(r => r.envelope);
+    const settle = async (reservationId: string, units: number) => {
+      envelope = await settleAdmission(ctx, { companyId, periodKey: config.periodKey, reservationId, commandId: randomUUID(), expectedVersion: envelope.version,
+        usage: { status: "known", source: "fixture terminal run", units }, remainingExposure: { status: "known", source: "fixture terminal", units: 0 } }).then(r => r.envelope);
+    };
+    await settle(initial.reservationId, 10);
+    const grant = (priorReservationId: string) => ({ commandId: randomUUID(), authorizedBy: owner, contributions: [],
+      lead: { issueId, priorRunId: randomUUID(), priorReservationId, reservationId: randomUUID() } });
+    const first = grant(initial.reservationId), second = grant(first.lead.reservationId);
+    const setGrant = (current: typeof first, history: typeof first[]) => {
+      state = { resume: current, resumeHistory: history, activationReservationId: current.lead.reservationId, contributions: [] };
+      receipts.push({ commandId: current.commandId, command: "prepare-n1-resume", actorType: "user", actorId: owner });
+    };
+    const request = (current: typeof first, ordinal: number) => reservation({ effectId: current.commandId, reservationId: current.lead.reservationId,
+      expectedVersion: envelope.version, ownerReplacementCommandId: current.commandId, attempt: { kind: "resume" as const, ordinal } });
+    setGrant(first, []); envelope = await reserveAdmission(ctx, request(first, 1)).then(r => r.envelope);
+    await settle(first.lead.reservationId, 20);
+    const child = reservation({ effectId: randomUUID(), expectedVersion: envelope.version });
+    envelope = await reserveAdmission(ctx, child).then(r => r.envelope);
+    const before = structuredClone(envelope), hold = before.reservations.find(r => r.reservationId === child.reservationId);
+    setGrant(second, [first]);
+    await expect(reserveAdmission(ctx, request(second, 1))).rejects.toMatchObject({ code: "n1_resume_grant_required" });
+    if (periodUnits === 80) {
+      await expect(reserveAdmission(ctx, request(second, 2))).rejects.toMatchObject({ code: "period_allowance_exceeded" });
+      expect(await readAdmission(ctx, config)).toEqual(before);
+    } else {
+      const admitted = await reserveAdmission(ctx, request(second, 2));
+      envelope = admitted.envelope;
+      expect(envelope.reservations).toHaveLength(4); expect(envelope.limits).toEqual(config.limits);
+      expect(envelope.status).toBe("blocked"); // Both concurrent slots are held, so only exact replay is possible.
+      expect(await reserveAdmission(ctx, child)).toMatchObject({ outcome: "replayed", reservation: hold });
+      expect((await readAdmission(ctx, config))!.reservations).toHaveLength(4);
+    }
+  });
+
   it("holds unadmitted unknown usage across restart then accounts an exact cost only once", async () => {
     const store = admissionStore(); const config = knownConfiguration();
     await configureAdmission(store.context(), config);

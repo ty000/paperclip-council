@@ -2,7 +2,7 @@ import { completionPolicy } from "./completion-contract.js";
 import { sourceBase, recordContributionProof, closeQualifiedContribution } from "./contribution-proof.js";
 import { prepareN1Resume, verifyResumedLeadRun } from "./n1-resume.js";
 import { finishN1Disposition } from "./native-wake-policy.js";
-import { settledResumeReservation, type N1Resume, type ResumeTarget } from "./n1-resume-state.js";
+import { settledResumeReservation, n1ResumeGrants, n1ResumeOrdinal, priorLeadRunIds, type N1Resume, type ResumeTarget } from "./n1-resume-state.js";
 import { physicalAgent, isLogicalActor } from "./model-state.js";
 import { contributionModelFamily, prepareVariantLaunch, bindVariantIssue, claimVariantWake, recordVariantWake, observeVariantRun } from "./model-runtime.js";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
@@ -70,6 +70,7 @@ export type N1State = {
   sourceBaseCommit?: string;
   coordination?: N1Coordination;
   resume?: N1Resume;
+  resumeHistory?: N1Resume[];
   periodKey: string;
   activationReservationId: string;
   activatedAt: string;
@@ -359,7 +360,7 @@ export function inspectN1State(mission: MissionRecord) {
         : state.contributions.some((slot) => slot.issueState === "planned")
           ? "Integration Lead must complete the native parent plan with outcomes, interfaces, sources and acceptance checks, then materialize and read back the child descriptions before dispatch."
           : state.contributions.some((slot) => !slot.dispatchState)
-            ? "Integration Lead must reserve and dispatch each mapped child issue."
+            ? "Integration Lead must dispatch each mapped child issue. Reuse each exact reservationId in inspect.n1.resume.preparedContributions; never allocate a replacement for a prepared child."
             : state.contributions.some((slot) => slot.dispatchState === "unknown" || slot.dispatchState === "claimed")
               ? "Manual dispatch reconciliation is required before further launch."
               : state.contributions.some((slot) => !slot.commit)
@@ -367,6 +368,7 @@ export function inspectN1State(mission: MissionRecord) {
             : "Integration Lead must publish a verified integrated Git bundle.";
   return {
     resume: state.resume ?? null,
+    resumeHistory: state.resumeHistory,
     ...(mission.aggregate.hierarchy ? { hierarchy: mission.aggregate.hierarchy, coordinationIssueId: leadIssueId(mission), rootIssueId: mission.rootIssueId } : {}),
     prerequisites: mission.aggregate.readiness.blockers,
     ...(mission.aggregate.projectMandate ? { projectMandate: mission.aggregate.projectMandate } : {}),
@@ -427,16 +429,16 @@ async function assertRecoverySettled(ctx: PluginContext, mission: MissionRecord,
     ...state.contributions.map(slot => ({ issueId: slot.childIssueId, runId: slot.dispatchRunId, reservationId: slot.dispatchReservationId })),
   ];
   for (const binding of bindings) {
-    const prior = state.resume && [state.resume.lead, ...state.resume.contributions]
-      .find(target => target.issueId === binding.issueId && target.reservationId === binding.reservationId);
-    await assertSettledRecoveryRun(ctx, mission, envelope, binding, prior);
+    const priors = n1ResumeGrants(state).flatMap(grant => [grant.lead, ...grant.contributions])
+      .filter(target => target.issueId === binding.issueId);
+    await assertSettledRecoveryRun(ctx, mission, envelope, binding, priors);
   }
 }
 
 async function assertSettledRecoveryRun(
   ctx: PluginContext, mission: MissionRecord, envelope: Awaited<ReturnType<typeof readAdmission>>,
   binding: { issueId?: string; runId?: string | null; reservationId?: string },
-  prior?: ResumeTarget,
+  priors: ResumeTarget[],
 ) {
   const reservation = envelope?.reservations.find(item => item.reservationId === binding.reservationId);
   if (!binding.issueId || !binding.runId || reservation?.missionId !== mission.missionId
@@ -444,14 +446,14 @@ async function assertSettledRecoveryRun(
       || reservation.remainingExposure.status !== "known" || reservation.remainingExposure.units !== 0) {
     throw new MissionError(409, "recovery_usage_unsettled", "Recovery requires all original runs settled without exposure");
   }
-  if (prior) {
+  for (const prior of priors) {
     const previous = envelope?.reservations.find(item => item.reservationId === prior.priorReservationId);
     if (!previous || previous.missionId !== mission.missionId || !settledResumeReservation(previous)) {
       throw new MissionError(409, "recovery_usage_unsettled", "Resumed recovery also requires the original reservation settled without exposure");
     }
   }
   const summary = await ctx.issues.summaries.getOrchestration({ companyId: mission.companyId, issueId: binding.issueId, includeSubtree: false });
-  const expected = prior ? [binding.runId, prior.priorRunId] : [binding.runId];
+  const expected = [binding.runId, ...priors.map(prior => prior.priorRunId)];
   if (summary.runs.length !== expected.length || new Set(summary.runs.map(run => run.id)).size !== expected.length
       || summary.runs.some(run => !expected.includes(run.id) || run.status !== "succeeded")) {
     throw new MissionError(409, "recovery_run_not_terminal", "Recovery requires only the exact successful original and explicitly resumed runs");
@@ -756,7 +758,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
       const reserved = await reserveAdmission(ctx, {
         companyId: mission.companyId, periodKey: state.periodKey, missionId: mission.missionId,
         reservationId: state.activationReservationId, effectId: state.resume.commandId,
-        requestedUnits: nativeProfile!.runReservationUnits, attempt: { kind: "resume", ordinal: 1 },
+        requestedUnits: nativeProfile!.runReservationUnits, attempt: { kind: "resume", ordinal: n1ResumeOrdinal(state) },
         ownerReplacementCommandId: state.resume.commandId, expectedVersion: admission.version,
       });
       admission = reserved.envelope;
@@ -779,7 +781,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
       rootUsageBaselineUnits = await assertNativeLaunchAllowed(ctx, {
         companyId: mission.companyId,
         issueId: leadIssue,
-        priorRunId: state.resume?.lead.priorRunId,
+        ...(state.resume ? { priorRunIds: priorLeadRunIds(state) } : {}),
       });
     }
     const root = await ctx.issues.get(leadIssue, mission.companyId);
@@ -1287,6 +1289,10 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       await assertHierarchyDependencies(ctx, mission, slot.childIssueId!);
       const reservationId = uuid(body.reservationId, "reservationId");
       const requestedUnits = integer(body.requestedUnits, "requestedUnits");
+      const preparedChild = state.resume?.preparedContributions?.find(target => target.contributionId === contributionId);
+      if (preparedChild && reservationId !== preparedChild.reservationId) {
+        throw new MissionError(409, "n1_prepared_reservation_mismatch", "Reuse the exact prepared child reservation from inspect.n1.resume.preparedContributions");
+      }
       if (resumed && reservationId !== resumed.reservationId) {
         throw new MissionError(409, "n1_resume_reservation_mismatch", "Use the exact owner-authorized resume reservation from inspect.n1.resume");
       }
