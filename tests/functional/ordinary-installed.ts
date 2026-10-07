@@ -30,8 +30,10 @@ assert(!continuityMode || deliveryMode);
 assert(!projectIntakeMode || continuityMode);
 const feedbackMode = process.env.COUNCIL_PR_FEEDBACK === "1";
 assert(!feedbackMode || hierarchyCount === 3 && projectIntakeMode);
-const success = feedbackMode ? "INSTALLED PR FEEDBACK PROVIDER-FREE VALIDATED" : hierarchyCount ? "INSTALLED VARIABLE HIERARCHY PROVIDER-FREE VALIDATED" : n6Mode ? "INSTALLED N6 DEPENDENCY PROVIDER-FREE VALIDATED" : deliveryMode ? "INSTALLED ORDINARY DELIVERY PROVIDER-FREE VALIDATED" : "INSTALLED ORDINARY COUNCIL PROVIDER-FREE VALIDATED";
-const artifactPrefix = feedbackMode ? "pr-feedback-installed-" : hierarchyCount ? `hierarchy-${hierarchyCount}-installed-` : n6Mode ? "n6-installed-" : deliveryMode ? "n5-ordinary-installed-" : "n2-ordinary-installed-";
+const completionMode = process.env.COUNCIL_PROOF_COMPLETION === "1";
+assert(!completionMode || feedbackMode && hierarchyCount === 3);
+const success = completionMode ? "INSTALLED PROOF COMPLETION PROVIDER-FREE VALIDATED" : feedbackMode ? "INSTALLED PR FEEDBACK PROVIDER-FREE VALIDATED" : hierarchyCount ? "INSTALLED VARIABLE HIERARCHY PROVIDER-FREE VALIDATED" : n6Mode ? "INSTALLED N6 DEPENDENCY PROVIDER-FREE VALIDATED" : deliveryMode ? "INSTALLED ORDINARY DELIVERY PROVIDER-FREE VALIDATED" : "INSTALLED ORDINARY COUNCIL PROVIDER-FREE VALIDATED";
+const artifactPrefix = completionMode ? "proof-completion-installed-" : feedbackMode ? "pr-feedback-installed-" : hierarchyCount ? `hierarchy-${hierarchyCount}-installed-` : n6Mode ? "n6-installed-" : deliveryMode ? "n5-ordinary-installed-" : "n2-ordinary-installed-";
 const runtime = await mkdtemp("/tmp/council-ordinary-installed-");
 const output = resolve(repository, process.argv[2] ?? `artifacts/${artifactPrefix}${Date.now()}.json`);
 assert(output.startsWith(resolve(repository, `artifacts/${artifactPrefix}`)));
@@ -41,7 +43,7 @@ const fixture = resolve(here, "ordinary-cli-fixture.mjs");
 const proof: any = { schema: "council-ordinary-installed-v1", outcome: "RUNNING", startedAt: new Date().toISOString(),
   head: gitAt(repository, "rev-parse", "HEAD"), hostSha, runtime, timeline: [], checks: {},
   boundary: "Installed Council owns N1 child completion/root waiting, N2/N3 state, admission, dispatch and reconciliation. Only CLI model/content/usage are deterministic. Owner prepares N1; Council finishes recorded children without implicit parent wakes and parks its verified candidate awaiting review. Agent demand wake policy remains enabled.",
-  source: Object.fromEntries(await Promise.all([...new Set([fixture, fileURLToPath(import.meta.url), resolve(here, "ordinary-delivery-fixture.mjs"), resolve(here, "ordinary-delivery-scenario.ts"), resolve(here, "n6-scenario.ts"), resolve(here, "n6-coordination-fixture.mjs"), resolve(repository, "dist/worker.js"),
+  source: Object.fromEntries(await Promise.all([...new Set([fixture, fileURLToPath(import.meta.url), resolve(here, "ordinary-delivery-fixture.mjs"), resolve(here, "ordinary-delivery-scenario.ts"), resolve(here, "n6-scenario.ts"), resolve(here, "n6-coordination-fixture.mjs"), resolve(repository, "dist/worker.js"), resolve(repository, "dist/contribution-command.js"),
     resolve(repository, "scripts/operations/workspace_preflight.py"), resolve(repository, "scripts/operations/publisher_preflight.py"), resolve(repository, "scripts/operations/github_feedback.py"), resolve(here, "native-run-exception-scenario.ts"), resolve(here, "hierarchy-scenario.ts"),
     ...gitAt(repository, "ls-files", "src").split("\n").map(path => resolve(repository, path)),
     ...gitAt(repository, "ls-files", "--others", "--exclude-standard", "src").split("\n").filter(Boolean).map(path => resolve(repository, path))])].map(async p => [p, createHash("sha256").update(await readFile(p)).digest("hex")]))) };
@@ -175,11 +177,12 @@ try {
     const historical = await api("POST", `/api/companies/${companyId}/issues`, { title: "Historical task retained", description: "Do not adopt without explicit inclusion", projectId, status: "backlog", assigneeAgentId: actors.lead });
     const settings = await api("GET", "/api/instance/settings/experimental");
     await api("PATCH", "/api/instance/settings/experimental", { ...settings, enableExternalObjects: true });
-    await writeFile(fixtureConfig, JSON.stringify({ pluginId, companyId, projectId, projectIntake: true, hierarchyCount, feedbackMode, repoPath, runtime, actors, baseCommit, delivery: true }));
+    await writeFile(fixtureConfig, JSON.stringify({ pluginId, companyId, projectId, projectIntake: true, hierarchyCount, feedbackMode, completionMode, councilRepository: repository, repoPath, runtime, actors, baseCommit, delivery: true }));
     const policyPath = `/api/plugins/${pluginId}/api/companies/${companyId}/projects/${projectId}/mandate`;
     const policyBody = { companyId, commandId: randomUUID(), expectedVersion: 0, enabled: true, authorizeNewTasks: true,
       teamRosterId: team.head.rosterId, councilRosterId: council.head.rosterId, n3Slots, template: mandate,
       criteriaSource: "project-defaults", allowedPaths: ["alpha.txt", "beta.txt", ...(hierarchyCount === 3 ? ["gamma.txt"] : [])],
+      ...(completionMode ? { completion: { protocol: "council-proof-close-v1", result: "draft-pr" } } : {}),
       ...(hierarchyCount ? { hierarchy: { protocol: "council-hierarchy-v1", maxContributions: hierarchyCount, execution: "sequential", adoptExistingChildren: true } } : {}),
       publication: { publisherAgentId: actors.publisher, qaAgentId: actors.quality, repository: "ty000/paperclip-council", baseRef: "main", headRefPrefix: "codex/project-task", ...(feedbackMode ? { contract: { protocol: "council-pr-contract-v1", draftOnly: true, result: "draft-pr", feedback: "review-and-correct", requiredChecks: ["fixture-ci"] } } : {}) } };
     const configured = await api("POST", policyPath, policyBody);
@@ -299,7 +302,7 @@ try {
     await delivery?.advance(value);
     await n6?.advance(value);
     return value;
-  }, value => delivery ? delivery.complete(value) : value.aggregate.n2?.status === "accepted", continuityMode ? feedbackMode ? 900000 : 300000 : 120000);
+  }, value => completionMode ? value.aggregate.completion?.state === "closed" : delivery ? delivery.complete(value) : value.aggregate.n2?.status === "accepted", continuityMode ? feedbackMode ? 900000 : 300000 : 120000);
   await delivery?.finish();
   await n6?.finish();
   if (continuityMode) {
@@ -340,6 +343,24 @@ try {
   proof.gatewayRefusal = JSON.parse(await readFile(resolve(runtime, "gateway-refusal.json"), "utf8"));
   proof.issues = await Promise.all([...new Set(proof.mission.aggregate.n2.ordinary.tasks.map((task: any) => task.issueId))].map(id => api("GET", `/api/issues/${id}`)));
   if (hierarchyCount) await verifyHierarchyTasks(api, proof, root.id);
+  if (completionMode) {
+    const c = proof.mission.aggregate.completion;
+    assert.equal(c.state, "closed"); assert.equal(c.notification.state, "confirmed");
+    const doc = await api("GET", `/api/issues/${root.id}/documents/${c.documentKey}`);
+    assert.equal(doc.latestRevisionId, c.documentRevisionId); assert.equal(doc.body, c.body);
+    const evidence = JSON.parse(doc.body); assert.equal(evidence.proofId, c.proofId);
+    assert.equal(evidence.submission.candidateCommit, proof.mission.aggregate.n2.submissions.at(-1).candidateCommit);
+    const comments = await api("GET", `/api/issues/${root.id}/comments`);
+    const matching = comments.filter((comment: any) => comment.body === c.notification.body);
+    assert.equal(matching.length, 1); assert.equal(matching[0].id, c.notification.commentId);
+    for (const slot of proof.mission.aggregate.n1.contributions) {
+      assert(slot.proof.closedAt && slot.proof.checks.every((check: any) => check.status === "passed"));
+      const held = JSON.parse(await readFile(resolve(runtime, `child-proof-${slot.authorRunId}.json`), "utf8"));
+      assert.equal(held.statusWhileRunning, "blocked");
+    }
+    proof.completion = { state: c, evidence, comment: matching[0], checks: { childrenHeldUntilTerminalProof: "PASS", parentResultProof: "PASS", singleNativeNotification: "PASS", noAdditionalRun: "PASS" } };
+    proof.boundary += " Explicit draft-result proof closure verifies child bundles before recording, holds children until exact succeeded run costs settle, closes all original parents bottom-up after dependencies and accepted exact-head publication, and confirms one agent-attributed native comment without another provider wake. No manual task transition after activation, no merge/deployment/install result inferred.";
+  }
   if (projectIntakeMode) {
     const view = await api("GET", `${missions}?companyId=${companyId}`);
     assert.equal(view.missions.length, 1);

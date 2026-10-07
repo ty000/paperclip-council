@@ -22,6 +22,9 @@ export async function assertProjectDeparture(ctx: PluginContext, m: MissionRecor
   if (canonicalPayloadHash(actual) !== canonicalPayloadHash(policy.content.hierarchy ?? null)) {
     throw new MissionError(409, "hierarchy_authority_changed", "Hierarchy policy exceeds the original project authority");
   }
+  if (canonicalPayloadHash(pinned.completion ?? null) !== canonicalPayloadHash(policy.content.completion ?? null)) {
+    throw new MissionError(409, "completion_authority_changed", "Completion must retain the exact pinned result authority");
+  }
   await assertHierarchySources(ctx, m);
 }
 

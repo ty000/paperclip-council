@@ -1,3 +1,5 @@
+import { completionPolicy } from "./completion-contract.js";
+import { reconcileCompletion } from "./completion-runtime.js";
 import { reconcilePublicationFeedback } from "./pr-feedback.js";
 import { leadIssueId } from "./hierarchy-contract.js";
 import { publishContinuityObservation, type ContinuityObservation as Observation } from "./continuity-observation.js";
@@ -81,12 +83,24 @@ async function advanceReview(ctx: PluginContext, m: MissionRecord, job: PluginJo
   m = await reconcileOrdinaryN2(ctx, m);
   m = await fresh(ctx, m);
   if (m.aggregate.n2!.status !== "accepted") return waiting("native_review_pending", "Les avis indépendants, la revue et les coûts doivent être concluants avant la suite.");
+  if (!m.aggregate.n5 && completionPolicy(m)) return finishAuthorizedResult(ctx, m);
   if (!m.aggregate.n5) return { state: "complete", code: "accepted_without_publication", nextAction: "Le candidat est accepté. Aucune publication n'a été autorisée." };
   m = await reconcileN5(ctx, m);
   m = await reconcilePublicationFeedback(ctx, m);
+  if (completionPolicy(m)) {
+    if (!inspectN5(m)?.publicationReady) return waiting("native_delivery_pending", "Le résultat autorisé attend sa preuve de publication exacte et ses coûts terminaux.");
+    return finishAuthorizedResult(ctx, m);
+  }
   return inspectN5(m)?.ready
     ? { state: "complete", code: "authorized_pr_observed", nextAction: "La PR autorisée est observée sur le candidat accepté. La fusion reste distincte." }
     : waiting("native_delivery_pending", "Council attend la publication autorisée et ses preuves natives, sans répéter un effet incertain.");
+}
+
+async function finishAuthorizedResult(ctx: PluginContext, m: MissionRecord): Promise<Observation> {
+  m = await reconcileCompletion(ctx, m);
+  return m.aggregate.completion?.state === "closed"
+    ? { state: "complete", code: "proof_result_closed", nextAction: "Enfants et parent clos avec preuve consolidée du résultat autorisé et notification native confirmée." }
+    : waiting("completion_proof_pending", "Council conserve la clôture revendiquée et attend sa lecture native.");
 }
 
 export async function advanceContinuity(ctx: PluginContext, initial: MissionRecord, job: PluginJobContext): Promise<Observation> {
@@ -98,6 +112,7 @@ export async function advanceContinuity(ctx: PluginContext, initial: MissionReco
       || policy.mandateHash !== canonicalPayloadHash(m.aggregate.mandate)) {
     throw new MissionError(409, "continuity_authority_drift", "The persisted owner or mandate changed; no automatic transition is authorized");
   }
+  if (m.aggregate.completion?.state === "closed") return { state: "complete", code: "proof_result_closed", nextAction: "Le résultat autorisé conserve sa preuve de clôture et sa notification historique ; aucune nouvelle publication n’est déléguée." };
   await assertNativeRunInventory(ctx, m);
   if (m.aggregate.control.status === "blocked") throw new MissionError(409, "continuity_mission_blocked", m.aggregate.control.reason);
   if (m.aggregate.phase === "draft") return waiting("activation_required", "Le propriétaire doit activer le mandat avant tout travail.");

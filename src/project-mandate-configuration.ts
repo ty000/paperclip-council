@@ -1,5 +1,6 @@
 import { readTaskIntake, rebindUnstartedTask } from "./project-intake-rebind.js";
 import { operatingProfileHash } from "./project-mandate-state.js";
+import { parseCompletionPolicy } from "./completion-contract.js";
 import { parsePrContract } from "./pr-contract.js";
 import { parseHierarchyPolicy } from "./hierarchy-contract.js";
 import { randomUUID } from "node:crypto";
@@ -55,6 +56,13 @@ async function baseline(ctx: PluginContext, companyId: string, projectId: string
   return issues.filter(issue => !issue.parentId && !ids.includes(issue.id)).map(issue => issue.id);
 }
 
+async function deliveryPolicy(ctx: PluginContext, companyId: string, body: Record<string, any>) {
+  const delegatedPublication = await publication(ctx, companyId, body.publication);
+  const hierarchy = body.hierarchy === undefined ? undefined : parseHierarchyPolicy(body.hierarchy);
+  const completion = parseCompletionPolicy(body.completion, delegatedPublication, hierarchy);
+  return { publication: delegatedPublication, ...(hierarchy ? { hierarchy } : {}), ...(completion ? { completion } : {}) };
+}
+
 async function policyContent(ctx: PluginContext, companyId: string, projectId: string, ownerId: string, body: Record<string, any>): Promise<ProjectMandateContent> {
   const config = await ctx.config.get(companyId);
   const profile = await readNativeG4Profile(ctx, companyId);
@@ -81,9 +89,9 @@ async function policyContent(ctx: PluginContext, companyId: string, projectId: s
   if (!["project-defaults", "task-document"].includes(body.criteriaSource)) throw new MissionError(422, "project_criteria_policy", "Explicit criteria source required");
   return { enabled: body.enabled === true, ownerUserId: ownerId, leadAgentId, teamRosterId: pair.team.head.rosterId, teamRevision,
     councilRosterId: pair.council.head.rosterId, councilRevision, n3Slots, template, criteriaSource: body.criteriaSource,
-    allowedPaths: paths(body.allowedPaths), publication: await publication(ctx, companyId, body.publication),
+    allowedPaths: paths(body.allowedPaths), ...await deliveryPolicy(ctx, companyId, body),
     operatingProfileHash: operatingProfileHash(config), baselineRootIds: await baseline(ctx, companyId, projectId, body.includedRootIssueIds),
-    ...(body.hierarchy === undefined ? {} : { hierarchy: parseHierarchyPolicy(body.hierarchy) }) };
+    };
 }
 
 export async function handleProjectMandate(ctx: PluginContext, input: PluginApiRequestInput) {

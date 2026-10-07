@@ -13,7 +13,7 @@ export const missionToolDeclaration = {
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
-  version: "0.7.14",
+  version: "0.7.15",
   displayName: "Paperclip Council",
   description: "Private Council integration with revisioned rosters, bounded admission and checked candidate preparation.",
   author: "Local Paperclip integration",
@@ -27,6 +27,7 @@ const manifest: PaperclipPluginManifestV1 = {
     "agents.managed",
     "skills.managed",
     "issue.comments.read",
+    "issue.comments.create",
     "issue.documents.write",
     "database.namespace.migrate",
     "database.namespace.read",
