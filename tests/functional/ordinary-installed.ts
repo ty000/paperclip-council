@@ -204,13 +204,17 @@ try {
     await waitFor("completed native job before restart", () => api("GET", `/api/plugins/${pluginId}/jobs/${job.id}/runs`),
       runs => runs.length > 0 && runs.every((run: any) => run.status !== "running"), 30000);
     const before = await api("GET", `/api/plugins/${pluginId}/dashboard`);
-    const pinned = (await api("GET", `${missionPath}?companyId=${companyId}`)).mission.aggregate.continuity;
+    const beforeView = await api("GET", `${missionPath}?companyId=${companyId}`);
+    const pinned = beforeView.mission.aggregate.continuity;
     await api("POST", `/api/plugins/${pluginId}/disable`, {});
     await api("POST", `/api/plugins/${pluginId}/enable`, {});
     const after = await api("GET", `/api/plugins/${pluginId}/dashboard`);
     assert.notEqual(before.worker.pid, after.worker.pid);
-    assert.deepEqual((await api("GET", `${missionPath}?companyId=${companyId}`)).mission.aggregate.continuity, pinned);
-    proof.continuityRestart = { beforePid: before.worker.pid, afterPid: after.worker.pid, pinned };
+    const afterView = await api("GET", `${missionPath}?companyId=${companyId}`);
+    assert.deepEqual(afterView.mission.aggregate.continuity, pinned);
+    assert.deepEqual(afterView.continuity, beforeView.continuity);
+    assert.equal(afterView.continuity.documentObserved, true);
+    proof.continuityRestart = { beforePid: before.worker.pid, afterPid: after.worker.pid, pinned, observation: afterView.continuity };
   } else {
     const settleBody = { companyId, command: "reconcile-lead-usage", commandId: randomUUID(), expectedVersion: mission.version };
     await waitFor("N1 source settlement", async () => {
@@ -258,12 +262,14 @@ try {
   await delivery?.finish();
   await n6?.finish();
   if (continuityMode) {
-    proof.mission = (await api("GET", `${missionPath}?companyId=${companyId}`)).mission;
+    const final = await waitFor("scheduled complete observation", () => api("GET", `${missionPath}?companyId=${companyId}`),
+      view => view.continuity?.observation?.state === "complete" && view.continuity.documentObserved === true, 180000);
+    proof.mission = final.mission; proof.continuityFinalObservation = final.continuity;
     const jobs = await api("GET", `/api/plugins/${pluginId}/jobs`);
     const job = jobs.find((j: any) => j.jobKey === "mission-continuity");
     proof.continuityJobRuns = await waitFor("final native job completion", () => api("GET", `/api/plugins/${pluginId}/jobs/${job.id}/runs`),
       runs => runs.every((run: any) => run.status !== "running"), 30000);
-    assert(proof.continuityJobRuns.length >= 3);
+    assert(proof.continuityJobRuns.length >= 4);
     assert(proof.continuityJobRuns.every((run: any) => run.trigger === "schedule" && run.status === "succeeded"));
     proof.boundary += " Native scheduled jobs dispatch the admitted lead, settle N1 and start review from an explicit persisted owner delegation. Worker restart occurs after N1 settlement and before review. Observation after activation is read-only; no manual job trigger or owner transition.";
   } else {

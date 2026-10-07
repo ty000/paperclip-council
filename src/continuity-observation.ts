@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { MissionError, type MissionRecord } from "./missions.js";
 
@@ -44,6 +45,6 @@ export async function publishContinuityObservation(ctx: PluginContext, m: Missio
   const next: StoredObservation = { companyId: m.companyId, missionId: m.missionId, sequence, documentKey, body, observation, documentObserved: false };
   await ctx.state.set(scope(m), next);
   const readback = await readContinuityObservation(ctx, m);
-  if (JSON.stringify(readback) !== JSON.stringify(next)) throw new MissionError(409, "continuity_status_state_conflict", "Status intent changed before publication; retain its observed identity");
+  if (!isDeepStrictEqual(readback, next)) throw new MissionError(409, "continuity_status_state_conflict", "Status intent changed before publication; retain its observed identity");
   await finishDocument(ctx, m, next);
 }

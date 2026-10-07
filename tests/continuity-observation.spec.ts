@@ -11,7 +11,10 @@ function fixture() {
     if (docs.has(input.key)) throw new Error("SDK updates are unavailable");
     docs.set(input.key, { body: input.body }); return docs.get(input.key)!;
   });
-  const context = () => ({ state: { get: async () => structuredClone(stored), set: async (_scope: unknown, value: unknown) => { stored = structuredClone(value); } },
+  const context = () => ({ state: { get: async () => stored && JSON.parse(JSON.stringify(stored, (_key, value) => {
+    if (value && typeof value === "object" && !Array.isArray(value)) return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)));
+    return value;
+  })), set: async (_scope: unknown, value: unknown) => { stored = structuredClone(value); } },
     issues: { documents: { get: async (_id: unknown, key: string) => docs.get(key) ?? null, upsert } } }) as unknown as PluginContext;
   const blocked = { state: "blocked" as const, code: "unadmitted_native_run", nextAction: "Inspecter l'état conservé." };
   return { m, docs, upsert, context, blocked };

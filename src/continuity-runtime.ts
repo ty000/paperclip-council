@@ -105,7 +105,7 @@ export async function advanceContinuity(ctx: PluginContext, initial: MissionReco
 
 export function registerContinuityJob(ctx: PluginContext, list: () => Promise<MissionRecord[]>) {
   ctx.jobs.register(CONTINUITY_JOB_KEY, async job => {
-    const unavailable: string[] = [];
+    const unavailable: Array<{ missionId: string; code: string }> = [];
     for (const m of await list()) {
       let observation: Observation;
       try { observation = await advanceContinuity(ctx, m, job); }
@@ -116,8 +116,8 @@ export function registerContinuityJob(ctx: PluginContext, list: () => Promise<Mi
           : { state: "blocked", code, nextAction: "Une décision du propriétaire est requise sur l'état conservé. Council n'autorise aucune répétition incertaine." };
       }
       try { await publishContinuityObservation(ctx, m, observation); }
-      catch { unavailable.push(m.missionId); }
+      catch (error) { unavailable.push({ missionId: m.missionId, code: error instanceof MissionError ? error.code : "native_status_transport_unavailable" }); }
     }
-    if (unavailable.length) throw new MissionError(409, "continuity_status_unavailable", "Native status documents could not be read back; inspect the failed job", { missionIds: unavailable });
+    if (unavailable.length) throw new MissionError(409, "continuity_status_unavailable", `Native status readback failed (${unavailable.map(item => item.code).join(", ")}); inspect the retained job`, { failures: unavailable });
   });
 }
