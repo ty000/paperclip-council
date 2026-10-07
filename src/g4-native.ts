@@ -83,6 +83,20 @@ async function settleExactUsage(ctx: PluginContext, input: {
   if (!TERMINAL_RUN_STATUSES.has(run.status) || !run.startedAt || !run.finishedAt) {
     throw new AdmissionError(409, "g4_run_not_terminal", "Exact native run must have started and reached its terminal state");
   }
+  const total = exactRunUsageUnits(run);
+  if (total === null) {
+    throw new AdmissionError(409, "g4_usage_unavailable", "Exact terminal run usage remains unknown; its reservation remains held");
+  }
+  const source = `paperclip:GET-heartbeat-run:terminal-token-ledger;run=${run.id};agent=${run.agentId};issue=${input.issueId}`;
+  return settleAdmission(ctx, { commandId: input.commandId, companyId: input.companyId,
+    periodKey: input.periodKey, reservationId: input.reservationId, expectedVersion: input.expectedVersion,
+    usage: { status: "known", source, units: total },
+    remainingExposure: { status: "known", source: `${source};terminal=${run.status}`, units: 0 } });
+}
+
+/** Only exact terminal per-run units qualify, never a cumulative Codex total. */
+export function exactRunUsageUnits(run: NativeRunReadback): number | null {
+  if (!TERMINAL_RUN_STATUSES.has(run.status) || !run.startedAt || !run.finishedAt) return null;
   const usage = run.usageJson;
   const inputTokens = usage?.inputTokens;
   const outputTokens = usage?.outputTokens;
@@ -90,13 +104,9 @@ async function settleExactUsage(ctx: PluginContext, input: {
   if (usage?.usageSource !== "per_run" || ![inputTokens, outputTokens, cached].every(value => Number.isSafeInteger(value) && Number(value) >= 0)
       || Number(cached) > Number(inputTokens) || !Number.isSafeInteger(Number(inputTokens) + Number(outputTokens))
       || Number(inputTokens) + Number(outputTokens) <= 0) {
-    throw new AdmissionError(409, "g4_usage_unavailable", "Exact terminal run usage remains unknown; its reservation remains held");
+    return null;
   }
-  const source = `paperclip:GET-heartbeat-run:terminal-token-ledger;run=${run.id};agent=${run.agentId};issue=${input.issueId}`;
-  return settleAdmission(ctx, { commandId: input.commandId, companyId: input.companyId,
-    periodKey: input.periodKey, reservationId: input.reservationId, expectedVersion: input.expectedVersion,
-    usage: { status: "known", source, units: Number(inputTokens) + Number(outputTokens) },
-    remainingExposure: { status: "known", source: `${source};terminal=${run.status}`, units: 0 } });
+  return Number(inputTokens) + Number(outputTokens);
 }
 
 export type NativeG4Profile = {
