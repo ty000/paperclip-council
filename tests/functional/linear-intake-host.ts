@@ -27,7 +27,7 @@ function isolateEnvironment(runtime: string) {
     PAPERCLIP_TELEMETRY_ENABLED: "false", PAPERCLIP_LOG_LEVEL: "warn",
     PAPERCLIP_UI_DEV_MIDDLEWARE: "false", PAPERCLIP_STORAGE_PROVIDER: "local_disk",
     PAPERCLIP_STORAGE_LOCAL_DIR: resolve(runtime, "storage"), OTEL_SDK_DISABLED: "true", NODE_ENV: "test",
-    PAPERCLIP_DISABLE_PLUGIN_AUTOBUILD: "1", PAPERCLIP_IN_WORKTREE: "1", RUN_LOG_BASE_PATH: resolve(runtime, "run-logs"),
+    PAPERCLIP_DISABLE_PLUGIN_AUTOBUILD: "1", PAPERCLIP_IN_WORKTREE: "false", RUN_LOG_BASE_PATH: resolve(runtime, "run-logs"),
   });
   for (const key of ["DATABASE_URL", "DATABASE_MIGRATION_URL", "PAPERCLIP_MANAGED_CONFIG",
     "PAPERCLIP_CLOUD_TENANT_TOKEN", "PAPERCLIP_TRUSTED_USER_ID", "PAPERCLIP_PUBLIC_URL",
@@ -46,6 +46,9 @@ export async function startLinearHost(repository: string) {
   const tables = await hostImport("packages/db/src/index.ts");
   const { createApp } = await hostImport("server/src/app.ts");
   const { createPluginWorkerManager } = await hostImport("server/src/services/plugin-worker-manager.ts");
+  const { resolveHeartbeatSchedulingSuppression } = await hostImport("server/src/services/heartbeat.ts");
+  assert.deepEqual(resolveHeartbeatSchedulingSuppression(), { suppressed: false, reason: null },
+    "The private fixture host must permit native dispatch to its explicit deterministic CLI transport");
   const { createStorageService } = await hostImport("server/src/storage/service.ts");
   const { createLocalDiskStorageProvider } = await hostImport("server/src/storage/local-disk-provider.ts");
   const database = await tables.startEmbeddedPostgresTestDatabase("council-linear-intake-");
