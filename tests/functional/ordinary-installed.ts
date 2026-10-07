@@ -30,7 +30,7 @@ await access(output).then(() => { throw new Error("Evidence output already exist
 const fixture = resolve(here, "ordinary-cli-fixture.mjs");
 const proof: any = { schema: "council-ordinary-installed-v1", outcome: "RUNNING", startedAt: new Date().toISOString(),
   head: gitAt(repository, "rev-parse", "HEAD"), hostSha, runtime, timeline: [], checks: {},
-  boundary: "Installed Council owns N2/N3 state, admission, dispatch and reconciliation. Only CLI model/content/usage are deterministic. Owner prepares N1 and closes finished N1 children with lead demand wakes disabled.",
+  boundary: "Installed Council owns N1 child completion/root waiting, N2/N3 state, admission, dispatch and reconciliation. Only CLI model/content/usage are deterministic. Owner prepares N1; Council finishes recorded children without implicit parent wakes and parks its verified candidate awaiting review. Agent demand wake policy remains enabled.",
   source: Object.fromEntries(await Promise.all([...new Set([fixture, fileURLToPath(import.meta.url), resolve(here, "ordinary-delivery-fixture.mjs"), resolve(here, "ordinary-delivery-scenario.ts"), resolve(here, "n6-scenario.ts"), resolve(here, "n6-coordination-fixture.mjs"), resolve(repository, "dist/worker.js"),
     resolve(repository, "scripts/operations/workspace_preflight.py"), resolve(repository, "scripts/operations/publisher_preflight.py"),
     ...gitAt(repository, "ls-files", "src").split("\n").map(path => resolve(repository, path)),
@@ -168,17 +168,10 @@ try {
   const started = await api("POST", `${missionPath}/commands`, { companyId, command: "start-lead", commandId: randomUUID(), expectedVersion: activate.mission.version });
   assert.equal(started.outcome, "requested", JSON.stringify(started));
   const rootRunId = started.mission.aggregate.n1.rootDispatchRunId;
-  // N1 preparation only: prevent its legacy parent-close notification from creating a second lead run.
-  await api("PATCH", `/api/agents/${actors.lead}`, { runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: false, maxConcurrentRuns: 1 } } });
   await waitFor("real N1 prerequisite", async () => {
     const runs = await api("GET", `/api/companies/${companyId}/heartbeat-runs`);
     for (const run of runs) {
       assert(!["failed", "cancelled", "timed_out"].includes(run.status), `N1 ${run.id} ${run.status} ${run.error}`);
-      if (run.id !== rootRunId && run.status === "succeeded") {
-        const issueId = run.contextSnapshot?.issueId;
-        const issue = await api("GET", `/api/issues/${issueId}`);
-        if (issue.status !== "done") { await api("PATCH", `/api/issues/${issueId}`, { status: "done" }); record("owner_closed_finished_N1_child", { issueId, runId: run.id }); }
-      }
     }
     return runs.find((run: any) => run.id === rootRunId);
   }, run => run?.status === "succeeded", 120000);
@@ -192,8 +185,13 @@ try {
   }, Boolean);
   mission = (await api("GET", `${missionPath}?companyId=${companyId}`)).mission;
   assert.equal(mission.aggregate.phase, "ready_for_review");
+  assert.equal(mission.aggregate.nativeWakePolicy.protocol, "council-native-wake-v1");
+  assert.equal((await api("GET", `/api/issues/${root.id}`)).status, "blocked");
+  const nativeChildren = await Promise.all(mission.aggregate.n1.contributions.map((slot: any) => api("GET", `/api/issues/${slot.childIssueId}`)));
+  assert(nativeChildren.every((issue: any) => issue.status === "done"));
+  assert.equal((await api("GET", `/api/agents/${actors.lead}`)).runtimeConfig.heartbeat.wakeOnDemand, true);
+  proof.nativeWaiting = { rootStatus: "blocked", childrenStatus: "done", leadDemandWakes: true, operatorChildCloses: 0 };
   proof.prerequisite = mission;
-  await api("PATCH", `/api/agents/${actors.lead}`, { runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: true, maxConcurrentRuns: 1 } } });
   const delivery = deliveryMode ? await prepareOrdinaryDelivery({ api, companyId, actors, rootIssueId: root.id, missionPath, runtime, proof, save }) : undefined;
   mission = (await api("GET", `${missionPath}?companyId=${companyId}`)).mission;
   const n3Slots = ["product", "quality"].map(perspective => ({ slotId: randomUUID(), perspective, specialistAgentId: actors[perspective], required: true, question: `${perspective} review of the exact candidate and alpha correction marker` }));

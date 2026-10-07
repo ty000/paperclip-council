@@ -102,6 +102,7 @@ export type MissionAggregate = {
   effectIntents: Array<Record<string, unknown>>;
   modelSelection?: ModelSelectionState;
   workspacePreflight?: import("./workspace-preflight.js").WorkspacePreflightProfile;
+  nativeWakePolicy?: import("./native-wake-policy.js").NativeWakePolicy;
   n1?: Record<string, unknown>;
   n2?: N2State;
   n3?: import("./n3-state.js").N3State;
@@ -529,6 +530,7 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
   let council: RosterSnapshot;
   let useVariants = false;
   let workspacePreflight: WorkspacePreflightProfile | undefined;
+  let nativeWakePolicy = false;
   try {
     const issue = await ctx.issues.get(create.rootIssueId, companyId);
     if (!issue || issue.companyId !== companyId) throw new MissionError(404, "root_issue_not_found", "Root issue not found in this company");
@@ -555,6 +557,7 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
     team = validation.team;
     council = validation.council;
     const variantConfig = await ctx.config.get(companyId);
+    nativeWakePolicy = variantConfig.n2RuntimeProfile === "ordinary-cli-v1" && variantConfig.nativeWakeGuardEnabled !== false;
     useVariants = variantConfig.modelVariantsEnabled === true && variantConfig.n2RuntimeProfile === "ordinary-cli-v1";
     workspacePreflight = readWorkspacePreflightProfile(variantConfig.workspacePreflight);
     if (workspacePreflight && !useVariants) {
@@ -590,6 +593,7 @@ async function createMission(ctx: PluginContext, companyId: string, actorUserId:
     aggregate.modelSelection = { protocol: "native-variants-v1", choices: [], tasks: [] };
   }
   if (workspacePreflight) aggregate.workspacePreflight = workspacePreflight;
+  if (nativeWakePolicy) aggregate.nativeWakePolicy = { protocol: "council-native-wake-v1" };
   const insert = await ctx.db.execute(
     missionInsertSql(ctx),
     [companyId, create.missionId, create.rootIssueId, create.projectId, ownerUserId,
