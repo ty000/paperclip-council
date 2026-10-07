@@ -11,9 +11,16 @@ import { assertProjectDeparture } from "./project-mandate-guard.js";
 import { prepareHierarchy } from "./hierarchy-intake.js";
 import type { HierarchyState } from "./hierarchy-contract.js";
 import { listProjectMandates, projectIssues, projectMandateRow, projectTable, type ProjectMandate, type ProjectMandateSnapshot } from "./project-mandate-state.js";
+import { readProjectMandate } from "./project-mandate-state.js";
+import { LINEAR_ORIGIN, type LinearPreparation } from "./linear-intake-contract.js";
+import { readLinearIntake } from "./linear-intake-validation.js";
+import { linearMissionObjective, prepareLinearTasks } from "./linear-intake-preparation.js";
+import { assertLinearSource } from "./linear-intake-revalidation.js";
+import { validateRosterPair } from "./rosters.js";
 
 type IntakeState = { createBody?: Record<string, unknown>; snapshot?: ProjectMandateSnapshot;
   hierarchy?: HierarchyState;
+  linearIntake?: LinearPreparation;
   commands: Record<string, Record<string, unknown>>; questions: Record<string, { message: string; confirmed: boolean }>;
   plan?: { key: string; body: string } };
 type Intake = { companyId: string; rootIssueId: string; projectId: string; revisionId: string; missionId: string; version: number; state: IntakeState };
@@ -51,18 +58,56 @@ async function question(ctx: PluginContext, initial: Intake, policy: ProjectMand
   await save(ctx, intake, { ...intake.state, questions: { ...intake.state.questions, [code]: { ...pending, confirmed: true } } });
 }
 
-async function pinTask(ctx: PluginContext, intake: Intake, policy: ProjectMandate, issues: Awaited<ReturnType<typeof projectIssues>>) {
-  const root = await ctx.issues.get(intake.rootIssueId, intake.companyId);
+function requireManualRoot(root: Awaited<ReturnType<PluginContext["issues"]["get"]>>, policy: ProjectMandate) {
   if (!root || root.parentId || !["backlog", ...(policy.content.hierarchy?.adoptExistingChildren ? ["blocked"] : [])].includes(root.status) || root.originKind !== "manual" || root.assigneeAgentId !== policy.content.leadAgentId) {
     throw new MissionError(409, "project_task_eligibility", "Use a manual parentless task in Backlog assigned to the declared project lead");
   }
-  const hierarchy = await prepareHierarchy(ctx, policy, root.id, issues);
+}
+async function requireCurrentPolicy(ctx: PluginContext, policy: ProjectMandate) {
+  const latest = await readProjectMandate(ctx, policy.companyId, policy.projectId);
+  if (!latest?.content.enabled || latest.revisionId !== policy.revisionId || (await ctx.companies.get(policy.companyId))?.defaultResponsibleUserId !== policy.authorizedBy
+      || operatingProfileHash(await ctx.config.get(policy.companyId)) !== policy.content.operatingProfileHash) {
+    throw new MissionError(409, "project_authority_changed", "Preparation requires the original current owner and enabled mandate");
+  }
+}
+function requireFreshLinearReceipt(receipt: LinearPreparation["preparationReceipt"]) {
+  if (!receipt || Date.now() >= Date.parse(receipt.validUntil)) throw new MissionError(409, "linear_source_pending", "A fresh original-source observation is required before this effect");
+}
+async function requireLinearRoster(ctx: PluginContext, policy: ProjectMandate) {
+  const pair = await validateRosterPair(ctx, policy.companyId, policy.content.teamRosterId, policy.content.councilRosterId);
+  if (!pair.eligible || pair.team.head.publishedRevision !== policy.content.teamRevision || pair.council.head.publishedRevision !== policy.content.councilRevision) {
+    throw new MissionError(409, "hierarchy_roster_drift", "Preparation requires the current pinned contributor and reviewer rosters");
+  }
+}
+async function prepareImported(ctx: PluginContext, initial: Intake, policy: ProjectMandate, issues: Awaited<ReturnType<typeof projectIssues>>) {
+  let intake = initial;
+  await requireLinearRoster(ctx, policy);
+  const snapshot = await readLinearIntake(ctx, policy, intake.rootIssueId, issues, intake.state.linearIntake);
+  if (!intake.state.linearIntake) intake = await save(ctx, intake, { ...intake.state, linearIntake: { snapshot, effects: {} } });
+  const preparationReceipt = await assertLinearSource(ctx, policy, intake.missionId, snapshot.subject, "preparation");
+  intake = await save(ctx, intake, { ...intake.state, linearIntake: { ...intake.state.linearIntake!, preparationReceipt } });
+  await prepareLinearTasks(ctx, intake.state.linearIntake!, async linearIntake => {
+    intake = await save(ctx, intake, { ...intake.state, linearIntake });
+  }, async () => { await requireCurrentPolicy(ctx, policy); requireFreshLinearReceipt(intake.state.linearIntake?.preparationReceipt); });
+  await readLinearIntake(ctx, policy, intake.rootIssueId, await projectIssues(ctx, intake.companyId, intake.projectId), intake.state.linearIntake);
+  return intake;
+}
+async function pinTask(ctx: PluginContext, initial: Intake, policy: ProjectMandate, issues: Awaited<ReturnType<typeof projectIssues>>) {
+  let intake = initial;
+  let root = await ctx.issues.get(intake.rootIssueId, intake.companyId);
+  if (root?.originKind === LINEAR_ORIGIN) {
+    intake = await prepareImported(ctx, intake, policy, issues);
+    root = await ctx.issues.get(intake.rootIssueId, intake.companyId);
+  } else requireManualRoot(root, policy);
+  if (!root) throw new MissionError(409, "project_task_missing", "The original root must remain readable");
+  const hierarchy = await prepareHierarchy(ctx, policy, root.id, issues, intake.state.linearIntake?.snapshot);
   if (!root.title.trim() || !root.description?.trim()) throw new MissionError(422, "project_task_description", "Describe the expected result in this task before admission");
-  if (root.title.length + root.description.length > 8000) throw new MissionError(422, "project_task_description", "Task source exceeds the bounded 8000 character mission objective");
+  if (!intake.state.linearIntake && root.title.length + root.description.length > 8000) throw new MissionError(422, "project_task_description", "Task source exceeds the bounded 8000 character mission objective");
   const existing = await getMissionByRootIssue(ctx, intake.companyId, intake.rootIssueId);
   if (existing) throw new MissionError(409, "project_task_already_managed", "This root already belongs to another mission; retain its original identity");
   const { criteria, commitments, taskDocumentRevisionId } = await taskCriteria(ctx, intake, policy);
-  const mandate = parseMissionMandate({ ...policy.content.template, objective: `${root.title}\n\n${root.description}`, acceptanceCriteria: criteria, commitments });
+  const objective = intake.state.linearIntake ? linearMissionObjective(intake.state.linearIntake) : `${root.title}\n\n${root.description}`;
+  const mandate = parseMissionMandate({ ...policy.content.template, objective, acceptanceCriteria: criteria, commitments });
   const createBody = { companyId: intake.companyId, command: "create", commandId: randomUUID(), missionId: intake.missionId,
     rootIssueId: root.id, projectId: intake.projectId, teamRosterId: policy.content.teamRosterId, teamRevision: policy.content.teamRevision,
     councilRosterId: policy.content.councilRosterId, councilRevision: policy.content.councilRevision, mandate };
@@ -70,6 +115,7 @@ async function pinTask(ctx: PluginContext, intake: Intake, policy: ProjectMandat
     authorizedBy: policy.authorizedBy, operatingProfileHash: policy.content.operatingProfileHash, mandateHash: canonicalPayloadHash(mandate),
     allowedPaths: policy.content.allowedPaths, publication: policy.content.publication,
     ...(policy.content.completion ? { completion: policy.content.completion } : {}),
+    ...(intake.state.linearIntake ? { linearIntake: { subject: intake.state.linearIntake.snapshot.subject, bodySha256: intake.state.linearIntake.snapshot.bodySha256 } } : {}),
     source: { rootIssueId: root.id, title: root.title, descriptionHash: canonicalPayloadHash(root.description), taskDocumentRevisionId } };
   return save(ctx, intake, { ...intake.state, createBody, snapshot, ...(hierarchy ? { hierarchy } : {}) });
 }
@@ -147,6 +193,7 @@ async function advance(ctx: PluginContext, initial: Intake, latest: ProjectManda
     intake = activated.intake; m = activated.mission;
     await preparePublication(ctx, intake, m, policy);
   } catch (error) {
+    if (error instanceof MissionError && error.code === "linear_source_pending") return;
     // Re-read after any ambiguous database response; never write from an obsolete intake version.
     const current = await ctx.db.query<any>(`SELECT * FROM ${projectTable(ctx, "project_task_intakes")} WHERE company_id = $1 AND root_issue_id = $2`, [intake.companyId, intake.rootIssueId]);
     await question(ctx, current[0] ? fromRow(current[0]) : intake, policy, error);
@@ -163,11 +210,24 @@ async function activateTask(ctx: PluginContext, intake: Intake, m: MissionRecord
       || !m.aggregate.hierarchy?.leaves && issues.some(issue => issue.parentId === m.rootIssueId)) {
     throw new MissionError(409, "project_task_source_changed", "Task source or children changed after the pinned intake; retain the original mission without activation");
   }
+  if (intake.state.linearIntake) {
+    await readLinearIntake(ctx, policy, intake.rootIssueId, await projectIssues(ctx, intake.companyId, intake.projectId), intake.state.linearIntake);
+    const admissionReceipt = await assertLinearSource(ctx, policy, intake.missionId, intake.state.linearIntake.snapshot.subject, "admission");
+    intake = await save(ctx, intake, { ...intake.state, linearIntake: { ...intake.state.linearIntake, admissionReceipt } });
+  }
   const profile = await readNativeG4Profile(ctx, m.companyId);
   if (!profile) throw new MissionError(409, "project_admission_missing", "Existing native operating period required; no budget reset");
   const prepared = await command(ctx, intake, m, "activate", { periodKey: profile.periodKey, reservationId: randomUUID(), requestedUnits: profile.runReservationUnits });
+  if (prepared.intake.state.linearIntake) requireFreshLinearReceipt(prepared.intake.state.linearIntake.admissionReceipt);
   await executeN1BoardCommand(ctx, { companyId: m.companyId, missionId: m.missionId, actorUserId: policy.authorizedBy, body: prepared.body });
   return { intake: prepared.intake, mission: (await getMission(ctx, intake.companyId, intake.missionId))! };
+}
+
+function eligibleRoot(issue: Awaited<ReturnType<typeof projectIssues>>[number], policy: ProjectMandate) {
+  if (issue.parentId || policy.content.baselineRootIds.includes(issue.id)) return false;
+  if (issue.originKind === LINEAR_ORIGIN) return Boolean(policy.content.linearIntake) && issue.status === "blocked" && issue.assigneeAgentId === null;
+  return issue.originKind === "manual" && ["backlog", ...(policy.content.hierarchy?.adoptExistingChildren ? ["blocked"] : [])].includes(issue.status)
+    && issue.assigneeAgentId === policy.content.leadAgentId;
 }
 
 /** Called by the existing native job before mission progression. No competing scheduler or agent. */
@@ -175,8 +235,7 @@ export async function reconcileProjectTasks(ctx: PluginContext) {
   for (const policy of await listProjectMandates(ctx)) {
     if (!policy.content.enabled) continue;
     const issues = await projectIssues(ctx, policy.companyId, policy.projectId);
-    for (const root of issues.filter(issue => !issue.parentId && issue.originKind === "manual" && ["backlog", ...(policy.content.hierarchy?.adoptExistingChildren ? ["blocked"] : [])].includes(issue.status)
-      && issue.assigneeAgentId === policy.content.leadAgentId && !policy.content.baselineRootIds.includes(issue.id))) {
+    for (const root of issues.filter(issue => eligibleRoot(issue, policy))) {
       await ctx.db.execute(`INSERT INTO ${projectTable(ctx, "project_task_intakes")} (company_id, root_issue_id, project_id, policy_revision_id, mission_id, state)
         VALUES ($1, $2, $3, $4, $5, $6::jsonb) ON CONFLICT DO NOTHING`, [policy.companyId, root.id, policy.projectId, policy.revisionId, randomUUID(), JSON.stringify({ commands: {}, questions: {} })]);
     }

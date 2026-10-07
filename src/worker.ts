@@ -1,4 +1,5 @@
 import { registerContinuityJob } from "./continuity-runtime.js";
+import { registerLinearSourceResults } from "./linear-intake-revalidation.js";
 import { handleProjectMandate } from "./project-mandate-configuration.js";
 import { listContinuityMissions } from "./missions.js";
 import { handleModelProfiles, chooseModelProfile, inspectModelSelections, reconcileModelMeasurements } from "./model-api.js";
@@ -279,6 +280,7 @@ const plugin = definePlugin({
     registerRosterBridge(context);
     registerDecisionReceiptBridge(context);
     registerN2FinishedEventHandler(context);
+    registerLinearSourceResults(context);
     registerContinuityJob(context, () => listContinuityMissions(context));
   },
   async onHealth() { return { status: "ok", message: "Council decision adapter ready" }; },

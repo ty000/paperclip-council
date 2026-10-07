@@ -20,13 +20,13 @@ export async function rebindUnstartedTask(ctx: PluginContext, policy: ProjectMan
   }
   if (!row || row.version !== body.expectedIntakeVersion || body.policyRevisionId !== policy.revisionId || !policy.content.enabled
       || policy.authorizedBy !== ownerId || policy.content.baselineRootIds.includes(row.root_issue_id) || body.authorizeRebind !== true
-      || row.state.createBody || row.state.snapshot || row.state.plan || Object.keys(row.state.commands ?? {}).length || (row.state.policyRebindings?.length ?? 0) >= 20) {
+      || row.state.createBody || row.state.snapshot || row.state.plan || row.state.linearIntake || Object.keys(row.state.commands ?? {}).length || (row.state.policyRebindings?.length ?? 0) >= 20) {
     throw new MissionError(409, "project_rebind_unavailable", "Rebind only an explicitly included, unprepared intake at its exact version; retain all existing effects", { currentVersion: row?.version ?? null });
   }
   const state = { ...row.state, policyRebindings: [...row.state.policyRebindings ?? [], { commandId: body.commandId, payloadHash: hash,
     ownerUserId: ownerId, fromRevisionId: row.policy_revision_id, toRevisionId: policy.revisionId }] };
   const result = await ctx.db.execute(`UPDATE ${projectTable(ctx, "project_task_intakes")} SET state = $1::jsonb, policy_revision_id = $2, version = version + 1, updated_at = now()
-    WHERE company_id = $3 AND project_id = $4 AND root_issue_id = $5 AND version = $6 AND NOT (state ? 'createBody')`,
+    WHERE company_id = $3 AND project_id = $4 AND root_issue_id = $5 AND version = $6 AND NOT (state ? 'createBody') AND NOT (state ? 'linearIntake')`,
     [JSON.stringify(state), policy.revisionId, policy.companyId, policy.projectId, row.root_issue_id, row.version]);
   if (result.rowCount !== 1) throw new MissionError(409, "project_rebind_version", "Task intake changed concurrently; no replacement");
   return { outcome: "applied", intake: await readTaskIntake(ctx, policy.companyId, policy.projectId, row.root_issue_id) };

@@ -8,6 +8,7 @@ import { contributionModelFamily, prepareVariantLaunch, bindVariantIssue, claimV
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { randomUUID } from "node:crypto";
 import { assertProjectDeparture, assertProjectPaths } from "./project-mandate-guard.js";
+import { assertLinearAdmissionFresh } from "./linear-intake-admission-guard.js";
 import { contributionCountAllowed, leadIssueId } from "./hierarchy-contract.js";
 import { prepareHierarchyCoordinator, type N1Coordination } from "./hierarchy-coordinator.js";
 import { assertHierarchySources, assertHierarchyDependencies, materializeHierarchyGuidance } from "./hierarchy-runtime.js";
@@ -930,6 +931,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
   const prior = receipt(mission, commandId, input.actorUserId!, hash);
   if (prior) return { outcome: "replayed" as const, mission, receipt: prior };
   await assertProjectDeparture(ctx, mission);
+  await assertLinearAdmissionFresh(ctx, mission, input.body);
   requireFreshCommand(mission, input.body);
   if (mission.aggregate.phase !== "draft" || mission.aggregate.control.status !== "inactive") {
     throw new MissionError(409, "not_draft", "Only an inactive draft mission may activate");
@@ -969,7 +971,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
   await requireActivationReservation(ctx, {
     companyId: mission.companyId, missionId: mission.missionId,
     periodKey, reservationId, requestedUnits, commandId,
-  });
+  }, () => assertLinearAdmissionFresh(ctx, mission, input.body));
   const next: MissionAggregate = {
     ...mission.aggregate,
     phase: "executing",
@@ -987,6 +989,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
       periodKey, reservationId,
     }],
   };
+  await assertLinearAdmissionFresh(ctx, mission, input.body);
   try {
     return await commandCas(ctx, mission, input.body, "user", input.actorUserId!, next);
   } catch (error) {
@@ -999,6 +1002,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
 async function requireActivationReservation(
   ctx: PluginContext,
   input: { companyId: string; missionId: string; periodKey: string; reservationId: string; requestedUnits: number; commandId: string },
+  beforeReserve: () => Promise<void>,
 ): Promise<void> {
   const envelope = await readAdmission(ctx, { companyId: input.companyId, periodKey: input.periodKey });
   if (!envelope) throw new MissionError(422, "g4_not_configured", "No task/period admission envelope is configured");
@@ -1022,6 +1026,7 @@ async function requireActivationReservation(
       throw new MissionError(422, "g4_profile_mismatch", "Activation must use the configured period and run reservation estimate");
     }
   }
+  await beforeReserve();
   const result = await reserveAdmission(ctx, {
     companyId: input.companyId, periodKey: input.periodKey,
     reservationId: input.reservationId, missionId: input.missionId,

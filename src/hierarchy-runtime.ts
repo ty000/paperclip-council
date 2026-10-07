@@ -3,6 +3,8 @@ import type { MissionRecord } from "./missions.js";
 import { canonicalPayloadHash, MissionError } from "./mission-primitives.js";
 import { projectIssues } from "./project-mandate-state.js";
 import { physicalAgent, modelLaunchGuidance } from "./model-state.js";
+import { LINEAR_ORIGIN, LINEAR_READINESS_KEY, LINEAR_SOURCE_KEY, requireLinear } from "./linear-intake-contract.js";
+import type { HierarchyNode } from "./hierarchy-contract.js";
 
 /** Only exact suffixes attributable to this issue's persisted launches are Council context. */
 function descriptionMatchesSource(m: MissionRecord, issueId: string, description: string | null, expectedHash: string) {
@@ -20,10 +22,27 @@ function descriptionMatchesSource(m: MissionRecord, issueId: string, description
   return false;
 }
 
+async function assertLinearReadiness(ctx: PluginContext, m: MissionRecord) {
+  const snapshot = m.aggregate.projectMandate?.linearIntake;
+  if (!snapshot) return;
+  const doc = await ctx.issues.documents.get(m.rootIssueId, LINEAR_READINESS_KEY, m.companyId);
+  requireLinear(doc?.latestRevisionId === snapshot.subject.readinessRevisionId && doc.id === snapshot.subject.readinessDocumentId, "linear_readiness_changed");
+  let body: unknown;
+  try { body = JSON.parse(doc.body); } catch { requireLinear(false, "linear_readiness_changed"); }
+  requireLinear(canonicalPayloadHash(body) === snapshot.bodySha256, "linear_readiness_changed");
+}
+async function assertLinearNode(ctx: PluginContext, m: MissionRecord, node: HierarchyNode, issue: Awaited<ReturnType<PluginContext["issues"]["get"]>>) {
+  if (!node.linearSource) return;
+  requireLinear(issue?.originKind === LINEAR_ORIGIN && issue.originId === node.linearSource.originId, "linear_source_identity_changed");
+  const doc = await ctx.issues.documents.get(node.issueId, LINEAR_SOURCE_KEY, m.companyId);
+  requireLinear(doc?.latestRevisionId === node.linearSource.documentRevisionId && canonicalPayloadHash(doc.body) === node.linearSource.bodySha256, "linear_source_document_changed");
+}
+
 /** All sources remain native. Changes require a new owner decision, never inferred adoption. */
 export async function assertHierarchySources(ctx: PluginContext, m: MissionRecord) {
   const hierarchy = m.aggregate.hierarchy;
   if (!hierarchy?.nodes) return;
+  await assertLinearReadiness(ctx, m);
   const issues = await projectIssues(ctx, m.companyId, m.projectId);
   const expected = new Set(hierarchy.nodes.map(node => node.issueId));
   const operational = new Set([m.aggregate.n5?.publication?.issueId, m.aggregate.n5?.continuation?.previousPublication.issueId].filter(Boolean));
@@ -32,9 +51,11 @@ export async function assertHierarchySources(ctx: PluginContext, m: MissionRecor
   }
   for (const node of hierarchy.nodes) {
     const issue = await ctx.issues.get(node.issueId, m.companyId);
+    await assertLinearNode(ctx, m, node, issue);
     const leaf = hierarchy.leaves?.find(item => item.issueId === node.issueId);
     const agentId = node.assigneeAgentId && leaf ? physicalAgent(m, node.assigneeAgentId, { issueId: node.issueId }) : node.assigneeAgentId;
     const relations = await ctx.issues.relations.get(node.issueId, m.companyId);
+    if (node.historicalStatus && issue?.status !== node.historicalStatus) throw new MissionError(409, "hierarchy_history_changed", "Imported terminal history cannot be reopened or counted as new execution");
     if (!issue || issue.id !== node.issueId || issue.companyId !== m.companyId || issue.projectId !== m.projectId
         || !issues.some(item => item.id === issue.id) || issue.parentId !== node.parentId || issue.title !== node.title
         || !descriptionMatchesSource(m, issue.id, issue.description, node.descriptionHash)
