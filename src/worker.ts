@@ -1,3 +1,5 @@
+import { registerContinuityJob } from "./continuity-runtime.js";
+import { listContinuityMissions } from "./missions.js";
 import { handleModelProfiles, chooseModelProfile, inspectModelSelections, reconcileModelMeasurements } from "./model-api.js";
 import { ModelSelectionError } from "./model-state.js";
 import { handleN6WorkAgent } from "./n6-work-api.js";
@@ -269,6 +271,7 @@ const plugin = definePlugin({
     registerRosterBridge(context);
     registerDecisionReceiptBridge(context);
     registerN2FinishedEventHandler(context);
+    registerContinuityJob(context, () => listContinuityMissions(context));
   },
   async onHealth() { return { status: "ok", message: "Council decision adapter ready" }; },
   async onApiRequest(input) { return handlePluginRequest(input); },

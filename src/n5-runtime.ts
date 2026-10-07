@@ -14,6 +14,7 @@ import { bindVariantIssue, claimVariantWake, observeVariantRun, prepareVariantLa
 import { modelLaunch, physicalAgent } from "./model-state.js";
 import { validatePublisherPreflight } from "./n5-publisher-preflight.js";
 import { assertNativeRunInventory } from "./native-runs.js";
+import { assertContinuityDeparture } from "./continuity-policy.js";
 
 const fresh = async (ctx: PluginContext, m: MissionRecord) => (await getMission(ctx, m.companyId, m.missionId))!;
 const save = (ctx: PluginContext, m: MissionRecord, n5: N5State) => n2Cas(ctx, m, { ...m.aggregate, n5 });
@@ -48,6 +49,7 @@ export async function startN5Publication(ctx: PluginContext, initial: MissionRec
   const updating = Boolean(continuation && !continuation.updateAdmitted && n5.publication?.settledAt
     && m.aggregate.n2?.status === "accepted" && m.aggregate.n2.activeSubmissionId !== continuation.previousPublication.submission.submissionId);
   if (n5.publication && !updating) return n5.publication.creation === "confirmed" ? resumeN5PreWake(ctx, m) : resumeN5Creation(ctx, m);
+  assertContinuityDeparture(m);
   if (m.aggregate.n2?.ordinary) {
     const publisher = await ctx.agents.get(n5.authority.publisherAgentId, m.companyId);
     if (!publisher || publisher.adapterType !== "codex_local" || publisher.adapterConfig?.engine !== "cli"

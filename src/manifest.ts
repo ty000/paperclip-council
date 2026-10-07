@@ -13,7 +13,7 @@ export const missionToolDeclaration = {
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
-  version: "0.7.10",
+  version: "0.7.11",
   displayName: "Paperclip Council",
   description: "Private Council integration with revisioned rosters, bounded admission and checked candidate preparation.",
   author: "Local Paperclip integration",
@@ -40,6 +40,7 @@ const manifest: PaperclipPluginManifestV1 = {
     "issue.relations.write",
     "issues.orchestration.read",
     "events.subscribe",
+    "jobs.schedule",
     "issue.documents.read",
     "issue.attachments.read",
     "issue.interactions.create",
@@ -51,6 +52,8 @@ const manifest: PaperclipPluginManifestV1 = {
   agents: managedAgentDeclarations(),
   skills: managedSkillDeclarations(),
   tools: [missionToolDeclaration],
+  jobs: [{ jobKey: "mission-continuity", displayName: "Council mission continuity",
+    description: "Reconcile explicitly delegated ordinary missions without another model turn or chat watcher.", schedule: "* * * * *" }],
   entrypoints: { worker: "./dist/worker.js", ui: "./dist/ui" },
   database: {
     namespaceSlug: "private_paperclip_council",
