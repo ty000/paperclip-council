@@ -112,7 +112,7 @@ async function preparePublication(ctx: PluginContext, initial: Intake, m: Missio
   if (doc?.body !== plan.body || !doc.latestRevisionId) throw new MissionError(409, "project_plan_readback", "Retain the original immutable operational plan; no overwrite or replacement key");
   const prepared = await command(ctx, intake, m, "configure-delivery", { planRevisionId: doc.latestRevisionId, planDocumentKey: plan.key,
     publisherAgentId: publication.publisherAgentId, repository: publication.repository, baseRef: publication.baseRef,
-    headRef: `${publication.headRefPrefix}-${m.missionId}` });
+    headRef: `${publication.headRefPrefix}-${m.missionId}`, ...(publication.contract ? { contract: publication.contract } : {}) });
   const result = await handleN5Board(ctx, { companyId: m.companyId, routeKey: "mission-command", method: "POST", params: { companyId: m.companyId, missionId: m.missionId },
     actor: { actorType: "user", userId: policy.authorizedBy }, body: prepared.body } as any);
   if (result.status !== 200) throw new MissionError(result.status, "project_publication_configuration", "Persisted publication command did not apply; inspect the original command");

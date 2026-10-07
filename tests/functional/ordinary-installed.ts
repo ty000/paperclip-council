@@ -28,8 +28,10 @@ assert([0, 1, 3].includes(hierarchyCount) && (!hierarchyCount || projectIntakeMo
 assert(!(n6Mode && deliveryMode));
 assert(!continuityMode || deliveryMode);
 assert(!projectIntakeMode || continuityMode);
-const success = hierarchyCount ? "INSTALLED VARIABLE HIERARCHY PROVIDER-FREE VALIDATED" : n6Mode ? "INSTALLED N6 DEPENDENCY PROVIDER-FREE VALIDATED" : deliveryMode ? "INSTALLED ORDINARY DELIVERY PROVIDER-FREE VALIDATED" : "INSTALLED ORDINARY COUNCIL PROVIDER-FREE VALIDATED";
-const artifactPrefix = hierarchyCount ? `hierarchy-${hierarchyCount}-installed-` : n6Mode ? "n6-installed-" : deliveryMode ? "n5-ordinary-installed-" : "n2-ordinary-installed-";
+const feedbackMode = process.env.COUNCIL_PR_FEEDBACK === "1";
+assert(!feedbackMode || hierarchyCount === 3 && projectIntakeMode);
+const success = feedbackMode ? "INSTALLED PR FEEDBACK PROVIDER-FREE VALIDATED" : hierarchyCount ? "INSTALLED VARIABLE HIERARCHY PROVIDER-FREE VALIDATED" : n6Mode ? "INSTALLED N6 DEPENDENCY PROVIDER-FREE VALIDATED" : deliveryMode ? "INSTALLED ORDINARY DELIVERY PROVIDER-FREE VALIDATED" : "INSTALLED ORDINARY COUNCIL PROVIDER-FREE VALIDATED";
+const artifactPrefix = feedbackMode ? "pr-feedback-installed-" : hierarchyCount ? `hierarchy-${hierarchyCount}-installed-` : n6Mode ? "n6-installed-" : deliveryMode ? "n5-ordinary-installed-" : "n2-ordinary-installed-";
 const runtime = await mkdtemp("/tmp/council-ordinary-installed-");
 const output = resolve(repository, process.argv[2] ?? `artifacts/${artifactPrefix}${Date.now()}.json`);
 assert(output.startsWith(resolve(repository, `artifacts/${artifactPrefix}`)));
@@ -40,7 +42,7 @@ const proof: any = { schema: "council-ordinary-installed-v1", outcome: "RUNNING"
   head: gitAt(repository, "rev-parse", "HEAD"), hostSha, runtime, timeline: [], checks: {},
   boundary: "Installed Council owns N1 child completion/root waiting, N2/N3 state, admission, dispatch and reconciliation. Only CLI model/content/usage are deterministic. Owner prepares N1; Council finishes recorded children without implicit parent wakes and parks its verified candidate awaiting review. Agent demand wake policy remains enabled.",
   source: Object.fromEntries(await Promise.all([...new Set([fixture, fileURLToPath(import.meta.url), resolve(here, "ordinary-delivery-fixture.mjs"), resolve(here, "ordinary-delivery-scenario.ts"), resolve(here, "n6-scenario.ts"), resolve(here, "n6-coordination-fixture.mjs"), resolve(repository, "dist/worker.js"),
-    resolve(repository, "scripts/operations/workspace_preflight.py"), resolve(repository, "scripts/operations/publisher_preflight.py"), resolve(here, "native-run-exception-scenario.ts"), resolve(here, "hierarchy-scenario.ts"),
+    resolve(repository, "scripts/operations/workspace_preflight.py"), resolve(repository, "scripts/operations/publisher_preflight.py"), resolve(repository, "scripts/operations/github_feedback.py"), resolve(here, "native-run-exception-scenario.ts"), resolve(here, "hierarchy-scenario.ts"),
     ...gitAt(repository, "ls-files", "src").split("\n").map(path => resolve(repository, path)),
     ...gitAt(repository, "ls-files", "--others", "--exclude-standard", "src").split("\n").filter(Boolean).map(path => resolve(repository, path))])].map(async p => [p, createHash("sha256").update(await readFile(p)).digest("hex")]))) };
 const record = (event: string, details: any = {}) => proof.timeline.push({ ordinal: proof.timeline.length + 1, at: new Date().toISOString(), event, ...details });
@@ -121,7 +123,7 @@ try {
   for (const name of ["lead", "alpha", "beta", ...(hierarchyCount === 3 ? ["gamma"] : []), "product", "quality", "council", ...deliveryMode ? ["publisher"] : [], ...coordinationMode ? ["pm", "pmSuccessor", "facilitator"] : []]) {
     const agent = await api("POST", `/api/companies/${companyId}/agents`, { name: `Ordinary ${name}`, role: "engineer", adapterType: "codex_local",
       adapterConfig: { engine: "cli", command: fixture, model: "fixture-no-provider", cwd: repoPath,
-        env: { CODEX_HOME: resolve(runtime, `codex-${name}`), COUNCIL_ORDINARY_FIXTURE: fixtureConfig }, timeoutSec: 120 },
+        env: { CODEX_HOME: resolve(runtime, `codex-${name}`), COUNCIL_ORDINARY_FIXTURE: fixtureConfig }, timeoutSec: feedbackMode && name === "publisher" ? 400 : 120 },
       runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: true, maxConcurrentRuns: 1 } } });
     actors[name] = agent.id;
   }
@@ -173,13 +175,13 @@ try {
     const historical = await api("POST", `/api/companies/${companyId}/issues`, { title: "Historical task retained", description: "Do not adopt without explicit inclusion", projectId, status: "backlog", assigneeAgentId: actors.lead });
     const settings = await api("GET", "/api/instance/settings/experimental");
     await api("PATCH", "/api/instance/settings/experimental", { ...settings, enableExternalObjects: true });
-    await writeFile(fixtureConfig, JSON.stringify({ pluginId, companyId, projectId, projectIntake: true, hierarchyCount, repoPath, runtime, actors, baseCommit, delivery: true }));
+    await writeFile(fixtureConfig, JSON.stringify({ pluginId, companyId, projectId, projectIntake: true, hierarchyCount, feedbackMode, repoPath, runtime, actors, baseCommit, delivery: true }));
     const policyPath = `/api/plugins/${pluginId}/api/companies/${companyId}/projects/${projectId}/mandate`;
     const policyBody = { companyId, commandId: randomUUID(), expectedVersion: 0, enabled: true, authorizeNewTasks: true,
       teamRosterId: team.head.rosterId, councilRosterId: council.head.rosterId, n3Slots, template: mandate,
       criteriaSource: "project-defaults", allowedPaths: ["alpha.txt", "beta.txt", ...(hierarchyCount === 3 ? ["gamma.txt"] : [])],
       ...(hierarchyCount ? { hierarchy: { protocol: "council-hierarchy-v1", maxContributions: hierarchyCount, execution: "sequential", adoptExistingChildren: true } } : {}),
-      publication: { publisherAgentId: actors.publisher, qaAgentId: actors.quality, repository: "ty000/paperclip-council", baseRef: "main", headRefPrefix: "codex/project-task" } };
+      publication: { publisherAgentId: actors.publisher, qaAgentId: actors.quality, repository: "ty000/paperclip-council", baseRef: "main", headRefPrefix: "codex/project-task", ...(feedbackMode ? { contract: { protocol: "council-pr-contract-v1", draftOnly: true, result: "draft-pr", feedback: "review-and-correct", requiredChecks: ["fixture-ci"] } } : {}) } };
     const configured = await api("POST", policyPath, policyBody);
     assert.equal((await api("POST", policyPath, policyBody)).outcome, "replayed");
     const incomplete = await api("POST", `/api/companies/${companyId}/issues`, { title: "Incomplete task", projectId, status: "backlog", assigneeAgentId: actors.lead });
@@ -297,7 +299,7 @@ try {
     await delivery?.advance(value);
     await n6?.advance(value);
     return value;
-  }, value => delivery ? delivery.complete(value) : value.aggregate.n2?.status === "accepted", continuityMode ? 300000 : 120000);
+  }, value => delivery ? delivery.complete(value) : value.aggregate.n2?.status === "accepted", continuityMode ? feedbackMode ? 900000 : 300000 : 120000);
   await delivery?.finish();
   await n6?.finish();
   if (continuityMode) {
@@ -320,11 +322,11 @@ try {
   }
   proof.runs = await api("GET", `/api/companies/${companyId}/heartbeat-runs`);
   proof.admission = (await api("GET", `${admissionPath}?companyId=${companyId}&periodKey=${profile.periodKey}`)).envelope;
-  assert.equal(proof.runs.length, hierarchyCount ? hierarchyCount + 5 : continuityMode ? 7 : coordinationMode ? 14 : n6Mode ? 11 : deliveryMode ? 12 : 10);
+  assert.equal(proof.runs.length, feedbackMode ? 16 : hierarchyCount ? hierarchyCount + 5 : continuityMode ? 7 : coordinationMode ? 14 : n6Mode ? 11 : deliveryMode ? 12 : 10);
   assert(proof.runs.every((run: any) => run.status === "succeeded"));
-  assert.equal(proof.mission.aggregate.n2.ordinary.tasks.length, continuityMode ? 3 : 7);
+  assert.equal(proof.mission.aggregate.n2.ordinary.tasks.length, feedbackMode ? 10 : continuityMode ? 3 : 7);
   assert(proof.admission.reservations.every((item: any) => item.status === "settled"));
-  assert.equal(proof.admission.allowance.knownUsageUnits, hierarchyCount ? (hierarchyCount + 5) * 150 : continuityMode ? 1050 : coordinationMode ? 2100 : n6Mode ? 1650 : deliveryMode ? 1800 : 1500);
+  assert.equal(proof.admission.allowance.knownUsageUnits, feedbackMode ? 2400 : hierarchyCount ? (hierarchyCount + 5) * 150 : continuityMode ? 1050 : coordinationMode ? 2100 : n6Mode ? 1650 : deliveryMode ? 1800 : 1500);
   const { acceptedN5Submission } = await import("../../src/n5-preflight.js");
   proof.n5Handoff = acceptedN5Submission(proof.mission);
   const n2 = proof.mission.aggregate.n2;
@@ -332,9 +334,9 @@ try {
     assert.notEqual(n2.submissions[0].candidateCommit, n2.submissions[1].candidateCommit);
     proof.candidateDiff = gitAt(repoPath, "diff", n2.submissions[0].candidateCommit, n2.submissions[1].candidateCommit);
     assert.equal(Object.keys(proof.runningReportObservations ?? {}).length, 2);
-  } else assert.equal(Object.keys(proof.runningReportObservations ?? {}).length, 1);
+  } else assert.equal(Object.keys(proof.runningReportObservations ?? {}).length, feedbackMode ? 3 : 1);
   proof.agentApiReadbacks = await Promise.all((await readdir(runtime)).filter(name => name.startsWith("api-")).map(async name => JSON.parse(await readFile(resolve(runtime, name), "utf8"))));
-  assert.equal(proof.agentApiReadbacks.length, continuityMode ? 3 : 7);
+  assert.equal(proof.agentApiReadbacks.length, feedbackMode ? 10 : continuityMode ? 3 : 7);
   proof.gatewayRefusal = JSON.parse(await readFile(resolve(runtime, "gateway-refusal.json"), "utf8"));
   proof.issues = await Promise.all([...new Set(proof.mission.aggregate.n2.ordinary.tasks.map((task: any) => task.issueId))].map(id => api("GET", `/api/issues/${id}`)));
   if (hierarchyCount) await verifyHierarchyTasks(api, proof, root.id);

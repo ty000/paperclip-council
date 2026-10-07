@@ -1,3 +1,4 @@
+import { reconcilePublicationFeedback } from "./pr-feedback.js";
 import { leadIssueId } from "./hierarchy-contract.js";
 import { publishContinuityObservation, type ContinuityObservation as Observation } from "./continuity-observation.js";
 import { randomUUID } from "node:crypto";
@@ -82,6 +83,7 @@ async function advanceReview(ctx: PluginContext, m: MissionRecord, job: PluginJo
   if (m.aggregate.n2!.status !== "accepted") return waiting("native_review_pending", "Les avis indépendants, la revue et les coûts doivent être concluants avant la suite.");
   if (!m.aggregate.n5) return { state: "complete", code: "accepted_without_publication", nextAction: "Le candidat est accepté. Aucune publication n'a été autorisée." };
   m = await reconcileN5(ctx, m);
+  m = await reconcilePublicationFeedback(ctx, m);
   return inspectN5(m)?.ready
     ? { state: "complete", code: "authorized_pr_observed", nextAction: "La PR autorisée est observée sur le candidat accepté. La fusion reste distincte." }
     : waiting("native_delivery_pending", "Council attend la publication autorisée et ses preuves natives, sans répéter un effet incertain.");

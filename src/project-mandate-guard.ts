@@ -36,12 +36,13 @@ export function assertProjectPaths(m: MissionRecord, paths: string[]) {
   }
 }
 
-export function assertProjectPublication(m: MissionRecord, actual: { publisherAgentId: string; repository: string; baseRef: string; headRef: string }) {
+export function assertProjectPublication(m: MissionRecord, actual: { publisherAgentId: string; repository: string; baseRef: string; headRef: string; contract?: import("./pr-contract.js").PrContract }) {
   const pinned = m.aggregate.projectMandate;
   if (!pinned) return;
   const allowed = pinned.publication;
   if (!allowed || allowed.publisherAgentId !== actual.publisherAgentId || allowed.repository !== actual.repository
-      || allowed.baseRef !== actual.baseRef || actual.headRef !== `${allowed.headRefPrefix}-${m.missionId}`) {
+      || allowed.baseRef !== actual.baseRef || actual.headRef !== `${allowed.headRefPrefix}-${m.missionId}`
+      || canonicalPayloadHash(actual.contract ?? null) !== canonicalPayloadHash(allowed.contract ?? null)) {
     throw new MissionError(403, "project_publication_scope", "Publication exceeds the explicit project authority; merge and deployment are not delegated");
   }
 }

@@ -7,10 +7,12 @@ export type N5Plan = { documentId: string; revisionId: string; bodyHash: string;
 export type N5State = {
   plan: N5Plan;
   authority: { publisherAgentId: string; repository: string; baseRef: string; headRef: string; authorizedBy: string; authorizedAt: string;
-    publisherPreflight?: "publisher-run-report-v1" };
+    publisherPreflight?: "publisher-run-report-v1"; contract?: import("./pr-contract.js").PrContract };
+  feedback?: import("./pr-contract.js").PublicationFeedback;
+  feedbackHistory?: import("./pr-contract.js").PublicationFeedback[];
   planHistory?: Array<{ plan: N5Plan; reason: string; runId: string; at: string }>;
   continuation?: { requestId: string; reason: string; criteria: string[]; requestedBy: string; requestedAt: string;
-    periodKey: string; previousApplication: NonNullable<MissionRecord["aggregate"]["n2"]>["application"];
+    delegatedFeedback?: boolean; periodKey: string; previousApplication: NonNullable<MissionRecord["aggregate"]["n2"]>["application"];
     previousPlan: N5Plan; previousPublication: NonNullable<N5State["publication"]>;
     reopen: { state: "claimed"; reservationId: string }; updateAdmitted?: boolean };
   publication?: { intentId: string; submission: N2Submission; issueId: string | null; runId: string | null;
@@ -19,6 +21,7 @@ export type N5State = {
     createdAt: string; claimedAt?: string; creation: "preparing" | "claimed" | "confirmed"; wake: "pending" | "claimed";
     state: "pending" | "unknown" | "opened"; claimCommandId?: string;
     readbackUnavailable?: string;
+    feedbackReport?: import("./pr-contract.js").GithubFeedback;
     preflight?: import("./n5-publisher-preflight.js").PublisherPreflight;
     observation?: { observedAt: string; objectId: string; workProductId: string; documentRevisionId: string;
       url: string; headSha: string; baseRef: string; headRef: string; state: string; draft: boolean; lastResolvedAt: string;
@@ -39,10 +42,16 @@ export function inspectN5(mission: MissionRecord) {
   if (!n5) return null;
   const p = n5.publication; const o = p?.observation;
   const fresh = Boolean(o && !p?.readbackUnavailable && Date.now() - Date.parse(o.lastResolvedAt) <= 300_000);
-  const ready = Boolean(o && p && (!mission.aggregate.n2?.ordinary || p.settledAt) && currentAcceptance(mission, p) && fresh && o.matchesCandidate && o.state === "open" && !o.draft
+  const mergeReady = Boolean(o && p && (!mission.aggregate.n2?.ordinary || p.settledAt) && currentAcceptance(mission, p) && fresh && o.matchesCandidate && o.state === "open" && !o.draft
     && p?.checks?.headSha === o.headSha && p.checks.state === "passed"
     && p?.reviews?.headSha === o.headSha && p.reviews.state === "approved");
-  return { ...n5, ready, nativeReadbackFresh: fresh, checksSource: "attributed_actor_observation", reviewsSource: "attributed_actor_observation",
+  const contract = n5.authority.contract;
+  const contractConformant = Boolean(p && o && fresh && o.matchesCandidate && o.state === "open" && (!contract || o.draft === contract.draftOnly));
+  const publicationReady = Boolean(contract && contractConformant && p?.settledAt && currentAcceptance(mission, p)
+    && p.feedbackReport && p.feedbackReport.headSha === o?.headSha && Date.now() - Date.parse(p.feedbackReport.observedAt) <= 300_000
+    && p.checks?.headSha === o?.headSha && p.reviews?.headSha === o?.headSha && p.checks?.state === "passed" && p.reviews?.state === "approved");
+  const ready = contract ? publicationReady : mergeReady;
+  return { ...n5, ready, mergeReady, publicationReady, contractConformant, nativeReadbackFresh: fresh, checksSource: contract ? "publisher_run_report" : "attributed_actor_observation", reviewsSource: contract ? "publisher_run_report" : "attributed_actor_observation",
     ...nextDeliveryAction(mission, n5, ready) };
 }
 
