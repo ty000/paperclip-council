@@ -73,6 +73,13 @@ are retained. Hierarchy resumes after contributor execution or review remain
 unsupported. Pending native interactions must be handled separately without an
 unadmitted continuation wake; this command never answers them.
 
+From 0.7.17, hierarchy source checks distinguish the pinned product description
+from exact Council profile guidance appended for that issue's persisted launch.
+The original product hash stays unchanged. Altered product text, changed or unknown
+profile suffixes, duplicate guidance, ownership and dependency drift still block
+dispatch. This also recognizes already-written profile context without rewriting
+native descriptions or granting another attempt.
+
 An ordinary correction cancelled by Paperclip's exact pre-provider
 `legacy_disposition_repair_suppressed` guard can be recovered once through
 owner command `replace-undispatched-correction`. Supply `commandId`,

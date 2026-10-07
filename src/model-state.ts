@@ -26,6 +26,13 @@ export function modelLaunch(m: MissionRecord, launchKey: string): ModelLaunch | 
   return m.aggregate.modelSelection?.tasks.flatMap(t => t.launches).find(l => l.launchKey === launchKey);
 }
 
+/** One exact representation for Council-owned profile context and source verification. */
+export function modelLaunchGuidance(m: MissionRecord, launch: ModelLaunch, issueId: string): string {
+  return `Council profile launch ${launch.launchKey}: logical=${launch.logicalAgentId}; physical=${launch.agentId}; profile=${launch.profileId}; mapping=${launch.mappingRevision}. Reason: ${launch.rationale}.`
+    + (launch.history ? `\nRead the public detailed history index at GET /api/issues/${issueId}/documents/${launch.history.indexKey} and every indexed part progressively. Gaps: ${launch.history.gapCount}; cutoff: ${launch.history.cutoff}. Preserved history is not evidence that you have read it.` : "")
+    + (launch.interventionKey === "lead" ? `\nBefore launching another intervention, select its lightest sufficient profile through Council command select-model-profile with missionId, expectedVersion, taskKey, interventionKey, family, profileId, rationale. Owner choices take precedence. This selects a profile only; it grants no retry or wake. Contributions use their contributionId as taskKey/interventionKey; review uses root issue ${m.rootIssueId} and reviewer or specialist:<slotId>.` : "");
+}
+
 /** Keep host principals physical. Only exact persisted launch bindings resolve a logical role. */
 export function physicalAgent(m: MissionRecord, logicalId: string,
   target: { issueId?: string | null; runId?: string | null; launchKey?: string } = {}): string {

@@ -3,7 +3,7 @@ import type { PluginContext } from "@paperclipai/plugin-sdk";
 import type { MissionAggregate, MissionRecord } from "./missions.js";
 import { MODEL_CATALOGUE, roleTemplate, validateModelCatalogue, type TaskFamily, type ProfileId, type RoleKey } from "./model-catalogue.js";
 import { inspectVariant } from "./model-variants.js";
-import { ModelSelectionError, modelLaunch, type ModelLaunch, type ModelSelectionState, type ModelMeasurement } from "./model-state.js";
+import { ModelSelectionError, modelLaunch, modelLaunchGuidance, type ModelLaunch, type ModelSelectionState, type ModelMeasurement } from "./model-state.js";
 import { readOrdinaryRun, suppressedBeforeProvider } from "./g4-native.js";
 import { collectInterventionHistory, publishInterventionHistory } from "./model-history.js";
 import { assertWorkspacePreflight } from "./workspace-preflight.js";
@@ -190,9 +190,7 @@ export async function bindVariantIssue(ctx: PluginContext, initial: MissionRecor
   m = await attachHistory(ctx, m, launch, issueId); launch = modelLaunch(m, launchKey)!;
   const marker = `Council profile launch ${launch.launchKey}`;
   const current = await ctx.issues.get(issueId, m.companyId);
-  const guidance = `${marker}: logical=${launch.logicalAgentId}; physical=${launch.agentId}; profile=${launch.profileId}; mapping=${launch.mappingRevision}. Reason: ${launch.rationale}.`
-      + (launch.history ? `\nRead the public detailed history index at GET /api/issues/${issueId}/documents/${launch.history.indexKey} and every indexed part progressively. Gaps: ${launch.history.gapCount}; cutoff: ${launch.history.cutoff}. Preserved history is not evidence that you have read it.` : "")
-      + (launch.interventionKey === "lead" ? `\nBefore launching another intervention, select its lightest sufficient profile through Council command select-model-profile with missionId, expectedVersion, taskKey, interventionKey, family, profileId, rationale. Owner choices take precedence. This selects a profile only; it grants no retry or wake. Contributions use their contributionId as taskKey/interventionKey; review uses root issue ${m.rootIssueId} and reviewer or specialist:<slotId>.` : "");
+  const guidance = modelLaunchGuidance(m, launch, issueId);
   if (!current?.description?.includes(guidance)) {
     if (current?.description?.includes(marker)) throw new ModelSelectionError("model_context_drift", "Recorded profile guidance differs from the pinned launch");
     await ctx.issues.update(issueId, { description: `${current?.description ?? ""}\n\n${guidance}` }, m.companyId);

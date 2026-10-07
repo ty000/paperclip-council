@@ -14,12 +14,12 @@ vi.mock("../src/admission.js", async (importOriginal) => {
 
 vi.mock("../src/integration.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/integration.js")>();
-  return { ...actual, verifyIntegratedCandidate: vi.fn() };
+  return { ...actual, verifyIntegratedCandidate: vi.fn(), verifyContributionBundle: vi.fn() };
 });
 vi.mock("../src/model-variants.js", () => ({ inspectVariant: vi.fn() }));
 
 import { AdmissionError, readAdmission, reserveAdmission, settleAdmission } from "../src/admission.js";
-import { verifyIntegratedCandidate } from "../src/integration.js";
+import { verifyIntegratedCandidate, verifyContributionBundle } from "../src/integration.js";
 import { executeN1BoardCommand, handleN1AgentApi } from "../src/n1-missions.js";
 import { getMission, handleMissionApi, canonicalPayloadHash, type MissionAggregate } from "../src/missions.js";
 import { reconcileTerminalN1Usage } from "./functional/n1-live.js";
@@ -30,6 +30,8 @@ import type { N1State } from "../src/n1-missions.js";
 import * as nativeAdapter from "../src/decision-adapter.js";
 import { advanceContinuity } from "../src/continuity-runtime.js";
 import { chooseModelProfile } from "../src/model-api.js";
+import { operatingProfileHash } from "../src/project-mandate-state.js";
+import { assertHierarchySources } from "../src/hierarchy-runtime.js";
 
 const id = {
   company: randomUUID(),
@@ -2431,5 +2433,148 @@ describe("one initial hierarchy lead resume", () => {
       await expect(executeN1BoardCommand(h.ctx, { companyId: id.company, missionId: id.mission, actorUserId: id.owner,
         body: { command: "start-lead", commandId: randomUUID(), expectedVersion: kind === "stale start" ? expectedVersion : h.row().version } })).rejects.toThrow();
       expect(reserveAdmission).not.toHaveBeenCalled(); expect(h.requestWakeup).not.toHaveBeenCalled(); expect(h.create).not.toHaveBeenCalled();
+    });
+});
+
+describe("hierarchy source integrity through two physical contribution dispatches", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function composedHierarchy() {
+    const value = withBoundLead(activeAggregate()), coordinator = randomUUID();
+    const physical = [randomUUID(), randomUUID()], childRuns = [randomUUID(), randomUUID()];
+    const config = { n1OperatingProfile: { ...nativeProfile, maxCorrections: 1 }, modelVariantsEnabled: true, n2RuntimeProfile: "ordinary-cli-v1" };
+    const hierarchy = { protocol: "council-hierarchy-v1" as const, maxContributions: 2, execution: "sequential" as const, adoptExistingChildren: true };
+    const product = [nativeIssue({ id: id.root, parentId: null, assigneeAgentId: id.lead, status: "backlog" }),
+      ...[id.childA, id.childB].map((issueId, i) => nativeIssue({ id: issueId, parentId: id.root, assigneeAgentId: plan[i]!.assigneeAgentId, status: "backlog" }))]
+      .map((issue, i) => ({ ...issue, title: `Product ${i}`, description: `Immutable product requirements ${i}.` }));
+    const nodes = product.map((issue, i) => ({ issueId: issue.id, parentId: issue.parentId, title: issue.title,
+      descriptionHash: canonicalPayloadHash(issue.description), assigneeAgentId: issue.assigneeAgentId, blockedByIssueIds: i === 2 ? [id.childA] : [] }));
+    value.hierarchy = { ...hierarchy, nodes, leaves: plan.map((slot, i) => ({ ...slot, ...nodes[i + 1]!, parentId: id.root,
+      assigneeAgentId: slot.assigneeAgentId, documentRevisionId: "work-v1", pendingBlockerIds: i ? [id.childA] : [] })) };
+    value.n1 = { ...value.n1!, sourceBaseCommit: "b".repeat(40), rootDispatchMode: "native", rootUsageBaselineUnits: 0,
+      coordination: { issueId: coordinator, intentId: randomUUID(), state: "confirmed", commandId: randomUUID(),
+        commandHash: "original", ownerUserId: id.owner, preparedVersion: 1 },
+      contributions: plan.map((slot, i) => ({ ...slot, issueState: "confirmed", childIssueId: i ? id.childB : id.childA, parentIssueId: id.root })) };
+    value.modelSelection!.tasks[0]!.launches[0]!.issueId = coordinator;
+    value.nativeWakePolicy = { protocol: "council-native-wake-v2", rootBaseline: [], runLimit: 8 };
+    value.projectMandate = { projectId: id.project, revisionId: randomUUID(), version: 1, authorizedBy: id.owner,
+      operatingProfileHash: operatingProfileHash(config), mandateHash: canonicalPayloadHash(value.mandate), allowedPaths: ["src"], publication: null,
+      completion: { protocol: "council-proof-close-v1", result: "accepted-candidate" },
+      source: { rootIssueId: id.root, title: product[0]!.title, descriptionHash: nodes[0]!.descriptionHash, taskDocumentRevisionId: null } };
+    const h = harness(value);
+    for (const issue of product) h.issues.set(issue.id, issue);
+    h.issues.set(coordinator, nativeIssue({ id: coordinator, parentId: null, assigneeAgentId: id.lead, status: "in_progress" }));
+    h.configGet.mockResolvedValue(config as never);
+    h.query.mockImplementation(async (...args: unknown[]) => String(args[0]).includes("project_mandates") ? [{
+      company_id: id.company, project_id: id.project, version: 1, revision_id: value.projectMandate!.revisionId, authorized_by: id.owner,
+      content: { enabled: true, hierarchy, completion: value.projectMandate!.completion },
+    }] as never : [h.row()]);
+    h.list.mockImplementation(async () => [...h.issues.values()] as never);
+    h.documentGet.mockImplementation(async () => ({ latestRevisionId: "work-v1" }));
+    const relations = vi.fn(async (issueId: string) => ({ blockedBy: issueId === id.childB ? [{ id: id.childA, status: h.issues.get(id.childA)!.status }] : [], blocks: [] }));
+    h.ctx.issues.relations = { get: relations } as never;
+    const runs: Array<{ id: string; issueId: string; agentId: string; status: string; startedAt: string; finishedAt: string | null }> = [{ id: id.leadRun, issueId: coordinator, agentId: id.lead, status: "running",
+      startedAt: new Date(0).toISOString(), finishedAt: null as string | null }];
+    h.getOrchestration.mockImplementation(async (...args: unknown[]) => {
+      const issueId = (args[0] as { issueId: string }).issueId;
+      const observed = runs.filter(run => run.issueId === issueId);
+      return { issueId, companyId: id.company, runs: observed,
+        costs: { inputTokens: observed.length * 90, cachedInputTokens: observed.length * 70, outputTokens: observed.length * 10, costCents: 0 }, relations: {}, invocationBlocks: [], openBudgetIncidents: [] } as never;
+    });
+    const envelope = { ...nativeEnvelope([{ reservationId: value.n1!.activationReservationId, missionId: id.mission, status: "reserved" }]), companyId: id.company };
+    envelope.limits.maxCorrections = 1;
+    vi.mocked(readAdmission).mockImplementation(async () => envelope as never);
+    vi.mocked(reserveAdmission).mockImplementation(async (_ctx, input) => {
+      let reservation = envelope.reservations.find(item => item.reservationId === input.reservationId);
+      if (!reservation) { reservation = { reservationId: input.reservationId, missionId: id.mission, status: "reserved", settlementReceipts: [] }; envelope.reservations.push(reservation); }
+      return { reservation, envelope } as never;
+    });
+    vi.mocked(settleAdmission).mockImplementation(async (_ctx, input) => {
+      Object.assign(envelope.reservations.find(item => item.reservationId === input.reservationId)!, { status: "settled", usage: input.usage, remainingExposure: input.remainingExposure });
+      return { envelope, outcome: "settled" } as never;
+    });
+    vi.mocked(inspectVariant).mockImplementation(async (_ctx, _company, logicalAgentId, profileId, revision) => ({
+      logicalAgentId, agentId: physical[logicalAgentId === id.contributorA ? 0 : 1]!, roleKey: "contributor-1",
+      profileId, revision: revision!, ready: true, expected: {}, observed: {}, gaps: [],
+    }));
+    h.update.mockImplementation(async (...args: unknown[]) => { Object.assign(h.issues.get(String(args[0]))!, args[1]); });
+    h.requestWakeup.mockImplementation(async (...args: unknown[]) => {
+      const issueId = String(args[0]), i = issueId === id.childA ? 0 : 1;
+      h.issues.get(issueId)!.status = "in_progress";
+      runs.push({ id: childRuns[i]!, issueId, agentId: physical[i]!, status: "running", startedAt: new Date(0).toISOString(), finishedAt: null });
+      return { queued: true, runId: childRuns[i]! };
+    });
+    vi.spyOn(nativeAdapter, "councilNativeRequest").mockImplementation(async (_ctx, _company, path) => {
+      const run = runs.find(item => path.endsWith(item.id))!;
+      return { status: 200, body: { ...run, companyId: id.company, nativeIssueId: null, contextSnapshot: { issueId: run.issueId },
+        usageJson: { usageSource: "per_run", inputTokens: 90, cachedInputTokens: 70, outputTokens: 10 } } };
+    });
+    vi.mocked(verifyContributionBundle).mockImplementation(async (_ctx, input) => ({ protocol: "council-contribution-proof-v1",
+      attachmentId: input.attachmentId, sha256: input.expectedSha256, byteSize: 100, segmentRootCommit: input.baseCommit, commit: input.candidateCommit,
+      changedPaths: input.ownedPaths, checks: [], verifiedAt: new Date().toISOString() }));
+    const request = (body: Record<string, unknown>) => agentRequest({ commandId: randomUUID(), expectedVersion: h.row().version, ...body }, { agentId: id.lead, runId: id.leadRun }, coordinator);
+    const choose = (i: number) => chooseModelProfile(h.ctx, request({ command: "select-model-profile", taskKey: plan[i]!.contributionId,
+      interventionKey: plan[i]!.contributionId, family: "implementation", profileId: "sol-medium", rationale: "Bounded product contribution" }));
+    const dispatch = (i: number, reservationId = randomUUID()) => handleN1AgentApi(request({ command: "dispatch", contributionId: plan[i]!.contributionId,
+      reservationId, requestedUnits: nativeProfile.runReservationUnits }), h.ctx);
+    const read = async () => (await getMission(h.ctx, id.company, id.mission))!;
+    const deliverFirst = async () => {
+      const reported = await handleN1AgentApi(agentRequest({ command: "record-contribution", commandId: randomUUID(), expectedVersion: h.row().version,
+        contributionId: id.contributionA, commit: "c".repeat(40), proof: { attachmentId: randomUUID(), expectedSha256: "d".repeat(64), segmentRootCommit: "b".repeat(40) } },
+        { agentId: physical[0]!, runId: childRuns[0]! }, id.childA), h.ctx);
+      expect(reported.status).toBe(200); expect(h.issues.get(id.childA)!.status).toBe("blocked");
+      Object.assign(runs.find(run => run.id === childRuns[0])!, { status: "succeeded", finishedAt: new Date().toISOString() });
+      expect((await handleN1AgentApi(request({ command: "reconcile-usage", contributionId: id.contributionA }), h.ctx)).status).toBe(200);
+      expect(h.issues.get(id.childA)!.status).toBe("done");
+    };
+    return { ...h, value, product, physical, runs, childRuns, envelope, choose, dispatch, read, deliverFirst };
+  }
+
+  it("dispatches both profiled leaves through unchanged pinned sources, dependency proof and exact settlement", async () => {
+    const h = composedHierarchy(), initialHierarchy = structuredClone(h.value.hierarchy);
+    await h.choose(0); await h.choose(1);
+    expect(await h.dispatch(0)).toMatchObject({ status: 200, body: { outcome: "requested" } });
+    expect(await h.dispatch(1)).toMatchObject({ status: 409, body: { code: "prior_contribution_proof" } });
+    await h.deliverFirst();
+    expect(await h.dispatch(1)).toMatchObject({ status: 200, body: { outcome: "requested" } });
+    await expect(assertHierarchySources(h.ctx, await h.read())).resolves.toBeUndefined();
+    expect(h.row().aggregate.hierarchy).toEqual(initialHierarchy);
+    expect(h.requestWakeup).toHaveBeenCalledTimes(2); expect(h.create).not.toHaveBeenCalled();
+    expect(h.envelope.reservations).toHaveLength(3);
+    expect(h.envelope.reservations[1]).toMatchObject({ status: "settled", usage: { units: 100 }, remainingExposure: { units: 0 } });
+    for (const [i, issue] of h.product.slice(1).entries()) {
+      expect(issue.description).toContain(`Immutable product requirements ${i + 1}.\n\nCouncil profile launch`);
+      expect(issue.assigneeAgentId).toBe(h.physical[i]);
+    }
+  });
+
+  it("reuses the reserved ready binding after a failed departure without another effect identity", async () => {
+    const h = composedHierarchy(), reservationId = randomUUID(); await h.choose(0);
+    h.documentGet.mockImplementation(async () => ({ latestRevisionId: h.product[1]!.description.includes("Council profile launch") ? "unavailable" : "work-v1" }));
+    expect(await h.dispatch(0, reservationId)).toMatchObject({ status: 409, body: { code: "hierarchy_source_changed" } });
+    expect(h.requestWakeup).not.toHaveBeenCalled(); expect(h.envelope.reservations).toHaveLength(2);
+    const ready = h.row().aggregate.modelSelection!.tasks.find(task => task.taskKey === id.contributionA)!.launches[0]!;
+    expect(ready).toMatchObject({ launchKey: reservationId, state: "ready", runId: null });
+    h.documentGet.mockResolvedValue({ latestRevisionId: "work-v1" });
+    expect(await h.dispatch(0, reservationId)).toMatchObject({ status: 200, body: { outcome: "requested" } });
+    expect(h.requestWakeup).toHaveBeenCalledExactlyOnceWith(id.childA, id.company, expect.objectContaining({ idempotencyKey: `council:n1:${reservationId}` }));
+    expect(h.envelope.reservations).toHaveLength(2);
+    expect(h.row().aggregate.modelSelection!.tasks.find(task => task.taskKey === id.contributionA)!.launches).toHaveLength(1);
+  });
+
+  it.each(["product", "marker", "duplicate", "foreign marker", "other issue binding", "ownership", "relation"])(
+    "refuses %s drift after the first profiled leaf without rebasing the source", async mutation => {
+      const h = composedHierarchy(); await h.choose(0);
+      expect((await h.dispatch(0)).status).toBe(200); await h.deliverFirst();
+      const first = h.product[1]!, original = first.description.split("\n\n")[0]!;
+      if (mutation === "product") first.description = first.description.replace("Immutable product", "Changed product");
+      if (mutation === "marker") first.description = first.description.replace("Bounded product", "Altered product");
+      if (mutation === "duplicate") first.description += first.description.slice(original.length);
+      if (mutation === "foreign marker") first.description += `\n\nCouncil profile launch ${randomUUID()}: forged`;
+      if (mutation === "other issue binding") h.advanceMission(a => { a.modelSelection!.tasks.find(task => task.taskKey === id.contributionA)!.launches[0]!.issueId = id.childB; return a; });
+      if (mutation === "ownership") h.documentGet.mockResolvedValue({ latestRevisionId: "work-v2" });
+      if (mutation === "relation") h.ctx.issues.relations.get = vi.fn(async () => ({ blockedBy: [], blocks: [] })) as never;
+      await expect(assertHierarchySources(h.ctx, await h.read())).rejects.toMatchObject({ code: "hierarchy_source_changed" });
+      expect(h.row().aggregate.hierarchy).toEqual(h.value.hierarchy); expect(h.requestWakeup).toHaveBeenCalledTimes(1);
     });
 });
