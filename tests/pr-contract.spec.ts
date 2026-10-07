@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { expect, it } from "vitest";
 import { canonicalPayloadHash, type MissionRecord } from "../src/missions.js";
 import { parsePrContract, validateGithubFeedback, githubFeedbackStates, feedbackCorrectionRound, type GithubFeedback } from "../src/pr-contract.js";
@@ -81,4 +81,13 @@ it.each(["exhausted", "unsettled", "draft-violation", "task-active", "unknown"])
   if (kind === "task-active") m.aggregate.n2!.ordinary!.tasks.push({ closedAt: undefined } as never);
   if (kind === "unknown") m.aggregate.n2!.status = "application_unknown";
   expect(() => prepareFeedbackReview(m)).toThrow();
+});
+
+it("preserves the historical N2 mandate digest over its exact persisted JSON ordering", () => {
+  const { m, p } = fixture();
+  Object.assign(m.aggregate.mandate, { objective: "Ordered native mandate", acceptanceCriteria: ["bounded result"], commitments: ["preserve history"], limits: { correctionLimit: 1 } });
+  p.submission.mandateHash = createHash("sha256").update(JSON.stringify(m.aggregate.mandate)).digest("hex");
+  expect(p.submission.mandateHash).not.toBe(canonicalPayloadHash(m.aggregate.mandate));
+  p.reviews!.state = "approved"; p.feedbackReport!.reviews[0]!.state = "APPROVED";
+  expect(inspectN5(m)?.publicationReady).toBe(true);
 });

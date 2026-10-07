@@ -1,5 +1,5 @@
 import { githubFeedbackStates } from "./pr-contract.js";
-import { canonicalPayloadHash } from "./mission-primitives.js";
+import { createHash } from "node:crypto";
 import type { MissionRecord } from "./missions.js";
 import type { N5State } from "./n5-state.js";
 type Publication = NonNullable<N5State["publication"]>;
@@ -7,7 +7,7 @@ type Publication = NonNullable<N5State["publication"]>;
 function currentAcceptance(m: MissionRecord, p: Publication) {
   const n2 = m.aggregate.n2;
   return n2?.status === "accepted" && n2.activeSubmissionId === p.submission.submissionId
-    && p.submission.mandateHash === canonicalPayloadHash(m.aggregate.mandate);
+    && p.submission.mandateHash === createHash("sha256").update(JSON.stringify(m.aggregate.mandate)).digest("hex");
 }
 function exactChecksAndReviews(p: Publication) {
   if (!p.observation || !p.checks || !p.reviews) return false;
