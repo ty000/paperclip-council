@@ -1,6 +1,6 @@
 {
   "name": "@paperclipai/plugin-council",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "description": "Revisioned Council rosters, durable review decisions, mission admission and integrated candidate verification for Paperclip workflows",
   "type": "module",
   "private": true,
@@ -8,6 +8,7 @@
   "files": [
     "dist",
     "migrations",
+    "scripts/operations/workspace_preflight.py",
     "README.md",
     "LICENSE"
   ],

@@ -13,7 +13,7 @@ export const missionToolDeclaration = {
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
-  version: "0.7.6",
+  version: "0.7.7",
   displayName: "Paperclip Council",
   description: "Private Council integration with revisioned rosters, bounded admission and checked candidate preparation.",
   author: "Local Paperclip integration",
@@ -63,6 +63,9 @@ const manifest: PaperclipPluginManifestV1 = {
     required: ["apiBaseUrl", "councilAgentId", "councilApiKey"],
     properties: {
       modelVariantsEnabled: { type: "boolean", default: false, description: "Use prepared fixed-profile Council variants on newly created standard missions only." },
+      workspacePreflight: { type: "object", additionalProperties: false, required: ["codexHome"],
+        description: "Opt in new fixed-variant ordinary missions to provider-free Git sandbox checks. Register the observed effective native Codex home; historical missions retain their pinned configuration. This is not proof of GitHub access or model execution.",
+        properties: { codexHome: { type: "string", minLength: 1 }, codexCommand: { type: "string", minLength: 1 }, sandboxHelper: { type: "string", minLength: 1 } } },
       modelProfileMapping: { ...MODEL_PROFILE_MAPPING_SCHEMA,
         description: "Versioned family/profile catalogue. Shared runtime validation applies before selection; existing tasks retain their snapshot." },
       apiBaseUrl: {
