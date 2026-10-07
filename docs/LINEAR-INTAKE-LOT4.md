@@ -5,7 +5,7 @@ installed, or activated in the operational instance.
 
 ## Ownership and authority
 
-Council starts from `1afad9939f1c0a896c065ec9390c82c26a58de65` (0.7.15).
+Council starts from `045df5dfe9a7ce880463a16721e69f20f0e0a7f3` (0.7.16).
 The separate intake repository starts from
 `0488cb7b799d015db69760e5a4603a333f3f4637` (0.3.0). This lot is authorized
 to extend these two plugins. Paperclip core and SDK are read-only references.
