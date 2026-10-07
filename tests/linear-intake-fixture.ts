@@ -40,7 +40,8 @@ export function linearFixture(definitions: FixtureNode[] = [
     (_key, item) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item, 2);
     issues.set(ids[node.name]!, { id: ids[node.name], companyId: ids.company, projectId: ids.project, parentId: node.parent ? ids[node.parent] : null,
       originKind: LINEAR_ORIGIN, originId, title: source.title, description: source.description, status: node.status,
-      assigneeAgentId: null, assigneeUserId: null, checkoutRunId: null, executionRunId: null, executionLockedAt: null, archivedAt: null });
+      // Native issues.get returns the issue row, without the optional per-user archivedAt enrichment.
+      assigneeAgentId: null, assigneeUserId: null, checkoutRunId: null, executionRunId: null, executionLockedAt: null });
     document({ companyId: ids.company, issueId: ids[node.name], key: "linear-source-v1", title: "Linear source", format: "markdown", body: sourceDocumentBody });
     return { sourceId, originId, parentSourceId: node.parent ? ids[`source-${node.parent}`] : null, status: node.status, source,
       blockedBySourceIds: node.blockers.map(name => ids[`source-${name}`]!).sort(), sourceDocumentBody, keys: keys(sourceId) };

@@ -28,7 +28,9 @@ async function perform(session: Session, operation: Operation) {
   await save(session, operation.key, { state: "confirmed", intentSha256, ...observed });
 }
 function idle(issue: Issue) {
-  requireLinear([issue.assigneeUserId, issue.checkoutRunId, issue.executionRunId, issue.executionLockedAt, issue.archivedAt].every(value => value === null), "linear_preparation_execution");
+  requireLinear([issue.assigneeUserId, issue.checkoutRunId, issue.executionRunId, issue.executionLockedAt].every(value => value === null), "linear_preparation_execution");
+  // Native issues.get omits the optional per-user archive enrichment.
+  requireLinear(issue.archivedAt == null, "linear_preparation_execution");
 }
 function identity(issue: Issue | null, companyId: string, projectId: string, node: LinearNode): asserts issue is Issue {
   requireLinear(issue, "linear_native_missing");

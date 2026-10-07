@@ -97,6 +97,22 @@ describe("strict Linear readiness receiver", () => {
 });
 
 describe("durable Council-only preparation", () => {
+  it("accepts omitted native archive enrichment without treating it as an execution lock", async () => {
+    const f = await setup();
+    expect(await f.ctx.issues.get(f.ids.root!, f.ids.company!)).not.toHaveProperty("archivedAt");
+    await expect(prepareLinearTasks(f.ctx, f.state(), f.persist, f.guard)).resolves.toHaveProperty("effects");
+    expect(f.update).toHaveBeenCalledTimes(3); expect(f.upsert).toHaveBeenCalledTimes(2);
+  });
+  it.each(["assigneeUserId", "checkoutRunId", "executionRunId", "executionLockedAt", "archivedAt"])("rejects a newly present %s before any preparation intent or native effect", async field => {
+    const f = await setup(); f.issues.get(f.ids.root!)![field] = f.ids.a;
+    await expect(prepareLinearTasks(f.ctx, f.state(), f.persist, f.guard)).rejects.toMatchObject({ code: "linear_preparation_execution" });
+    expect(f.persist).not.toHaveBeenCalled(); expect(f.update).not.toHaveBeenCalled(); expect(f.upsert).not.toHaveBeenCalled();
+  });
+  it.each(["assigneeUserId", "checkoutRunId", "executionRunId", "executionLockedAt"])("refuses missing required native %s rather than broadening execution guards", async field => {
+    const f = await setup(); delete f.issues.get(f.ids.root!)![field];
+    await expect(prepareLinearTasks(f.ctx, f.state(), f.persist, f.guard)).rejects.toMatchObject({ code: "linear_preparation_execution" });
+    expect(f.persist).not.toHaveBeenCalled(); expect(f.update).not.toHaveBeenCalled(); expect(f.upsert).not.toHaveBeenCalled();
+  });
   it("persists claims before atomic backlog/assignment and preserves full source plus historical state", async () => {
     const f = await setup(), original = structuredClone([...f.documents]);
     const dispatch = f.update.getMockImplementation()!;

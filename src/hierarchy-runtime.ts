@@ -36,7 +36,6 @@ async function assertLinearNode(ctx: PluginContext, m: MissionRecord, node: Hier
   requireLinear(issue?.originKind === LINEAR_ORIGIN && issue.originId === node.linearSource.originId, "linear_source_identity_changed");
   const doc = await ctx.issues.documents.get(node.issueId, LINEAR_SOURCE_KEY, m.companyId);
   requireLinear(doc?.latestRevisionId === node.linearSource.documentRevisionId && canonicalPayloadHash(doc.body) === node.linearSource.bodySha256, "linear_source_document_changed");
-
 }
 
 /** All sources remain native. Changes require a new owner decision, never inferred adoption. */
