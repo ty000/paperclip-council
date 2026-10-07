@@ -20,6 +20,24 @@ async function setup() {
   return { ...f, snapshot, persist, guard, state: () => structuredClone(state) };
 }
 describe("strict Linear readiness receiver", () => {
+  it("uses supported company-scoped originId reads while the host rejects a foreign plugin origin filter", async () => {
+    const f = linearFixture();
+    await expect(f.ctx.issues.list({ companyId: f.ids.company!, originKind: "plugin:ty000.linear-intake", limit: 2 }))
+      .rejects.toThrow("Plugin may only use originKind values under plugin:private.paperclip-council");
+    f.list.mockClear();
+    await expect(readLinearIntake(f.ctx, f.policy, f.ids.root!, f.inventory())).resolves.toHaveProperty("subject.nativeRootId", f.ids.root);
+    expect(f.list).toHaveBeenCalledTimes(f.issues.size);
+    for (const [input] of f.list.mock.calls) expect(input).toEqual({ companyId: f.ids.company,
+      originId: expect.stringMatching(/^linear:/), includePluginOperations: true, limit: 2 });
+  });
+  it("keeps an originId collision in another project ambiguous instead of limiting uniqueness to this project", async () => {
+    const f = linearFixture();
+    const duplicate = { ...f.issues.get(f.ids.alpha!)!, id: f.ids.catalog, projectId: f.ids.sourceProject };
+    f.issues.set(duplicate.id, duplicate);
+    const projectInventory = f.inventory().filter(issue => issue.projectId === f.ids.project);
+    await expect(readLinearIntake(f.ctx, f.policy, f.ids.root!, projectInventory)).rejects.toMatchObject({ code: "linear_origin_ambiguous" });
+    expect(f.update).not.toHaveBeenCalled(); expect(f.upsert).not.toHaveBeenCalled();
+  });
   it("requires explicit project scope, mapped actors and safe paths without enabling legacy mandates", () => {
     const f = linearFixture(), policy = f.policy.content, actors = [f.ids.a!, f.ids.b!];
     expect(parseLinearIntakePolicy(undefined, policy, actors)).toBeUndefined();

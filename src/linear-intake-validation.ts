@@ -54,7 +54,10 @@ async function readSource(ctx: PluginContext, policy: ProjectMandate, body: Line
   const native = await ctx.issues.get(entry.nativeId, policy.companyId);
   requireLinear(native, "linear_native_missing");
   same([native.id, native.companyId, native.projectId, native.originKind, native.originId], [entry.nativeId, policy.companyId, policy.projectId, LINEAR_ORIGIN, entry.originId]);
-  const origins = await ctx.issues.list({ companyId: policy.companyId, originKind: LINEAR_ORIGIN, originId: entry.originId, includePluginOperations: true, limit: 2 });
+  // The native host permits company-scoped originId reads, but explicit plugin
+  // originKind filters belong to the caller's own namespace. Keep the full get
+  // provenance check above and reject any company-wide identity collision.
+  const origins = await ctx.issues.list({ companyId: policy.companyId, originId: entry.originId, includePluginOperations: true, limit: 2 });
   same(origins.map(item => item.id), [entry.nativeId], "linear_origin_ambiguous");
   const document = await ctx.issues.documents.get(native.id, LINEAR_SOURCE_KEY, policy.companyId);
   requireLinear(document, "linear_source_document_missing");

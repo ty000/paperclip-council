@@ -80,7 +80,18 @@ export function linearFixture(definitions: FixtureNode[] = [
       linearIntake: { protocol: "linear-intake-receiver-v1", originKind: LINEAR_ORIGIN, organizationId: ids.organization,
         teamId: ids.team, projectId: ids.sourceProject, todoStateId: ids.todo, work } } } as ProjectMandate;
   const get = vi.fn(async (id: string) => structuredClone(issues.get(id) ?? null));
-  const list = vi.fn(async (input: any) => [...issues.values()].filter(issue => !input.originId || issue.originId === input.originId).map(issue => ({ ...issue, description: issue.description.slice(0, 1200) })));
+  const list = vi.fn(async (input: any) => {
+    // Host61b3fd57 plugin-host-services assertReadableOriginFilter: explicit
+    // plugin origins must belong to the caller, even though company-scoped
+    // originId reads and get() can read another plugin's native issues.
+    const ownOrigin = "plugin:private.paperclip-council";
+    if (typeof input.originKind === "string" && input.originKind.startsWith("plugin:")
+        && input.originKind !== ownOrigin && !input.originKind.startsWith(`${ownOrigin}:`)) {
+      throw new Error(`Plugin may only use originKind values under ${ownOrigin}`);
+    }
+    return [...issues.values()].filter(issue => !input.originId || issue.originId === input.originId)
+      .map(issue => ({ ...issue, description: issue.description.slice(0, 1200) }));
+  });
   const update = vi.fn(async (id: string, input: any) => { Object.assign(issues.get(id)!, input); return structuredClone(issues.get(id)!); });
   const upsert = vi.fn(async (input: any) => document(input));
   const ctx = { issues: { get, list, update, documents: { get: async (id: string, key: string) => structuredClone(documents.get(docKey(id, key)) ?? null), upsert },

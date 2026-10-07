@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startLinearHost, waitForLinear, linearHostCommit, type LinearHost } from "./linear-intake-host.js";
@@ -12,10 +12,21 @@ const repository = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const git = (root: string, ...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 const councilSchema = "plugin_private_paperclip_council_270061461e";
 
+async function buildFiles(root: string, directory = "dist"): Promise<string[]> {
+  const entries = await readdir(resolve(root, directory), { withFileTypes: true });
+  const nested = await Promise.all(entries.map(async entry => {
+    const path = `${directory}/${entry.name}`;
+    if (entry.isDirectory()) return buildFiles(root, path);
+    assert(entry.isFile(), `Build evidence must contain ordinary files: ${path}`);
+    return [path];
+  }));
+  return nested.flat();
+}
+
 async function packageDigests(root: string) {
   const tracked = git(root, "ls-files", "src", "migrations", "package.json").split("\n");
   const added = git(root, "ls-files", "--others", "--exclude-standard", "src", "migrations").split("\n").filter(Boolean);
-  const paths = [...new Set([...tracked, ...added, "dist/worker.js", "dist/manifest.js"])]
+  const paths = [...new Set([...tracked, ...added, ...await buildFiles(root)])]
     .filter(Boolean).sort();
   return Object.fromEntries(await Promise.all(paths.map(async path => [path,
     createHash("sha256").update(await readFile(resolve(root, path))).digest("hex")])));
@@ -188,7 +199,7 @@ async function runScenario(host: LinearHost, proof: any, save: () => Promise<voi
     proof.checks = { completeImportBeforeAdmission: "PASS", disabledMandateNoAdmission: "PASS", pendingResponseNoAdmission: "PASS",
       restartOriginalIdentity: "PASS", earlyBoardAdmissionRefused: "PASS", oneAdmissionAttempt: "PASS", dependencyOrder: "PASS", historicalTerminalPreserved: "PASS",
       existingAccountingSettled: "PASS", nativeScheduledJobs: "PASS", noImporterWake: "PASS", noProvider: "PASS" };
-  } finally { releaseSource?.(); await source.close(); }
+  } finally { proof.sourceReads = source.calls; releaseSource?.(); await source.close(); }
 }
 
 const intakeRepository = process.env.LINEAR_INTAKE_TEST_REPOSITORY;
@@ -208,10 +219,20 @@ try {
   proof.outcome = "NATIVE LINEAR COUNCIL ADMISSION VALIDATED";
 } catch (error) {
   proof.outcome = "BLOCKED"; proof.error = error instanceof Error ? { message: error.message, stack: error.stack } : { message: String(error) };
+  try {
+    if (proof.companyId) proof.failureJournals = await journals(host, proof.companyId);
+    if (proof.packages) proof.failureJobs = { intake: await jobRuns(host, proof.packages.intakePluginId),
+      council: await jobRuns(host, proof.packages.councilPluginId) };
+  } catch (diagnosticError) { proof.diagnosticError = String(diagnosticError); }
 } finally {
   try { proof.cleanup = await host.cleanup(); }
   catch (error) { proof.cleanup = { error: String(error) }; proof.outcome = "BLOCKED"; }
+  try {
+    proof.packageDigestsAfter = { council: await packageDigests(repository), intake: await packageDigests(intakeRepository) };
+    assert.deepEqual(proof.packageDigestsAfter, proof.packageDigests, "Source and complete build bytes must remain unchanged throughout qualification");
+    proof.packageBytesUnchanged = true;
+  } catch (error) { proof.packageBytesUnchanged = false; proof.packageVerificationError = String(error); proof.outcome = "BLOCKED"; }
   proof.finishedAt = new Date().toISOString(); await save();
 }
 console.log(JSON.stringify({ outcome: proof.outcome, output, error: proof.error?.message }));
-process.exitCode = proof.outcome === "NATIVE LINEAR COUNCIL ADMISSION VALIDATED" ? 0 : 1;
+process.exit(proof.outcome === "NATIVE LINEAR COUNCIL ADMISSION VALIDATED" ? 0 : 1);
