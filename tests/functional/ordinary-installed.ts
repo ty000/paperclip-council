@@ -184,8 +184,8 @@ try {
     await api("PATCH", `/api/issues/${hierarchy.id}`, { assigneeAgentId: actors.lead });
     root = await api("POST", `/api/companies/${companyId}/issues`, { title: "Ordinary N1 to N2", description: "Produce two attributed complementary contributions and the reviewed publication", projectId, status: "backlog", assigneeAgentId: actors.lead });
     created = await waitFor("scheduled project task admission", () => api("GET", `${missions}?companyId=${companyId}`),
-      view => view.missions?.some((m: any) => m.rootIssueId === root.id && m.aggregate.n1), 180000);
-    const admitted = created.missions.find((m: any) => m.rootIssueId === root.id);
+      view => view.missions?.some((item: any) => item.mission.rootIssueId === root.id && item.mission.aggregate.n1), 180000);
+    const admitted = created.missions.find((item: any) => item.mission.rootIssueId === root.id).mission;
     missionId = admitted.missionId; missionPath = `${missions}/${missionId}`;
     assert.equal(admitted.aggregate.projectMandate.revisionId, configured.policy.revisionId);
     proof.projectIntake = { policy: configured.policy, historicalRootId: historical.id, incompleteRootId: incomplete.id, hierarchyRootId: hierarchy.id, childId: child.id,
