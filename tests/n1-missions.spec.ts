@@ -185,7 +185,7 @@ function harness(initial = aggregate(), initialVersion = 1) {
   });
   const assertCheckoutOwner = vi.fn(async () => undefined);
   const list = vi.fn(async () => []);
-  const create = vi.fn(async (): Promise<Record<string, unknown>> => {
+  const create = vi.fn(async (..._args: unknown[]): Promise<Record<string, unknown>> => {
     throw new Error("native issue create response was lost");
   });
   const documentGet = vi.fn(async () => null as Record<string, unknown> | null);
@@ -2469,12 +2469,26 @@ describe("hierarchy source integrity through two physical contribution dispatche
       company_id: id.company, project_id: id.project, version: 1, revision_id: value.projectMandate!.revisionId, authorized_by: id.owner,
       content: { enabled: true, hierarchy, completion: value.projectMandate!.completion },
     }] as never : [h.row()]);
-    h.list.mockImplementation(async () => [...h.issues.values()] as never);
+    h.list.mockImplementation(async (...args: unknown[]) => {
+      const filter = args[0] as { originKind?: string; originId?: string };
+      return [...h.issues.values()].filter(issue => !filter.originId || issue.originId === filter.originId && issue.originKind === filter.originKind) as never;
+    });
+    h.create.mockImplementation(async (...args: unknown[]) => {
+      const issue = { ...args[0] as object, id: randomUUID(), parentId: null } as ReturnType<typeof nativeIssue>;
+      h.issues.set(issue.id, issue); return issue;
+    });
     h.documentGet.mockImplementation(async (...args: unknown[]) => args[1] === `council-execution-${id.mission}`
       ? { latestRevisionId: "execution-v1", body: "Council contribution reporting command" }
       : { latestRevisionId: "work-v1" });
-    const relations = vi.fn(async (issueId: string) => ({ blockedBy: issueId === id.childB ? [{ id: id.childA, status: h.issues.get(id.childA)!.status }] : [], blocks: [] }));
-    h.ctx.issues.relations = { get: relations } as never;
+    const technicalBlockers = new Map<string, string[]>();
+    const relations = vi.fn(async (issueId: string) => ({ blockedBy: [
+      ...(issueId === id.childB ? [{ id: id.childA, status: h.issues.get(id.childA)!.status }] : []),
+      ...(technicalBlockers.get(issueId) ?? []).map(id => ({ id, status: h.issues.get(id)!.status })),
+    ], blocks: [] }));
+    h.ctx.issues.relations = { get: relations,
+      addBlockers: async (issueId: string, ids: string[]) => { technicalBlockers.set(issueId, [...new Set([...(technicalBlockers.get(issueId) ?? []), ...ids])]); },
+      removeBlockers: async (issueId: string, ids: string[]) => { technicalBlockers.set(issueId, (technicalBlockers.get(issueId) ?? []).filter(id => !ids.includes(id))); },
+    } as never;
     const runs: Array<{ id: string; issueId: string; agentId: string; status: string; startedAt: string; finishedAt: string | null }> = [{ id: id.leadRun, issueId: coordinator, agentId: id.lead, status: "running",
       startedAt: new Date(0).toISOString(), finishedAt: null as string | null }];
     h.getOrchestration.mockImplementation(async (...args: unknown[]) => {
@@ -2655,7 +2669,7 @@ describe("hierarchy source integrity through two physical contribution dispatche
     expect(h.envelope.reservations).toHaveLength(4); expect(h.requestWakeup).toHaveBeenCalledTimes(3);
     expect(reserveAdmission).toHaveBeenLastCalledWith(h.ctx, expect.objectContaining({ reservationId: integration.reservationId, attempt: { kind: "initial", ordinal: 0 } }));
     expect((await h.tick()).code).toBe("hierarchy_integration_running");
-    expect(h.create).toHaveBeenCalledTimes(1); expect(h.requestWakeup).toHaveBeenCalledTimes(3);
+    expect(h.create.mock.calls.filter(args => (args[0] as { originKind?: string })?.originKind === "plugin:private.paperclip-council:n1-integration")).toHaveLength(1); expect(h.requestWakeup).toHaveBeenCalledTimes(3);
     expect((await handleN1AgentApi(agentRequest({ command: "inspect" }, { agentId: id.lead, runId: id.leadRun }, h.coordinator), h.ctx)).status).toBe(404);
     expect((await handleN1AgentApi(agentRequest({ command: "inspect" }, { agentId: id.lead, runId: integration.runId! }, integration.issueId!), h.ctx)).status).toBe(200);
     const candidate = { outcome: "verified", publicationEligible: true, subject: { companyId: id.company, issueId: id.root },
@@ -2693,7 +2707,7 @@ describe("hierarchy source integrity through two physical contribution dispatche
     if (kind === "deadline") h.advanceMission(a => { a.continuity!.deadline = new Date(0).toISOString(); return a; });
     if (kind === "run limit") h.advanceMission(a => { Object.assign(a.nativeWakePolicy!, { runLimit: 2 }); return a; });
     await expect(h.tick()).rejects.toThrow();
-    expect(h.requestWakeup).toHaveBeenCalledTimes(1); expect(h.create).not.toHaveBeenCalled();
+    expect(h.requestWakeup).toHaveBeenCalledTimes(1); expect(h.create.mock.calls.every(args => (args[0] as { originKind?: string })?.originKind === "plugin:private.paperclip-council:operation:contribution-settlement")).toBe(true);
     expect((h.row().aggregate.n1 as N1State).contributions[1]!.dispatchState).toBeUndefined();
   });
 
@@ -2724,7 +2738,7 @@ describe("hierarchy source integrity through two physical contribution dispatche
     await expect(h.tick()).rejects.toMatchObject({ code: "hierarchy_integration_incomplete" });
     await expect(h.tick()).rejects.toMatchObject({ code: "hierarchy_integration_incomplete" });
     expect(h.envelope.reservations.find(r => r.reservationId === integration.reservationId)!.status).toBe("settled");
-    expect(h.requestWakeup).toHaveBeenCalledTimes(3); expect(h.create).toHaveBeenCalledTimes(1);
+    expect(h.requestWakeup).toHaveBeenCalledTimes(3); expect(h.create.mock.calls.filter(args => (args[0] as { originKind?: string })?.originKind === "plugin:private.paperclip-council:n1-integration")).toHaveLength(1);
     expect(h.row().aggregate.n2).toBeUndefined();
   });
 
@@ -2733,13 +2747,13 @@ describe("hierarchy source integrity through two physical contribution dispatche
     const create = h.create.getMockImplementation()!, list = h.list.getMockImplementation()!;
     h.create.mockImplementationOnce(async (...args) => { await create(...args); throw new Error("lost create response"); });
     let hidden = true;
-    h.list.mockImplementation(async (...args: unknown[]) => (args[0] as { originId?: string })?.originId && hidden ? [] : (list as (...values: unknown[]) => Promise<never[]>)(...args));
+    h.list.mockImplementation(async (...args: unknown[]) => (args[0] as { originKind?: string })?.originKind === "plugin:private.paperclip-council:n1-integration" && hidden ? [] : (list as (...values: unknown[]) => Promise<never[]>)(...args));
     await expect(h.tick()).rejects.toMatchObject({ code: "hierarchy_integration_creation_unknown" });
     const original = structuredClone((h.row().aggregate.n1 as N1State).integration!);
     hidden = false;
     expect((await h.tick()).code).toBe("hierarchy_integration_started");
     expect((h.row().aggregate.n1 as N1State).integration).toMatchObject({ taskId: original.taskId, reservationId: original.reservationId });
-    expect(h.create).toHaveBeenCalledTimes(1); expect(h.requestWakeup).toHaveBeenCalledTimes(3);
+    expect(h.create.mock.calls.filter(args => (args[0] as { originKind?: string })?.originKind === "plugin:private.paperclip-council:n1-integration")).toHaveLength(1); expect(h.requestWakeup).toHaveBeenCalledTimes(3);
   });
 
   it("resumes version 28 with all old leads, then consumes the same prepared child hold before its successor", async () => {
@@ -2768,7 +2782,7 @@ describe("hierarchy source integrity through two physical contribution dispatche
     await h.deliverFirst(); await h.choose(1);
     expect(await h.dispatch(1)).toMatchObject({ status: 200, body: { outcome: "requested" } });
     expect(h.envelope.reservations).toHaveLength(5); expect(h.requestWakeup).toHaveBeenCalledTimes(3);
-    expect(h.create).not.toHaveBeenCalled(); expect(h.row().aggregate.n1!.resumeHistory).toEqual([h.firstGrant]);
+    expect(h.create.mock.calls.every(args => (args[0] as { originKind?: string })?.originKind === "plugin:private.paperclip-council:operation:contribution-settlement")).toBe(true); expect(h.row().aggregate.n1!.resumeHistory).toEqual([h.firstGrant]);
     expect(h.row().aggregate.commandReceipts).toEqual(expect.arrayContaining(before.commandReceipts));
     expect(h.envelope.reservations[0]).toEqual(oldReservations[0]); expect(h.envelope.reservations[2]).toEqual(oldReservations[2]);
   });
@@ -2817,7 +2831,7 @@ describe("hierarchy source integrity through two physical contribution dispatche
     expect(await h.dispatch(1)).toMatchObject({ status: 200, body: { outcome: "requested" } });
     await expect(assertHierarchySources(h.ctx, await h.read())).resolves.toBeUndefined();
     expect(h.row().aggregate.hierarchy).toEqual(initialHierarchy);
-    expect(h.requestWakeup).toHaveBeenCalledTimes(2); expect(h.create).not.toHaveBeenCalled();
+    expect(h.requestWakeup).toHaveBeenCalledTimes(2); expect(h.create.mock.calls.every(args => (args[0] as { originKind?: string })?.originKind === "plugin:private.paperclip-council:operation:contribution-settlement")).toBe(true);
     expect(h.envelope.reservations).toHaveLength(3);
     expect(h.envelope.reservations[1]).toMatchObject({ status: "settled", usage: { units: 100 }, remainingExposure: { units: 0 } });
     for (const [i, issue] of h.product.slice(1).entries()) {

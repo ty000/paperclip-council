@@ -11,7 +11,9 @@
     "docs/reviews/n2-intermediate/probe.ts",
     "docs/reviews/n2-intermediate/fixture-cli.mjs",
     "tests/functional/ordinary-installed.ts",
-    "tests/functional/ordinary-cli-fixture.mjs"
+    "tests/functional/ordinary-cli-fixture.mjs",
+    "scripts/qualification/contribution-wait-native.config.mjs",
+    "tests/functional/contribution-wait-native.test.ts"
   ],
   "ignoreUnresolvedImports": [
     "../../.paperclip/qualification/paperclip/packages/db/src/index.ts",
@@ -31,6 +33,7 @@
     "../../.paperclip/qualification/paperclip/server/src/services/native-runtime/paperclip-runner-tool-authority.ts",
     "../../.paperclip/qualification/paperclip/server/src/services/plugin-event-bus.ts",
     "../../.paperclip/qualification/paperclip/server/src/services/plugin-host-services.ts",
-    "../../.paperclip/qualification/paperclip/server/src/vendor/paperclip-runner/testing.ts"
+    "../../.paperclip/qualification/paperclip/server/src/vendor/paperclip-runner/testing.ts",
+    "@council-wait-host/*"
   ]
 }
