@@ -1,4 +1,5 @@
 import { contributionSegmentRoot, assertContributionClosure } from "./contribution-closure.js";
+import { finishContributionWait } from "./contribution-wait.js";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { MissionError } from "./mission-primitives.js";
 import type { MissionAggregate, MissionRecord } from "./missions.js";
@@ -44,6 +45,7 @@ export async function closeQualifiedContribution(ctx: PluginContext, m: MissionR
   if (issue.status !== "done") await ctx.issues.update(issue.id, { status: "done" }, m.companyId);
   const after = await ctx.issues.get(issue.id, m.companyId);
   if (!after || after.id !== issue.id || after.companyId !== m.companyId || after.projectId !== m.projectId || after.parentId !== issue.parentId || after.assigneeAgentId !== agentId || after.status !== "done") throw new MissionError(409, "contribution_closure_unknown", "The retained native closure must be observed before another contribution");
+  await finishContributionWait(ctx, m, contributionId);
   const n1 = m.aggregate.n1 as N1State;
   if (!n1.contributions.find(s => s.contributionId === contributionId)!.proof!.closedAt) m = await persist(m, { ...m.aggregate,
     n1: { ...n1, contributions: n1.contributions.map(s => s.contributionId === contributionId ? { ...s, proof: { ...s.proof!, closedAt: new Date().toISOString() } } : s) } });

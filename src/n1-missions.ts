@@ -67,6 +67,7 @@ type Slot = {
   dispatchRunId?: string | null;
   dispatchUsageBaselineUnits?: number;
   proof?: import("./integration.js").ContributionBundleProof;
+  nativeWait?: { state: "claimed" | "confirmed"; issueId?: string };
   commit?: string;
   authorRunId?: string;
   referenceRecovery?: { previousCommit: string; actorUserId: string; commandId: string };
@@ -1396,7 +1397,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
     const hash = canonicalPayloadHash(body);
     const prior = receipt(mission, commandId, input.actor.agentId, hash);
     if (prior) {
-      await finishN1Disposition(ctx, mission, input, body);
+      mission = await finishN1Disposition(ctx, mission, input, body, (current, aggregate) => cas(ctx, current, aggregate, current.version));
       return { status: 200, body: { outcome: "replayed", mission, receipt: prior } };
     }
     if (body.command === "plan") {
@@ -1537,7 +1538,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         journal: [...mission.aggregate.journal, { action: "contribution_recorded", contributionId, commit, actorAgentId: input.actor.agentId, runId: input.actor.runId, at: new Date().toISOString() }],
       };
       const result = await commandCas(ctx, mission, body, "agent", input.actor.agentId, next);
-      await finishN1Disposition(ctx, result.mission, input, body);
+      result.mission = await finishN1Disposition(ctx, result.mission, input, body, (current, aggregate) => cas(ctx, current, aggregate, current.version));
       return { status: 200, body: result };
     }
     if (body.command === "publish") {
@@ -1634,7 +1635,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         }],
       };
       const result = await commandCas(ctx, mission, body, "agent", actor.agentId, next);
-      await finishN1Disposition(ctx, result.mission, input, body);
+      result.mission = await finishN1Disposition(ctx, result.mission, input, body, (current, aggregate) => cas(ctx, current, aggregate, current.version));
       return { status: 200, body: result };
     }
     throw new MissionError(400, "unknown_command", "Unknown N1 agent command");

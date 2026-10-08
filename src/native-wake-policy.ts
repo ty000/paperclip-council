@@ -1,7 +1,8 @@
 import { completionPolicy } from "./completion-contract.js";
 import type { PluginContext, PluginApiRequestInput } from "@paperclipai/plugin-sdk";
 import { MissionError } from "./mission-primitives.js";
-import type { MissionRecord } from "./missions.js";
+import type { MissionAggregate, MissionRecord } from "./missions.js";
+import { ensureContributionWait } from "./contribution-wait.js";
 import { physicalAgent } from "./model-state.js";
 import { leadIssueId } from "./hierarchy-contract.js";
 import { n1LeadExecution } from "./n1-integration-state.js";
@@ -27,20 +28,36 @@ async function observeStatus(ctx: PluginContext, m: MissionRecord, issueId: stri
   }
 }
 
-/** SDK status mutation has no implicit assignment/parent wake on the qualified host. */
-export async function finishN1Disposition(ctx: PluginContext, m: MissionRecord, input: PluginApiRequestInput, body: Record<string, unknown>) {
-  if (!m.aggregate.nativeWakePolicy) return;
+async function finishContributionDisposition(ctx: PluginContext, m: MissionRecord, input: PluginApiRequestInput, body: Record<string, unknown>,
+  persist?: (m: MissionRecord, aggregate: MissionAggregate) => Promise<MissionRecord>) {
+  const state = m.aggregate.n1 as import("./n1-missions.js").N1State;
+  const slot = state.contributions.find(s => s.contributionId === body.contributionId);
+  if (!slot?.commit || slot.commit !== body.commit || slot.authorRunId !== input.actor.runId || slot.childIssueId !== input.params.issueId) {
+    throw new MissionError(409, "native_contribution_disposition", "Only the exact recorded contribution run may finish its child");
+  }
+  const agentId = physicalAgent(m, slot.assigneeAgentId, { issueId: slot.childIssueId, runId: slot.authorRunId });
+  if (agentId !== input.actor.agentId) throw new MissionError(403, "native_disposition_actor", "Mapped contributor required");
+  if (completionPolicy(m)) {
+    if (!persist) throw new MissionError(409, "contribution_wait_persistence", "Persist the native wait before changing disposition");
+    // Validate the mapped issue before creating any technical task.
+    const issue = await ctx.issues.get(slot.childIssueId!, m.companyId);
+    if (!matchesIssue(issue, m, slot.childIssueId!, agentId) || !["in_progress", "blocked", "done"].includes(issue!.status)) {
+      throw new MissionError(409, "native_wait_identity", "Retain the exact mapped contribution issue");
+    }
+    if (issue!.status === "done") return m;
+    m = await ensureContributionWait(ctx, m, slot.contributionId, persist);
+  }
+  await observeStatus(ctx, m, slot.childIssueId!, agentId, completionPolicy(m) ? "blocked" : "done");
+  return m;
+}
+
+/** Native recovery must observe a dependency before a delivered child waits. */
+export async function finishN1Disposition(ctx: PluginContext, m: MissionRecord, input: PluginApiRequestInput, body: Record<string, unknown>,
+  persist?: (m: MissionRecord, aggregate: MissionAggregate) => Promise<MissionRecord>) {
+  if (!m.aggregate.nativeWakePolicy) return m;
   const state = m.aggregate.n1 as { rootDispatchRunId?: string; candidate?: unknown;
     contributions: Array<{ contributionId: string; childIssueId?: string; assigneeAgentId: string; commit?: string; authorRunId?: string }> };
-  if (body.command === "record-contribution") {
-    const slot = state.contributions.find(s => s.contributionId === body.contributionId);
-    if (!slot?.commit || slot.commit !== body.commit || slot.authorRunId !== input.actor.runId || slot.childIssueId !== input.params.issueId) {
-      throw new MissionError(409, "native_contribution_disposition", "Only the exact recorded contribution run may finish its child");
-    }
-    const agentId = physicalAgent(m, slot.assigneeAgentId, { issueId: slot.childIssueId, runId: slot.authorRunId });
-    if (agentId !== input.actor.agentId) throw new MissionError(403, "native_disposition_actor", "Mapped contributor required");
-    await observeStatus(ctx, m, slot.childIssueId!, agentId, completionPolicy(m) ? "blocked" : "done");
-  }
+  if (body.command === "record-contribution") return finishContributionDisposition(ctx, m, input, body, persist);
   if (body.command === "publish") {
     const execution = n1LeadExecution(m);
     const issueId = execution.issueId!;
@@ -60,4 +77,5 @@ export async function finishN1Disposition(ctx: PluginContext, m: MissionRecord, 
       if (after?.status !== "blocked") throw new MissionError(409, "hierarchy_root_wait_unknown", "Product root waiting state was not observed");
     }
   }
+  return m;
 }
