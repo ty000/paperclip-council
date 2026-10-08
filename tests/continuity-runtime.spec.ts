@@ -8,6 +8,7 @@ import { canonicalPayloadHash } from "../src/mission-primitives.js";
 const f = vi.hoisted(() => ({ mission: null as unknown as MissionRecord, run: { status: "running" },
   board: vi.fn(), review: vi.fn(), reconcile: vi.fn(), delivery: vi.fn(), inventory: vi.fn(), settle: vi.fn() }));
 vi.mock("../src/project-task-intake.js", () => ({ reconcileProjectTasks: async () => {} }));
+vi.mock("../src/hierarchy-continuity.js", () => ({ advanceHierarchyChildren: vi.fn() }));
 vi.mock("../src/missions.js", async () => ({ ...await import("../src/mission-primitives.js"),
   getMission: async () => structuredClone(f.mission) }));
 vi.mock("../src/n1-missions.js", () => ({ executeN1BoardCommand: (...args: unknown[]) => f.board(...args) }));
