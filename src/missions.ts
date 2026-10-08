@@ -66,7 +66,7 @@ export type MissionReceipt = {
   commandId: string;
   command: "bind-resumed-lead-run" | "prepare-n1-resume" | "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "fixture-bind-contribution-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish" | "recover-integration" | "recover-candidate"
     | "resume-settled-correction" | "replace-undispatched-correction" | "start-review" | "confirm-review-handoff" | "start-correction" | "prepare-resubmission"
-    | "start-resubmitted-review" | "settle-n2-usage" | "attest-transmission" | "reconcile-native-n2" | "release-native-correction" | "reconcile-ordinary-n2" | "replace-missing-opinion" | "replace-missing-verdict" | "recover-terminal-resubmission" | "ordinary-verdict" | "configure-continuity" | "suspend-continuity";
+    | "start-resubmitted-review" | "settle-n2-usage" | "attest-transmission" | "reconcile-native-n2" | "release-native-correction" | "reconcile-ordinary-n2" | "replace-missing-opinion" | "replace-missing-verdict" | "recover-terminal-resubmission" | "ordinary-verdict" | "configure-continuity" | "suspend-continuity" | "resume-continuity";
   actorType: "user" | "agent";
   actorId: string;
   payloadHash: string;
@@ -728,7 +728,7 @@ async function executeMissionRouteCommand(
   missionId: string | undefined,
 ) {
   const command = String(body.command);
-  if (missionId && ["configure-continuity", "suspend-continuity"].includes(command)) {
+  if (missionId && ["configure-continuity", "suspend-continuity", "resume-continuity"].includes(command)) {
     const ownerId = await requireOwner(ctx, companyId, actorUserId);
     const mission = await getMission(ctx, companyId, missionId);
     if (!mission || mission.ownerUserId !== ownerId) throw new MissionError(403, "mission_owner_required", "Exact mission owner required");

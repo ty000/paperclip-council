@@ -5,7 +5,22 @@ Paperclip workflows. This standalone package extracts the demonstrated
 `private.paperclip-council` integration without importing from a Paperclip
 monorepo workspace.
 
-Version `0.7.18` adds an opt-in receiver for the separate Linear intake plugin.
+Version `0.7.19` continues an admitted sequential hierarchy after its planning
+lead finishes. The deterministic controller settles each exact child run and
+observes its verified native closure before admitting the next child. It then
+starts one distinct, budgeted integration task for the lead's shared-file work,
+verifies the common candidate, settles that run, and hands it to review. The
+planner, contributions, profile choices, costs, and uncertain effects retain
+their original identities; this progression does not grant a retry.
+
+An expired, suspended mission can resume only through the owner's explicit
+`resume-continuity` command, with `authorizeProgression: true`, a later ISO
+`deadline` and a reason. The recorded extension changes the departure window
+only: activation time, previous grants, token budget, run limit and correction
+limit remain intact. These changes are covered by composed synthetic service
+tests; release source alone does not claim a successful provider campaign.
+
+Version `0.7.18` added an opt-in receiver for the separate Linear intake plugin.
 It requires an enabled project mandate, explicit contributor/write paths,
 complete native readback and fresh authenticated source observations before
 preparation and at the shared N1 admission boundary. The installed path is

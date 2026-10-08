@@ -6,10 +6,50 @@ import { normalizeN3Slots, type N3OpinionSlot } from "./n3-opinions.js";
 
 type ContinuityCommands = Pick<typeof import("./n2-missions.js"), "n2CommandCas" | "runtimeReceipt" | "runtimeUuid">;
 
+function requireSuspendedPolicy(m: MissionRecord, actorId: string) {
+  const policy = m.aggregate.continuity;
+  if (!policy || policy.enabled || !m.aggregate.n1 || m.aggregate.control.status !== "active"
+      || m.aggregate.completion?.state === "closed" || m.ownerUserId !== actorId
+      || policy.authorizedBy !== actorId || policy.mandateHash !== canonicalPayloadHash(m.aggregate.mandate)) {
+    throw new MissionError(409, "continuity_resume_unavailable", "Resume requires the suspended active mission and unchanged owner and mandate");
+  }
+  return policy;
+}
+
+function resumeReason(body: Record<string, unknown>) {
+  if (body.authorizeProgression !== true || typeof body.reason !== "string" || !body.reason.trim() || body.reason.length > 1000) {
+    throw new MissionError(403, "continuity_authorization_required", "Explicit owner authorization and a reason are required for a new departure window");
+  }
+  return body.reason.trim();
+}
+
+function resumeDeadline(m: MissionRecord, body: Record<string, unknown>, previousDeadline: string, now: number) {
+  const deadline = typeof body.deadline === "string" ? Date.parse(body.deadline) : NaN;
+  if (!Number.isFinite(deadline) || deadline <= now || deadline <= Date.parse(previousDeadline)
+      || deadline > now + m.aggregate.mandate.limits.elapsedMinutes * 60_000) {
+    throw new MissionError(422, "continuity_deadline_invalid", "Use an explicit later deadline within one mandate-length window from now");
+  }
+  return new Date(deadline).toISOString();
+}
+
+async function resumeContinuity(ctx: PluginContext, m: MissionRecord, actorId: string,
+  body: Record<string, unknown>, commands: ContinuityCommands) {
+  const policy = requireSuspendedPolicy(m, actorId);
+  const reason = resumeReason(body);
+  const now = Date.now();
+  const deadline = resumeDeadline(m, body, policy.deadline, now);
+  const extension = { commandId: commands.runtimeUuid(body.commandId, "commandId"), previousDeadline: policy.deadline,
+    deadline, authorizedBy: actorId, authorizedAt: new Date(now).toISOString(), reason };
+  return commands.n2CommandCas(ctx, m, body, "user", actorId, { ...m.aggregate,
+    continuity: { ...policy, enabled: true, deadline: extension.deadline, extensions: [...(policy.extensions ?? []), extension] },
+    journal: [...m.aggregate.journal, { action: "owner_extended_continuity_window", ...extension }] });
+}
+
 export async function configureContinuity(ctx: PluginContext, m: MissionRecord, actorId: string, body: Record<string, unknown>, commands: ContinuityCommands) {
   const { n2CommandCas, runtimeReceipt, runtimeUuid } = commands;
   const prior = runtimeReceipt(m, runtimeUuid(body.commandId, "commandId"), actorId, canonicalPayloadHash(body));
   if (prior) return { outcome: "replayed", mission: m, receipt: prior };
+  if (body.command === "resume-continuity") return resumeContinuity(ctx, m, actorId, body, commands);
   if (body.command === "suspend-continuity") {
     if (!m.aggregate.continuity) throw new MissionError(409, "continuity_unconfigured", "No delegated continuity policy exists");
     return n2CommandCas(ctx, m, body, "user", actorId, { ...m.aggregate,

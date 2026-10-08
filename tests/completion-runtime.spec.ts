@@ -77,6 +77,14 @@ it("closes parents bottom-up only after proof, then confirms one agent-attribute
   await reconcileCompletion(c.ctx, result);
   expect(c.createComment).toHaveBeenCalledOnce(); expect(c.upsert).toHaveBeenCalledOnce();
 });
+it("closes the settled planner and distinct integration task without leaving an operational task orphaned", async () => {
+  f.m.aggregate.n1.integration = { issueId: "integration", settledAt: "observed" };
+  const c = context(); c.issues.coordinator.status = "in_review";
+  c.issues.integration = { ...c.issues.coordinator, id: "integration", status: "blocked" };
+  await reconcileCompletion(c.ctx, f.m);
+  expect(c.update.mock.calls.map(call => call[0])).toEqual(["group", "root", "coordinator", "integration"]);
+  expect(c.createComment).toHaveBeenCalledOnce();
+});
 it.each(["child", "blocker", "cost"])("preserves the parent and notification with pending %s", async kind => {
   const c = context();
   if (kind === "child") c.issues.child.status = "blocked";

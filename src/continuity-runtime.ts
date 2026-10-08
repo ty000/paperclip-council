@@ -17,6 +17,7 @@ import { physicalAgent } from "./model-state.js";
 import { readOrdinaryRun, settleOrdinaryRunUsage } from "./g4-native.js";
 import { reconcileProjectTasks } from "./project-task-intake.js";
 import { assertProjectDeparture } from "./project-mandate-guard.js";
+import { advanceHierarchyChildren } from "./hierarchy-continuity.js";
 
 const CONTINUITY_JOB_KEY = "mission-continuity";
 const waiting = (code: string, nextAction: string): Observation => ({ state: "waiting", code, nextAction });
@@ -55,6 +56,10 @@ async function settleNonAdvancingLead(ctx: PluginContext, initial: MissionRecord
     expectedVersion: envelope.version });
 }
 
+function delegatedHierarchy(m: MissionRecord, state: N1State) {
+  return m.aggregate.hierarchy?.leaves && completionPolicy(m) && (!state.candidate || state.integration);
+}
+
 async function advanceN1(ctx: PluginContext, m: MissionRecord, state: N1State, job: PluginJobContext): Promise<Observation> {
   if (!state.rootDispatchState) {
     assertContinuityDeparture(m);
@@ -66,6 +71,12 @@ async function advanceN1(ctx: PluginContext, m: MissionRecord, state: N1State, j
   const run = await readOrdinaryRun(ctx, { companyId: m.companyId, issueId: leadIssueId(m), runId: state.rootDispatchRunId,
     agentId: physicalAgent(m, m.aggregate.responsibilities.integrationLeadAgentId, { issueId: leadIssueId(m), runId: state.rootDispatchRunId }) });
   if (["queued", "running", "scheduled_retry"].includes(run.status)) return waiting("native_lead_running", "Council attend la fin du run admis du lead.");
+  if (run.status === "succeeded" && delegatedHierarchy(m, state)) {
+    await settleNonAdvancingLead(ctx, m, state, job);
+    const code = await advanceHierarchyChildren(ctx, await fresh(ctx, m));
+    return { state: code.endsWith("running") ? "waiting" : "progressed", code,
+      nextAction: "Council règle et clôt chaque enfant prouvé, puis admet le suivant et le run d’intégration finale." };
+  }
   if (run.status !== "succeeded" || !state.candidate) {
     await settleNonAdvancingLead(ctx, m, state, job);
     throw new MissionError(409, run.status === "succeeded" ? "continuity_candidate_missing" : "continuity_lead_failed",

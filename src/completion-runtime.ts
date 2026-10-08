@@ -50,11 +50,16 @@ async function closeProductParent(ctx: PluginContext, m: MissionRecord, node: im
 async function closeCoordinator(ctx: PluginContext, m: MissionRecord) {
   const coordinator = leadIssueId(m);
   if (coordinator === m.rootIssueId) return;
-  const issue = await ctx.issues.get(coordinator, m.companyId);
-  const agentId = physicalAgent(m, m.aggregate.responsibilities.integrationLeadAgentId, { issueId: coordinator });
-  if (!issue || issue.companyId !== m.companyId || issue.projectId !== m.projectId || issue.parentId || issue.assigneeAgentId !== agentId || !["blocked", "done"].includes(issue.status)) throw new MissionError(409, "completion_coordinator_identity", "Retain the original settled coordinator identity");
-  if (issue.status === "blocked") await ctx.issues.update(coordinator, { status: "done" }, m.companyId);
-  if ((await ctx.issues.get(coordinator, m.companyId))?.status !== "done") throw new MissionError(409, "completion_coordinator_unknown", "The settled operational coordinator must also finish");
+  const integration = (m.aggregate.n1 as N1State).integration;
+  for (const issueId of [coordinator, ...(integration?.issueId ? [integration.issueId] : [])]) {
+    const issue = await ctx.issues.get(issueId, m.companyId);
+    const agentId = physicalAgent(m, m.aggregate.responsibilities.integrationLeadAgentId, { issueId });
+    const statuses = integration?.settledAt ? ["in_progress", "in_review", "blocked", "done"] : ["blocked", "done"];
+    if (!issue || issue.companyId !== m.companyId || issue.projectId !== m.projectId || issue.parentId || issue.assigneeAgentId !== agentId
+        || issue.checkoutRunId || issue.executionRunId || !statuses.includes(issue.status)) throw new MissionError(409, "completion_coordinator_identity", "Retain the original settled operational task identities");
+    if (issue.status !== "done") await ctx.issues.update(issueId, { status: "done" }, m.companyId);
+    if ((await ctx.issues.get(issueId, m.companyId))?.status !== "done") throw new MissionError(409, "completion_coordinator_unknown", "The settled operational tasks must also finish");
+  }
 }
 async function closeProductNodes(ctx: PluginContext, m: MissionRecord) {
   const leaves = new Set((m.aggregate.n1 as N1State).contributions.map(s => s.childIssueId));

@@ -1,3 +1,5 @@
+import { assertN1DepartureWindow, assertContinuityDeparture } from "./continuity-policy.js";
+import { n1LeadExecution, type N1Integration } from "./n1-integration-state.js";
 import { completionPolicy } from "./completion-contract.js";
 import { sourceBase, recordContributionProof, closeQualifiedContribution } from "./contribution-proof.js";
 import { prepareN1Resume, verifyResumedLeadRun } from "./n1-resume.js";
@@ -40,6 +42,7 @@ import {
   readNativeG4Profile,
   settleNativeRunUsage,
   settleOrdinaryRunUsage,
+  readOrdinaryRun,
 } from "./g4-native.js";
 import { ownershipsOverlap, verifyIntegratedCandidate, type IntegratedCandidateInput, type IntegratedCandidateVerification } from "./integration.js";
 
@@ -68,6 +71,8 @@ type Slot = {
 };
 
 export type N1State = {
+  integration?: N1Integration;
+  hierarchyCommands?: Record<string, Record<string, unknown>>;
   sourceBaseCommit?: string;
   coordination?: N1Coordination;
   resume?: N1Resume;
@@ -236,24 +241,25 @@ async function owner(ctx: PluginContext, mission: MissionRecord, actorUserId: st
 
 async function lead(ctx: PluginContext, mission: MissionRecord, input: PluginApiRequestInput) {
   const actor = input.actor;
+  const execution = n1LeadExecution(mission);
   if (actor.actorType !== "agent" || !actor.agentId || !actor.runId || !isLogicalActor(mission, mission.aggregate.responsibilities.integrationLeadAgentId, actor.agentId, actor.runId)) {
     throw new MissionError(403, "integration_lead_required", "Active integration lead run required");
   }
-  if (input.params.issueId !== leadIssueId(mission)) {
+  if (!execution.issueId || input.params.issueId !== execution.issueId) {
     throw new MissionError(403, "root_issue_required", "Command must address the mission root issue");
   }
   const dispatch = n1State(mission);
-  if (dispatch?.rootDispatchState !== "requested" || !dispatch.rootDispatchRunId
-      || actor.runId !== dispatch.rootDispatchRunId) {
+  if (dispatch?.rootDispatchState !== "requested" || !execution.runId
+      || actor.runId !== execution.runId) {
     throw new MissionError(409, "root_dispatch_run_mismatch", "Integration Lead command requires its confirmed admitted run");
   }
-  const issue = await ctx.issues.get(leadIssueId(mission), mission.companyId);
+  const issue = await ctx.issues.get(execution.issueId, mission.companyId);
   if (!issue || issue.companyId !== mission.companyId || issue.projectId !== mission.projectId
       || issue.assigneeAgentId !== actor.agentId || issue.status !== "in_progress") {
     throw new MissionError(409, "root_ownership_changed", "Root issue is not in progress under the integration lead");
   }
   await ctx.issues.assertCheckoutOwner({
-    issueId: leadIssueId(mission), companyId: mission.companyId,
+    issueId: execution.issueId, companyId: mission.companyId,
     actorAgentId: actor.agentId, actorRunId: actor.runId,
   });
   return { agentId: actor.agentId, runId: actor.runId };
@@ -368,6 +374,7 @@ export function inspectN1State(mission: MissionRecord) {
                 ? "Assigned contributors must report their Git commits through their child issues."
             : "Integration Lead must publish a verified integrated Git bundle.";
   return {
+    integration: state.integration,
     resume: state.resume ?? null,
     resumeHistory: state.resumeHistory,
     ...(mission.aggregate.hierarchy ? { hierarchy: mission.aggregate.hierarchy, coordinationIssueId: leadIssueId(mission), rootIssueId: mission.rootIssueId } : {}),
@@ -618,6 +625,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     });
     const contribution = n1State(mission)!.contributions.find(slot => slot.contributionId === input.body.contributionId)!;
     mission = await observeVariantRun(ctx, mission, contribution.dispatchReservationId!);
+    if (contribution.proof) mission = await closeQualifiedContribution(ctx, mission, contribution.contributionId, (current, aggregate) => cas(ctx, current, aggregate, current.version));
     return { ...result, mission };
   }
   if (input.body.command === "fixture-bind-lead-run") {
@@ -734,10 +742,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     if (!state || mission.aggregate.control.status !== "active" || state.rootDispatchState) {
       throw new MissionError(409, "root_dispatch_unavailable", "Root dispatch is unavailable or already claimed");
     }
-    const activatedAt = Date.parse(state.activatedAt);
-    if (!Number.isFinite(activatedAt) || Date.now() >= activatedAt + mission.aggregate.mandate.limits.elapsedMinutes * 60_000) {
-      throw new MissionError(409, "elapsed_limit_exceeded", "Mission elapsed limit blocks root dispatch");
-    }
+    assertN1DepartureWindow(mission);
     const coordination = state.coordination;
     const reuseCoordinator = Boolean(coordination && state.resume);
     if (reuseCoordinator) {
@@ -907,7 +912,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
         currentVersion: mission.version,
       });
     }
-    if (!state.candidate) return { ...settlement, mission: await observeVariantRun(ctx, mission, state.activationReservationId) };
+    if (!state.candidate || state.integration) return { ...settlement, mission: await observeVariantRun(ctx, mission, state.activationReservationId) };
     const next: MissionAggregate = {
       ...mission.aggregate,
       phase: "ready_for_review",
@@ -1119,6 +1124,223 @@ export async function handleN1AdmissionApi(input: PluginApiRequestInput, ctx: Pl
   }
 }
 
+type N1DispatchActor = { type: "agent" | "user"; id: string; native: { actorAgentId: string; actorRunId: string } | { actorUserId: string } };
+
+function integrationPaths(mission: MissionRecord, body: Record<string, unknown>) {
+  if (body.integrationAdjustedPaths === undefined) return undefined;
+  if (!(mission.aggregate.n1 as N1State).integration || !Array.isArray(body.integrationAdjustedPaths)) {
+    throw new MissionError(422, "integration_paths_unavailable", "Only the admitted final integration stage declares its bounded shared-file changes");
+  }
+  const paths = body.integrationAdjustedPaths.map(path => boundedString(path, "integrationAdjustedPath", 512));
+  assertProjectPaths(mission, paths);
+  const childPaths = (mission.aggregate.n1 as N1State).contributions.flatMap(slot => slot.ownedPaths);
+  if (paths.some(path => childPaths.some(owned => ownershipsOverlap(path, owned)))) {
+    throw new MissionError(422, "integration_child_ownership", "Shared integration changes cannot replace the attributed child contributions");
+  }
+  return paths.length ? paths : undefined;
+}
+
+/** The owner delegates the already pinned plan, never the identity of a terminal agent. */
+export async function dispatchHierarchyContribution(ctx: PluginContext, mission: MissionRecord, body: Record<string, unknown>) {
+  const state = n1State(mission)!;
+  const policy = mission.aggregate.continuity;
+  await owner(ctx, mission, policy?.authorizedBy ?? null);
+  assertContinuityDeparture(mission);
+  if (!mission.aggregate.hierarchy?.leaves || !completionPolicy(mission) || !state?.coordination
+      || state.rootDispatchState !== "requested" || !state.rootDispatchRunId || state.candidate || state.integration
+      || mission.aggregate.phase !== "executing" || mission.aggregate.control.status !== "active") {
+    throw new MissionError(409, "hierarchy_progression_unavailable", "Delegated dispatch requires the completed planner and its unchanged materialized hierarchy");
+  }
+  const run = await readOrdinaryRun(ctx, { companyId: mission.companyId, issueId: leadIssueId(mission), runId: state.rootDispatchRunId,
+    agentId: physicalAgent(mission, mission.aggregate.responsibilities.integrationLeadAgentId, { issueId: leadIssueId(mission), runId: state.rootDispatchRunId }) });
+  const envelope = await readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
+  const reservation = envelope?.reservations.find(r => r.reservationId === state.activationReservationId);
+  if (run.status !== "succeeded" || !reservation || !settledResumeReservation(reservation)) {
+    throw new MissionError(409, "hierarchy_planner_unsettled", "Successful planning and exact terminal usage must precede delegated dispatch");
+  }
+  const prior = receipt(mission, uuid(body.commandId, "commandId"), policy!.authorizedBy, canonicalPayloadHash(body));
+  if (prior) return { status: 200, body: { outcome: "replayed", mission, receipt: prior } };
+  return dispatchN1Contribution(ctx, mission, body, { type: "user", id: policy!.authorizedBy, native: { actorUserId: policy!.authorizedBy } });
+}
+
+async function assertPriorContributions(ctx: PluginContext, mission: MissionRecord, slots: Slot[]) {
+  for (const prior of slots) {
+    if (completionPolicy(mission) && !prior.proof?.closedAt) throw new MissionError(409, "prior_contribution_proof", "Observe the previous child verified proof and terminal closure before dispatch");
+    const priorIssue = prior.childIssueId ? await ctx.issues.get(prior.childIssueId, mission.companyId) : null;
+    const attributed = [prior.commit, prior.authorRunId, prior.dispatchState === "requested", prior.dispatchReservationId,
+      prior.dispatchRunId, prior.authorRunId === prior.dispatchRunId].every(Boolean);
+    const expected = { companyId: mission.companyId, projectId: mission.projectId, parentId: prior.parentIssueId ?? mission.rootIssueId,
+      assigneeAgentId: physicalAgent(mission, prior.assigneeAgentId, { issueId: prior.childIssueId }), status: "done" };
+    if (!attributed || !priorIssue || Object.entries(expected).some(([key, value]) => priorIssue[key as keyof typeof priorIssue] !== value)) {
+      throw new MissionError(409, "prior_contribution_incomplete", "Every earlier contribution must be attributed to its confirmed native run and its mapped child issue must be done");
+    }
+  }
+}
+
+async function childNativeBaseline(ctx: PluginContext, mission: MissionRecord, state: N1State, slot: Slot,
+  agent: NonNullable<Awaited<ReturnType<PluginContext["agents"]["get"]>>>, requestedUnits: number, resumed?: ResumeTarget) {
+  const envelope = await readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
+  if (!envelope) throw new MissionError(422, "g4_not_configured", "No task/period admission envelope is configured");
+  const fixtureRuntime = await isOwnedFixtureRuntime(ctx, mission.companyId);
+  const nativeProfile = fixtureRuntime ? null : await readNativeG4Profile(ctx, mission.companyId);
+  let dispatchUsageBaselineUnits: number | undefined;
+  if (!fixtureRuntime && !nativeProfile) {
+    throw new MissionError(409, "g4_measurement_unqualified", "No supported native N1 operating profile is configured");
+  }
+  if (nativeProfile) {
+    if (!isNativeCliAgent(agent)) {
+      throw new MissionError(409, "native_agent_adapter_required",
+        "Native N1 dispatch requires a codex_local agent configured with the cli engine");
+    }
+    assertNativeEnvelope(envelope, nativeProfile);
+    if (requestedUnits !== nativeProfile.runReservationUnits) {
+      throw new MissionError(422, "g4_profile_mismatch", "Child dispatch must use the configured run reservation estimate");
+    }
+    const unsettledPriorChild = state.contributions.find((entry) => {
+      if (!entry.dispatchReservationId) return false;
+      const reservation = envelope.reservations.find((item) => item.reservationId === entry.dispatchReservationId);
+      return reservation?.status !== "settled";
+    });
+    if (unsettledPriorChild) {
+      throw new MissionError(409, "g4_sequential_settlement_required",
+        "The previous contribution run must be terminal and its token usage settled before another child launch");
+    }
+    dispatchUsageBaselineUnits = await assertNativeLaunchAllowed(ctx, {
+      companyId: mission.companyId,
+      issueId: slot.childIssueId!,
+      priorRunId: resumed?.priorRunId,
+    });
+  }
+  return { envelope, dispatchUsageBaselineUnits };
+}
+
+async function eligibleDispatchAgent(ctx: PluginContext, mission: MissionRecord, slot: Slot, resumed?: ResumeTarget) {
+  const issue = await ctx.issues.get(slot.childIssueId!, mission.companyId);
+  const agent = await ctx.agents.get(slot.assigneeAgentId, mission.companyId);
+  if (!issue || issue.companyId !== mission.companyId || issue.projectId !== mission.projectId
+      || issue.parentId !== (slot.parentIssueId ?? mission.rootIssueId) || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
+      || !["backlog", ...(resumed || slot.parentIssueId ? ["blocked"] : [])].includes(issue.status) || !agent || agent.companyId !== mission.companyId
+      || !["active", "idle", "running"].includes(agent.status)) {
+    throw new MissionError(409, "native_dispatch_ineligible", "Native child or assignee is no longer eligible for dispatch");
+  }
+  return agent;
+}
+
+async function wakeDispatchedChild(ctx: PluginContext, mission: MissionRecord,
+  input: { slot: Slot; reservationId: string; contributionId: string; actor: N1DispatchActor }) {
+  const { slot, reservationId, contributionId, actor } = input;
+  let wake: { queued: boolean; runId: string | null } | null = null;
+  try {
+    await ctx.issues.update(slot.childIssueId!, { status: "todo" }, mission.companyId, {
+      ...actor.native,
+    });
+    wake = await ctx.issues.requestWakeup(slot.childIssueId!, mission.companyId, {
+      idempotencyKey: "council:n1:" + reservationId,
+      reason: "council_contribution_dispatch",
+      ...actor.native,
+    });
+  } catch {
+    // Native state may have changed even when the response was lost.
+  }
+  let afterClaim = await getMission(ctx, mission.companyId, mission.missionId);
+  if (!afterClaim) throw new Error("Mission disappeared after dispatch effect");
+  const finalMission = await recordVariantWake(ctx, afterClaim, reservationId, wake?.runId ?? null,
+    async (before, aggregate, effectiveRunId) => {
+      const afterState = n1State({ ...before, aggregate });
+      if (!afterState) throw new Error("N1 state disappeared after dispatch effect");
+      const priorLaunch = before.aggregate.modelSelection && before.aggregate.modelSelection.tasks
+        .flatMap(task => task.launches).find(item => item.launchKey === reservationId);
+      const wakeConfirmed = Boolean(effectiveRunId && (wake?.queued || priorLaunch?.state === "bound" && priorLaunch.runId === effectiveRunId));
+      const updatedSlots = afterState.contributions.map((entry) => entry.contributionId === contributionId
+        ? { ...entry, dispatchState: wakeConfirmed ? "requested" as const : "unknown" as const, dispatchRunId: effectiveRunId }
+        : entry);
+      return cas(ctx, before, {
+        ...aggregate,
+        n1: { ...afterState, contributions: updatedSlots },
+        effectIntents: aggregate.effectIntents.map((entry) => entry.kind === "child_wakeup" && entry.reservationId === reservationId
+          ? { ...entry, state: wakeConfirmed ? "requested" : "unknown", queued: wake?.queued ?? null, runId: effectiveRunId }
+          : entry),
+      }, before.version);
+    });
+  const finalSlot = n1State(finalMission)?.contributions.find(entry => entry.contributionId === contributionId);
+  const wakeConfirmed = finalSlot?.dispatchState === "requested";
+  return { status: wakeConfirmed ? 200 : 202, body: { outcome: wakeConfirmed ? "requested" : "unknown", wake, mission: finalMission } };
+}
+
+function childReservationIdentity(state: N1State, body: Record<string, unknown>, contributionId: string, resumed?: ResumeTarget) {
+  const reservationId = uuid(body.reservationId, "reservationId");
+  const requestedUnits = integer(body.requestedUnits, "requestedUnits");
+  const preparedChild = state.resume?.preparedContributions?.find(target => target.contributionId === contributionId);
+  if (preparedChild && reservationId !== preparedChild.reservationId) {
+    throw new MissionError(409, "n1_prepared_reservation_mismatch", "Reuse the exact prepared child reservation from inspect.n1.resume.preparedContributions");
+  }
+  if (resumed && reservationId !== resumed.reservationId) {
+    throw new MissionError(409, "n1_resume_reservation_mismatch", "Use the exact owner-authorized resume reservation from inspect.n1.resume");
+  }
+  return { reservationId, requestedUnits };
+}
+
+async function dispatchN1Contribution(ctx: PluginContext, initial: MissionRecord, body: Record<string, unknown>, actor: N1DispatchActor) {
+  let mission = initial;
+  const state = n1State(mission)!;
+  assertN1DepartureWindow(mission);
+  const contributionId = uuid(body.contributionId, "contributionId");
+  const index = state.contributions.findIndex((slot) => slot.contributionId === contributionId);
+  if (index < 0) throw new MissionError(404, "contribution_not_found", "Contribution slot not found");
+  const slot = state.contributions[index];
+  const resumed = state.resume?.contributions.find(t => t.contributionId === contributionId);
+  if (slot.issueState !== "confirmed" || !slot.childIssueId || slot.dispatchState) {
+    throw new MissionError(409, "dispatch_unavailable", "Child issue is not confirmed or dispatch was already claimed");
+  }
+  const agent = await eligibleDispatchAgent(ctx, mission, slot, resumed);
+  await assertPriorContributions(ctx, mission, state.contributions.slice(0, index));
+  await assertHierarchySources(ctx, mission);
+  await assertHierarchyDependencies(ctx, mission, slot.childIssueId!);
+  const { reservationId, requestedUnits } = childReservationIdentity(state, body, contributionId, resumed);
+  requireFreshCommand(mission, body);
+  const { envelope, dispatchUsageBaselineUnits } = await childNativeBaseline(ctx, mission, state, slot, agent, requestedUnits, resumed);
+  const prepared = await prepareVariantLaunch(ctx, mission, { taskKey: contributionId, interventionKey: contributionId,
+    launchKey: reservationId, logicalAgentId: slot.assigneeAgentId, family: await contributionModelFamily(ctx, mission, slot.assigneeAgentId), issueId: slot.childIssueId, expectedRoles: ["executor", "contributor-1", "contributor-2", "test", "design"] });
+  mission = prepared.mission;
+  const reserved = await reserveAdmission(ctx, {
+    companyId: mission.companyId, periodKey: state.periodKey,
+    reservationId, missionId: mission.missionId, effectId: contributionId,
+    requestedUnits, attempt: resumed ? { kind: "resume", ordinal: 1 } : { kind: "initial", ordinal: 0 },
+    ...(resumed ? { ownerReplacementCommandId: state.resume!.commandId } : {}), expectedVersion: envelope.version,
+  });
+  if (!reserved.reservation || reserved.reservation.status !== "reserved") {
+    throw new MissionError(409, "g4_reservation_unavailable", "Durable child reservation is unavailable");
+  }
+  mission = await bindVariantIssue(ctx, mission, reservationId, slot.childIssueId!);
+  const claim = await claimVariantWake(ctx, mission, reservationId, async (readyMission, claimedAggregate) => {
+    const readyState = n1State(readyMission);
+    if (!readyState) throw new Error("N1 state disappeared before child dispatch claim");
+    const slots = [...readyState.contributions];
+    slots[index] = {
+      ...slots[index]!,
+      dispatchState: "claimed",
+      dispatchReservationId: reservationId,
+      dispatchUsageBaselineUnits,
+    };
+    const next: MissionAggregate = {
+      ...claimedAggregate,
+      n1: { ...readyState, contributions: slots },
+      effectIntents: [...claimedAggregate.effectIntents, {
+        kind: "child_wakeup", state: "claimed", reservationId, contributionId,
+        issueId: slot.childIssueId, assigneeAgentId: slot.assigneeAgentId,
+        ...actor.native,
+      }],
+      journal: [...claimedAggregate.journal, {
+        action: "child_dispatch_claimed", contributionId, reservationId,
+        ...actor.native, at: new Date().toISOString(),
+      }],
+    };
+    return commandCas(ctx, readyMission, body, actor.type, actor.id, next, readyMission.version);
+  });
+  if (claim.outcome !== "applied") return { status: 200, body: claim };
+  return wakeDispatchedChild(ctx, mission, { slot, reservationId, contributionId, actor });
+}
+
 export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: PluginContext) {
   try {
     if (input.actor.actorType !== "agent" || !input.actor.agentId || !input.actor.runId) {
@@ -1132,12 +1354,12 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
     if (!state || mission.aggregate.control.status !== "active") {
       throw new MissionError(409, "mission_inactive", "Mission is not active");
     }
-    if (input.params.issueId !== leadIssueId(mission)
+    if (input.params.issueId !== n1LeadExecution(mission).issueId
         && !state.contributions.some((slot) => slot.childIssueId === input.params.issueId)) {
       throw new MissionError(404, "mission_issue_not_found", "This issue is not mapped to the mission");
     }
     if (body.command === "inspect") {
-      if (input.params.issueId === leadIssueId(mission)) {
+      if (input.params.issueId === n1LeadExecution(mission).issueId) {
         await lead(ctx, mission, input);
       } else {
         const slot = state.contributions.find((entry) => entry.childIssueId === input.params.issueId);
@@ -1255,160 +1477,8 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
     }
     if (body.command === "dispatch") {
       const actor = await lead(ctx, mission, input);
-      const activatedAt = Date.parse(state.activatedAt);
-      if (!Number.isFinite(activatedAt) || Date.now() >= activatedAt + mission.aggregate.mandate.limits.elapsedMinutes * 60_000) {
-        throw new MissionError(409, "elapsed_limit_exceeded", "Mission elapsed limit blocks new child dispatch");
-      }
-      const contributionId = uuid(body.contributionId, "contributionId");
-      const index = state.contributions.findIndex((slot) => slot.contributionId === contributionId);
-      if (index < 0) throw new MissionError(404, "contribution_not_found", "Contribution slot not found");
-      const slot = state.contributions[index];
-      const resumed = state.resume?.contributions.find(t => t.contributionId === contributionId);
-      if (slot.issueState !== "confirmed" || !slot.childIssueId || slot.dispatchState) {
-        throw new MissionError(409, "dispatch_unavailable", "Child issue is not confirmed or dispatch was already claimed");
-      }
-      const issue = await ctx.issues.get(slot.childIssueId, mission.companyId);
-      const agent = await ctx.agents.get(slot.assigneeAgentId, mission.companyId);
-      if (!issue || issue.companyId !== mission.companyId || issue.projectId !== mission.projectId
-          || issue.parentId !== (slot.parentIssueId ?? mission.rootIssueId) || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
-          || !["backlog", ...(resumed || slot.parentIssueId ? ["blocked"] : [])].includes(issue.status) || !agent || agent.companyId !== mission.companyId
-          || !["active", "idle", "running"].includes(agent.status)) {
-        throw new MissionError(409, "native_dispatch_ineligible", "Native child or assignee is no longer eligible for dispatch");
-      }
-      for (const prior of state.contributions.slice(0, index)) {
-        const priorIssue = prior.childIssueId
-          ? await ctx.issues.get(prior.childIssueId, mission.companyId)
-          : null;
-        if (completionPolicy(mission) && !prior.proof?.closedAt) throw new MissionError(409, "prior_contribution_proof", "Observe the previous child verified proof and terminal closure before dispatch");
-        if (!prior.commit || !prior.authorRunId || prior.dispatchState !== "requested"
-            || !prior.dispatchReservationId || !prior.dispatchRunId
-            || prior.authorRunId !== prior.dispatchRunId
-            || !priorIssue || priorIssue.companyId !== mission.companyId
-            || priorIssue.projectId !== mission.projectId || priorIssue.parentId !== (prior.parentIssueId ?? mission.rootIssueId)
-            || priorIssue.assigneeAgentId !== physicalAgent(mission, prior.assigneeAgentId, { issueId: prior.childIssueId }) || priorIssue.status !== "done") {
-          throw new MissionError(409, "prior_contribution_incomplete",
-            "Every earlier contribution must be attributed to its confirmed native run and its mapped child issue must be done");
-        }
-      }
-      await assertHierarchySources(ctx, mission);
-      await assertHierarchyDependencies(ctx, mission, slot.childIssueId!);
-      const reservationId = uuid(body.reservationId, "reservationId");
-      const requestedUnits = integer(body.requestedUnits, "requestedUnits");
-      const preparedChild = state.resume?.preparedContributions?.find(target => target.contributionId === contributionId);
-      if (preparedChild && reservationId !== preparedChild.reservationId) {
-        throw new MissionError(409, "n1_prepared_reservation_mismatch", "Reuse the exact prepared child reservation from inspect.n1.resume.preparedContributions");
-      }
-      if (resumed && reservationId !== resumed.reservationId) {
-        throw new MissionError(409, "n1_resume_reservation_mismatch", "Use the exact owner-authorized resume reservation from inspect.n1.resume");
-      }
-      requireFreshCommand(mission, body);
-      const envelope = await readAdmission(ctx, { companyId: mission.companyId, periodKey: state.periodKey });
-      if (!envelope) throw new MissionError(422, "g4_not_configured", "No task/period admission envelope is configured");
-      const fixtureRuntime = await isOwnedFixtureRuntime(ctx, mission.companyId);
-      const nativeProfile = fixtureRuntime ? null : await readNativeG4Profile(ctx, mission.companyId);
-      let dispatchUsageBaselineUnits: number | undefined;
-      if (!fixtureRuntime && !nativeProfile) {
-        throw new MissionError(409, "g4_measurement_unqualified", "No supported native N1 operating profile is configured");
-      }
-      if (nativeProfile) {
-        if (!isNativeCliAgent(agent)) {
-          throw new MissionError(409, "native_agent_adapter_required",
-            "Native N1 dispatch requires a codex_local agent configured with the cli engine");
-        }
-        assertNativeEnvelope(envelope, nativeProfile);
-        if (requestedUnits !== nativeProfile.runReservationUnits) {
-          throw new MissionError(422, "g4_profile_mismatch", "Child dispatch must use the configured run reservation estimate");
-        }
-        const unsettledPriorChild = state.contributions.find((entry) => {
-          if (!entry.dispatchReservationId) return false;
-          const reservation = envelope.reservations.find((item) => item.reservationId === entry.dispatchReservationId);
-          return reservation?.status !== "settled";
-        });
-        if (unsettledPriorChild) {
-          throw new MissionError(409, "g4_sequential_settlement_required",
-            "The previous contribution run must be terminal and its token usage settled before another child launch");
-        }
-        dispatchUsageBaselineUnits = await assertNativeLaunchAllowed(ctx, {
-          companyId: mission.companyId,
-          issueId: slot.childIssueId,
-          priorRunId: resumed?.priorRunId,
-        });
-      }
-      const prepared = await prepareVariantLaunch(ctx, mission, { taskKey: contributionId, interventionKey: contributionId,
-        launchKey: reservationId, logicalAgentId: slot.assigneeAgentId, family: await contributionModelFamily(ctx, mission, slot.assigneeAgentId), issueId: slot.childIssueId, expectedRoles: ["executor", "contributor-1", "contributor-2", "test", "design"] });
-      mission = prepared.mission;
-      const reserved = await reserveAdmission(ctx, {
-        companyId: mission.companyId, periodKey: state.periodKey,
-        reservationId, missionId: mission.missionId, effectId: contributionId,
-        requestedUnits, attempt: resumed ? { kind: "resume", ordinal: 1 } : { kind: "initial", ordinal: 0 },
-        ...(resumed ? { ownerReplacementCommandId: state.resume!.commandId } : {}), expectedVersion: envelope.version,
-      });
-      if (!reserved.reservation || reserved.reservation.status !== "reserved") {
-        throw new MissionError(409, "g4_reservation_unavailable", "Durable child reservation is unavailable");
-      }
-      mission = await bindVariantIssue(ctx, mission, reservationId, slot.childIssueId);
-      const claim = await claimVariantWake(ctx, mission, reservationId, async (readyMission, claimedAggregate) => {
-        const readyState = n1State(readyMission);
-        if (!readyState) throw new Error("N1 state disappeared before child dispatch claim");
-        const slots = [...readyState.contributions];
-        slots[index] = {
-          ...slots[index]!,
-          dispatchState: "claimed",
-          dispatchReservationId: reservationId,
-          dispatchUsageBaselineUnits,
-        };
-        const next: MissionAggregate = {
-          ...claimedAggregate,
-          n1: { ...readyState, contributions: slots },
-          effectIntents: [...claimedAggregate.effectIntents, {
-            kind: "child_wakeup", state: "claimed", reservationId, contributionId,
-            issueId: slot.childIssueId, assigneeAgentId: slot.assigneeAgentId,
-            actorAgentId: actor.agentId, actorRunId: actor.runId,
-          }],
-          journal: [...claimedAggregate.journal, {
-            action: "child_dispatch_claimed", contributionId, reservationId,
-            actorAgentId: actor.agentId, runId: actor.runId, at: new Date().toISOString(),
-          }],
-        };
-        return commandCas(ctx, readyMission, body, "agent", actor.agentId, next, readyMission.version);
-      });
-      if (claim.outcome !== "applied") return { status: 200, body: claim };
-      let wake: { queued: boolean; runId: string | null } | null = null;
-      try {
-        await ctx.issues.update(slot.childIssueId, { status: "todo" }, mission.companyId, {
-          actorAgentId: actor.agentId, actorRunId: actor.runId,
-        });
-        wake = await ctx.issues.requestWakeup(slot.childIssueId, mission.companyId, {
-          idempotencyKey: "council:n1:" + reservationId,
-          reason: "council_contribution_dispatch",
-          actorAgentId: actor.agentId, actorRunId: actor.runId,
-        });
-      } catch {
-        // Native state may have changed even when the response was lost.
-      }
-      let afterClaim = await getMission(ctx, mission.companyId, mission.missionId);
-      if (!afterClaim) throw new Error("Mission disappeared after dispatch effect");
-      const finalMission = await recordVariantWake(ctx, afterClaim, reservationId, wake?.runId ?? null,
-        async (before, aggregate, effectiveRunId) => {
-          const afterState = n1State({ ...before, aggregate });
-          if (!afterState) throw new Error("N1 state disappeared after dispatch effect");
-          const priorLaunch = before.aggregate.modelSelection && before.aggregate.modelSelection.tasks
-            .flatMap(task => task.launches).find(item => item.launchKey === reservationId);
-          const wakeConfirmed = Boolean(effectiveRunId && (wake?.queued || priorLaunch?.state === "bound" && priorLaunch.runId === effectiveRunId));
-          const updatedSlots = afterState.contributions.map((entry) => entry.contributionId === contributionId
-            ? { ...entry, dispatchState: wakeConfirmed ? "requested" as const : "unknown" as const, dispatchRunId: effectiveRunId }
-            : entry);
-          return cas(ctx, before, {
-            ...aggregate,
-            n1: { ...afterState, contributions: updatedSlots },
-            effectIntents: aggregate.effectIntents.map((entry) => entry.kind === "child_wakeup" && entry.reservationId === reservationId
-              ? { ...entry, state: wakeConfirmed ? "requested" : "unknown", queued: wake?.queued ?? null, runId: effectiveRunId }
-              : entry),
-          }, before.version);
-        });
-      const finalSlot = n1State(finalMission)?.contributions.find(entry => entry.contributionId === contributionId);
-      const wakeConfirmed = finalSlot?.dispatchState === "requested";
-      return { status: wakeConfirmed ? 200 : 202, body: { outcome: wakeConfirmed ? "requested" : "unknown", wake, mission: finalMission } };
+      return await dispatchN1Contribution(ctx, mission, body, { type: "agent", id: actor.agentId,
+        native: { actorAgentId: actor.agentId, actorRunId: actor.runId } });
     }
     if (body.command === "reconcile-usage") {
       await lead(ctx, mission, input);
@@ -1502,6 +1572,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       const baseCommit = boundedString(body.baseCommit, "baseCommit", 40);
       const candidateCommit = boundedString(body.candidateCommit, "candidateCommit", 40);
       const expectedSha256 = boundedString(body.expectedSha256, "expectedSha256", 64);
+      const integrationAdjustedPaths = integrationPaths(mission, body);
       if (!COMMIT.test(baseCommit) || !COMMIT.test(candidateCommit) || !DIGEST.test(expectedSha256)) {
         throw new MissionError(422, "invalid_candidate_identity", "Candidate Git and digest identity is malformed");
       }
@@ -1513,6 +1584,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         verified = await verifyIntegratedCandidate(ctx, {
           companyId: mission.companyId, issueId: mission.rootIssueId,
           attachmentId, baseCommit, candidateCommit, expectedSha256,
+          integrationAdjustedPaths,
           contributions: state.contributions.map(slot => ({ contributionId: slot.contributionId, commit: slot.commit!, ownedPaths: slot.ownedPaths })),
           ...(mission.aggregate.hierarchy ? { contributionPolicy: mission.aggregate.hierarchy } : {}),
         });

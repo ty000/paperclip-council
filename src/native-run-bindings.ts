@@ -28,7 +28,9 @@ function n1Bindings(m: MissionRecord) {
     ["claimed", "unknown"].includes(state.rootDispatchState ?? "")),
     ...state.contributions.flatMap(slot => binding(m, slot.childIssueId, slot.assigneeAgentId, slot.dispatchRunId,
       slot.dispatchReservationId!, ["claimed", "unknown"].includes(slot.dispatchState ?? ""))),
-    ...resumeBindings(m, state, lead)];
+    ...resumeBindings(m, state, lead),
+    ...(state.integration ? binding(m, state.integration.issueId, lead, state.integration.runId, state.integration.reservationId,
+      state.integration.wake === "claimed" && !state.integration.runId) : [])];
 }
 
 function modelBindings(m: MissionRecord): NativeRunBinding[] {
