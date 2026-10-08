@@ -5,6 +5,7 @@ import { projectIssues } from "./project-mandate-state.js";
 import { physicalAgent, modelLaunchGuidance } from "./model-state.js";
 import { LINEAR_ORIGIN, LINEAR_READINESS_KEY, LINEAR_SOURCE_KEY, requireLinear } from "./linear-intake-contract.js";
 import type { HierarchyNode } from "./hierarchy-contract.js";
+import { hierarchyLaunchGuidance } from "./hierarchy-guidance.js";
 
 /** Only exact suffixes attributable to this issue's persisted launches are Council context. */
 function descriptionMatchesSource(m: MissionRecord, issueId: string, description: string | null, expectedHash: string) {
@@ -12,6 +13,8 @@ function descriptionMatchesSource(m: MissionRecord, issueId: string, description
   if (description === null) return false;
   const suffixes = (m.aggregate.modelSelection?.tasks ?? []).flatMap(task => task.launches)
     .filter(launch => launch.issueId === issueId).map(launch => `\n\n${modelLaunchGuidance(m, launch, issueId)}`);
+  const executionGuidance = hierarchyLaunchGuidance(m, issueId);
+  if (executionGuidance) suffixes.push(`\n\n${executionGuidance}`);
   let source = description;
   while (suffixes.length) {
     const index = suffixes.findIndex(suffix => source.endsWith(suffix));

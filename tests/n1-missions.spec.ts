@@ -2470,7 +2470,9 @@ describe("hierarchy source integrity through two physical contribution dispatche
       content: { enabled: true, hierarchy, completion: value.projectMandate!.completion },
     }] as never : [h.row()]);
     h.list.mockImplementation(async () => [...h.issues.values()] as never);
-    h.documentGet.mockImplementation(async () => ({ latestRevisionId: "work-v1" }));
+    h.documentGet.mockImplementation(async (...args: unknown[]) => args[1] === `council-execution-${id.mission}`
+      ? { latestRevisionId: "execution-v1", body: "Council contribution reporting command" }
+      : { latestRevisionId: "work-v1" });
     const relations = vi.fn(async (issueId: string) => ({ blockedBy: issueId === id.childB ? [{ id: id.childA, status: h.issues.get(id.childA)!.status }] : [], blocks: [] }));
     h.ctx.issues.relations = { get: relations } as never;
     const runs: Array<{ id: string; issueId: string; agentId: string; status: string; startedAt: string; finishedAt: string | null }> = [{ id: id.leadRun, issueId: coordinator, agentId: id.lead, status: "running",
@@ -2539,9 +2541,9 @@ describe("hierarchy source integrity through two physical contribution dispatche
     const childReservation = randomUUID(), secondRun = randomUUID(), secondReservation = randomUUID(), firstGrantId = randomUUID();
     Object.assign(h.envelope.allowance, { periodUnits: 64_000_000, taskUnits: 4_000_000, knownUsageUnits: 9_664_122 });
     await h.choose(0);
-    h.documentGet.mockImplementation(async () => ({ latestRevisionId: h.product[1]!.description.includes("Council profile launch") ? "unavailable" : "work-v1" }));
+    h.documentGet.mockImplementation(async () => ({ latestRevisionId: h.product[1]!.description.includes("Council profile launch") ? "unavailable" : "work-v1", body: "Council contribution reporting command" }));
     expect(await h.dispatch(0, childReservation)).toMatchObject({ status: 409, body: { code: "hierarchy_source_changed" } });
-    h.documentGet.mockResolvedValue({ latestRevisionId: "work-v1" });
+    h.documentGet.mockResolvedValue({ latestRevisionId: "work-v1", body: "Council contribution reporting command" });
     Object.assign(h.runs[0]!, { status: "succeeded", finishedAt: new Date(1).toISOString() });
     h.runs.push({ ...h.runs[0]!, id: secondRun });
     Object.assign(h.envelope.reservations[0]!, { status: "settled", usage: { status: "known", units: 3_689_328 }, remainingExposure: { status: "known", units: 0 } });
@@ -2599,6 +2601,12 @@ describe("hierarchy source integrity through two physical contribution dispatche
     h.requestWakeup.mockImplementation(async (...args: unknown[]) => {
       const issueId = String(args[0]), issue = h.issues.get(issueId)!;
       const runId = issueId === id.childA ? h.childRuns[0]! : issueId === id.childB ? h.childRuns[1]! : randomUUID();
+      if (issueId === id.childA || issueId === id.childB) {
+        // The native wake uses this description, not the bodies of documentSummaries.
+        const description = (issue as typeof issue & { description: string }).description;
+        expect(description).toContain(`GET /api/issues/${issueId}/documents/council-execution-${id.mission}`);
+        expect(description).toContain("Do not mark this issue done yourself");
+      }
       issue.status = "in_progress";
       h.runs.push({ id: runId, issueId, agentId: issue.assigneeAgentId, status: "running", startedAt: new Date().toISOString(), finishedAt: null });
       return { queued: true, runId };
@@ -2813,19 +2821,20 @@ describe("hierarchy source integrity through two physical contribution dispatche
     expect(h.envelope.reservations).toHaveLength(3);
     expect(h.envelope.reservations[1]).toMatchObject({ status: "settled", usage: { units: 100 }, remainingExposure: { units: 0 } });
     for (const [i, issue] of h.product.slice(1).entries()) {
-      expect(issue.description).toContain(`Immutable product requirements ${i + 1}.\n\nCouncil profile launch`);
+      expect(issue.description).toContain(`Immutable product requirements ${i + 1}.\n\nCouncil execution`);
+      expect(issue.description).toContain("\n\nCouncil profile launch");
       expect(issue.assigneeAgentId).toBe(h.physical[i]);
     }
   });
 
   it("reuses the reserved ready binding after a failed departure without another effect identity", async () => {
     const h = composedHierarchy(), reservationId = randomUUID(); await h.choose(0);
-    h.documentGet.mockImplementation(async () => ({ latestRevisionId: h.product[1]!.description.includes("Council profile launch") ? "unavailable" : "work-v1" }));
+    h.documentGet.mockImplementation(async () => ({ latestRevisionId: h.product[1]!.description.includes("Council profile launch") ? "unavailable" : "work-v1", body: "Council contribution reporting command" }));
     expect(await h.dispatch(0, reservationId)).toMatchObject({ status: 409, body: { code: "hierarchy_source_changed" } });
     expect(h.requestWakeup).not.toHaveBeenCalled(); expect(h.envelope.reservations).toHaveLength(2);
     const ready = h.row().aggregate.modelSelection!.tasks.find(task => task.taskKey === id.contributionA)!.launches[0]!;
     expect(ready).toMatchObject({ launchKey: reservationId, state: "ready", runId: null });
-    h.documentGet.mockResolvedValue({ latestRevisionId: "work-v1" });
+    h.documentGet.mockResolvedValue({ latestRevisionId: "work-v1", body: "Council contribution reporting command" });
     expect(await h.dispatch(0, reservationId)).toMatchObject({ status: 200, body: { outcome: "requested" } });
     expect(h.requestWakeup).toHaveBeenCalledExactlyOnceWith(id.childA, id.company, expect.objectContaining({ idempotencyKey: `council:n1:${reservationId}` }));
     expect(h.envelope.reservations).toHaveLength(2);

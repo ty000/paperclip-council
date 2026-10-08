@@ -55,6 +55,20 @@ for their explicit inputs, limits, evidence contracts, and manual adoption seque
 
 ## N1 candidate preparation boundary
 
+If a contributor finishes successfully but omits its Council handoff, the owner
+can use `recover-contribution` before integration starts. This assisted recovery
+requires `commandId`, `expectedVersion`, `contributionId`, the full `commit`, a
+native `workProductId`, a bounded `reason`, and `proof` containing `attachmentId`,
+`expectedSha256` and `segmentRootCommit`. The existing child-bound Git bundle must
+verify the pinned predecessor and owned paths. The native Git commit work product
+must match the exact company, project, issue, commit and admitted creator run.
+The run must have succeeded, the child must be blocked/done without a run lock,
+and every mission reservation must have known settled usage with zero exposure.
+An unadmitted native run still blocks recovery. The owner receipt and journal
+record the assistance, retaining the original run, reservation and contribution
+identity. This command neither closes the child nor wakes an agent; the existing
+controller subsequently observes qualified closure and follows the admitted plan.
+
 Version 0.5 adds a plugin-private admission envelope, owner-controlled mission
 activation, two-contributor plans, persistent native child-issue intents, and
 Git bundle verification before an Integration Lead can publish a candidate.

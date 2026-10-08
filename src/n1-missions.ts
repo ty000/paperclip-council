@@ -2,6 +2,7 @@ import { assertN1DepartureWindow, assertContinuityDeparture } from "./continuity
 import { n1LeadExecution, type N1Integration } from "./n1-integration-state.js";
 import { completionPolicy } from "./completion-contract.js";
 import { sourceBase, recordContributionProof, closeQualifiedContribution } from "./contribution-proof.js";
+import { recoverContribution } from "./contribution-recovery.js";
 import { prepareN1Resume, verifyResumedLeadRun } from "./n1-resume.js";
 import { finishN1Disposition } from "./native-wake-policy.js";
 import { settledResumeReservation, n1ResumeGrants, n1ResumeOrdinal, priorLeadRunIds, type N1Resume, type ResumeTarget } from "./n1-resume-state.js";
@@ -14,6 +15,7 @@ import { assertLinearAdmissionFresh } from "./linear-intake-admission-guard.js";
 import { contributionCountAllowed, leadIssueId } from "./hierarchy-contract.js";
 import { prepareHierarchyCoordinator, type N1Coordination } from "./hierarchy-coordinator.js";
 import { assertHierarchySources, assertHierarchyDependencies, materializeHierarchyGuidance } from "./hierarchy-runtime.js";
+import { ensureHierarchyLaunchGuidance } from "./hierarchy-guidance.js";
 import {
   AdmissionError,
   configureAdmission,
@@ -68,6 +70,7 @@ type Slot = {
   commit?: string;
   authorRunId?: string;
   referenceRecovery?: { previousCommit: string; actorUserId: string; commandId: string };
+  contributionRecovery?: { actorUserId: string; commandId: string; workProductId: string };
 };
 
 export type N1State = {
@@ -609,11 +612,19 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     const next = await prepareN1Resume(ctx, mission, input.body, input.actorUserId!);
     return commandCas(ctx, mission, input.body, "user", input.actorUserId!, next);
   }
-  if (input.body.command === "recover-integration" || input.body.command === "recover-candidate") {
+  if (["recover-integration", "recover-candidate", "recover-contribution"].includes(String(input.body.command))) {
     const commandId = uuid(input.body.commandId, "commandId");
     const replay = receipt(mission, commandId, input.actorUserId!, canonicalPayloadHash(input.body));
     if (replay) return { outcome: "replayed" as const, mission, receipt: replay };
     requireFreshCommand(mission, input.body);
+    if (input.body.command === "recover-contribution") {
+      const next = await recoverContribution(ctx, mission, {
+        contributionId: uuid(input.body.contributionId, "contributionId"), commit: boundedString(input.body.commit, "commit", 40),
+        workProductId: uuid(input.body.workProductId, "workProductId"), proof: input.body.proof,
+        actorUserId: input.actorUserId!, commandId, reason: boundedString(input.body.reason, "reason", 1000),
+      });
+      return commandCas(ctx, mission, input.body, "user", input.actorUserId!, next);
+    }
     return input.body.command === "recover-candidate"
       ? recoverCandidate(ctx, mission, input.body, input.actorUserId!)
       : recoverIntegration(ctx, mission, input.body, input.actorUserId!);
@@ -1296,6 +1307,7 @@ async function dispatchN1Contribution(ctx: PluginContext, initial: MissionRecord
   await assertPriorContributions(ctx, mission, state.contributions.slice(0, index));
   await assertHierarchySources(ctx, mission);
   await assertHierarchyDependencies(ctx, mission, slot.childIssueId!);
+  await ensureHierarchyLaunchGuidance(ctx, mission, slot.childIssueId!);
   const { reservationId, requestedUnits } = childReservationIdentity(state, body, contributionId, resumed);
   requireFreshCommand(mission, body);
   const { envelope, dispatchUsageBaselineUnits } = await childNativeBaseline(ctx, mission, state, slot, agent, requestedUnits, resumed);
