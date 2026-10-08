@@ -120,12 +120,23 @@ and build passed. Exact-candidate CI passed for
 and [intake](https://github.com/ty000/paperclip-linear-intake/actions/runs/37697670054).
 Independent contextual reviews found no remaining P1/P2 in the reviewed scope.
 
-The repository's Fallow 3.23.0 wrapper gate passes. The additional raw Council
-audit against base `751a82b` returns `fail` for six introduced noncritical
-complexity findings: one high test helper and five moderate findings. It reports
-zero introduced dead code or critical complexity, three new clone groups and
-30 inherited complexity findings. These nonblocking policy findings remain
-documented; no threshold, suppression or exclusion was relaxed.
+At qualification, the repository's Fallow 3.23.0 wrapper returned `pass`, while
+the raw audit against base `751a82b` returned `fail`: six introduced complexity
+findings (one high test helper and five moderate), zero introduced dead code or
+critical complexity, two new clone groups and 30 inherited complexity findings.
+Subsequent inspection found that the wrapper omitted `complexity.findings` from
+normalization. Its passing result therefore did not establish that those six
+findings were nonblocking; the high finding should have been evaluated by the
+blocking policy. The original native receipt above remains historical evidence
+for its exact source/build bytes.
+
+The focused follow-up on base `74c79a9` separates the hierarchy ownership check
+and manual/Linear root eligibility, simplifies the four affected test helpers,
+and makes the CI wrapper recognize complexity findings and reject unexplained
+failing reports. Regression tests cover the CLI verdict, severity and inherited
+attribution, root selection, and overlapping leaf ownership. No threshold,
+suppression or exclusion is relaxed. The six targeted findings are absent in
+the follow-up raw audit; unrelated inherited findings remain visible.
 
 Three earlier native campaigns remain recorded as failures: the unsupported
 foreign-origin list filter, a strict-null check on optional native `archivedAt`,

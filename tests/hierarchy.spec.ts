@@ -62,6 +62,12 @@ describe("explicit native hierarchy contract", () => {
     f.blockers.set("a", [{ id: "external", status: "blocked" }]);
     await expect(prepareHierarchy(f.ctx, f.policy, "root", f.issues)).rejects.toMatchObject({ code: "hierarchy_external_dependency" });
   });
+  it.each(["src/a", "src/a/nested"])("refuses overlapping ownership %s before preparing the hierarchy", async path => {
+    const f = fixture(), before = structuredClone(f.issues);
+    f.documents.set("b", { latestRevisionId: "b-v1", body: JSON.stringify({ ownedPaths: [path] }) });
+    await expect(prepareHierarchy(f.ctx, f.policy, "root", f.issues)).rejects.toMatchObject({ code: "hierarchy_ownership_overlap" });
+    expect(f.issues).toEqual(before);
+  });
   it("pins full task sources rather than the truncated list preview", async () => {
     const f = fixture(); f.issues.find(issue => issue.id === "a").description = "A full result ".repeat(200);
     const previews = f.issues.map(issue => ({ ...issue, description: issue.description.slice(0, 1200) }));

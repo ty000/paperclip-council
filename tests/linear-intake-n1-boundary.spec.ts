@@ -70,6 +70,19 @@ function fixture() {
   return { ...f, ctx, body, row, state, query, execute, projectGet, freshAttestation, challenge: () => challenge,
     run: (payload = body) => executeN1BoardCommand(ctx, { companyId: ids.company!, missionId, actorUserId: ids.owner!, body: payload }) };
 }
+type AttestationMutation = (value: ReturnType<typeof fixture>) => void;
+const mismatchedAttestations: Array<[string, AttestationMutation]> = [
+  ["unconsumed", value => { value.challenge().consumed_at = null; }],
+  ["preparation", value => { value.challenge().request.stage = "preparation"; }],
+  ["company", value => { value.challenge().company_id = randomUUID(); }],
+  ["mission", value => { value.challenge().request.admissionId = randomUUID(); }],
+  ["mandate", value => { value.challenge().request.mandateId = randomUUID(); }],
+  ["subject", value => { value.challenge().subject_hash = "f".repeat(64); }],
+  ["request-hash", value => { value.challenge().request_hash = "f".repeat(64); }],
+  ["result-hash", value => { value.challenge().response_hash = "f".repeat(64); }],
+  ["blocked", value => { value.challenge().response.status = "blocked"; }],
+  ["receipt-time", value => { value.state.linearIntake.admissionReceipt.validUntil = new Date(Date.now() + 90_000).toISOString(); }],
+];
 beforeEach(() => {
   vi.clearAllMocks(); vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-08T00:00:00.000Z"));
   vi.mocked(readAdmission).mockResolvedValue({ version: 4, measurement: { status: "known", source: "fixture:local-sandbox" },
@@ -83,18 +96,9 @@ it("denies direct Board activation without a consumed original admission observa
   await expect(f.run()).rejects.toMatchObject({ code: "linear_source_pending" });
   expect(reserveAdmission).not.toHaveBeenCalled(); expect(f.execute).not.toHaveBeenCalled();
 });
-it.each(["unconsumed", "preparation", "company", "mission", "mandate", "subject", "request-hash", "result-hash", "blocked", "receipt-time"])("refuses a mismatched %s attestation before reserving", async kind => {
-  const f = fixture(), c = f.challenge();
-  if (kind === "unconsumed") c.consumed_at = null;
-  if (kind === "preparation") c.request.stage = "preparation";
-  if (kind === "company") c.company_id = randomUUID();
-  if (kind === "mission") c.request.admissionId = randomUUID();
-  if (kind === "mandate") c.request.mandateId = randomUUID();
-  if (kind === "subject") c.subject_hash = "f".repeat(64);
-  if (kind === "request-hash") c.request_hash = "f".repeat(64);
-  if (kind === "result-hash") c.response_hash = "f".repeat(64);
-  if (kind === "blocked") c.response.status = "blocked";
-  if (kind === "receipt-time") f.state.linearIntake.admissionReceipt.validUntil = new Date(Date.now() + 90_000).toISOString();
+it.each(mismatchedAttestations)("refuses a mismatched %s attestation before reserving", async (_name, mutate) => {
+  const f = fixture();
+  mutate(f);
   await expect(f.run()).rejects.toMatchObject({ code: "linear_source_pending" });
   expect(reserveAdmission).not.toHaveBeenCalled(); expect(f.execute).not.toHaveBeenCalled();
 });

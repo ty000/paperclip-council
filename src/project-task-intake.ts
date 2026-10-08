@@ -223,11 +223,18 @@ async function activateTask(ctx: PluginContext, intake: Intake, m: MissionRecord
   return { intake: prepared.intake, mission: (await getMission(ctx, intake.companyId, intake.missionId))! };
 }
 
-function eligibleRoot(issue: Awaited<ReturnType<typeof projectIssues>>[number], policy: ProjectMandate) {
-  if (issue.parentId || policy.content.baselineRootIds.includes(issue.id)) return false;
-  if (issue.originKind === LINEAR_ORIGIN) return Boolean(policy.content.linearIntake) && issue.status === "blocked" && issue.assigneeAgentId === null;
+function eligibleLinearRoot(issue: Awaited<ReturnType<typeof projectIssues>>[number], policy: ProjectMandate) {
+  return Boolean(policy.content.linearIntake) && issue.status === "blocked" && issue.assigneeAgentId === null;
+}
+
+function eligibleManualRoot(issue: Awaited<ReturnType<typeof projectIssues>>[number], policy: ProjectMandate) {
   return issue.originKind === "manual" && ["backlog", ...(policy.content.hierarchy?.adoptExistingChildren ? ["blocked"] : [])].includes(issue.status)
     && issue.assigneeAgentId === policy.content.leadAgentId;
+}
+
+function eligibleRoot(issue: Awaited<ReturnType<typeof projectIssues>>[number], policy: ProjectMandate) {
+  if (issue.parentId || policy.content.baselineRootIds.includes(issue.id)) return false;
+  return issue.originKind === LINEAR_ORIGIN ? eligibleLinearRoot(issue, policy) : eligibleManualRoot(issue, policy);
 }
 
 /** Called by the existing native job before mission progression. No competing scheduler or agent. */

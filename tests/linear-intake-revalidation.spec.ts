@@ -13,8 +13,55 @@ const subject: LinearSourceSubject = Object.fromEntries(Object.entries(vector.re
 const policy = { companyId: subject.companyId, projectId: subject.targetProjectId, revisionId: vector.request.mandateId,
   authorizedBy: "isolated-owner", version: 1, content: { enabled: true, operatingProfileHash: operatingProfileHash({}) } } as ProjectMandate;
 
+type ChallengeRow = {
+  challenge_id: string; company_id: string; mission_id: string; stage: string; generation: number;
+  subject_hash: string; request_hash: string; request: LinearSourceRequest;
+  response: Record<string, unknown> | null; response_hash: string | null;
+  consumed_at: string | null; observed_at: string | null; last_emitted_at: number | null;
+};
+type ExecuteResult = { rowCount: number };
+
+function insertChallenge(rows: ChallengeRow[], args: any[]): ExecuteResult {
+  if (rows.some(row => row.company_id === args[1] && row.mission_id === args[2]
+      && row.stage === args[3] && row.generation === args[4])) return { rowCount: 0 };
+  rows.push({ challenge_id: args[0], company_id: args[1], mission_id: args[2], stage: args[3], generation: args[4],
+    subject_hash: args[5], request_hash: args[6], request: JSON.parse(args[7]), response: null, response_hash: null,
+    consumed_at: null, observed_at: null, last_emitted_at: null });
+  return { rowCount: 1 };
+}
+function markChallengeEmitted(rows: ChallengeRow[], args: any[]): ExecuteResult {
+  const row = rows.find(candidate => candidate.challenge_id === args[0]);
+  if (!row || row.response || row.consumed_at
+      || row.last_emitted_at !== null && row.last_emitted_at >= Date.now() - 30_000) return { rowCount: 0 };
+  row.last_emitted_at = Date.now();
+  return { rowCount: 1 };
+}
+function consumeChallenge(rows: ChallengeRow[], args: any[]): ExecuteResult {
+  const row = rows.find(candidate => candidate.challenge_id === args[0]);
+  if (!row || row.consumed_at || row.response_hash !== args[1] || Date.parse(args[2]) <= Date.now()) return { rowCount: 0 };
+  row.consumed_at = new Date().toISOString();
+  return { rowCount: 1 };
+}
+function recordChallengeResponse(rows: ChallengeRow[], args: any[]): ExecuteResult {
+  const row = rows.find(candidate => candidate.company_id === args[3] && candidate.challenge_id === args[4]);
+  if (!row || row.consumed_at || row.observed_at && row.observed_at >= args[2] && args[5] !== "blocked") return { rowCount: 0 };
+  Object.assign(row, { response: JSON.parse(args[0]), response_hash: args[1], observed_at: args[2] });
+  return { rowCount: 1 };
+}
+function executeChallengeSql(rows: ChallengeRow[], sql: string, args: any[]): ExecuteResult {
+  const handlers = [
+    { recognized: sql.startsWith("INSERT INTO"), run: () => insertChallenge(rows, args) },
+    { recognized: sql.includes("SET last_emitted_at"), run: () => markChallengeEmitted(rows, args) },
+    { recognized: sql.includes("SET consumed_at"), run: () => consumeChallenge(rows, args) },
+    { recognized: sql.includes("SET response ="), run: () => recordChallengeResponse(rows, args) },
+  ];
+  const handler = handlers.find(candidate => candidate.recognized);
+  if (!handler) throw new Error("Unexpected linear intake challenge SQL in test fixture");
+  return handler.run();
+}
+
 function fixture() {
-  const rows: any[] = [], emissions: any[] = [];
+  const rows: ChallengeRow[] = [], emissions: any[] = [];
   let owner = policy.authorizedBy, enabled = true;
   const ctx = {
     companies: { get: async () => ({ defaultResponsibleUserId: owner }) }, config: { get: async () => ({}) },
@@ -29,27 +76,7 @@ function fixture() {
       return structuredClone(sql.includes("ORDER BY generation")
         ? rows.filter(r => r.company_id === args[0] && r.mission_id === args[1] && r.stage === args[2]).slice(-1)
         : rows.filter(r => r.company_id === args[0] && r.challenge_id === args[1]));
-    }), execute: vi.fn(async (sql: string, args: any[]) => {
-      if (sql.startsWith("INSERT")) {
-        if (rows.some(r => r.company_id === args[1] && r.mission_id === args[2] && r.stage === args[3] && r.generation === args[4])) return { rowCount: 0 };
-        rows.push({ challenge_id: args[0], company_id: args[1], mission_id: args[2], stage: args[3], generation: args[4],
-          subject_hash: args[5], request_hash: args[6], request: JSON.parse(args[7]), response: null, response_hash: null,
-          consumed_at: null, observed_at: null, last_emitted_at: null }); return { rowCount: 1 };
-      }
-      if (sql.includes("SET last_emitted_at")) {
-        const row = rows.find(r => r.challenge_id === args[0]);
-        if (!row || row.response || row.consumed_at || row.last_emitted_at !== null && row.last_emitted_at >= Date.now() - 30_000) return { rowCount: 0 };
-        row.last_emitted_at = Date.now(); return { rowCount: 1 };
-      }
-      if (sql.includes("SET consumed_at")) {
-        const row = rows.find(r => r.challenge_id === args[0]);
-        if (!row || row.consumed_at || row.response_hash !== args[1] || Date.parse(args[2]) <= Date.now()) return { rowCount: 0 };
-        row.consumed_at = new Date().toISOString(); return { rowCount: 1 };
-      }
-      const row = rows.find(r => r.company_id === args[3] && r.challenge_id === args[4]);
-      if (!row || row.consumed_at || row.observed_at && row.observed_at >= args[2] && args[5] !== "blocked") return { rowCount: 0 };
-      Object.assign(row, { response: JSON.parse(args[0]), response_hash: args[1], observed_at: args[2] }); return { rowCount: 1 };
-    }) },
+    }), execute: vi.fn(async (sql: string, args: any[]) => executeChallengeSql(rows, sql, args)) },
   } as unknown as PluginContext;
   const gate = (input = subject, stage: "preparation" | "admission" = "preparation") => assertLinearSource(ctx, policy, vector.request.admissionId, input, stage);
   return { ctx, rows, emissions, gate, changeOwner: () => { owner = "replacement-owner"; }, suspend: () => { enabled = false; } };
@@ -66,6 +93,27 @@ async function requested(f: ReturnType<typeof fixture>) {
   await expect(f.gate()).rejects.toMatchObject({ code: "linear_source_pending" });
   return f.emissions[0] as LinearSourceRequest;
 }
+type InvalidResponseMutation = (event: PluginEvent, request: LinearSourceRequest) => void;
+const invalidResponses: Array<[string, InvalidResponseMutation]> = [
+  ["actor", event => { event.actorId = "another-plugin"; }],
+  ["namespace", event => { event.eventType = "plugin.other.linear-intake-revalidation-result"; }],
+  ["company", event => { event.companyId = vector.request.admissionId; }],
+  ["nonce", (event, request) => {
+    const payload = event.payload as any;
+    payload.request = { ...request, nonce: "a".repeat(64) };
+    payload.requestSha256 = canonicalPayloadHash(payload.request);
+  }],
+  ["stage", (event, request) => {
+    const payload = event.payload as any;
+    payload.request = { ...request, stage: "admission" };
+    payload.requestSha256 = canonicalPayloadHash(payload.request);
+  }],
+  ["hash", event => { (event.payload as any).requestSha256 = "b".repeat(64); }],
+  ["future", event => { (event.payload as any).observedAt = new Date(Date.now() + 1).toISOString(); }],
+  ["expired", event => { (event.payload as any).validUntil = new Date().toISOString(); }],
+  ["reason", event => { (event.payload as any).reason = "handoff_source_withdrawn"; }],
+  ["oversized", event => { (event.payload as any).reason = "x".repeat(9000); }],
+];
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-07T12:01:00.000Z")); });
 afterEach(() => { vi.useRealTimers(); });
 
@@ -93,18 +141,9 @@ describe("Linear importer authenticated freshness gate", () => {
     expect(f.rows).toHaveLength(2); expect(f.rows[1].request.admissionId).toBe(request.admissionId);
     expect(f.rows[1].request.nonce).not.toBe(request.nonce);
   });
-  it.each(["actor", "namespace", "company", "nonce", "stage", "hash", "future", "expired", "reason", "oversized"])("ignores an invalid %s response", async kind => {
-    const f = fixture(), request = await requested(f), event = answer(request), payload = event.payload as any;
-    if (kind === "actor") event.actorId = "another-plugin";
-    if (kind === "namespace") event.eventType = "plugin.other.linear-intake-revalidation-result";
-    if (kind === "company") event.companyId = vector.request.admissionId;
-    if (kind === "nonce") { payload.request = { ...request, nonce: "a".repeat(64) }; payload.requestSha256 = canonicalPayloadHash(payload.request); }
-    if (kind === "stage") { payload.request = { ...request, stage: "admission" }; payload.requestSha256 = canonicalPayloadHash(payload.request); }
-    if (kind === "hash") payload.requestSha256 = "b".repeat(64);
-    if (kind === "future") payload.observedAt = new Date(Date.now() + 1).toISOString();
-    if (kind === "expired") payload.validUntil = new Date().toISOString();
-    if (kind === "reason") payload.reason = "handoff_source_withdrawn";
-    if (kind === "oversized") payload.reason = "x".repeat(9000);
+  it.each(invalidResponses)("ignores an invalid %s response", async (_name, mutate) => {
+    const f = fixture(), request = await requested(f), event = answer(request);
+    mutate(event, request);
     await handleLinearSourceResult(f.ctx, event); expect(f.rows[0].response).toBeNull();
     await expect(f.gate()).rejects.toMatchObject({ code: "linear_source_pending" });
   });

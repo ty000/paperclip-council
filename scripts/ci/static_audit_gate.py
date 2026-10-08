@@ -90,6 +90,42 @@ FALLOW_HEALTH_FINDING_TYPES = {
     "large_functions",
     "targets",
 }
+FALLOW_COMPLEXITY_FINDING_TYPES = {"findings"}
+FALLOW_KNOWN_TOP_LEVEL_SECTIONS = {
+    "_meta",
+    "actions",
+    "attribution",
+    "base_ref",
+    "changed_files_count",
+    "check",
+    "command",
+    "complexity",
+    "dead_code",
+    "duplication",
+    "dupes",
+    "elapsed_ms",
+    "geometry",
+    "head_sha",
+    "health",
+    "health_score",
+    "kind",
+    "next_steps",
+    "remediation",
+    "remediations",
+    "schema_version",
+    "styling",
+    "summary",
+    "verdict",
+    "version",
+}
+FALLOW_KNOWN_ATTRIBUTION_DOMAINS = {
+    "check",
+    "complexity",
+    "dead_code",
+    "duplication",
+    "health",
+    "styling",
+}
 REPO_AUDIT_TOP_LIMIT = 10
 REPO_AUDIT_SAMPLE_LIMIT = 20
 NEXT_ROUTE_METHOD_EXPORTS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
@@ -815,7 +851,8 @@ def collect_legacy_raw_findings(value: Any) -> list[dict[str, Any]]:
 
 def is_fallow_combined_payload(value: Any) -> bool:
     return isinstance(value, dict) and any(
-        isinstance(value.get(key), dict) for key in ("check", "dead_code", "dupes", "health")
+        isinstance(value.get(key), dict)
+        for key in ("check", "dead_code", "dupes", "health", "complexity")
     )
 
 
@@ -878,6 +915,13 @@ def collect_fallow_finding_records(value: dict[str, Any]) -> list[tuple[dict[str
             finding_types=FALLOW_HEALTH_FINDING_TYPES,
         )
     )
+    records.extend(
+        collect_fallow_section_records(
+            value.get("complexity"),
+            source_section="complexity",
+            finding_types=FALLOW_COMPLEXITY_FINDING_TYPES,
+        )
+    )
     return records
 
 
@@ -912,8 +956,56 @@ def collect_raw_finding_records(value: Any) -> list[tuple[dict[str, Any], str, s
     return collect_generic_finding_records(value)
 
 
+def collect_unknown_fallow_finding_records(
+    value: Any,
+) -> list[tuple[dict[str, Any], str, str]]:
+    if not is_fallow_combined_payload(value):
+        return []
+
+    records: list[tuple[dict[str, Any], str, str]] = []
+    for section, child in value.items():
+        if section in FALLOW_KNOWN_TOP_LEVEL_SECTIONS:
+            continue
+        records.extend(collect_generic_finding_records({section: child}))
+    return records
+
+
+def unknown_introduced_attribution_count(value: Any) -> int:
+    if not isinstance(value, dict):
+        return 0
+    attribution = value.get("attribution")
+    if not isinstance(attribution, dict):
+        return 0
+
+    count = 0
+    suffix = "_introduced"
+    for key, raw_count in attribution.items():
+        if not key.endswith(suffix) or isinstance(raw_count, bool) or not isinstance(raw_count, int):
+            continue
+        domain = key[: -len(suffix)]
+        if domain not in FALLOW_KNOWN_ATTRIBUTION_DOMAINS and raw_count > 0:
+            count += raw_count
+    return count
+
+
 def finding_text(finding: dict[str, Any]) -> str:
     return json.dumps(finding, sort_keys=True, default=str).lower()
+
+
+def finding_classification_text(finding: dict[str, Any]) -> str:
+    """Return semantic finding fields without location-only false matches."""
+    semantic = {
+        key: finding.get(key)
+        for key in (
+            "source_section",
+            "finding_type",
+            "rule",
+            "category",
+            "severity",
+            "message",
+        )
+    }
+    return json.dumps(semantic, sort_keys=True, default=str).lower()
 
 
 def severity_is_critical(finding: dict[str, Any]) -> bool:
@@ -923,7 +1015,7 @@ def severity_is_critical(finding: dict[str, Any]) -> bool:
 
 
 def is_blocking_category(finding: dict[str, Any]) -> bool:
-    text = finding_text(finding)
+    text = finding_classification_text(finding)
     if "unresolved" in text and "import" in text:
         return True
     if "missing" in text and "import" in text:
@@ -2188,8 +2280,10 @@ def classify_findings(
     repo: Path,
     changed: list[str],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
-    legacy_candidate_count = len(collect_legacy_raw_findings(raw_payload))
+    legacy_candidates = collect_legacy_raw_findings(raw_payload)
+    legacy_candidate_count = len(legacy_candidates)
     records = collect_raw_finding_records(raw_payload)
+    recognized_record_ids = {id(item) for item, _, _ in records}
     normalized = [
         normalize_finding(
             item,
@@ -2201,6 +2295,21 @@ def classify_findings(
     classification = classification_payload(
         normalized,
         legacy_candidate_count=legacy_candidate_count,
+    )
+    unclassified_candidates = [
+        item for item in legacy_candidates if id(item) not in recognized_record_ids
+    ]
+    classification["unclassified_count"] = len(unclassified_candidates)
+    classification["introduced_finding_count"] = sum(
+        finding.get("introduced") is True for finding in normalized
+    )
+    classification["introduced_unclassified_count"] = sum(
+        extract_bool(item, INTRODUCED_KEYS) is True for item in unclassified_candidates
+    )
+    unknown_records = collect_unknown_fallow_finding_records(raw_payload)
+    classification["unknown_finding_count"] = len(unknown_records)
+    classification["unknown_introduced_attribution_count"] = (
+        unknown_introduced_attribution_count(raw_payload)
     )
     if mode != "diff-gate":
         return [], compact_repo_non_blocking_findings(normalized), classification
@@ -2240,23 +2349,42 @@ def classify_findings(
 def has_actionable_unclassified_diff_failure(
     raw_payload: Any,
     non_blocking: list[dict[str, Any]],
+    classification: dict[str, Any],
 ) -> bool:
     verdict = str(find_first_key(raw_payload, {"verdict", "status"}) or "").lower()
     introduced = count_introduced(raw_payload)
-    if introduced == 0:
-        return False
+    if (
+        int(classification.get("unknown_finding_count") or 0) > 0
+        or int(classification.get("unknown_introduced_attribution_count") or 0) > 0
+    ):
+        return True
 
     actionable_unknown = [
         finding
         for finding in non_blocking
         if not finding.get("probable_false_positive")
         and finding.get("introduced") is None
-        and is_blocking_category(finding)
+        and (
+            is_blocking_category(finding)
+            or finding.get("source_section")
+            not in {"check", "dead_code", "health", "complexity"}
+        )
     ]
+    if actionable_unknown:
+        return True
+    if introduced == 0:
+        return False
     if introduced is not None and introduced > 0:
-        return not non_blocking or bool(actionable_unknown)
+        recognized_introduced = int(classification.get("introduced_finding_count") or 0)
+        if recognized_introduced > 0:
+            return False
+        if non_blocking and all(finding.get("introduced") is False for finding in non_blocking):
+            return False
+        return True
     if verdict == "fail":
-        return not non_blocking or bool(actionable_unknown)
+        if non_blocking and all(finding.get("introduced") is False for finding in non_blocking):
+            return False
+        return not non_blocking
     return False
 
 
@@ -2278,21 +2406,28 @@ def find_first_key(value: Any, names: set[str]) -> Any:
 
 
 def count_introduced(value: Any) -> int | None:
-    names = {
-        "introduced",
-        "introduced_count",
-        "introducedCount",
-        "new",
-        "new_count",
-        "newCount",
-    }
-    found_values: list[Any] = []
+    count_names = {"introduced_count", "introducedCount", "new_count", "newCount"}
+    explicit_counts: list[int] = []
+    attributed_counts: list[int] = []
+    introduced_flags: list[bool] = []
 
     def visit(node: Any) -> None:
         if isinstance(node, dict):
             for key, child in node.items():
-                if key in names:
-                    found_values.append(child)
+                if key in count_names and isinstance(child, int) and not isinstance(child, bool):
+                    explicit_counts.append(child)
+                elif key in {"introduced", "new"} and isinstance(child, int) and not isinstance(child, bool):
+                    explicit_counts.append(child)
+                elif key in {"introduced", "new"} and isinstance(child, list):
+                    explicit_counts.append(len(child))
+                elif (
+                    key.endswith("_introduced")
+                    and isinstance(child, int)
+                    and not isinstance(child, bool)
+                ):
+                    attributed_counts.append(child)
+                elif key in {"introduced", "is_introduced", "isIntroduced"} and isinstance(child, bool):
+                    introduced_flags.append(child)
                 if isinstance(child, (dict, list)):
                     visit(child)
         elif isinstance(node, list):
@@ -2301,12 +2436,15 @@ def count_introduced(value: Any) -> int | None:
                     visit(child)
 
     visit(value)
-    for found in found_values:
-        if isinstance(found, int) and not isinstance(found, bool):
-            return found
-    for found in found_values:
-        if isinstance(found, list):
-            return len(found)
+    candidates: list[int] = []
+    if explicit_counts:
+        candidates.append(max(explicit_counts))
+    if attributed_counts:
+        candidates.append(sum(attributed_counts))
+    if introduced_flags:
+        candidates.append(sum(int(flag) for flag in introduced_flags))
+    if candidates:
+        return max(candidates)
     return None
 
 
@@ -2738,7 +2876,7 @@ def run_audit(
         mode == "diff-gate"
         and proc.returncode == 1
         and not blocking
-        and has_actionable_unclassified_diff_failure(parsed, non_blocking)
+        and has_actionable_unclassified_diff_failure(parsed, non_blocking, classification)
     ):
         blocking.append(
             {

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { reconcileProjectTasks } from "../src/project-task-intake.js";
 import type { MissionRecord } from "../src/missions.js";
+import { LINEAR_ORIGIN } from "../src/linear-intake-contract.js";
 
 const f = vi.hoisted(() => ({ policy: {} as any, issues: [] as any[], mission: null as MissionRecord | null, create: vi.fn(), activate: vi.fn(), configure: vi.fn(), guard: vi.fn() }));
 vi.mock("../src/project-mandate-state.js", () => ({ listProjectMandates: async () => [f.policy], projectIssues: async () => f.issues,
@@ -53,6 +54,45 @@ beforeEach(() => {
   f.issues = [{ id: "root", title: "Task", description: "Explicit result", status: "backlog", originKind: "manual", assigneeAgentId: "lead" }];
 });
 describe("stable project task intake", () => {
+  it.each([
+    { name: "manual backlog assigned to lead", issue: {}, policy: {}, eligible: true },
+    { name: "manual blocked without adoption", issue: { status: "blocked" }, policy: {}, eligible: false },
+    { name: "manual blocked with adoption", issue: { status: "blocked" }, policy: { hierarchy: { adoptExistingChildren: true } }, eligible: true },
+    { name: "manual blocked with adoption refused", issue: { status: "blocked" }, policy: { hierarchy: { adoptExistingChildren: false } }, eligible: false },
+    { name: "manual active", issue: { status: "in_progress" }, policy: {}, eligible: false },
+    { name: "manual unassigned", issue: { assigneeAgentId: null }, policy: {}, eligible: false },
+    { name: "manual other contributor", issue: { assigneeAgentId: "contributor" }, policy: {}, eligible: false },
+    { name: "manual child", issue: { parentId: "parent" }, policy: {}, eligible: false },
+    { name: "manual baseline root", issue: {}, policy: { baselineRootIds: ["root"] }, eligible: false },
+    { name: "unknown origin", issue: { originKind: "plugin" }, policy: {}, eligible: false },
+    { name: "Linear disabled", issue: { originKind: LINEAR_ORIGIN, status: "blocked", assigneeAgentId: null }, policy: {}, eligible: false },
+  ])("selects only eligible roots: $name", async ({ issue, policy, eligible }) => {
+    Object.assign(f.issues[0], issue); Object.assign(f.policy.content, policy);
+    const c = context(), insert = vi.fn(async () => ({ rowCount: 1 }));
+    // Observe selection through the public reconciliation entry, without advancing an intake.
+    c.ctx.db.execute = insert; c.ctx.db.query = vi.fn(async () => []);
+    await reconcileProjectTasks(c.ctx);
+    expect(insert).toHaveBeenCalledTimes(Number(eligible));
+    expect(f.create).not.toHaveBeenCalled(); expect(f.activate).not.toHaveBeenCalled();
+  });
+  it.each([
+    { name: "blocked unassigned", issue: {}, policy: {}, eligible: true },
+    { name: "backlog", issue: { status: "backlog" }, policy: {}, eligible: false },
+    { name: "completed", issue: { status: "done" }, policy: {}, eligible: false },
+    { name: "cancelled", issue: { status: "cancelled" }, policy: {}, eligible: false },
+    { name: "assigned to lead", issue: { assigneeAgentId: "lead" }, policy: {}, eligible: false },
+    { name: "missing assignment field", issue: { assigneeAgentId: undefined }, policy: {}, eligible: false },
+    { name: "child", issue: { parentId: "parent" }, policy: {}, eligible: false },
+    { name: "baseline root", issue: {}, policy: { baselineRootIds: ["root"] }, eligible: false },
+  ])("selects opted-in Linear roots: $name", async ({ issue, policy, eligible }) => {
+    Object.assign(f.issues[0], { originKind: LINEAR_ORIGIN, status: "blocked", assigneeAgentId: null }, issue);
+    Object.assign(f.policy.content, { linearIntake: {} }, policy);
+    const c = context(), insert = vi.fn(async () => ({ rowCount: 1 }));
+    c.ctx.db.execute = insert; c.ctx.db.query = vi.fn(async () => []);
+    await reconcileProjectTasks(c.ctx);
+    expect(insert).toHaveBeenCalledTimes(Number(eligible));
+    expect(f.create).not.toHaveBeenCalled(); expect(f.activate).not.toHaveBeenCalled();
+  });
   it("retains creation identity after a lost response and admits once against the existing period", async () => {
     const c = context(); f.create.mockRejectedValueOnce(new Error("lost response"));
     await reconcileProjectTasks(c.ctx); const first = c.receipt();
