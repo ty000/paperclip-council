@@ -17,6 +17,7 @@ afterEach(async () => {
 });
 
 type FixtureOptions = {
+  baseBlobCount?: number;
   candidateAddThenRevert?: boolean;
   candidateRewritesAlpha?: boolean;
   extraCandidateChange?: boolean;
@@ -146,7 +147,16 @@ async function fixture(options: FixtureOptions = {}) {
   execFileSync("git", ["init", "-b", "main", repository]);
   execFileSync("git", ["config", "user.email", "council@example.test"], { cwd: repository });
   execFileSync("git", ["config", "user.name", "Council Test"], { cwd: repository });
+  // Large fixtures must not launch background GC while afterEach removes them.
+  execFileSync("git", ["config", "gc.auto", "0"], { cwd: repository });
   await writeFile(resolve(repository, "README.md"), "base\n");
+  if (options.baseBlobCount) {
+    await mkdir(resolve(repository, "history"));
+    for (let index = 0; index < options.baseBlobCount; index += 1) {
+      await writeFile(resolve(repository, "history", `${index}.txt`), `historical object ${index}\n`);
+    }
+    execFileSync("git", ["add", "history"], { cwd: repository });
+  }
   if (options.ownerScopedCorrection) {
     await mkdir(resolve(repository, "app"));
     await writeFile(resolve(repository, "app/existing.txt"), "base existing file\n");
@@ -389,6 +399,24 @@ describe("integrated Git candidate verification", () => {
       "git-object-bounds failed: an object exceeds the expanded-size limit",
     );
   });
+
+  it("accepts a bounded candidate whose existing repository already exceeds 8192 objects", async () => {
+    const { ctx, input } = await fixture({ baseBlobCount: 8_192 });
+
+    const result = await verifyIntegratedCandidate(ctx, input);
+
+    expect(result.outcome).toBe("verified");
+    expect(result.contributions.map(entry => entry.commit)).toEqual(input.contributions.map(entry => entry.commit));
+    expect(result.checks).toContainEqual(expect.objectContaining({ name: "git-object-bounds" }));
+  }, 20_000);
+
+  it("still rejects a small-byte bundle exceeding 16384 imported objects", async () => {
+    const { ctx, input } = await fixture({ baseBlobCount: 16_384 });
+
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow(
+      "git-object-bounds failed: imported object count exceeds the bounded limit",
+    );
+  }, 20_000);
 
   it("rejects duplicate contribution commits before inspecting the bundle", async () => {
     const { ctx, input } = await fixture();
