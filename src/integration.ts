@@ -9,7 +9,7 @@ import type { PluginContext } from "@paperclipai/plugin-sdk";
 const execFileAsync = promisify(execFile);
 
 const MAX_INTEGRATED_BUNDLE_BYTES = 32 * 1024 * 1024;
-const MAX_IMPORTED_GIT_OBJECTS = 8_192;
+const MAX_IMPORTED_GIT_OBJECTS = 16_384;
 const MAX_SINGLE_GIT_OBJECT_BYTES = 16 * 1024 * 1024;
 const MAX_EXPANDED_GIT_OBJECT_BYTES = 128 * 1024 * 1024;
 const MAX_COMMITS_PER_CONTRIBUTION = 256;
