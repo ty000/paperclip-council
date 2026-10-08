@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 // Vendored static_audit_gate.py: codex-tooling static-code-audit plugin 0.4.1.
 // Source: plugins/static-code-audit/scripts/static_audit_gate.py, installed bundle 0.4.1.
 // Upstream SHA-256: 815818bf4b02e2dfb8b6ecd6b2d480119e8992b2fec91eaf5b62a0a2bfde7a1e.
+// Local compatibility patch: normalize Fallow 3.23 complexity findings and fail closed on unknown diff failures.
 // Keep the wrapper policy intact; this adapter makes skipped results fail in CI.
 const directory = dirname(fileURLToPath(import.meta.url));
 const repository = resolve(directory, "../..");

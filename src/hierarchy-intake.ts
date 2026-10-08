@@ -73,6 +73,13 @@ function requireWaiting(sources: Awaited<ReturnType<typeof projectIssues>>, impo
     if (!expected || issue.checkoutRunId || issue.executionRunId) throw new MissionError(409, "hierarchy_existing_execution", "Adoption requires waiting work without active locks; imported terminal history must retain its pinned status");
   }
 }
+
+function requireSeparateOwnership(leaves: HierarchyLeaf[]) {
+  for (const [index, left] of leaves.entries()) for (const right of leaves.slice(index + 1)) {
+    if (left.ownedPaths.some(a => right.ownedPaths.some(b => ownershipsOverlap(a, b)))) throw new MissionError(422, "hierarchy_ownership_overlap", "Existing leaf write ownership overlaps; the owner must resolve the scope");
+  }
+}
+
 export async function prepareHierarchy(ctx: PluginContext, policy: ProjectMandate, rootId: string, issues: Awaited<ReturnType<typeof projectIssues>>, imported?: LinearReadinessSnapshot): Promise<HierarchyState | undefined> {
   const contract = policy.content.hierarchy;
   const previews = descendants(rootId, issues);
@@ -95,9 +102,7 @@ export async function prepareHierarchy(ctx: PluginContext, policy: ProjectMandat
   const allowed = new Set(pair.team.revision.content.members.map(member => member.agentId).filter(id => id !== policy.content.leadAgentId));
   const leaves: HierarchyLeaf[] = [];
   for (const issue of leafIssues) leaves.push(await leaf(ctx, policy, issue, allowed));
-  for (const [index, left] of leaves.entries()) for (const right of leaves.slice(index + 1)) {
-    if (left.ownedPaths.some(a => right.ownedPaths.some(b => ownershipsOverlap(a, b)))) throw new MissionError(422, "hierarchy_ownership_overlap", "Existing leaf write ownership overlaps; the owner must resolve the scope");
-  }
+  requireSeparateOwnership(leaves);
   const nodes = [];
   for (const issue of [root!, ...tree]) {
     const relations = await ctx.issues.relations.get(issue.id, policy.companyId);

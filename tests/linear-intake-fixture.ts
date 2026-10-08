@@ -6,6 +6,34 @@ import { LINEAR_ORIGIN } from "../src/linear-intake-contract.js";
 import type { ProjectMandate } from "../src/project-mandate-state.js";
 
 type FixtureNode = { name: string; parent: string | null; status: "blocked" | "done" | "cancelled"; blockers: string[] };
+type FixtureIds = Record<string, string>;
+
+function fixtureState(node: FixtureNode, ids: FixtureIds) {
+  const type = node.status === "done" ? "completed" : node.status === "cancelled" ? "canceled" : "unstarted";
+  return { id: node.name === "root" ? ids.todo : randomUUID(), name: node.name === "root" ? "Todo" : node.status, type };
+}
+function fixtureSource(node: FixtureNode, ids: FixtureIds, state: ReturnType<typeof fixtureState>) {
+  return { id: `L4-${node.name}`, uuid: ids[`source-${node.name}`], parentId: node.parent ? `L4-${node.parent}` : "Unselected-parent-context",
+    teamId: ids.team, projectId: ids.sourceProject, title: node.name,
+    description: node.name === "root" ? "Complete source ".repeat(2200) : `${node.name} full result`,
+    updatedAt: "2026-10-07T12:00:00.000Z", createdAt: "2026-10-01T12:00:00.000Z",
+    completedAt: node.status === "done" ? "2026-10-06T12:00:00.000Z" : null,
+    canceledAt: node.status === "cancelled" ? "2026-10-06T12:00:00.000Z" : null, archivedAt: null,
+    status: state.name, statusType: state.type, currentStateId: state.id,
+    relations: { blockedBy: node.blockers.map(name => ({ id: `L4-${name}` })), blocks: [], relatedTo: [], duplicateOf: null },
+    stateHistory: [{ state, startedAt: "2026-10-07T11:00:00.000Z", endedAt: null }] };
+}
+function fixtureSourceDocument(source: ReturnType<typeof fixtureSource>, ids: FixtureIds, sourceSha256: string, intakeId: string) {
+  return JSON.stringify({ schema: "linear-native-source.v1", organizationId: ids.organization, sourceSha256, source,
+    provenance: { originKind: LINEAR_ORIGIN, intakeId, activationId: ids.activation, rootSourceId: ids["source-root"], catalogSha256: hash("catalog") } },
+  (_key, item) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item, 2);
+}
+function fixtureNativeIssue(node: FixtureNode, ids: FixtureIds, source: ReturnType<typeof fixtureSource>, originId: string) {
+  return { id: ids[node.name], companyId: ids.company, projectId: ids.project, parentId: node.parent ? ids[node.parent] : null,
+    originKind: LINEAR_ORIGIN, originId, title: source.title, description: source.description, status: node.status,
+    // Native issues.get returns the issue row, without the optional per-user archivedAt enrichment.
+    assigneeAgentId: null, assigneeUserId: null, checkoutRunId: null, executionRunId: null, executionLockedAt: null };
+}
 export function linearFixture(definitions: FixtureNode[] = [
   { name: "root", parent: null, status: "blocked", blockers: [] },
   { name: "alpha", parent: "root", status: "blocked", blockers: ["history"] },
@@ -25,23 +53,10 @@ export function linearFixture(definitions: FixtureNode[] = [
   }
   const planNodes = definitions.map(node => {
     const sourceId = ids[`source-${node.name}`]!;
-    const state = { id: node.name === "root" ? ids.todo : randomUUID(), name: node.name === "root" ? "Todo" : node.status,
-      type: node.status === "done" ? "completed" : node.status === "cancelled" ? "canceled" : "unstarted" };
-    const source = { id: `L4-${node.name}`, uuid: sourceId, parentId: node.parent ? `L4-${node.parent}` : "Unselected-parent-context",
-      teamId: ids.team, projectId: ids.sourceProject, title: node.name, description: node.name === "root" ? "Complete source ".repeat(2200) : `${node.name} full result`,
-      updatedAt: "2026-10-07T12:00:00.000Z", createdAt: "2026-10-01T12:00:00.000Z", completedAt: node.status === "done" ? "2026-10-06T12:00:00.000Z" : null,
-      canceledAt: node.status === "cancelled" ? "2026-10-06T12:00:00.000Z" : null, archivedAt: null,
-      status: state.name, statusType: state.type, currentStateId: state.id,
-      relations: { blockedBy: node.blockers.map(name => ({ id: `L4-${name}` })), blocks: [], relatedTo: [], duplicateOf: null },
-      stateHistory: [{ state, startedAt: "2026-10-07T11:00:00.000Z", endedAt: null }] };
+    const state = fixtureState(node, ids), source = fixtureSource(node, ids, state);
     const originId = `linear:${ids.organization}:${sourceId}`;
-    const sourceDocumentBody = JSON.stringify({ schema: "linear-native-source.v1", organizationId: ids.organization, sourceSha256, source,
-      provenance: { originKind: LINEAR_ORIGIN, intakeId, activationId: ids.activation, rootSourceId: ids["source-root"], catalogSha256: hash("catalog") } },
-    (_key, item) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item, 2);
-    issues.set(ids[node.name]!, { id: ids[node.name], companyId: ids.company, projectId: ids.project, parentId: node.parent ? ids[node.parent] : null,
-      originKind: LINEAR_ORIGIN, originId, title: source.title, description: source.description, status: node.status,
-      // Native issues.get returns the issue row, without the optional per-user archivedAt enrichment.
-      assigneeAgentId: null, assigneeUserId: null, checkoutRunId: null, executionRunId: null, executionLockedAt: null });
+    const sourceDocumentBody = fixtureSourceDocument(source, ids, sourceSha256, intakeId);
+    issues.set(ids[node.name]!, fixtureNativeIssue(node, ids, source, originId));
     document({ companyId: ids.company, issueId: ids[node.name], key: "linear-source-v1", title: "Linear source", format: "markdown", body: sourceDocumentBody });
     return { sourceId, originId, parentSourceId: node.parent ? ids[`source-${node.parent}`] : null, status: node.status, source,
       blockedBySourceIds: node.blockers.map(name => ids[`source-${name}`]!).sort(), sourceDocumentBody, keys: keys(sourceId) };
