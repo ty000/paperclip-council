@@ -34,6 +34,7 @@ const N1_BOARD_COMMANDS = new Set([
   "reconcile-contribution-usage",
   "recover-integration",
   "recover-candidate",
+  "recover-contribution",
 ]);
 const N2_BOARD_COMMANDS = new Set([
   "resume-settled-correction",
@@ -64,7 +65,7 @@ export type MissionMandate = {
 
 export type MissionReceipt = {
   commandId: string;
-  command: "bind-resumed-lead-run" | "prepare-n1-resume" | "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "fixture-bind-contribution-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish" | "recover-integration" | "recover-candidate"
+  command: "bind-resumed-lead-run" | "prepare-n1-resume" | "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "fixture-bind-contribution-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish" | "recover-integration" | "recover-candidate" | "recover-contribution"
     | "resume-settled-correction" | "replace-undispatched-correction" | "start-review" | "confirm-review-handoff" | "start-correction" | "prepare-resubmission"
     | "start-resubmitted-review" | "settle-n2-usage" | "attest-transmission" | "reconcile-native-n2" | "release-native-correction" | "reconcile-ordinary-n2" | "replace-missing-opinion" | "replace-missing-verdict" | "recover-terminal-resubmission" | "ordinary-verdict" | "configure-continuity" | "suspend-continuity" | "resume-continuity";
   actorType: "user" | "agent";
