@@ -15,7 +15,8 @@ function originalSettlement(m: MissionRecord, reservationId: string) {
   const state = m.aggregate.n1 as import("./n1-missions.js").N1State | undefined;
   const tasks = [...(m.aggregate.n2?.ordinary?.tasks ?? []), ...(m.aggregate.n6?.coordination?.tasks ?? []),
     ...(state?.integration ? [state.integration] : []), ...(m.aggregate.n5?.publication ? [m.aggregate.n5.publication] : []),
-    ...(m.aggregate.n5?.integration?.previousPublication ? [m.aggregate.n5.integration.previousPublication] : [])];
+    ...(m.aggregate.n5?.integration?.previousPublication ? [m.aggregate.n5.integration.previousPublication] : []),
+    ...(m.aggregate.campaignClosure ? [m.aggregate.campaignClosure.task] : [])];
   return tasks.find(task => task.reservationId === reservationId)?.settlementCommandId;
 }
 /** Cooperative safe point: read admitted runs and settle original costs, never interrupt or wake. */

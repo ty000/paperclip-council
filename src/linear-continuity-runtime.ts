@@ -57,11 +57,16 @@ export async function reconcileLinearContinuity(ctx: PluginContext, initial: Mis
       m = await reconcileLinearCancellation(ctx, m);
     }
   }
+  const fixedCampaign = m.aggregate.linearContinuity!.mode === FIXED_CAMPAIGN_MODE;
+  if (fixedCampaign) {
+    m = await reconcileCampaignDeliveries(ctx, m);
+    const { reconcileCampaignClosure } = await import("./campaign-closure-runtime.js");
+    m = await reconcileCampaignClosure(ctx, m);
+  }
   const completion = m.aggregate.completion;
-  if (m.aggregate.linearContinuity!.mode === FIXED_CAMPAIGN_MODE) m = await reconcileCampaignDeliveries(ctx, m);
-  if (completion?.state === "closed") m = await queueLinearPublication(ctx, m, "closure", { workResultAcquired: true,
+  if (!fixedCampaign && completion?.state === "closed") m = await queueLinearPublication(ctx, m, "closure", { workResultAcquired: true,
     proofId: completion.proofId, documentKey: completion.documentKey, revisionId: completion.documentRevisionId, result: m.aggregate.projectMandate?.completion?.result });
-  else {
+  else if (!m.aggregate.campaignClosure) {
     const campaign = m.aggregate.linearContinuity!.mode === FIXED_CAMPAIGN_MODE ? await campaignProgress(ctx, m) : undefined;
     m = await queueLinearPublication(ctx, m, "progress", { phase: m.aggregate.phase, control: m.aggregate.linearContinuity!.control,
       sourceRevision: m.aggregate.linearContinuity!.sourceSha256, workResultAcquired: false, n5State: m.aggregate.n5?.integration?.state ?? null,

@@ -54,5 +54,6 @@ function publisherBindings(m: MissionRecord) {
 /** Preserve every stored physical binding, reservation and governed history. */
 export function nativeRunBindings(m: MissionRecord): NativeRunBinding[] {
   return [...modelBindings(m), ...n1Bindings(m), ...taskBindings(m, m.aggregate.n2?.ordinary?.tasks ?? []),
-    ...taskBindings(m, m.aggregate.n6?.coordination?.tasks ?? []), ...publisherBindings(m)];
+    ...taskBindings(m, m.aggregate.n6?.coordination?.tasks ?? []),
+    ...taskBindings(m, m.aggregate.campaignClosure ? [m.aggregate.campaignClosure.task] : []), ...publisherBindings(m)];
 }
