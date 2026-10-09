@@ -262,7 +262,8 @@ try {
     const original = before.mission, coordinator = original.aggregate.n1.coordination.issueId;
     const oldReservation = original.aggregate.n1.activationReservationId;
     const suspend = await api("POST", `${missionPath}/commands`, { companyId, command: "suspend-continuity", commandId: randomUUID(), expectedVersion: original.version });
-    await api("PATCH", `/api/issues/${coordinator}`, { status: "blocked" });
+    await api("PATCH", `/api/issues/${coordinator}`, { status: "blocked", unblockDescriptor: {
+      owner: "board", action: "Authorize the original Council pre-plan resume after settled terminal costs" } });
     const grant = { companyId, command: "prepare-n1-resume", commandId: randomUUID(), expectedVersion: suspend.mission.version,
       authorizeOneResume: true, authorizeContinuityResume: true, previousOwnerUserId: "local-board", reason: "Qualify one explicitly authorized terminal pre-plan resume" };
     const resumed = await api("POST", `${missionPath}/commands`, grant);
