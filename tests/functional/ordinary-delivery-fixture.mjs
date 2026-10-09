@@ -1,4 +1,5 @@
 import { integrateDelivery } from "./integration-fixture.mjs";
+import { ensureCampaignTransport } from "./linear-campaign-github.mjs";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
@@ -72,8 +73,9 @@ export async function publishDelivery({ api, call, config, issueId, runId, git }
     assert.equal(accepted.delivery.publication.preflight.runId, runId);
     assert.equal(accepted.delivery.publication.preflight.provenance, "publisher_run_report");
   }
-  const path = resolve(config.runtime, "github-transport.json");
-  const remote = JSON.parse(await readFile(path, "utf8"));
+  const allocated = config.campaignMode ? await ensureCampaignTransport(config.runtime, config.missionId) : undefined;
+  const path = allocated?.path ?? resolve(config.runtime, "github-transport.json");
+  const remote = allocated?.remote ?? JSON.parse(await readFile(path, "utf8"));
   assert(!remote.intents.includes(p.intentId));
   if (p.operation === "update") { assert.equal(p.targetUrl, remote.url); assert.equal(remote.createCount, 1); remote.updateCount++; }
   else { assert.equal(remote.createCount, 0); remote.createCount++; }
