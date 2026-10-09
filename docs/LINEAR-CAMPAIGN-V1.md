@@ -64,3 +64,26 @@ intents, native runs, costs and cleanup results. Only a terminal successful repo
 with `packageBytesUnchanged: true` and successful cleanup qualifies its exact pair.
 Pending or failed reports retain their original result and are never rewritten as
 successful evidence. Real gateway reads/writes and the recette pilot remain L6.
+
+### Qualified candidates — 9 October 2026
+
+| Scenario | Council commit | Intake commit | Receipt |
+| --- | --- | --- | --- |
+| Complete fixed campaign | `ee6535a4f8eff7b7e8b820567bf5f1249707f8ed` | `c194d776df5e966a649d15de149f11f314aee492` | [Installed campaign](linear-v1-campaign-native.json) |
+| Legacy Todo through settled N1 | `d25fff931262d90641badf433f2eabc08becc94b` | `c194d776df5e966a649d15de149f11f314aee492` | [Installed Todo](linear-v1-todo-native.json) |
+
+Both scenarios used the read-only Paperclip host `61b3fd57a695614dc4a37e2303f426a34a9795cf`.
+The complete campaign passed with seventeen successful native runs, two distinct
+PR fixtures merged through real private Git, an explicit integrated predecessor,
+eleven global coverage rows, terminal Linear readback, child-before-parent native
+closure and an empty repository occupation registry. All seventeen reservations
+settled in the original period, accounting for 2,550 fixture token units. The final
+native observations were reconciled, package bytes remained unchanged and cleanup
+confirmed both server and database stopped without changing tracked host files.
+
+The Todo receipt belongs to its earlier exact candidate; it is not a claim that
+the later campaign candidate reran Todo. The campaign's model verdict and token
+usage are synthetic, so they demonstrate neither real model quality nor provider
+cost. Failed qualification attempts retain their original reports under `.runtime`;
+the receipts identify the successful raw reports by SHA-256. L6 real gateway
+qualification and recette activation remain outstanding.

@@ -15,8 +15,12 @@ negative or incomplete report blocks without correction or another reviewer run.
 An approved report is published through the existing Linear outbox; Council
 closes native parents and the campaign root, records `completion.closed` and
 releases the repository only after exact comment/status readback, with the root
-status last. This source and its isolated tests do not claim an installed
-two-plugin host, provider execution or real Linear writes.
+status last. The complete path is qualified with both plugins installed in an
+isolated native host: two real private Git integrations, seventeen successful
+native runs, global review, terminal readback and repository release. Linear and
+GitHub responses, model output and usage remain deterministic fixtures; recette
+and real providers were not exercised. See the [scenario and exact candidate
+receipts](docs/LINEAR-CAMPAIGN-V1.md).
 
 Version `0.7.29` accepts the fixed milestone campaign readiness extension from
 Linear intake. Council verifies the original source documents, PRD/TAD content
@@ -25,8 +29,9 @@ work. Original Linear parents remain intact. Continuity pins the material source
 digest; native import proof retains the complete observation digest. Campaign
 documents require an explicit `milestone-fixed-v1` project policy; ordinary Todo
 documents retain their existing contract. This receiver slice is covered by unit,
-build and static checks. Serial campaign deliveries, publication and the complete
-pilot require the subsequent V1 lots; no recipe activation is claimed here.
+build and static checks. Serial campaign deliveries and publication are included
+in the installed isolated scenario above. The real pilot remains separate; no
+recette activation is claimed here.
 
 Version `0.7.19` continues an admitted sequential hierarchy after its planning
 lead finishes. The deterministic controller settles each exact child run and
@@ -657,8 +662,8 @@ a Linear write or a provider execution.
 `0.7.30` reuses the existing project intake, mission, G4 admission and integrated
 delivery engines for fixed milestone campaigns. The imported campaign root is a
 control mission: it retains source continuity, repository occupation and the
-ordered plan, but receives no execution reservation. Council creates one private
-intake and one mission for each prepared contribution leaf. Each mission keeps its
+ordered plan, but receives no implementation reservation. Council creates one
+private intake and one mission for each prepared contribution leaf. Each mission keeps its
 own candidate and PR while referring to the root through a Council-owned
 `repositoryCampaign` membership that is never parsed from a public create body.
 
@@ -669,9 +674,10 @@ outbox with per-source status readback. Replays retain the original mission and
 publication identities. Native blockers define the topological order.
 
 All leaves share the existing company/period G4 allowance. Each leaf still uses
-its own normal run reservations; there is no campaign allowance, root reservation,
-budget reset or second scheduler. Root pause and cancellation stop new leaf
-departures. Resume and repository release also inspect member reservations,
+its own normal run reservations. The single global review has its own reservation
+on the root in that same period; there is no campaign allowance, redundant root
+implementation reservation, budget reset or second scheduler. Root pause and
+cancellation stop new leaf departures. Resume and repository release also inspect member reservations,
 native runs and uncertain effects; release additionally requires every member to
 be proof-closed. The root remains responsible for the global review and closure
 implemented by the L5 source slice.
