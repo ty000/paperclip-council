@@ -9,7 +9,7 @@ import { hierarchyLaunchGuidance } from "./hierarchy-guidance.js";
 import { linearContextGuidance } from "./linear-context-guidance.js";
 
 /** Only exact suffixes attributable to this issue's persisted launches are Council context. */
-function descriptionMatchesSource(m: MissionRecord, issueId: string, description: string | null, expectedHash: string) {
+export function descriptionMatchesSource(m: MissionRecord, issueId: string, description: string | null, expectedHash: string) {
   if (canonicalPayloadHash(description) === expectedHash) return true;
   if (description === null) return false;
   const suffixes = (m.aggregate.modelSelection?.tasks ?? []).flatMap(task => task.launches)

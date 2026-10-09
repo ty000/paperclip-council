@@ -33,6 +33,9 @@ export async function controlFixedCampaign(ctx: PluginContext, initial: MissionR
   if (m.aggregate.completion?.state === "closed" || ["cancel_requested", "cancelled"].includes(state.control)) {
     throw new MissionError(409, "linear_campaign_terminal", "A completed or cancelling campaign cannot resume or change its result");
   }
+  if (["publishing", "closing"].includes(m.aggregate.campaignClosure?.phase ?? "")) {
+    throw new MissionError(409, "linear_campaign_terminal_claimed", "The terminal campaign publication is already claimed; reconcile its original readback before any competing control result");
+  }
   if (typeof body.reason !== "string" || !body.reason.trim() || body.reason.length > 2000) {
     throw new MissionError(422, "linear_campaign_reason", "An explicit bounded operator reason is required");
   }

@@ -60,8 +60,11 @@ export async function reconcileLinearContinuity(ctx: PluginContext, initial: Mis
   const fixedCampaign = m.aggregate.linearContinuity!.mode === FIXED_CAMPAIGN_MODE;
   if (fixedCampaign) {
     m = await reconcileCampaignDeliveries(ctx, m);
-    const { reconcileCampaignClosure } = await import("./campaign-closure-runtime.js");
-    m = await reconcileCampaignClosure(ctx, m);
+    const campaign = await campaignProgress(ctx, m);
+    if (m.aggregate.campaignClosure || campaign.allMembersClosed) {
+      const { reconcileCampaignClosure } = await import("./campaign-closure-runtime.js");
+      m = await reconcileCampaignClosure(ctx, m);
+    }
   }
   const completion = m.aggregate.completion;
   if (!fixedCampaign && completion?.state === "closed") m = await queueLinearPublication(ctx, m, "closure", { workResultAcquired: true,

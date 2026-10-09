@@ -7,6 +7,8 @@ import { LINEAR_READINESS_KEY, LINEAR_SOURCE_KEY, parseLinearReadiness, parseLin
 import { FIXED_CAMPAIGN_MODE } from "./linear-continuity-contract.js";
 import { listCampaignMembers } from "./repository-campaign.js";
 import type { CampaignClosureSubject, CampaignCoverageSource, CampaignDeliveryResult } from "./campaign-closure-contract.js";
+import { descriptionMatchesSource } from "./hierarchy-runtime.js";
+import { physicalAgent } from "./model-state.js";
 
 type SourceReadback = ReturnType<typeof parseLinearSource>;
 
@@ -46,7 +48,7 @@ async function readPinnedSources(ctx: PluginContext, root: MissionRecord) {
     }
     const parsed = parseLinearSource(document.body);
     if (parsed.source.uuid !== entry.sourceId || parsed.source.updatedAt !== entry.sourceRevision
-        || parsed.source.projectId !== root.projectId) {
+        || parsed.source.projectId !== readiness.campaign.projectId) {
       throw new MissionError(409, "campaign_review_source_stale", "A source document no longer matches its exact campaign identity");
     }
     sources.set(entry.sourceId, { parsed, bodySha256: pinned.bodySha256, revisionId: pinned.documentRevisionId, issueId: entry.nativeId });
@@ -58,11 +60,16 @@ async function assertNativeSourceState(ctx: PluginContext, root: MissionRecord,
   readback: Awaited<ReturnType<typeof readPinnedSources>>, members: MissionRecord[]) {
   const memberIds = new Set(members.map(member => member.rootIssueId));
   for (const node of root.aggregate.hierarchy!.nodes!) {
+    const member = members.find(item => item.rootIssueId === node.issueId);
+    const expectedAgentId = node.assigneeAgentId && member
+      ? physicalAgent(member, node.assigneeAgentId, { issueId: node.issueId }) : node.assigneeAgentId;
     const issue = await ctx.issues.get(node.issueId, root.companyId);
     const relations = await ctx.issues.relations.get(node.issueId, root.companyId);
     if (!issue || issue.companyId !== root.companyId || issue.projectId !== root.projectId
-        || issue.parentId !== node.parentId || issue.checkoutRunId || issue.executionRunId
-        || canonicalPayloadHash(issue.description) !== node.descriptionHash
+        || issue.parentId !== node.parentId || issue.title !== node.title
+        || issue.assigneeAgentId !== expectedAgentId || issue.checkoutRunId || issue.executionRunId
+        || !descriptionMatchesSource(member ?? root,
+          node.issueId, issue.description, node.descriptionHash)
         || canonicalPayloadHash(relations.blockedBy.map(item => item.id).sort()) !== canonicalPayloadHash(node.blockedByIssueIds)) {
       throw new MissionError(409, "campaign_review_native_drift", "The original native hierarchy, content and dependencies must remain exact");
     }
@@ -103,6 +110,10 @@ function coverageSources(root: MissionRecord, readback: Awaited<ReturnType<typeo
         selector: "source" } });
   }
   const campaignRoot = readback.sources.get(readback.readiness.sourceRootId)!;
+  const milestone = campaignRoot.parsed.campaign!.milestone;
+  coverage.push({ criterionId: `milestone:${milestone.id}`, kind: "milestone", label: milestone.name,
+    sourceSha256: canonicalPayloadHash(milestone), sourceDocument: { issueId: campaignRoot.issueId, key: LINEAR_SOURCE_KEY,
+      revisionId: campaignRoot.revisionId, bodySha256: campaignRoot.bodySha256, selector: "campaign.milestone" } });
   for (const kind of ["prd", "tad"] as const) {
     const reference = campaignRoot.parsed.campaign!.referenceContents[kind];
     coverage.push({ criterionId: `reference:${kind}`, kind, label: `${kind.toUpperCase()} ${reference.version}`,

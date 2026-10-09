@@ -110,7 +110,15 @@ async function blockedReview(ctx: PluginContext, m: MissionRecord, reason: strin
   const state = m.aggregate.campaignClosure!, task = { ...state.task, settledAt: new Date().toISOString() };
   const next: CampaignClosureState = { ...state, phase: "blocked", task, blockedReason: reason,
     ...(report ? { report, reportSha256: canonicalPayloadHash(report) } : {}) };
-  m = await saveClosure(ctx, m, next);
+  const content = { campaignReview: { schema: "council-linear-campaign-review-blocker-v1",
+    campaignRootMissionId: m.missionId, reason,
+    coverage: state.subject.coverage.map(item => ({ criterionId: item.criterionId, kind: item.kind,
+      label: item.label, sourceSha256: item.sourceSha256 })),
+    results: state.subject.results.map(item => ({ resultId: item.resultId, sourceId: item.sourceId,
+      missionId: item.missionId, proofId: item.proofId, integratedResult: item.integratedResult })),
+    ...(report ? { report, reportSha256: canonicalPayloadHash(report) } : {}) } };
+  const linearContinuity = linearPublicationState(m, "blocker", content);
+  m = await n2Cas(ctx, m, { ...m.aggregate, linearContinuity, campaignClosure: next });
   await ctx.issues.update(task.issueId!, { status: "blocked" }, m.companyId);
   return m;
 }
@@ -171,8 +179,17 @@ async function queueClosurePublication(ctx: PluginContext, initial: MissionRecor
     return blockedReview(ctx, m, "review_subject_stale", state.report);
   }
   const statusUpdates = await campaignTerminalStatusUpdates(ctx, m);
+  const report = state.report!;
   const content = { campaignClosure: { schema: "council-linear-campaign-closure-result-v1",
-    campaignRootMissionId: m.missionId, report: state.report, reportSha256: state.reportSha256,
+    campaignRootMissionId: m.missionId,
+    summary: { verdict: report.verdict, total: report.rows.length,
+      satisfied: report.rows.filter(row => row.result === "satisfied").length,
+      remaining: report.rows.filter(row => row.result !== "satisfied").length },
+    coverage: state.subject.coverage.map(item => ({ criterionId: item.criterionId, kind: item.kind,
+      label: item.label, sourceSha256: item.sourceSha256 })),
+    results: state.subject.results.map(item => ({ resultId: item.resultId, sourceId: item.sourceId,
+      missionId: item.missionId, proofId: item.proofId, integratedResult: item.integratedResult })),
+    report, reportSha256: state.reportSha256,
     proof: { key: state.proofDocument.key, revisionId: state.proofDocument.revisionId,
       bodySha256: canonicalPayloadHash(state.proofDocument.body) } }, statusUpdates };
   const linearContinuity = linearPublicationState(m, "closure", content);

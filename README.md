@@ -5,6 +5,19 @@ Paperclip workflows. This standalone package extracts the demonstrated
 `private.paperclip-council` integration without importing from a Paperclip
 monorepo workspace.
 
+Version `0.7.31` adds the source implementation for the fixed campaign's single
+global review and terminal closure. After every delivery is integrated,
+proof-closed and acknowledged in Linear, Council prepares one parentless native
+review task for the pinned final reviewer. The terminal report covers every
+criterion, commitment, campaign/milestone node and pinned PRD/TAD reference, and
+binds the current source, mandate, coverage and delivery-result hashes. A
+negative or incomplete report blocks without correction or another reviewer run.
+An approved report is published through the existing Linear outbox; Council
+closes native parents and the campaign root, records `completion.closed` and
+releases the repository only after exact comment/status readback, with the root
+status last. This source and its isolated tests do not claim an installed
+two-plugin host, provider execution or real Linear writes.
+
 Version `0.7.29` accepts the fixed milestone campaign readiness extension from
 Linear intake. Council verifies the original source documents, PRD/TAD content
 digests, milestone context and the separate native grouping before preparing
@@ -593,8 +606,9 @@ Pause/resume preserve the current phase, including pre-admission preparation.
 Cancellation retains integrated work and lists an observed open PR for manual
 cleanup; this mode never launches a `cancel-pr` publisher.
 
-This is the control/protocol slice of integration plan L1, not the complete
-milestone feature. Global campaign review and closure remain downstream work.
+This is the control/protocol slice of integration plan L1. The later L4/L5
+source slices add serial deliveries and global closure; installed-host and real
+provider/Linear qualification remain separate.
 No operational configuration is changed, and no gateway/provider or installed
 runtime qualification is claimed by the unit tests.
 
@@ -659,4 +673,5 @@ its own normal run reservations; there is no campaign allowance, root reservatio
 budget reset or second scheduler. Root pause and cancellation stop new leaf
 departures. Resume and repository release also inspect member reservations,
 native runs and uncertain effects; release additionally requires every member to
-be proof-closed. The root remains responsible for later global review and closure.
+be proof-closed. The root remains responsible for the global review and closure
+implemented by the L5 source slice.

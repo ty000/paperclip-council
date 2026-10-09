@@ -6,7 +6,7 @@ const bounded = z.string().trim().min(1).max(4_000);
 
 export type CampaignCoverageSource = {
   criterionId: string;
-  kind: "criterion" | "commitment" | "campaign-root" | "milestone-root" | "milestone-node" | "prd" | "tad";
+  kind: "criterion" | "commitment" | "campaign-root" | "milestone" | "milestone-root" | "milestone-node" | "prd" | "tad";
   label: string;
   sourceSha256: string;
   sourceDocument?: { issueId: string; key: string; revisionId: string; bodySha256: string; selector?: string };
