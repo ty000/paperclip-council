@@ -1,13 +1,19 @@
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { canonicalPayloadHash, getMission, MissionError, type MissionRecord } from "./missions.js";
 import { n2CommandCas, runtimeReceipt, runtimeUuid } from "./n2-missions.js";
-import { continuityBindingSchema, assertContinuityBinding, LINEAR_CONTINUITY_PROTOCOL, responseFresh } from "./linear-continuity-contract.js";
+import { continuityBindingSchema, assertContinuityBinding, FIXED_CAMPAIGN_MODE, LINEAR_CONTINUITY_PROTOCOL, responseFresh } from "./linear-continuity-contract.js";
 import { parseLinearReadiness, LINEAR_READINESS_KEY } from "./linear-intake-contract.js";
 import { applyLinearChanges, settleLinearSafePoint } from "./linear-continuity-control.js";
 import { reconcileLinearTransport, queueLinearPublication, saveLinearContinuity, linearPublicationState } from "./linear-continuity-transport.js";
+import { campaignControlCommands, controlFixedCampaign } from "./linear-campaign-control.js";
+import { readProjectMandate } from "./project-mandate-state.js";
 
 async function configure(ctx: PluginContext, m: MissionRecord, body: Record<string, unknown>, owner: string) {
   if (m.aggregate.linearContinuity || m.aggregate.phase !== "draft" || m.aggregate.n1 || !m.aggregate.projectMandate?.linearIntake) throw new MissionError(409, "linear_continuity_opt_in", "Enable once for a natively imported mission with the existing continuity job; history is not upgraded automatically");
+  const policy = await readProjectMandate(ctx, m.companyId, m.projectId);
+  if (!policy || policy.revisionId !== m.aggregate.projectMandate.revisionId || policy.content.linearContinuity?.mode === FIXED_CAMPAIGN_MODE) {
+    throw new MissionError(409, "linear_continuity_project_policy", "A fixed-source campaign must be prepared under its exact project policy, not manually configured as a legacy mission");
+  }
   const binding = continuityBindingSchema.parse(body.binding); assertContinuityBinding(m, binding);
   const doc = await ctx.issues.documents.get(binding.subject.nativeRootId, LINEAR_READINESS_KEY, m.companyId);
   if (!doc || doc.id !== binding.subject.readinessDocumentId || doc.latestRevisionId !== binding.subject.readinessRevisionId
@@ -23,6 +29,7 @@ export async function handleLinearContinuityBoard(ctx: PluginContext, input: Plu
   if (body.command === "reconcile-linear-continuity") return { status: 200, body: { outcome: "reconciled", mission: await reconcileLinearContinuity(ctx, m) } };
   const prior = runtimeReceipt(m, runtimeUuid(body.commandId, "commandId"), owner, canonicalPayloadHash(body));
   if (prior) return { status: 200, body: { outcome: "replayed", mission: m, receipt: prior, effectPermission: "none" } };
+  if (campaignControlCommands.includes(String(body.command))) return { status: 200, body: await controlFixedCampaign(ctx, m, body, owner) };
   if (body.command === "configure-linear-continuity") return { status: 200, body: await configure(ctx, m, body, owner) };
   if (!m.aggregate.linearContinuity || !["question", "decision"].includes(String(body.kind)) || typeof body.text !== "string" || !body.text.trim() || body.text.length > 4000) throw new MissionError(422, "linear_arbitration_input", "Existing continuity and bounded owner question/decision text required");
   const resolvesCommandId = body.resolvesCommandId === undefined ? undefined : runtimeUuid(body.resolvesCommandId, "resolvesCommandId");

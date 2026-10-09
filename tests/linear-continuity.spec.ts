@@ -7,6 +7,8 @@ import { reconcileLinearTransport, handleLinearContinuityNotice, queueLinearPubl
 import { applyLinearChanges, assertLinearContinuityDeparture, settleLinearSafePoint } from "../src/linear-continuity-control.js";
 import { reconcileLinearCancellation, handleCancellationRequest } from "../src/linear-continuity-cancellation.js";
 import { ensureLinearContextGuidance } from "../src/linear-context-guidance.js";
+import { FIXED_CAMPAIGN_MODE } from "../src/linear-continuity-contract.js";
+import { handleLinearContinuityBoard, reconcileLinearContinuity } from "../src/linear-continuity-runtime.js";
 
 const f = vi.hoisted(() => ({ m: null as any, bindings: [] as any[], reservations: [] as any[], runStatus: "running", emitted: [] as any[], launch: vi.fn(), settlement: vi.fn(), docs: new Map<string, any>(), issues: new Map<string, any>() }));
 vi.mock("../src/missions.js", async original => ({ ...await original(), getMission: async (_c: any, companyId: string, id: string) => f.m?.companyId === companyId && f.m?.missionId === id ? structuredClone(f.m) : null }));
@@ -32,7 +34,8 @@ const ctx = { issues: { documents: {
   upsert: async (input: any) => { const doc = { id: randomUUID(), latestRevisionId: randomUUID(), ...input }; f.docs.set(input.key, doc); return doc; },
 }, get: async (id: string) => structuredClone(f.issues.get(id)), update: async (id: string, body: any) => { f.issues.set(id, { ...f.issues.get(id), ...body }); },
   summaries: { getOrchestration: async () => ({ runs: [] }) } },
-  events: { emit: async (...args: any[]) => { f.emitted.push(args); } } } as any;
+  events: { emit: async (...args: any[]) => { f.emitted.push(args); } },
+  companies: { get: async () => ({ defaultResponsibleUserId: "owner" }) } } as any;
 const digest = (char: string) => char.repeat(64);
 function proof(key: string, body: any) {
   const doc = { id: randomUUID(), latestRevisionId: randomUUID(), body: JSON.stringify(body), key };
@@ -229,7 +232,7 @@ it("retains every unresolved arbitration when a later held command receives a de
   expect(f.m.aggregate.linearContinuity.contextAnnotations).toBeUndefined();
 });
 
-it("pins project opt-in before admission and holds incompatible peers without another intake or budget", async () => {
+it.each([undefined, FIXED_CAMPAIGN_MODE])("pins project opt-in (%s) before admission and holds incompatible peers without another intake or budget", async mode => {
   f.m.aggregate.phase = "draft"; delete f.m.aggregate.linearContinuity;
   const subject = f.m.aggregate.projectMandate.linearIntake.subject;
   const sourceRootId = randomUUID();
@@ -240,15 +243,120 @@ it("pins project opt-in before admission and holds incompatible peers without an
       result: { nativeId: f.m.rootIssueId, contentSha256: digest("b") }, resultSha256: digest("c") })),
     externalBlockers: [], importStatus: "prepared", admissionAllowed: false, implementationStarted: false, receivingContract: "unqualified", requiresCurrentSourceAndMandateRevalidation: true };
   f.docs.set("linear-intake-readiness-v1", { id: subject.readinessDocumentId, latestRevisionId: subject.readinessRevisionId, body: JSON.stringify(readiness) });
-  const policy = { authorizedBy: "owner", content: { linearContinuity: { protocol: LINEAR_CONTINUITY_PROTOCOL } } } as any;
+  const policy = { authorizedBy: "owner", content: { linearContinuity: { protocol: LINEAR_CONTINUITY_PROTOCOL, ...(mode ? { mode } : {}) } } } as any;
   await expect(prepareLinearContinuity(ctx, f.m, policy)).rejects.toMatchObject({ code: "linear_continuity_hold" });
   expect(f.m.aggregate.phase).toBe("draft"); expect(f.m.aggregate.n1).toBeUndefined(); expect(f.reservations).toEqual([]);
   const challenge = f.m.aggregate.linearContinuity.challenge.challengeId, intent = f.m.aggregate.linearContinuity.publications[0].intentId;
-  expect(f.m.aggregate.linearContinuity.binding).toMatchObject({ campaignId: subject.activationId, sourceRootId });
+  expect(f.m.aggregate.linearContinuity.binding).toMatchObject({ campaignId: mode ? f.m.missionId : subject.activationId, sourceRootId });
   await expect(prepareLinearContinuity(ctx, structuredClone(f.m), policy)).rejects.toMatchObject({ code: "linear_continuity_hold" });
   expect(f.m.aggregate.linearContinuity.challenge.challengeId).toBe(challenge);
   expect(f.m.aggregate.linearContinuity.publications[0].intentId).toBe(intent);
   expect(parseLinearContinuityPolicy(undefined, null)).toBeUndefined();
   expect(() => parseLinearContinuityPolicy({ protocol: LINEAR_CONTINUITY_PROTOCOL }, null)).toThrow();
-  expect(parseLinearContinuityPolicy({ protocol: LINEAR_CONTINUITY_PROTOCOL }, {})).toEqual(policy.content.linearContinuity);
+  expect(parseLinearContinuityPolicy(policy.content.linearContinuity, {})).toEqual(policy.content.linearContinuity);
+});
+
+function fixedCampaign() {
+  f.m.aggregate.linearContinuity.mode = FIXED_CAMPAIGN_MODE;
+  return { mode: FIXED_CAMPAIGN_MODE, capabilities: ["fixed-source", "publication-readback"] } as const;
+}
+function nativeControl(command: string, extra: any = {}) {
+  return { companyId: f.m.companyId, actor: { actorType: "user", userId: "owner" }, body: {
+    missionId: f.m.missionId, command, commandId: randomUUID(), expectedVersion: f.m.version, reason: "Operator decision", ...extra,
+  } } as any;
+}
+async function fixedAnswer(extra: Partial<LinearContinuityResponse> = {}) {
+  return answer({ mode: FIXED_CAMPAIGN_MODE, capabilities: ["fixed-source", "publication-readback"], ...extra });
+}
+function confirmPublications() {
+  for (const p of f.m.aggregate.linearContinuity.publications) p.acknowledgement = {
+    reference: proof(`ack-${p.intentId}`, { intentId: p.intentId }), responseSha256: digest("a"), confirmedAt: new Date().toISOString(),
+  };
+}
+it("fixed campaigns negotiate only their two capabilities and reject remote commands and legacy replies", async () => {
+  fixedCampaign();
+  await answer(); expect(f.m.aggregate.linearContinuity.observation).toBeUndefined();
+  await expect(fixedAnswer({ changes: [change("pause")] })).rejects.toThrow();
+  expect(f.m.aggregate.linearContinuity.observation).toBeUndefined();
+  await fixedAnswer(); await expect(assertLinearContinuityDeparture(ctx, f.m)).resolves.toBeUndefined();
+  expect(f.m.aggregate.linearContinuity.challenge.payload.mode).toBe(FIXED_CAMPAIGN_MODE);
+});
+it("a fixed source change persists a pause and one blocker without adopting the new content", async () => {
+  fixedCampaign(); const original = f.m.aggregate.linearContinuity.sourceSha256;
+  await fixedAnswer({ sourceSha256: digest("f") });
+  await applyLinearChanges(ctx, f.m);
+  expect(f.m.aggregate.linearContinuity).toMatchObject({ sourceSha256: original, control: "pause_requested", controlReason: "source_revision_changed" });
+  const retained = structuredClone(f.m.aggregate.linearContinuity.publications);
+  await applyLinearChanges(ctx, structuredClone(f.m));
+  expect(f.m.aggregate.linearContinuity.publications).toEqual(retained);
+  await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_hold" });
+  await fixedAnswer(); await applyLinearChanges(ctx, f.m);
+  expect(f.m.aggregate.linearContinuity.control).toBe("pause_requested");
+});
+it.each(["draft", "executing", "reviewing", "accepted"])("native pause/resume preserves %s, identities and consumed budget", async phase => {
+  fixedCampaign(); f.m.aggregate.phase = phase; await fixedAnswer();
+  const originalId = f.m.missionId, originalMandate = structuredClone(f.m.aggregate.mandate);
+  const request = nativeControl("pause-linear-campaign");
+  await handleLinearContinuityBoard(ctx, request);
+  const version = f.m.version;
+  expect((await handleLinearContinuityBoard(ctx, request)).body).toMatchObject({ outcome: "replayed", effectPermission: "none" });
+  expect(f.m.version).toBe(version);
+  await reconcileLinearContinuity(ctx, f.m);
+  expect(f.m.aggregate.linearContinuity.control).toBe("paused");
+  await expect(handleLinearContinuityBoard(ctx, nativeControl("resume-linear-campaign"))).rejects.toMatchObject({ code: "linear_campaign_resume_pending" });
+  confirmPublications(); await fixedAnswer();
+  await handleLinearContinuityBoard(ctx, nativeControl("resume-linear-campaign"));
+  expect(f.m.aggregate.phase).toBe(phase); expect(f.m.missionId).toBe(originalId);
+  expect(f.m.aggregate.mandate).toEqual(originalMandate); expect(f.reservations).toEqual([]);
+  expect(f.m.aggregate.linearContinuity.control).toBe("running");
+  await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_hold" });
+  confirmPublications(); await expect(assertLinearContinuityDeparture(ctx, f.m)).resolves.toBeUndefined();
+});
+it("native commands require the current owner, original command payload and nonterminal campaign", async () => {
+  fixedCampaign(); const input = nativeControl("pause-linear-campaign");
+  await expect(handleLinearContinuityBoard(ctx, { ...input, actor: { actorType: "agent", agentId: "owner" } })).rejects.toMatchObject({ code: "linear_continuity_owner" });
+  await handleLinearContinuityBoard(ctx, input);
+  await expect(handleLinearContinuityBoard(ctx, { ...input, body: { ...input.body, reason: "changed" } })).rejects.toThrow();
+  f.m.aggregate.completion = { state: "closed" };
+  await expect(handleLinearContinuityBoard(ctx, nativeControl("cancel-linear-campaign"))).rejects.toMatchObject({ code: "linear_campaign_terminal" });
+});
+it("fixed cancellation retains an open PR for manual cleanup without waking a publisher", async () => {
+  fixedCampaign(); await handleLinearContinuityBoard(ctx, nativeControl("cancel-linear-campaign"));
+  const node = { issueId: f.m.rootIssueId, parentId: null, assigneeAgentId: null };
+  f.m.aggregate.hierarchy = { nodes: [node] };
+  f.issues.set(node.issueId, { companyId: f.m.companyId, projectId: f.m.projectId, ...node, id: node.issueId, status: "blocked" });
+  const url = "https://github.com/ty000/repo/pull/1";
+  f.m.aggregate.n5 = { publication: { claimedAt: new Date().toISOString(), observation: { state: "open", url, matchesCandidate: true }, settledAt: new Date().toISOString() } };
+  await reconcileLinearCancellation(ctx, f.m);
+  expect(f.launch).not.toHaveBeenCalled(); expect(f.m.aggregate.n5.publication.operation).toBeUndefined();
+  expect(f.m.aggregate.linearContinuity.control).toBe("cancelled");
+  expect(f.m.aggregate.linearContinuity.publications.at(-1).payload).toMatchObject({ campaignSuccess: false, pullRequestCleanup: "manual", openPullRequest: url });
+});
+it("fixed cancellation retains an unknown original PR outcome and blocks cleanup bypass", async () => {
+  fixedCampaign(); f.m.aggregate.linearContinuity.control = "cancel_requested";
+  f.m.aggregate.n5 = { publication: { claimedAt: new Date().toISOString(), operation: "cancel-pr", reservationId: randomUUID() } };
+  await expect(reconcileLinearCancellation(ctx, f.m)).rejects.toMatchObject({ code: "linear_cancel_effect_unknown" });
+  await expect(assertLinearContinuityDeparture(ctx, f.m, f.m.aggregate.n5.publication.reservationId)).rejects.toMatchObject({ code: "linear_continuity_hold" });
+  expect(f.launch).not.toHaveBeenCalled(); expect(f.m.aggregate.linearContinuity.control).toBe("cancel_requested");
+});
+it("fixed policy is opt-in and rejects unknown modes or fields", () => {
+  expect(parseLinearContinuityPolicy({ protocol: LINEAR_CONTINUITY_PROTOCOL, mode: FIXED_CAMPAIGN_MODE }, {})).toEqual({ protocol: LINEAR_CONTINUITY_PROTOCOL, mode: FIXED_CAMPAIGN_MODE });
+  for (const extra of [{ mode: "auto" }, { autoCleanup: true }]) expect(() => parseLinearContinuityPolicy({ protocol: LINEAR_CONTINUITY_PROTOCOL, ...extra }, {})).toThrow();
+});
+it("project preparation rejects a pre-existing legacy continuity state instead of downgrading fixed policy", async () => {
+  f.m.aggregate.phase = "draft";
+  const before = structuredClone(f.m);
+  const policy = { content: { linearContinuity: { protocol: LINEAR_CONTINUITY_PROTOCOL, mode: FIXED_CAMPAIGN_MODE } } } as any;
+  await expect(prepareLinearContinuity(ctx, f.m, policy)).rejects.toMatchObject({ code: "linear_continuity_policy_changed" });
+  expect(f.m).toEqual(before); expect(f.emitted).toHaveLength(0);
+  fixedCampaign();
+  await expect(prepareLinearContinuity(ctx, f.m, policy)).rejects.toMatchObject({ code: "linear_continuity_policy_changed" });
+});
+it("manual owner configuration cannot opt a fixed-policy project into legacy remote controls", async () => {
+  f.m.aggregate.phase = "draft"; f.m.aggregate.projectMandate.revisionId = "pinned-policy";
+  const binding = f.m.aggregate.linearContinuity.binding; delete f.m.aggregate.linearContinuity;
+  const fixedCtx = { ...ctx, db: { namespace: "council", query: async () => [{ revision_id: "pinned-policy", version: 1,
+    content: { linearContinuity: { protocol: LINEAR_CONTINUITY_PROTOCOL, mode: FIXED_CAMPAIGN_MODE } } }] } };
+  await expect(handleLinearContinuityBoard(fixedCtx, nativeControl("configure-linear-continuity", { binding }))).rejects.toMatchObject({ code: "linear_continuity_project_policy" });
+  expect(f.m.aggregate.linearContinuity).toBeUndefined(); expect(f.emitted).toHaveLength(0);
 });
