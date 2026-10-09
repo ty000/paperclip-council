@@ -252,9 +252,19 @@ async function advance(ctx: PluginContext, initial: Intake, latest: ProjectManda
   }
 }
 
+async function closedCampaignIntake(ctx: PluginContext, intake: Intake) {
+  const existing = await getMission(ctx, intake.companyId, intake.missionId);
+  // Closed campaign work is historical. Its driver still reconciles the result
+  // and repository release; intake must not reacquire admission or configuration.
+  return existing?.rootIssueId === intake.rootIssueId && existing.projectId === intake.projectId
+      && existing.aggregate.completion?.state === "closed"
+      && Boolean(existing.aggregate.linearContinuity?.mode === "milestone-fixed-v1" || existing.aggregate.repositoryCampaign);
+}
+
 async function advancePinned(ctx: PluginContext, initial: Intake, latest: ProjectMandate, policy: ProjectMandate,
   issues: Awaited<ReturnType<typeof projectIssues>>) {
   let intake = initial;
+  if (await closedCampaignIntake(ctx, intake)) return;
   if (!latest.content.enabled || latest.revisionId !== intake.revisionId || (await ctx.companies.get(intake.companyId))?.defaultResponsibleUserId !== policy.authorizedBy
       || operatingProfileHash(await ctx.config.get(intake.companyId)) !== policy.content.operatingProfileHash) {
     throw new MissionError(409, "project_authority_changed", "Project owner, operating profile or policy revision changed; retain the original intake without new effects");
