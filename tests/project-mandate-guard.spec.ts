@@ -56,4 +56,12 @@ describe("pinned project departure authority", () => {
     await expect(assertProjectDeparture({} as PluginContext, m)).resolves.toBeUndefined();
     expect(() => assertProjectPaths(m, ["any"])).not.toThrow();
   });
+  it("retains an occupied intake even if its question was published and the repository is now free", async () => {
+    const f = fixture();
+    const intake = { mission_id: f.m.missionId, version: 4, state: { questions: { repository_occupied: { confirmed: true } } } };
+    f.ctx.db.query = vi.fn(async (sql: string) => (sql.includes("project_task_intakes") ? [intake] : [f.row])) as any;
+    await expect(assertProjectDeparture(f.ctx, f.m)).rejects.toMatchObject({ code: "repository_intake_held" });
+    Object.assign(intake.state, { repositoryHold: { status: "released" } });
+    await expect(assertProjectDeparture(f.ctx, f.m)).resolves.toBeUndefined();
+  });
 });

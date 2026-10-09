@@ -1,3 +1,4 @@
+import { resumeRepositoryIntake } from "./project-intake-recovery.js";
 import { parseLinearContinuityPolicy } from "./linear-continuity-intake.js";
 import { FIXED_CAMPAIGN_MODE } from "./linear-continuity-contract.js";
 import { readTaskIntake, rebindUnstartedTask } from "./project-intake-rebind.js";
@@ -123,6 +124,14 @@ async function policyContent(ctx: PluginContext, companyId: string, projectId: s
     };
 }
 
+async function recoverTaskIntake(ctx: PluginContext, companyId: string, projectId: string, ownerId: string, body: Record<string, any>) {
+  runtimeUuid(body.rootIssueId, "rootIssueId"); runtimeUuid(body.policyRevisionId, "policyRevisionId");
+  const policy = await readProjectMandate(ctx, companyId, projectId);
+  if (!policy) throw new MissionError(409, "project_policy_missing", "Explicit current project mandate required");
+  const recover = body.command === "resume-repository-intake" ? resumeRepositoryIntake : rebindUnstartedTask;
+  return { status: 200, body: { ...await recover(ctx, policy, ownerId, body), policy } };
+}
+
 export async function handleProjectMandate(ctx: PluginContext, input: PluginApiRequestInput) {
   const companyId = runtimeUuid(input.companyId, "companyId"), projectId = runtimeUuid(input.params.projectId, "projectId");
   const company = await ctx.companies.get(companyId); const ownerId = company?.defaultResponsibleUserId;
@@ -138,12 +147,7 @@ export async function handleProjectMandate(ctx: PluginContext, input: PluginApiR
   if (!input.body || typeof input.body !== "object" || Array.isArray(input.body)) throw new MissionError(422, "project_mandate_input", "Policy object required");
   const body = input.body as Record<string, any>;
   const commandId = runtimeUuid(body.commandId, "commandId"), hash = canonicalPayloadHash(body);
-  if (body.command === "rebind-unstarted-task") {
-    runtimeUuid(body.rootIssueId, "rootIssueId"); runtimeUuid(body.policyRevisionId, "policyRevisionId");
-    const policy = await readProjectMandate(ctx, companyId, projectId);
-    if (!policy) throw new MissionError(409, "project_policy_missing", "Explicit current project mandate required");
-    return { status: 200, body: { ...await rebindUnstartedTask(ctx, policy, ownerId, body), policy } };
-  }
+  if (["rebind-unstarted-task", "resume-repository-intake"].includes(body.command)) return recoverTaskIntake(ctx, companyId, projectId, ownerId, body);
   const prior = await ctx.db.query<any>(`SELECT * FROM ${projectTable(ctx, "project_mandates")} WHERE company_id = $1 AND project_id = $2 AND command_id = $3`, [companyId, projectId, commandId]);
   if (prior[0]) {
     if (prior[0].payload_hash !== hash || prior[0].authorized_by !== ownerId) throw new MissionError(409, "project_command_conflict", "Retain the original policy command and payload");

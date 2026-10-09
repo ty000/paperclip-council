@@ -2573,7 +2573,7 @@ describe("hierarchy source integrity through two physical contribution dispatche
     h.query.mockImplementation(async (...args: unknown[]) => String(args[0]).includes("project_mandates") ? [{
       company_id: id.company, project_id: id.project, version: 1, revision_id: value.projectMandate!.revisionId, authorized_by: id.owner,
       content: { enabled: true, hierarchy, completion: value.projectMandate!.completion },
-    }] as never : [h.row()]);
+    }] as never : String(args[0]).includes("project_task_intakes") ? [] : [h.row()]);
     h.list.mockImplementation(async (...args: unknown[]) => {
       const filter = args[0] as { originKind?: string; originId?: string };
       return [...h.issues.values()].filter(issue => !filter.originId || issue.originId === filter.originId && issue.originKind === filter.originKind) as never;

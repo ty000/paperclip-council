@@ -94,6 +94,30 @@ These recovery controls have targeted source tests. The historical installed
 receipts below remain attached to their exact earlier package pairs; they do not
 qualify this protocol change or authorize recette activation.
 
+## Cancellation and occupied-intake recovery
+
+Fixed campaign cancellation leaves integrated commits and historical technical
+task statuses intact. Product nodes must be terminal; every original member run,
+effect and reservation must be reconciled before the repository can be released.
+A technical review or publication task marked `done` or `blocked` does not itself
+retain occupation once its exact run and costs are settled. Unknown effects,
+unaccounted runs and remaining exposure still prevent release.
+
+The cancellation publication carries `cancellationSummary` with schema
+`council-linear-cancellation-summary-v1`: `retainedDeliveries` identifies member
+mission, native issue, source issue, observed PR URL, integrated commit and
+`verified`; `remainingWork` lists unfinished and unstarted source leaves;
+`openPullRequests` lists exact observed URLs for manual cleanup. A merged result
+whose checks failed remains retained with `verified: false` and remains unfinished.
+No PR closure or success is inferred. Cancellation before plan publication uses
+the original prepared intake mapping rather than omitting unstarted work.
+
+An intake held by repository occupation requires the explicit owner
+`resume-repository-intake` command described in [project mandates](PROJECT-MANDATES.md).
+The existing job does not restart it merely because occupation disappears or its
+question was published. These recovery boundaries are covered by source tests;
+the installed receipts below remain attached to their original candidates.
+
 ## Evidence
 
 Reports live under `.runtime/lot4/native-*/campaign-proof.json` (campaign) and

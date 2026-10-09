@@ -5,6 +5,7 @@ import { reconcileProjectTasks } from "../src/project-task-intake.js";
 import type { MissionRecord } from "../src/missions.js";
 import { MissionError } from "../src/missions.js";
 import { LINEAR_ORIGIN } from "../src/linear-intake-contract.js";
+import { resumeRepositoryIntake } from "../src/project-intake-recovery.js";
 
 const f = vi.hoisted(() => ({ policy: {} as any, issues: [] as any[], mission: null as MissionRecord | null, create: vi.fn(), activate: vi.fn(), configure: vi.fn(), guard: vi.fn() }));
 vi.mock("../src/project-mandate-state.js", () => ({ listProjectMandates: async () => [f.policy], projectIssues: async () => f.issues,
@@ -38,7 +39,7 @@ function context() {
     execute: async (sql: string, p: any[]) => {
       if (sql.startsWith("INSERT") && !row) row = { company_id: p[0], root_issue_id: p[1], project_id: p[2], policy_revision_id: p[3], mission_id: p[4], version: 1, state: JSON.parse(p[5]) };
       if (sql.startsWith("UPDATE")) {
-        if (row.version !== p[3]) return { rowCount: 0 };
+        if (row.version !== (sql.includes("policy_revision_id = $6") ? p[4] : p[3])) return { rowCount: 0 };
         row.state = JSON.parse(p[0]); row.version++;
       }
       return { rowCount: 1 };
@@ -102,6 +103,34 @@ describe("stable project task intake", () => {
     expect(f.activate).toHaveBeenCalledTimes(1);
     expect(f.activate.mock.calls[0]![0]).toMatchObject({ periodKey: "existing", requestedUnits: 1000 });
     expect(c.receipt().mission_id).toBe(first.mission_id); expect(f.mission!.aggregate.projectMandate!.revisionId).toBe("revision");
+  });
+  it("requires explicit recovery after occupation clears, preserving identities and confirmed question history", async () => {
+    const c = context(); f.create.mockRejectedValueOnce(new MissionError(409, "repository_occupied", "Repository held"));
+    await reconcileProjectTasks(c.ctx);
+    const held = c.receipt();
+    expect(held.state.questions.repository_occupied.confirmed).toBe(true);
+    await reconcileProjectTasks(c.ctx); await reconcileProjectTasks(c.ctx);
+    expect(f.create).toHaveBeenCalledTimes(1); expect(f.activate).not.toHaveBeenCalled();
+    const body = { commandId: randomUUID(), rootIssueId: "root", policyRevisionId: "revision", authorizeResume: true, expectedIntakeVersion: held.version };
+    await resumeRepositoryIntake(c.ctx, f.policy, "owner", body);
+    await reconcileProjectTasks(c.ctx);
+    expect(f.activate).toHaveBeenCalledTimes(1);
+    expect(c.receipt().mission_id).toBe(held.mission_id);
+    expect(c.receipt().state.createBody).toEqual(held.state.createBody);
+    expect(c.receipt().state.questions).toEqual(held.state.questions);
+    expect((await resumeRepositoryIntake(c.ctx, f.policy, "owner", body)).outcome).toBe("replayed");
+  });
+  it("retains a new occupation hold after a failed authorized recovery; replay does not release it", async () => {
+    const c = context(); f.create.mockRejectedValue(new MissionError(409, "repository_occupied", "Repository still held"));
+    await reconcileProjectTasks(c.ctx);
+    const body = { commandId: randomUUID(), rootIssueId: "root", policyRevisionId: "revision", authorizeResume: true, expectedIntakeVersion: c.receipt().version };
+    await resumeRepositoryIntake(c.ctx, f.policy, "owner", body);
+    await reconcileProjectTasks(c.ctx);
+    expect(c.receipt().state.repositoryHold.status).toBe("held");
+    await resumeRepositoryIntake(c.ctx, f.policy, "owner", body);
+    await reconcileProjectTasks(c.ctx);
+    expect(f.create).toHaveBeenCalledTimes(2); expect(f.activate).not.toHaveBeenCalled();
+    expect(c.receipt().state.repositoryHold.status).toBe("held");
   });
   it("retains the same activation reservation and command after an uncertain admission response", async () => {
     const c = context(); f.activate.mockRejectedValueOnce(new Error("lost admission response"));
