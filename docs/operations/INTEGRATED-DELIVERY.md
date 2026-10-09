@@ -42,4 +42,6 @@ Les tests déterministes couvrent ordre des feuilles, base intégrée, contrats 
 
 L'installation en recette est différée jusqu'à la livraison des lots 3 et 4. Les preuves des tentatives natives bloquées restent immuables dans les artefacts locaux ; elles ne valent pas qualification réussie.
 
+Le [manifeste de qualification du 9 octobre 2026](../qualification/native-first-lot3-integrated-5fc39d0.json) fixe le source `5fc39d0`, le host et le hash du brut conservé localement. Huit runs natifs réussis et réglés (1 200 tokens de fixture), une fusion simulée unique et un commit squash Git réel aboutissent à la clôture prouvée de la feuille ; le parent extérieur reste ouvert. Deux feuilles successives sont couvertes par les tests déterministes d'ordre/base ; leur campagne native complète reste à exécuter en recette. Les commits ultérieurs de ce manifeste ne requalifient pas un autre source.
+
 Référence API : [fusion GitHub avec SHA attendu](https://docs.github.com/en/rest/pulls/pulls#merge-a-pull-request).
