@@ -1,4 +1,5 @@
 import { readTaskIntake, rebindUnstartedTask } from "./project-intake-rebind.js";
+import { inspectProjectReadiness } from "./project-readiness.js";
 import { operatingProfileHash } from "./project-mandate-state.js";
 import { parseCompletionPolicy } from "./completion-contract.js";
 import { parsePrContract } from "./pr-contract.js";
@@ -104,8 +105,12 @@ export async function handleProjectMandate(ctx: PluginContext, input: PluginApiR
   if (input.actor.actorType !== "user" || !ownerId || input.actor.userId !== ownerId) throw new MissionError(403, "project_owner_required", "Company responsible owner required");
   const project = await ctx.projects.get(projectId, companyId);
   if (!project || project.companyId !== companyId || project.archivedAt) throw new MissionError(422, "project_unavailable", "Exact active company project required");
-  if (input.method === "GET") return { status: 200, body: { policy: await readProjectMandate(ctx, companyId, projectId),
-    ...(input.query.rootIssueId ? { intake: await readTaskIntake(ctx, companyId, projectId, runtimeUuid(input.query.rootIssueId, "rootIssueId")) } : {}) } };
+  if (input.method === "GET") {
+    const policy = await readProjectMandate(ctx, companyId, projectId);
+    return { status: 200, body: { policy,
+      ...(input.query.readiness === "true" ? { readiness: await inspectProjectReadiness(ctx, companyId, projectId, policy) } : {}),
+      ...(input.query.rootIssueId ? { intake: await readTaskIntake(ctx, companyId, projectId, runtimeUuid(input.query.rootIssueId, "rootIssueId")) } : {}) } };
+  }
   if (!input.body || typeof input.body !== "object" || Array.isArray(input.body)) throw new MissionError(422, "project_mandate_input", "Policy object required");
   const body = input.body as Record<string, any>;
   const commandId = runtimeUuid(body.commandId, "commandId"), hash = canonicalPayloadHash(body);
