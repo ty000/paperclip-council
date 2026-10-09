@@ -27,6 +27,7 @@ pnpm test
 pnpm typecheck
 pnpm build
 pnpm audit:static --base-ref 38483d5ab3d26ecfae7b1a5ca8b8e1d0b2e8e8b4
+pnpm audit:static --base-ref 91b4e583abf6e1b47796a4501f07e9953175c670
 ```
 
 The targeted suite passes 17 tests. The full suite passes 1,286 tests with one
@@ -34,6 +35,11 @@ existing skip; typecheck, build and the Fallow 3.23.0 diff gate pass. Closure te
 use the real authority predicate for owner/policy/profile revocation and simulated
 database CAS and native issue/document responses. They do not prove concurrent
 host behavior.
+
+The cumulative stack gate also passes after extracting the existing intake
+authority predicate into a local helper. The closed-campaign early return,
+short-circuit conditions, awaited checks and subsequent CAS/effect order are
+unchanged. The 45 intake/campaign-conflict tests pass; no gate or threshold changed.
 
 The historical installed campaign receipt remains bound to Council `ee6535a`
 and its recorded intake/host pair. It has not been replayed with this new guard.

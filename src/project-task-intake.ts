@@ -264,14 +264,18 @@ async function closedCampaignIntake(ctx: PluginContext, intake: Intake) {
       && Boolean(existing.aggregate.linearContinuity?.mode === "milestone-fixed-v1" || existing.aggregate.repositoryCampaign);
 }
 
-async function advancePinned(ctx: PluginContext, initial: Intake, latest: ProjectMandate, policy: ProjectMandate,
-  issues: Awaited<ReturnType<typeof projectIssues>>) {
-  let intake = initial;
-  if (await closedCampaignIntake(ctx, intake)) return;
+async function assertCurrentIntakeAuthority(ctx: PluginContext, intake: Intake, latest: ProjectMandate, policy: ProjectMandate) {
   if (!latest.content.enabled || latest.revisionId !== intake.revisionId || (await ctx.companies.get(intake.companyId))?.defaultResponsibleUserId !== policy.authorizedBy
       || operatingProfileHash(await ctx.config.get(intake.companyId)) !== policy.content.operatingProfileHash) {
     throw new MissionError(409, "project_authority_changed", "Project owner, operating profile or policy revision changed; retain the original intake without new effects");
   }
+}
+
+async function advancePinned(ctx: PluginContext, initial: Intake, latest: ProjectMandate, policy: ProjectMandate,
+  issues: Awaited<ReturnType<typeof projectIssues>>) {
+  let intake = initial;
+  if (await closedCampaignIntake(ctx, intake)) return;
+  await assertCurrentIntakeAuthority(ctx, intake, latest, policy);
   if (!intake.state.createBody) intake = await pinTask(ctx, intake, policy, issues);
   await createMission(ctx, intake.companyId, policy.authorizedBy, intake.state.createBody, trustedMembership(intake));
   let m = (await getMission(ctx, intake.companyId, intake.missionId))!;
