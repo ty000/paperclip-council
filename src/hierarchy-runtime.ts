@@ -30,7 +30,10 @@ export function descriptionMatchesSource(m: MissionRecord, issueId: string, desc
 async function assertLinearReadiness(ctx: PluginContext, m: MissionRecord) {
   const snapshot = m.aggregate.projectMandate?.linearIntake;
   if (!snapshot) return;
-  const doc = await ctx.issues.documents.get(m.rootIssueId, LINEAR_READINESS_KEY, m.companyId);
+  const root = m.aggregate.repositoryCampaign ? await (await import("./repository-campaign.js")).campaignRoot(ctx, m) : m;
+  requireLinear(snapshot.subject.nativeRootId === root.rootIssueId
+    && canonicalPayloadHash(root.aggregate.projectMandate?.linearIntake ?? null) === canonicalPayloadHash(snapshot), "linear_readiness_changed");
+  const doc = await ctx.issues.documents.get(root.rootIssueId, LINEAR_READINESS_KEY, m.companyId);
   requireLinear(doc?.latestRevisionId === snapshot.subject.readinessRevisionId && doc.id === snapshot.subject.readinessDocumentId, "linear_readiness_changed");
   let body: unknown;
   try { body = JSON.parse(doc.body); } catch { requireLinear(false, "linear_readiness_changed"); }
