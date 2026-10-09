@@ -57,10 +57,11 @@ async function assertNominalCampaignJobs(host: LinearHost, council: Council, com
   assert.equal(failed.length, 0, "A failed native Council job requires diagnosis before continuing qualification");
   proof.latestJournals = await journals(host, companyId);
   const questions = proof.latestJournals.intake.flatMap((row: any) =>
-    Object.entries(row.state.questions ?? {}).filter(([code]) => code !== "previous_delivery_pending")
+    Object.entries(row.state.questions ?? {}).filter(([code]) => !["previous_delivery_pending", "delivery_dependency_pending"].includes(code))
       .map(([code, question]) => ({ missionId: row.mission_id, code, question })));
-  // The second leaf legitimately waits for its predecessor. Every other retained
-  // intake question is a non-nominal condition, even when the scheduled job succeeds.
+  // B waits for A, including A's native settlement dependency until its delivery
+  // closes. Retain both observations; terminal checks still require both deliveries.
+  // Every other intake question is non-nominal even when the scheduled job succeeds.
   assert.equal(questions.length, 0, `Native intake requires diagnosis: ${JSON.stringify(questions)}`);
 }
 
