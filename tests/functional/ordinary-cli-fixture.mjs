@@ -7,14 +7,15 @@ import { randomUUID, createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
-const config = JSON.parse(await readFile(process.env.COUNCIL_ORDINARY_FIXTURE, "utf8"));
+let config = JSON.parse(await readFile(process.env.COUNCIL_ORDINARY_FIXTURE, "utf8"));
 const base = process.env.PAPERCLIP_API_URL;
 assert.equal(new URL(base).hostname, "127.0.0.1");
 const issueId = process.env.PAPERCLIP_TASK_ID;
 const agentId = process.env.PAPERCLIP_AGENT_ID;
 const runId = process.env.PAPERCLIP_RUN_ID;
 process.on("uncaughtException", async error => {
-  await writeFile(resolve(config.runtime, `fixture-failure-${runId}.json`), JSON.stringify({ runId, message: String(error.message).slice(0, 2000) })).catch(() => {});
+  await writeFile(resolve(config.runtime, `fixture-failure-${runId}.json`), JSON.stringify({ runId,
+    message: String(error.message).slice(0, 2000), stack: String(error.stack).split("\n").slice(0, 8).join("\n") })).catch(() => {});
   process.exitCode = 1;
 });
 const headers = { authorization: `Bearer ${process.env.PAPERCLIP_API_KEY}`, "x-paperclip-run-id": runId };
@@ -28,7 +29,18 @@ async function api(method, path, body, expected) {
   return value;
 }
 const route = `/api/plugins/private.paperclip-council/api/issues/${issueId}/council/commands`;
-if (config.projectIntake && !config.missionId) {
+if (config.campaignMode) {
+  const nativeIssue = await api("GET", `/api/issues/${issueId}`);
+  const describedMissionId = /(?:^|[{\s,])"?missionId"?\s*:\s*"([0-9a-f-]{36})"/i.exec(nativeIssue.description ?? "")?.[1];
+  const campaignReview = nativeIssue.description?.includes('"command":"campaign-review-inspect"') === true;
+  let discovered;
+  if (describedMissionId) discovered = { missionId: describedMissionId };
+  else discovered = await api("POST", route, { command: "inspect" });
+  assert(discovered.missionId, "Each campaign run must discover its own mission from its authenticated native task");
+  config = { ...config, missionId: discovered.missionId, campaignReview,
+    ...(discovered.n1?.rootIssueId ? { rootIssueId: discovered.n1.rootIssueId } : {}),
+    baseCommit: discovered.n1?.sourceBaseCommit ?? execFileSync("git", ["rev-parse", "main"], { cwd: config.repoPath, encoding: "utf8" }).trim() };
+} else if (config.projectIntake && !config.missionId) {
   assert.equal(agentId, config.actors.lead);
   const discovered = await api("POST", route, { command: "inspect" });
   assert(discovered.missionId);
@@ -48,10 +60,22 @@ async function observe(read, ok, label) {
   throw new Error(`Timeout ${label}`);
 }
 const git = (...args) => execFileSync("git", args, { cwd: config.repoPath, encoding: "utf8" }).trim();
+const canonicalHash = value => {
+  const stable = entry => Array.isArray(entry) ? entry.map(stable) : entry && typeof entry === "object"
+    ? Object.fromEntries(Object.entries(entry).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => [key, stable(item)])) : entry;
+  return createHash("sha256").update(JSON.stringify(stable(value))).digest("hex");
+};
 await api("POST", `/api/issues/${issueId}/checkout`, { agentId, expectedStatuses: ["todo", "in_progress"] });
-const inspectCommand = coordinationActor ? "n6-inspect" : agentId === config.actors.publisher ? "n5-inspect" : "inspect";
+const inspectCommand = config.campaignReview ? "campaign-review-inspect" : coordinationActor ? "n6-inspect" : agentId === config.actors.publisher ? "n5-inspect" : "inspect";
 let inspection = await observe(async () => { try { return await call({ command: inspectCommand }); }
   catch (e) { if (["root_dispatch_run_mismatch", "dispatch_run_mismatch"].includes(e.response?.code)) return null; throw e; } }, Boolean, "dispatch binding");
+inspection = inspection.inspection ?? inspection;
+if (config.campaignMode) {
+  assert.equal(inspection.missionId, config.missionId, "Authenticated inspection must confirm the mission discovered from this native task");
+  const rootIssueId = inspection.rootIssueId ?? inspection.n1?.rootIssueId;
+  assert(rootIssueId, "Campaign inspection must reveal the exact leaf root issue");
+  config = { ...config, rootIssueId, baseCommit: inspection.n1?.sourceBaseCommit ?? config.baseCommit };
+}
 async function command(command, extra = {}) {
   inspection = await call({ command: "inspect" });
   return call({ command, commandId: randomUUID(), expectedVersion: inspection.version, ...extra });
@@ -80,6 +104,42 @@ else if (issueId === config.n6RootIssueId) {
     try { await readFile(resolve(config.runtime, "n6-finish")); return true; } catch { return false; }
   }, Boolean, "owner bounded downstream observation complete");
   summary = { fixture: "N6 downstream N1 launch", missionId: config.n6MissionId, runId, issueId, inspected: inspection.missionId };
+}
+else if (config.campaignReview) {
+  const subject = inspection.campaignClosure.subject;
+  assert.equal(subject.campaignRootMissionId, config.missionId);
+  assert.equal(subject.results.length, 2, "The global review requires both serial delivery results");
+  for (const criterion of subject.coverage.filter(item => item.sourceDocument)) {
+    const source = criterion.sourceDocument;
+    const document = await api("GET", `/api/issues/${source.issueId}/documents/${source.key}`);
+    assert.equal(document.latestRevisionId, source.revisionId);
+    assert.equal(canonicalHash(document.body), source.bodySha256);
+    const selected = source.selector?.split(".").reduce((value, key) => value?.[key], JSON.parse(document.body));
+    assert.notEqual(selected, undefined, `Pinned source selector ${source.selector} must resolve`);
+  }
+  for (const result of subject.results) {
+    const document = await api("GET", `/api/issues/${result.issueId}/documents/${result.completionDocument.key}`);
+    assert.equal(document.latestRevisionId, result.completionDocument.revisionId);
+    assert.equal(canonicalHash(document.body), result.completionDocument.bodySha256);
+  }
+  assert.equal(git("show", "main:alpha.txt"), "alpha contribution");
+  assert.equal(git("show", "main:beta.txt"), "beta contribution");
+  const resultBySource = new Map(subject.results.map(result => [result.sourceId, result]));
+  const rows = subject.coverage.map(criterion => {
+    const related = resultBySource.get(criterion.criterionId.replace(/^source:/, ""));
+    const results = related ? [related] : subject.results;
+    const proofIds = [...new Set(results.flatMap(result => [result.proofId, result.completionDocument.revisionId,
+      result.completionDocument.bodySha256, result.integratedResultSha256]).concat(subject.priorPublicationSha256s))];
+    return { criterionId: criterion.criterionId, sourceSha256: criterion.sourceSha256,
+      deliveryOrObligationIds: related ? [related.resultId] : ["transverse:campaign"],
+      verification: { environment: "isolated installed campaign fixture",
+        method: related ? "Read the exact native source and completion revisions and verified both attributed files on Git main; semantic judgment is deterministic fixture output"
+          : "Read every exact native source and completion revision and verified alpha.txt plus beta.txt on Git main; semantic judgment is deterministic fixture output" },
+      result: "satisfied", proofIds, remainder: null };
+  });
+  summary = { schema: "council-linear-campaign-review-report-v1", campaignRootMissionId: subject.campaignRootMissionId,
+    taskId: inspection.campaignClosure.task.taskId, sourceSha256: subject.sourceSha256, mandateSha256: subject.mandateSha256,
+    coverageSha256: subject.coverageSha256, resultsSha256: subject.resultsSha256, verdict: "approved", rows };
 }
 else if (agentId === config.actors.publisher) summary = await publishDelivery({ api, call, config, issueId, runId, git });
 else if (inspection.task) {
@@ -139,6 +199,14 @@ else if (inspection.task) {
   summary = { fixture: "N1 admitted final integration", candidateCommit: candidate.candidateCommit };
 } else if (agentId === config.actors.lead) {
   const contributions = inspection.n1.hierarchy?.leaves ?? ["alpha", "beta"].map(name => ({ contributionId: randomUUID(), assigneeAgentId: config.actors[name], title: name, ownedPaths: [`${name}.txt`] }));
+  if (config.campaignMode) {
+    assert.equal(contributions.length, 1, "A campaign leaf mission owns exactly one planned contribution");
+    assert.equal(inspection.n1.participants.length, 0, "Campaign work branch is initialized only for a fresh leaf plan");
+    const baseCommit = git("rev-parse", "main");
+    git("checkout", "-B", `campaign-${config.missionId}`, baseCommit);
+    git("branch", "-f", "base", baseCommit);
+    config = { ...config, baseCommit };
+  }
   if (config.leadCommandBlock) {
     assert.equal(inspection.n1.leadCommands.protocol, "council-lead-commands-v1");
     execFileSync("bash", ["-c", inspection.n1.leadCommands.shell], { cwd: config.repoPath,

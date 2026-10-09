@@ -78,8 +78,10 @@ export async function startLinearHost(repository: string) {
       method, headers: { "content-type": "application/json" },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(30_000),
     });
-    assert(response.ok, `${method} ${path}: HTTP ${response.status}`);
-    return response.json();
+    const value = await response.json();
+    const code = typeof value.code === "string" && /^[a-z0-9_]+$/.test(value.code) ? value.code : "request_failed";
+    assert(response.ok, `${method} ${path}: HTTP ${response.status} ${code}`);
+    return value;
   }
 
   return {

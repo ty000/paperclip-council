@@ -1,0 +1,103 @@
+{
+  "schema": "linear-v1-installed-receipt.v1",
+  "outcome": "NATIVE CAMPAIGN VALIDATED",
+  "boundary": "Isolated native Paperclip host, installed workers, bus, scheduler, PostgreSQL, admission and native runs. Linear/GitHub/model responses and usage are deterministic fixtures. Git commits and integrations are real in a private repository. No recette changes or provider execution.",
+  "startedAt": "2026-10-09T20:22:45.102Z",
+  "finishedAt": "2026-10-09T20:57:18.129Z",
+  "candidates": {
+    "councilCommit": "ee6535a4f8eff7b7e8b820567bf5f1249707f8ed",
+    "intakeCommit": "c194d776df5e966a649d15de149f11f314aee492",
+    "hostCommit": "61b3fd57a695614dc4a37e2303f426a34a9795cf"
+  },
+  "packageFileDigestSets": {
+    "council": {
+      "files": 762,
+      "sha256": "08bbc6e6edf50031370b21c36413eec5d0828cbceacc4bef7680058add589114"
+    },
+    "intake": {
+      "files": 187,
+      "sha256": "713823b5e54eabd22c1dc95529b4e8e2d51040d24249ea722341ca46a0b9b51b"
+    }
+  },
+  "checks": {
+    "completeImport": "PASS",
+    "noImporterWake": "PASS",
+    "serialIntegratedLeaves": "PASS",
+    "independentGlobalClosure": "PASS",
+    "terminalReadback": "PASS",
+    "repositoryReleased": "PASS",
+    "singleBudget": "PASS",
+    "noProvider": "PASS"
+  },
+  "runs": {
+    "count": 17,
+    "succeeded": 17,
+    "fixtureUsageUnits": 2550
+  },
+  "admission": {
+    "periodKey": "linear-intake-isolated",
+    "reservations": 17,
+    "allSettled": true,
+    "accountedUnits": 2550,
+    "configureCount": 1
+  },
+  "cleanup": {
+    "serverStopped": true,
+    "databaseStopped": true,
+    "hostTrackedUnchanged": true,
+    "runtimeRetained": true
+  },
+  "packageBytesUnchanged": true,
+  "rawProof": {
+    "path": ".runtime/lot4/native-wlGV7k/campaign-proof.json",
+    "sha256": "3f840228474a112babe6ccbcc0358d6d592241b6448af3b96ac80cc5a8a98363"
+  },
+  "finalNativeObservationsVerified": true,
+  "nativeObservations": {
+    "count": 25,
+    "versionConflictsObserved": 4
+  },
+  "serial": {
+    "orderedMissionIds": [
+      "e1fc0ab3-f21b-4a8b-b68d-248257b3c3e7",
+      "d8942b65-4852-4474-b9f8-eb3425eaad06"
+    ],
+    "runCount": 17,
+    "noRootImplementation": true,
+    "serialPredecessor": true,
+    "bothFilesIntegrated": true
+  },
+  "globalReview": {
+    "runId": "d1b3f049-69f0-4c6f-9697-f16fb69a871e",
+    "agentId": "3c29fafa-89d8-4073-ac44-d9c16207d730",
+    "coverageRows": 11,
+    "reportSha256": "5adbd08d841d86018b0afcbad15d0d6b7457b97161bab583fe7ae6d5da8bd7ea",
+    "proofRevisionId": "cad1ab04-8de2-46e4-bb9e-9fccc8ffb94d"
+  },
+  "repositoryRelease": {
+    "registryVersion": 5,
+    "remainingHolders": 0
+  },
+  "publications": {
+    "comments": 10,
+    "effects": 15
+  },
+  "integrations": [
+    {
+      "createCount": 1,
+      "mergeCount": 1,
+      "updateCount": 0,
+      "baseCommit": "11c3a2344eab9a281ea478c8d38cc1eb32e69f2c",
+      "integratedCommit": "19d8391c5216eff0c1279c3fa762d9b17bb3dce2",
+      "merged": true
+    },
+    {
+      "createCount": 1,
+      "mergeCount": 1,
+      "updateCount": 0,
+      "baseCommit": "19d8391c5216eff0c1279c3fa762d9b17bb3dce2",
+      "integratedCommit": "3bfad43b5b6279337eeacf21f9b898d21a08bd94",
+      "merged": true
+    }
+  ]
+}

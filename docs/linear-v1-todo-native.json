@@ -1,0 +1,59 @@
+{
+  "schema": "linear-v1-installed-receipt.v1",
+  "outcome": "NATIVE LINEAR COUNCIL ADMISSION VALIDATED",
+  "boundary": "Isolated native Paperclip host through settled N1 ready_for_review, before N2. Linear HTTP and CLI model output/usage are deterministic fixtures. No GitHub delivery, recette changes or provider execution.",
+  "startedAt": "2026-10-09T15:39:43.731Z",
+  "finishedAt": "2026-10-09T15:46:15.114Z",
+  "candidates": {
+    "councilCommit": "d25fff931262d90641badf433f2eabc08becc94b",
+    "intakeCommit": "c194d776df5e966a649d15de149f11f314aee492",
+    "hostCommit": "61b3fd57a695614dc4a37e2303f426a34a9795cf"
+  },
+  "packageFileDigestSets": {
+    "council": {
+      "files": 762,
+      "sha256": "dde2d972b64f56f1db127e80148cb9a569c80aaba274f2a483cdf49cc8c7fb25"
+    },
+    "intake": {
+      "files": 187,
+      "sha256": "713823b5e54eabd22c1dc95529b4e8e2d51040d24249ea722341ca46a0b9b51b"
+    }
+  },
+  "checks": {
+    "completeImportBeforeAdmission": "PASS",
+    "disabledMandateNoAdmission": "PASS",
+    "pendingResponseNoAdmission": "PASS",
+    "restartOriginalIdentity": "PASS",
+    "earlyBoardAdmissionRefused": "PASS",
+    "oneAdmissionAttempt": "PASS",
+    "dependencyOrder": "PASS",
+    "historicalTerminalPreserved": "PASS",
+    "existingAccountingSettled": "PASS",
+    "nativeScheduledJobs": "PASS",
+    "noImporterWake": "PASS",
+    "noProvider": "PASS"
+  },
+  "runs": {
+    "count": 3,
+    "succeeded": 3,
+    "fixtureUsageUnits": 450
+  },
+  "admission": {
+    "periodKey": "linear-intake-isolated",
+    "reservations": 3,
+    "allSettled": true,
+    "accountedUnits": 450,
+    "configureCount": 1
+  },
+  "cleanup": {
+    "serverStopped": true,
+    "databaseStopped": true,
+    "hostTrackedUnchanged": true,
+    "runtimeRetained": true
+  },
+  "packageBytesUnchanged": true,
+  "rawProof": {
+    "path": ".runtime/lot4/native-rHelBJ/proof.json",
+    "sha256": "9097c8c74f76cd0dce83c4d5d811c10f6799aef2c3c90ef541e38256bdc92af6"
+  }
+}

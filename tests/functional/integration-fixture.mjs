@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { campaignTransportPath } from "./linear-campaign-github.ts";
 
 export async function integrateDelivery({ api, call, config, issueId, runId, git }) {
   let view = await call({ command: "n5-inspect" });
   const p = view.delivery.publication, a = view.delivery.authority;
-  const path = resolve(config.runtime, "github-transport.json"), remote = JSON.parse(await readFile(path, "utf8"));
+  const path = config.campaignMode ? campaignTransportPath(config.runtime, config.missionId) : resolve(config.runtime, "github-transport.json");
+  const remote = JSON.parse(await readFile(path, "utf8"));
   const report = { protocol: "publisher-integration-report-v1", provenance: "publisher_run_report", companyId: config.companyId,
     missionId: config.missionId, intentId: p.intentId, issueId, runId, observedAt: new Date().toISOString(), repository: a.repository,
     url: p.targetUrl, candidateCommit: p.submission.candidateCommit, baseRef: a.baseRef, baseCommit: p.submission.baseCommit,
@@ -25,6 +27,7 @@ export async function integrateDelivery({ api, call, config, issueId, runId, git
   const integrated = git("commit-tree", git("rev-parse", p.submission.candidateCommit + "^{tree}"), "-p", p.submission.baseCommit, "-m", "Fixture integrated delivery");
   git("update-ref", "refs/heads/main", integrated, p.submission.baseCommit);
   remote.mergeCount = 1; remote.merged = true; remote.integratedCommit = integrated;
+  if (config.campaignMode) remote.baseCommit = p.submission.baseCommit;
   await writeFile(path, JSON.stringify(remote));
   view = await call({ command: "n5-inspect" });
   const mergedReport = { ...report, observedAt: new Date().toISOString(), state: "merged", integratedCommit: integrated,
