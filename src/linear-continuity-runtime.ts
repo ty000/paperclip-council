@@ -6,6 +6,7 @@ import { parseLinearReadiness, LINEAR_READINESS_KEY } from "./linear-intake-cont
 import { applyLinearChanges, settleLinearSafePoint } from "./linear-continuity-control.js";
 import { reconcileLinearTransport, queueLinearPublication, saveLinearContinuity, linearPublicationState } from "./linear-continuity-transport.js";
 import { campaignControlCommands, controlFixedCampaign } from "./linear-campaign-control.js";
+import { reconcileRepositoryRelease } from "./repository-release.js";
 
 async function configure(ctx: PluginContext, m: MissionRecord, body: Record<string, unknown>, owner: string) {
   if (m.aggregate.linearContinuity || m.aggregate.phase !== "draft" || m.aggregate.n1 || !m.aggregate.projectMandate?.linearIntake) throw new MissionError(409, "linear_continuity_opt_in", "Enable once for a natively imported mission with the existing continuity job; history is not upgraded automatically");
@@ -54,5 +55,7 @@ export async function reconcileLinearContinuity(ctx: PluginContext, initial: Mis
     proofId: completion.proofId, documentKey: completion.documentKey, revisionId: completion.documentRevisionId, result: m.aggregate.projectMandate?.completion?.result });
   else m = await queueLinearPublication(ctx, m, "progress", { phase: m.aggregate.phase, control: m.aggregate.linearContinuity!.control,
     sourceRevision: m.aggregate.linearContinuity!.sourceSha256, workResultAcquired: false, n5State: m.aggregate.n5?.integration?.state ?? null });
-  return reconcileLinearTransport(ctx, m);
+  m = await reconcileLinearTransport(ctx, m);
+  await reconcileRepositoryRelease(ctx, m);
+  return m;
 }

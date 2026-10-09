@@ -1,4 +1,5 @@
 import { MissionError, canonicalPayloadHash } from "./mission-primitives.js";
+import { ensureMissionRepository } from "./repository-occupation.js";
 import { readContinuityObservation } from "./continuity-observation.js";
 import { configureContinuity } from "./continuity-configuration.js";
 import type { ModelSelectionState } from "./model-state.js";
@@ -606,6 +607,8 @@ export async function createMission(ctx: PluginContext, companyId: string, actor
   }
   if (workspacePreflight) aggregate.workspacePreflight = workspacePreflight;
   if (nativeWakePolicy) aggregate.nativeWakePolicy = nativeWakePolicy;
+  // Registration precedes the mission INSERT and survives an uncertain response.
+  await ensureMissionRepository(ctx, { companyId, missionId: create.missionId, projectId: create.projectId, aggregate });
   const insert = await ctx.db.execute(
     missionInsertSql(ctx),
     [companyId, create.missionId, create.rootIssueId, create.projectId, ownerUserId,
