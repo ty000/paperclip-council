@@ -1,13 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, expect, it, vi } from "vitest";
-import { MissionError, type MissionRecord } from "../src/missions.js";
+import { canonicalPayloadHash, MissionError, type MissionRecord } from "../src/missions.js";
 import { assertLinearContinuityDeparture } from "../src/linear-continuity-control.js";
 import { assertProjectDeparture } from "../src/project-mandate-guard.js";
 import { reconcileCampaignClosure } from "../src/campaign-closure-runtime.js";
+import { operatingProfileHash } from "../src/project-mandate-state.js";
 import { readLinearProof } from "../src/linear-continuity-documents.js";
 import { campaignTerminalStatusUpdates, currentCampaignClosureSubject } from "../src/campaign-closure-subject.js";
 
 const f = vi.hoisted(() => ({ mission: null as MissionRecord | null, updates: vi.fn(), upserts: vi.fn(), cas: vi.fn() }));
+vi.mock("../src/repository-occupation.js", () => ({ ensureMissionRepository: vi.fn(async () => undefined) }));
 vi.mock("../src/missions.js", async original => ({ ...await original<any>(),
   getMission: async () => f.mission,
 }));
@@ -55,12 +57,13 @@ function context(rootIssueId: string, childIssueId: string) {
       parentId: issueId === rootIssueId ? null : rootIssueId, assigneeAgentId: null,
       status: issueId === rootIssueId ? "blocked" : "done", checkoutRunId: null, executionRunId: null }),
     update: f.updates, requestWakeup: vi.fn(), create: vi.fn(), relations: { get: async () => ({ blockedBy: [] }) },
-    documents: { get: async () => ({ latestRevisionId: randomUUID(), body: "{}" }), upsert: f.upserts },
+    documents: { get: async () => ({ latestRevisionId: f.mission!.aggregate.campaignClosure!.proofDocument.revisionId, body: "{}" }), upsert: f.upserts },
   } } as any;
 }
 
 beforeEach(() => {
   vi.resetAllMocks(); f.mission = null;
+  vi.mocked(assertProjectDeparture).mockImplementation(async (ctx, m) => assertLinearContinuityDeparture(ctx, m));
   f.cas.mockImplementation(async (_ctx, before: MissionRecord, aggregate: MissionRecord["aggregate"]) => {
     f.mission = { ...before, version: before.version + 1, aggregate }; return f.mission;
   });
@@ -157,4 +160,83 @@ it("keeps the acknowledged terminal intent in publishing when its source is no l
   await expect(reconcileCampaignClosure(context(rootIssueId, childIssueId), value)).rejects.toMatchObject({ code: "linear_continuity_hold" });
   expect(f.cas).not.toHaveBeenCalled(); expect(f.updates).not.toHaveBeenCalled();
   expect(state).toMatchObject({ phase: "publishing", publicationIntentId: intentId });
+});
+
+
+it.each(["owner", "project", "revision", "config"])("blocks new native and aggregate closure after acknowledged publication when %s authority changes", async drift => {
+  const actual = await vi.importActual<typeof import("../src/project-mandate-guard.js")>("../src/project-mandate-guard.js");
+  vi.mocked(assertProjectDeparture).mockImplementation(actual.assertProjectDeparture);
+  for (const finalOnly of [false, true]) {
+    const { value, rootIssueId, childIssueId } = mission("closing"), ctx = context(rootIssueId, childIssueId);
+    const config = { n2RuntimeProfile: "ordinary-cli-v1", n1OperatingProfile: { periodKey: "original" } };
+    const mandate = { objective: "Pinned campaign" };
+    Object.assign(value.aggregate, { mandate, projectMandate: { revisionId: "original", authorizedBy: value.ownerUserId,
+      mandateHash: canonicalPayloadHash(mandate), operatingProfileHash: operatingProfileHash(config) } });
+    const row = { company_id: value.companyId, project_id: value.projectId, version: 1, revision_id: "original",
+      authorized_by: value.ownerUserId, content: { enabled: true } };
+    ctx.db = { namespace: "council", query: async () => [row] };
+    ctx.config = { get: async () => config };
+    ctx.companies = { get: async () => ({ defaultResponsibleUserId: drift === "owner" ? "replacement" : value.ownerUserId }) };
+    if (drift === "project") row.content.enabled = false;
+    if (drift === "revision") row.revision_id = "replacement";
+    if (drift === "config") config.n1OperatingProfile.periodKey = "replacement";
+    value.aggregate.campaignClosure!.publicationAcknowledgedAt = new Date().toISOString();
+    if (finalOnly) value.aggregate.campaignClosure!.nativeClosures.forEach(entry => { entry.state = "confirmed"; });
+    const before = structuredClone(value);
+    await expect(reconcileCampaignClosure(ctx, value)).rejects.toMatchObject({ code: "project_authority_changed" });
+    expect(f.mission).toEqual(before); expect(f.updates).not.toHaveBeenCalled(); expect(f.cas).not.toHaveBeenCalled();
+    expect(f.upserts).not.toHaveBeenCalled(); expect(ctx.issues.requestWakeup).not.toHaveBeenCalled();
+  }
+});
+
+it.each(["missing", "revision", "body"])("retains the acknowledged closure when its pinned proof has %s drift", async drift => {
+  for (const finalOnly of [false, true]) {
+    const { value, rootIssueId, childIssueId } = mission("closing"), ctx = context(rootIssueId, childIssueId);
+    if (finalOnly) value.aggregate.campaignClosure!.nativeClosures.forEach(entry => { entry.state = "confirmed"; });
+    ctx.issues.documents.get = vi.fn(async () => drift === "missing" ? null : {
+      latestRevisionId: drift === "revision" ? "new-revision" : value.aggregate.campaignClosure!.proofDocument.revisionId,
+      body: drift === "body" ? "changed" : "{}",
+    });
+    const before = structuredClone(value);
+    await expect(reconcileCampaignClosure(ctx, value)).rejects.toMatchObject({ code: "campaign_close_proof_unknown" });
+    expect(f.mission).toEqual(before); expect(f.cas).not.toHaveBeenCalled(); expect(f.updates).not.toHaveBeenCalled();
+    expect(f.upserts).not.toHaveBeenCalled();
+  }
+});
+
+it("refuses to publish a rewritten same-body global proof under its old revision", async () => {
+  const { value, rootIssueId, childIssueId } = mission("reviewed"), ctx = context(rootIssueId, childIssueId);
+  ctx.issues.documents.get = async () => ({ latestRevisionId: "replacement", body: "{}" });
+  await expect(reconcileCampaignClosure(ctx, value)).rejects.toMatchObject({ code: "campaign_close_proof_unknown" });
+  expect(f.cas).not.toHaveBeenCalled(); expect(f.upserts).not.toHaveBeenCalled(); expect(f.updates).not.toHaveBeenCalled();
+});
+
+it("reconciles a claimed Done without repeating it, then holds aggregate closure until authority returns", async () => {
+  const { value, rootIssueId, childIssueId } = mission("closing"), ctx = context(rootIssueId, childIssueId);
+  value.aggregate.campaignClosure!.nativeClosures.at(-1)!.state = "claimed";
+  const get = ctx.issues.get;
+  ctx.issues.get = async (id: string) => ({ ...await get(id), status: "done" });
+  vi.mocked(assertProjectDeparture).mockRejectedValue(new MissionError(409, "project_authority_changed", "revoked"));
+  await expect(reconcileCampaignClosure(ctx, value)).rejects.toMatchObject({ code: "project_authority_changed" });
+  expect(f.mission!.aggregate.campaignClosure!.nativeClosures.every(entry => entry.state === "confirmed")).toBe(true);
+  expect(f.mission!.aggregate.campaignClosure!.task).toEqual(value.aggregate.campaignClosure!.task);
+  expect(f.mission!.aggregate.completion).toBeUndefined(); expect(f.updates).not.toHaveBeenCalled();
+  vi.mocked(assertProjectDeparture).mockResolvedValue(undefined);
+  const next = await reconcileCampaignClosure(ctx, f.mission!);
+  expect(next.aggregate.completion?.state).toBe("closed");
+  expect(f.updates).toHaveBeenCalledExactlyOnceWith(value.aggregate.campaignClosure!.task.issueId, { status: "done" }, value.companyId);
+  const writes = f.cas.mock.calls.length;
+  await reconcileCampaignClosure(ctx, next);
+  expect(f.cas).toHaveBeenCalledTimes(writes); expect(f.updates).toHaveBeenCalledTimes(1);
+  expect(f.upserts).not.toHaveBeenCalled(); expect(ctx.issues.requestWakeup).not.toHaveBeenCalled();
+});
+
+it("retains an uncertain claimed native closure without repeating its PATCH", async () => {
+  const { value, rootIssueId, childIssueId } = mission("closing");
+  value.aggregate.campaignClosure!.nativeClosures.at(-1)!.state = "claimed";
+  const before = structuredClone(value);
+  await expect(reconcileCampaignClosure(context(rootIssueId, childIssueId), value))
+    .rejects.toMatchObject({ code: "campaign_close_native_unknown" });
+  expect(f.mission).toEqual(before); expect(f.cas).not.toHaveBeenCalled(); expect(f.updates).not.toHaveBeenCalled();
+  expect(assertProjectDeparture).not.toHaveBeenCalled();
 });

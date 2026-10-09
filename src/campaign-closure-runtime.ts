@@ -167,9 +167,20 @@ async function ensureProofDocument(ctx: PluginContext, initial: MissionRecord) {
       title: "Council — bilan global de campagne", format: "markdown", body: proof.body });
     document = await ctx.issues.documents.get(m.rootIssueId, proof.key, m.companyId);
   }
-  if (!document?.latestRevisionId || document.body !== proof.body) throw new MissionError(409, "campaign_close_proof_unknown", "The exact global proof document must be observed without replacement");
+  if (!document?.latestRevisionId || document.body !== proof.body || proof.revisionId && document.latestRevisionId !== proof.revisionId) {
+    throw new MissionError(409, "campaign_close_proof_unknown", "The exact global proof document must be observed without replacement");
+  }
   if (!proof.revisionId) m = await saveClosure(ctx, m, { ...state, proofDocument: { ...proof, revisionId: document.latestRevisionId } });
   return m;
+}
+
+/** A published proof is read-only: missing or rewritten evidence cannot be recreated. */
+async function assertClosureProof(ctx: PluginContext, m: MissionRecord) {
+  const proof = m.aggregate.campaignClosure!.proofDocument;
+  const document = await ctx.issues.documents.get(m.rootIssueId, proof.key, m.companyId);
+  if (!proof.revisionId || !document || document.latestRevisionId !== proof.revisionId || document.body !== proof.body) {
+    throw new MissionError(409, "campaign_close_proof_unknown", "Retain the exact published global proof body and revision before closure");
+  }
 }
 
 async function queueClosurePublication(ctx: PluginContext, initial: MissionRecord) {
@@ -243,7 +254,8 @@ async function closeOneNativeNode(ctx: PluginContext, initial: MissionRecord) {
   if (!entry || m.aggregate.linearContinuity!.control !== "running") return m;
   const issue = await nativeNodeReadyToClose(ctx, m, entry.issueId);
   if (entry.state === "pending") {
-    await assertLinearContinuityDeparture(ctx, m);
+    await assertProjectDeparture(ctx, m);
+    await assertClosureProof(ctx, m);
     if (!["backlog", "blocked"].includes(issue.status)) throw new MissionError(409, "campaign_review_manual_done", "A manual terminal status cannot replace the claimed Council closure");
     state = { ...state, nativeClosures: state.nativeClosures.map(item => item === entry ? { ...item, state: "claimed" } : item) };
     m = await saveClosure(ctx, m, state);
@@ -266,7 +278,8 @@ async function finishClosure(ctx: PluginContext, initial: MissionRecord) {
   if (state.nativeClosures.some(item => item.state !== "confirmed")) throw new MissionError(409, "campaign_close_bound", "Native campaign closure exceeded the fixed 33-node bound");
   m = await fresh(ctx, m);
   if (m.aggregate.linearContinuity!.control !== "running" || m.aggregate.campaignClosure!.phase !== "closing") return m;
-  await assertLinearContinuityDeparture(ctx, m);
+  await assertProjectDeparture(ctx, m);
+  await assertClosureProof(ctx, m);
   const reviewerAgentId = physicalAgent(m, state.task.agentId, { launchKey: state.task.reservationId,
     issueId: state.task.issueId!, runId: state.task.runId! });
   const completedAt = new Date().toISOString();
