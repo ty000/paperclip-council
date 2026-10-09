@@ -9,6 +9,10 @@ type StoredObservation = { companyId: string; missionId: string; sequence: numbe
   body: string; observation: ContinuityObservation; documentObserved: boolean };
 const scope = (m: MissionRecord) => ({ scopeKind: "issue" as const, scopeId: m.rootIssueId, namespace: "continuity", stateKey: "observation" });
 
+async function retainLinearStatus(ctx: PluginContext, m: MissionRecord, stored: StoredObservation) {
+  if (m.aggregate.linearContinuity) await (await import("./linear-native-status.js")).retainLinearNativeStatus(ctx, m, stored);
+}
+
 export async function readContinuityObservation(ctx: PluginContext, m: MissionRecord): Promise<StoredObservation | null> {
   if (!m.aggregate.continuity) return null;
   const stored = await ctx.state.get(scope(m)) as StoredObservation | null;
@@ -38,7 +42,7 @@ export async function publishContinuityObservation(ctx: PluginContext, m: Missio
   const labels = { waiting: "En attente", progressed: "En cours", blocked: "Décision requise", complete: "Parcours autorisé terminé" };
   const body = `# Progression Council\n\n**État :** ${labels[observation.state]}\n\n${observation.nextAction}\n\nRéférence de diagnostic : \`${observation.code}\`\n`;
   const old = await readContinuityObservation(ctx, m);
-  if (old) await finishDocument(ctx, m, old);
+  if (old) { await finishDocument(ctx, m, old); await retainLinearStatus(ctx, m, old); }
   if (old?.body === body) return;
   const sequence = (old?.sequence ?? 0) + 1;
   if (!Number.isSafeInteger(sequence)) throw new MissionError(409, "continuity_status_bound", "Status sequence cannot be safely represented");
@@ -48,4 +52,5 @@ export async function publishContinuityObservation(ctx: PluginContext, m: Missio
   const readback = await readContinuityObservation(ctx, m);
   if (!isDeepStrictEqual(readback, next)) throw new MissionError(409, "continuity_status_state_conflict", "Status intent changed before publication; retain its observed identity");
   await finishDocument(ctx, m, next);
+  await retainLinearStatus(ctx, m, next);
 }

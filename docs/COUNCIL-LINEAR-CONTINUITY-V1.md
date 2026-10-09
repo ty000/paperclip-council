@@ -61,6 +61,8 @@ Une confirmation d'outbox fixe `intentId`, `payloadSha256`, `status: confirmed`,
 
 Council vérifie l'identité, la révision et le reçu borné ; le plugin Linear possède la vérification des champs externes et du périmètre Linear. Une affirmation Council ou un transport HTTP réussi ne remplace pas cette relecture. Une preuve de clôture Council peut donc rester acquise avec une publication externe en attente. Le reçu confirmé n'est jamais remplacé par une autre révision.
 
+Les observations natives de progression et de blocage sont également reprises dans l'outbox avec leur séquence et la référence exacte de leur document. La publication précédente est retenue avant que l'observation native suivante ne la remplace. Une relecture après redémarrage conserve l'intention originale ; une erreur de transport n'autorise aucun nouveau départ.
+
 ## Changements et contrôle coopératif
 
 Chaque changement fixe `commandId`, `sequence`, `kind` (`context`, `pause`, `resume`, `cancel`), `affectedNativeIds`, `previousSourceSha256`, `sourceSha256`, `authoritySha256`, `impact`, `evidence`. Le document d'evidence contient `command` avec tous ces champs **sauf la référence evidence elle-même**, pour éviter un hash circulaire. L'identité UUID, son hash complet et la séquence restent conservés. Une lacune ou un changement de payload sous la même identité bloque la consommation.
