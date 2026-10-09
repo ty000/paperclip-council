@@ -10,7 +10,9 @@ type StoredObservation = { companyId: string; missionId: string; sequence: numbe
 const scope = (m: MissionRecord) => ({ scopeKind: "issue" as const, scopeId: m.rootIssueId, namespace: "continuity", stateKey: "observation" });
 
 async function retainLinearStatus(ctx: PluginContext, m: MissionRecord, stored: StoredObservation) {
-  if (m.aggregate.linearContinuity) await (await import("./linear-native-status.js")).retainLinearNativeStatus(ctx, m, stored);
+  if (!m.aggregate.linearContinuity) return;
+  const { retainLinearNativeStatus } = await import("./linear-native-status.js");
+  await retainLinearNativeStatus(ctx, m, stored);
 }
 
 export async function readContinuityObservation(ctx: PluginContext, m: MissionRecord): Promise<StoredObservation | null> {
