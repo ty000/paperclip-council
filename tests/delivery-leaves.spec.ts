@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 import { canonicalPayloadHash } from "../src/mission-primitives.js";
 import { assertPreviousDelivery, deliveryCampaignRoot, isIntegratedLeaf, reconcileCampaignDeliveries } from "../src/delivery-leaves.js";
 import { sourceBase } from "../src/contribution-proof.js";
@@ -7,6 +7,7 @@ const campaign = vi.hoisted(() => ({ queue: vi.fn(async (_ctx: unknown, m: any, 
 vi.mock("../src/repository-campaign.js", () => ({ campaignRoot: async () => campaign.root, listCampaignMembers: async () => campaign.members }));
 vi.mock("../src/linear-continuity-transport.js", () => ({ queueLinearPublication: campaign.queue }));
 vi.mock("../src/linear-continuity-control.js", () => ({ assertLinearContinuityDeparture: campaign.departure }));
+beforeEach(() => { vi.clearAllMocks(); campaign.root = null; campaign.members = []; });
 
 const result = { protocol: "integrated-result-v1", repository: "ty000/repo", baseRef: "main", url: "https://github.com/ty000/repo/pull/1", candidateCommit: "a".repeat(40), integratedCommit: "c".repeat(40), reportHash: "d".repeat(64) };
 vi.mock("../src/integration-contract.js", () => ({ integratedResult: (m: any) => { if (!m.aggregate.integrated) throw new Error("Integration unverified"); return result; } }));
@@ -90,4 +91,80 @@ it("does not skip a planned contribution marked terminal outside Council and pub
   await reconcileCampaignDeliveries(f.ctx, campaign.root);
   expect(campaign.queue).toHaveBeenLastCalledWith(f.ctx, campaign.root, "progress", expect.objectContaining({
     campaignDelivery: expect.objectContaining({ sourceMissionId: "mission-final", proofId: "proof-final" }) }));
+});
+
+function reversedCampaign(order: "created first" | "same timestamp", status = "done") {
+  const f = fixture(), a = f.issues[1]!, b = f.issues[2]!;
+  a.id = "d39fa848-84e7-4c9d-a972-92e4b2fc2a9f"; b.id = "b641cc19-86c5-4b16-95dc-82b46f9e7e98";
+  a.createdAt = new Date(order === "created first" ? 3 : 2); b.createdAt = new Date(2);
+  a.status = status; f.issues[3]!.parentId = a.id;
+  f.m.rootIssueId = b.id; f.m.aggregate.repositoryCampaign = { campaignRootMissionId: "campaign-root" };
+  f.policy.content.linearContinuity = { mode: "milestone-fixed-v1" };
+  for (const issue of f.issues.slice(0, 3)) issue.originKind = "plugin:ty000.linear-intake";
+  f.source.aggregate.integrated = true;
+  Object.assign(f.source, { company_id: "company", root_issue_id: a.id });
+  const plan = { schema: "council-linear-delivery-plan-v1", campaignRootMissionId: "campaign-root", leaves: [
+    { nativeId: a.id, sourceId: "source-a", blockedByNativeIds: [] },
+    { nativeId: b.id, sourceId: "source-b", blockedByNativeIds: [a.id] },
+  ] };
+  campaign.root = { companyId: "company", projectId: "project", missionId: "campaign-root",
+    aggregate: { linearContinuity: { publications: [{ payload: { campaignPlan: plan }, acknowledgement: {} }] },
+      hierarchy: { leaves: [{ issueId: a.id }, { issueId: b.id }] } } };
+  f.ctx.db.query.mockImplementation(async (sql: string) => sql.includes("project_task_intakes")
+    ? [{ state: { repositoryCampaign: { campaignRootMissionId: "campaign-root", sourceId: "source-a" } } }] : [f.source]);
+  f.ctx.issues.relations.get.mockImplementation(async (id: string) => ({ blockedBy: id === b.id ? [a] : [] }));
+  return { ...f, a, b, plan };
+}
+
+it.each(["created first", "same timestamp"] as const)("keeps the fixed A→B predecessor when B sorts first: %s", async order => {
+  const f = reversedCampaign(order), originalPlan = structuredClone(f.plan);
+  const predecessor = await assertPreviousDelivery(f.ctx, f.m, f.policy, f.issues as any);
+  expect(predecessor).toEqual({ sourceMissionId: "mission-a", result });
+  expect(campaign.queue).toHaveBeenCalledExactlyOnceWith(f.ctx, campaign.root, "progress", expect.objectContaining({
+    campaignDelivery: expect.objectContaining({ sourceMissionId: "mission-a", sourceIssueId: f.a.id, proofId: "fixture-proof", result }),
+  }));
+  expect(campaign.departure).toHaveBeenCalledTimes(1);
+  expect(f.plan).toEqual(originalPlan);
+  f.m.aggregate.projectMandate = { completion: { result: "integrated-verified" } };
+  f.m.aggregate.deliveryPredecessor = predecessor;
+  expect(sourceBase(f.m, result.integratedCommit)).toBe(result.integratedCommit);
+  expect(() => sourceBase(f.m, result.candidateCommit)).toThrow();
+});
+
+it.each(["created first", "same timestamp"] as const)("retains integration and closure gates when B sorts first: %s", async order => {
+  const f = reversedCampaign(order);
+  f.source.aggregate.integrated = false;
+  await expect(assertPreviousDelivery(f.ctx, f.m, f.policy, f.issues as any)).rejects.toThrow("Integration unverified");
+  expect(campaign.queue).not.toHaveBeenCalled();
+  f.source.aggregate.integrated = true; f.source.aggregate.completion.state = "closing";
+  await expect(assertPreviousDelivery(f.ctx, f.m, f.policy, f.issues as any)).rejects.toMatchObject({ code: "previous_delivery_pending" });
+  expect(campaign.queue).not.toHaveBeenCalled();
+  expect(campaign.departure).not.toHaveBeenCalled();
+});
+
+it("does not skip an internal terminal dependency or its Linear ACK when creation order puts B first", async () => {
+  const f = reversedCampaign("created first", "cancelled");
+  campaign.departure.mockRejectedValueOnce(new Error("publication readback pending"));
+  await expect(assertPreviousDelivery(f.ctx, f.m, f.policy, f.issues as any)).rejects.toThrow("readback pending");
+  expect(campaign.queue).toHaveBeenCalledTimes(1);
+  await expect(assertPreviousDelivery(f.ctx, f.m, f.policy, f.issues as any)).resolves.toEqual({ sourceMissionId: "mission-a", result });
+  expect(campaign.queue.mock.calls[1]![3]).toEqual(campaign.queue.mock.calls[0]![3]);
+});
+
+it.each(["done", "cancelled", "blocked"])("preserves the external blocker contract when its state is %s", async status => {
+  const f = reversedCampaign("same timestamp");
+  f.ctx.issues.relations.get.mockImplementation(async (id: string) => ({ blockedBy: id === f.b.id
+    ? [f.a, { id: "external", status }] : [] }));
+  const checked = assertPreviousDelivery(f.ctx, f.m, f.policy, f.issues as any);
+  if (status === "blocked") {
+    await expect(checked).rejects.toMatchObject({ code: "delivery_dependency_pending" });
+    expect(campaign.queue).not.toHaveBeenCalled();
+  } else await expect(checked).resolves.toEqual({ sourceMissionId: "mission-a", result });
+});
+
+it("rejects internal dependency cycles even when their native issues are already terminal", async () => {
+  const f = reversedCampaign("same timestamp"); f.b.status = "done";
+  f.ctx.issues.relations.get.mockImplementation(async (id: string) => ({ blockedBy: [id === f.a.id ? f.b : f.a] }));
+  await expect(assertPreviousDelivery(f.ctx, f.m, f.policy, f.issues as any)).rejects.toMatchObject({ code: "delivery_dependency_pending" });
+  expect(campaign.queue).not.toHaveBeenCalled();
 });

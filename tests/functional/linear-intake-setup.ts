@@ -17,11 +17,15 @@ async function nativeSecret(host: LinearHost, companyId: string, name: string, v
 export async function installLinearIntake(host: LinearHost, source: LinearSource, companyId: string, projectId: string, intakeRepository: string) {
   const gatewayTokenRef = await nativeSecret(host, companyId, "linear-fixture-gateway", source.token);
   const webhookSecretRef = await nativeSecret(host, companyId, "linear-fixture-webhook", source.webhookSecret);
+  const publisher = source.campaignSource ? { enabled: true, gatewayUrl: source.publisherGatewayUrl,
+    gatewayTokenRef: await nativeSecret(host, companyId, "linear-fixture-publisher", source.token), tools: source.publisherTools,
+    states: { started: source.ids.started, completed: source.ids.completed, cancelled: source.ids.cancelled }, maxCommentPages: 10, pageSize: 2 } : undefined;
   const installed = await host.api("POST", "/api/plugins/install", { packageName: intakeRepository, isLocalPath: true });
   const pluginId = installed.id;
   const config = { enabled: true, nativeImportEnabled: true, councilHandoffEnabled: true,
     gatewayDiscoveryEnabled: true, gatewayTransport: "local_loopback", gatewayToolCallMode: "mcp",
     gatewayUrl: source.gatewayUrl, gatewayTokenRef, sourceReader: source.reader, localGatewayTimeoutMs: 10_000,
+    ...(publisher ? { publisher, campaignSource: source.campaignSource, councilContinuityEnabled: true } : {}),
     intake: { targetProjectId: projectId, webhookId: source.ids.webhook, webhookSecretRef,
       allowedActors: [{ id: source.ids.actor, type: "user" }] } };
   await host.api("POST", `/api/plugins/${pluginId}/config`, { companyId, configJson: config });
@@ -40,7 +44,7 @@ export async function installLinearIntake(host: LinearHost, source: LinearSource
   return { pluginId, action, deliver, activation, config };
 }
 
-async function fixtureWorkspace(host: LinearHost, repository: string) {
+async function fixtureWorkspace(host: LinearHost, repository: string, campaign = false) {
   const repoPath = resolve(host.runtime, "workspace");
   await mkdir(repoPath);
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repoPath, encoding: "utf8" }).trim();
@@ -48,15 +52,16 @@ async function fixtureWorkspace(host: LinearHost, repository: string) {
   await writeFile(resolve(repoPath, "README.md"), "Deterministic Linear admission qualification\n");
   git("add", "README.md"); git("commit", "-m", "fixture baseline");
   const baseCommit = git("rev-parse", "HEAD"); git("branch", "base", baseCommit);
+  if (campaign) git("branch", "main", baseCommit);
   const command = resolve(host.runtime, "model-fixture.mjs");
   await writeFile(command, `#!/usr/bin/env node\nawait import(${JSON.stringify(pathToFileURL(resolve(repository, "tests/functional/ordinary-cli-fixture.mjs")).href)});\n`);
   await chmod(command, 0o700);
   return { repoPath, baseCommit, command, fixtureConfig: resolve(host.runtime, "model-config.json") };
 }
 
-async function createActors(host: LinearHost, companyId: string, workspace: Awaited<ReturnType<typeof fixtureWorkspace>>) {
+async function createActors(host: LinearHost, companyId: string, workspace: Awaited<ReturnType<typeof fixtureWorkspace>>, campaign = false) {
   const actors: Record<string, string> = {};
-  for (const name of ["lead", "alpha", "beta", "product", "quality", "council"]) {
+  for (const name of ["lead", "alpha", "beta", "product", "quality", "council", ...(campaign ? ["publisher"] : [])]) {
     const agent = await host.api("POST", `/api/companies/${companyId}/agents`, {
       name: `Linear qualification ${name}`, role: "engineer", adapterType: "codex_local",
       adapterConfig: { engine: "cli", command: workspace.command, model: "fixture-no-provider", cwd: workspace.repoPath,
@@ -81,8 +86,8 @@ async function activeRosters(host: LinearHost, companyId: string, projectId: str
   return { teamRosterId: team.head.rosterId, councilRosterId: council.head.rosterId };
 }
 
-export async function installLinearCouncil(host: LinearHost, companyId: string, repository: string) {
-  const workspace = await fixtureWorkspace(host, repository), actors = await createActors(host, companyId, workspace);
+export async function installLinearCouncil(host: LinearHost, companyId: string, repository: string, campaign = false) {
+  const workspace = await fixtureWorkspace(host, repository, campaign), actors = await createActors(host, companyId, workspace, campaign);
   const key = await host.api("POST", `/api/agents/${actors.council}/keys`, { name: "isolated-council", scope: { kind: "standard" } });
   const secret = await nativeSecret(host, companyId, "council-readback", key.token);
   const installed = await host.api("POST", "/api/plugins/install", { packageName: repository, isLocalPath: true });
@@ -93,10 +98,12 @@ export async function installLinearCouncil(host: LinearHost, companyId: string, 
     initialTokenAccountingSource: "new-isolated-company", maxCorrections: 1 };
   await host.api("POST", `/api/plugins/${pluginId}/config`, { companyId, configJson: {
     apiBaseUrl: host.base, councilAgentId: actors.council, councilApiKey: secret,
-    n1OperatingProfile: profile, n2RuntimeProfile: "ordinary-cli-v1", nativeRunLimit: 3,
+    // Each campaign leaf needs 3 N1, 3 N2 and 2 N5 runs; legacy stops after N1.
+    n1OperatingProfile: profile, n2RuntimeProfile: "ordinary-cli-v1", nativeRunLimit: campaign ? 8 : 3,
   } });
   const project = await host.api("POST", `/api/companies/${companyId}/projects`, { name: "Linear source qualification", status: "in_progress",
-    workspace: { name: "fixture", sourceType: "local_path", cwd: workspace.repoPath, isPrimary: true },
+    workspace: { name: "fixture", sourceType: "local_path", cwd: workspace.repoPath, isPrimary: true,
+      ...(campaign ? { repoUrl: "https://github.com/ty000/paperclip-council.git" } : {}) },
     executionWorkspacePolicy: { enabled: true, sharedWorkspaceConcurrency: "allow", defaultMode: "shared_workspace",
       allowIssueOverride: false, workspaceStrategy: { type: "project_primary" } } });
   const projectId = project.id;
@@ -105,11 +112,24 @@ export async function installLinearCouncil(host: LinearHost, companyId: string, 
   const admissionPath = `/api/plugins/${pluginId}/api/companies/${companyId}/admission`;
   await host.api("POST", admissionPath, { companyId, command: "configure", configuration: nativeAdmissionConfiguration(profile as any, companyId, randomUUID()) });
   await writeFile(workspace.fixtureConfig, JSON.stringify({ pluginId, companyId, projectId, projectIntake: true, hierarchyCount: 2,
+    ...(campaign ? { campaignMode: true, integrationMode: true, completionMode: true, delivery: true } : {}),
     councilRepository: repository, repoPath: workspace.repoPath, runtime: host.runtime, actors, baseCommit: workspace.baseCommit }));
   return { pluginId, projectId, actors, profile, rosters, admissionPath, workspace,
     missions: `/api/plugins/${pluginId}/api/companies/${companyId}/missions`,
     policyPath: `/api/plugins/${pluginId}/api/companies/${companyId}/projects/${projectId}/mandate`,
   };
+}
+
+export function linearCampaignPolicy(council: Awaited<ReturnType<typeof installLinearCouncil>>, source: LinearSource, companyId: string, rootId: string) {
+  const base = linearPolicy(council, source, companyId, rootId);
+  return { ...base, template: { ...base.template, limits: { ...base.template.limits, elapsedMinutes: 45 } },
+    linearContinuity: { protocol: "council-linear-continuity-v1", mode: "milestone-fixed-v1" },
+    completion: { protocol: "council-proof-close-v1", result: "integrated-verified" },
+    publication: { publisherAgentId: council.actors.publisher, qaAgentId: council.actors.quality,
+      repository: "ty000/paperclip-council", baseRef: "main", headRefPrefix: "codex/campaign-fixture",
+      contract: { protocol: "council-pr-contract-v1", draftOnly: false, result: "integrated-verified",
+        feedback: "review-and-correct", requiredChecks: ["fixture-ci"], integration: { protocol: "council-integrated-delivery-v1",
+          mergeMethod: "squash", requiredChecks: ["integrated-ci"], parentObligations: [] } } } };
 }
 
 export function linearPolicy(council: Awaited<ReturnType<typeof installLinearCouncil>>, source: LinearSource, companyId: string, rootId: string) {

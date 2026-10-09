@@ -76,9 +76,14 @@ beforeEach(() => {
     return { mission: persist(m, { ...m.aggregate, modelSelection: { ...state, tasks: task ? state.tasks.map(item => item === task ? nextTask : item) : [...state.tasks, nextTask] } }), binding: launch };
   });
   vi.mocked(bindVariantIssue).mockImplementation(async (_ctx, m, key, issueId) => modelLaunch(m, key) ? changeLaunch(m, key, { issueId, state: "ready" }) : m);
-  vi.mocked(claimVariantWake).mockImplementation(async (_ctx, m, key) => {
-    if (!modelLaunch(m, key)) return m;
+  vi.mocked(claimVariantWake).mockImplementation(async (_ctx, m, key, persistWake) => {
+    if (!modelLaunch(m, key)) return persistWake ? persistWake(m, m.aggregate) : m;
     expect(modelLaunch(m, key)?.state).toBe("ready");
+    if (persistWake) {
+      const state = m.aggregate.modelSelection!;
+      return persistWake(m, { ...m.aggregate, modelSelection: { ...state, tasks: state.tasks.map(task => ({ ...task,
+        launches: task.launches.map(launch => launch.launchKey === key ? { ...launch, state: "wake_claimed" as const } : launch) })) } });
+    }
     return changeLaunch(m, key, { state: "wake_claimed" });
   });
   vi.mocked(recordVariantWake).mockImplementation(async (_ctx, m, key, runId, persistWake) => {
@@ -138,7 +143,9 @@ it("launches and attributes a physical publisher while retaining its logical aut
   expect(current.aggregate.n5!.authority.publisherAgentId).toBe(publisher);
   expect(modelLaunch(current, p.reservationId)).toMatchObject({ agentId: physical, runId: p.runId, state: "bound" });
   expect((await handleN5Agent(ctx as unknown as PluginContext, request(p.issueId!, publisher, p.runId!, "n5-inspect"))).status).toBe(403);
-  expect((await handleN5Agent(ctx as unknown as PluginContext, request(p.issueId!, physical, p.runId!, "n5-inspect"))).status).toBe(200);
+  expect(await handleN5Agent(ctx as unknown as PluginContext, request(p.issueId!, physical, p.runId!, "n5-inspect"))).toMatchObject({
+    status: 200, body: { missionId: current.missionId, rootIssueId: current.rootIssueId, version: current.version },
+  });
   await reconcileN5(ctx as unknown as PluginContext, current);
   expect(settleOrdinaryRunUsage).toHaveBeenCalledWith(ctx, expect.objectContaining({ agentId: physical, reservationId: p.reservationId, runId: p.runId }));
   expect(observeVariantRun).toHaveBeenCalledWith(ctx, expect.anything(), p.reservationId);
@@ -249,7 +256,7 @@ it("resumes the same publisher launch after a pre-wake claim interruption and re
   const ctx = context(); vi.mocked(claimVariantWake).mockRejectedValueOnce(new Error("claim interrupted"));
   await expect(startN5Publication(ctx as unknown as PluginContext, current)).rejects.toThrow("claim interrupted");
   const p = current.aggregate.n5!.publication!;
-  expect(p).toMatchObject({ creation: "confirmed", wake: "claimed", runId: null });
+  expect(p).toMatchObject({ creation: "confirmed", wake: "pending", runId: null });
   expect(modelLaunch(current, p.reservationId)?.state).toBe("ready");
   expect((await handleN5Agent(ctx as unknown as PluginContext, request(p.issueId!, physical, randomUUID(), "n5-inspect"))).status).toBe(403);
   expect(recordVariantWake).not.toHaveBeenCalled();
@@ -258,6 +265,29 @@ it("resumes the same publisher launch after a pre-wake claim interruption and re
   expect(prepareVariantLaunch).toHaveBeenCalledTimes(1); expect(createContributionIssueEffect).toHaveBeenCalledTimes(1);
   expect(ctx.issues.requestWakeup).toHaveBeenCalledTimes(1);
   expect(vi.mocked(reserveN2Run).mock.calls.every(call => call[2].reservationId === p.reservationId)).toBe(true);
+});
+
+it("persists the publisher and model wake claims in one CAS after the departure checks", async () => {
+  const ctx = context(); const ordinarySave = vi.mocked(n2Cas).getMockImplementation()!;
+  vi.mocked(n2Cas).mockImplementation(async (...args) => {
+    const publication = args[2].n5?.publication;
+    if (publication?.wake === "claimed") {
+      expect(modelLaunch({ ...args[1], aggregate: args[2] }, publication.reservationId)?.state).toBe("wake_claimed");
+      throw new Error("combined wake CAS failed");
+    }
+    return ordinarySave(...args);
+  });
+  await expect(startN5Publication(ctx as unknown as PluginContext, current)).rejects.toThrow("combined wake CAS failed");
+  const p = current.aggregate.n5!.publication!;
+  expect(p).toMatchObject({ wake: "pending", runId: null });
+  expect(modelLaunch(current, p.reservationId)?.state).toBe("ready");
+  expect(ctx.issues.update).not.toHaveBeenCalled();
+  expect(ctx.issues.requestWakeup).not.toHaveBeenCalled();
+  vi.mocked(n2Cas).mockImplementation(ordinarySave);
+  await reconcileN5(ctx as unknown as PluginContext, current);
+  expect(current.aggregate.n5!.publication!.intentId).toBe(p.intentId);
+  expect(modelLaunch(current, p.reservationId)?.state).toBe("bound");
+  expect(ctx.issues.requestWakeup).toHaveBeenCalledTimes(1);
 });
 
 it.each(["coordinator", "facilitator"] as const)("binds physical %s commands and keeps the shared logical coordination task", async kind => {

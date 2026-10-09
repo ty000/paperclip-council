@@ -113,6 +113,7 @@ export type MissionAggregate = {
   linearContinuity?: import("./linear-continuity-contract.js").LinearContinuityState;
   projectMandate?: import("./project-mandate-state.js").ProjectMandateSnapshot;
   repositoryCampaign?: import("./repository-campaign.js").RepositoryCampaignMembership;
+  campaignClosure?: import("./campaign-closure-contract.js").CampaignClosureState;
   deliveryPredecessor?: { sourceMissionId: string; result: ReturnType<typeof import("./integration-contract.js").integratedResult> };
   completion?: import("./completion-contract.js").CompletionState;
   hierarchy?: import("./hierarchy-contract.js").HierarchyState;
@@ -403,6 +404,14 @@ export async function getMissionByN6WorkIssue(ctx: PluginContext, companyId: str
   const rows = await ctx.db.query<MissionRow>(`SELECT ${selectColumns} FROM ${table(ctx)} WHERE company_id = $1
     AND aggregate->'n6'->'coordination'->'tasks' @> $2::jsonb LIMIT 2`, [companyId, JSON.stringify([{ issueId }])]);
   if (rows.length > 1) throw new MissionError(409, "n6_work_ambiguous", "Coordination task must belong to one mission");
+  return rows[0] ? parseMissionRow(rows[0]) : null;
+}
+
+/** Exact global review task lookup; the campaign root remains control-only. */
+export async function getMissionByCampaignReviewIssue(ctx: PluginContext, companyId: string, issueId: string): Promise<MissionRecord | null> {
+  const rows = await ctx.db.query<MissionRow>(`SELECT ${selectColumns} FROM ${table(ctx)} WHERE company_id = $1
+    AND aggregate->'campaignClosure'->'task'->>'issueId' = $2 LIMIT 2`, [companyId, issueId]);
+  if (rows.length > 1) throw new MissionError(409, "campaign_review_ambiguous", "Global review task must belong to one campaign root");
   return rows[0] ? parseMissionRow(rows[0]) : null;
 }
 
@@ -773,6 +782,7 @@ export function inspectMission(mission: MissionRecord) {
     n1,
     ...(mission.aggregate.completion ? { completion: mission.aggregate.completion } : {}),
     ...(mission.aggregate.linearContinuity ? { linearContinuity: mission.aggregate.linearContinuity } : {}),
+    ...(mission.aggregate.campaignClosure ? { campaignClosure: mission.aggregate.campaignClosure } : {}),
     n2,
     n3: inspectN3(mission),
     n5: inspectN5(mission),
