@@ -1,7 +1,9 @@
+import { integrationInstructions } from "./integration-instructions.js";
 import type { MissionRecord } from "./missions.js";
 import { fileURLToPath } from "node:url";
 
 export function n5PublisherInstructions(mission: MissionRecord): string {
+  if (mission.aggregate.n5?.publication?.operation === "integrate") return integrationInstructions(mission);
   const preflight = mission.aggregate.n5?.authority.publisherPreflight ? `
 Before n5-claim-publication, run the Council read-only preflight in YOUR current native publisher environment. Use python3 with the argv vector [${JSON.stringify(fileURLToPath(new URL("../scripts/operations/publisher_preflight.py", import.meta.url)))}, "--repo", <absolute current repository root>, "--repository", authority.repository, "--candidate", publication.submission.candidateCommit, "--base-ref", authority.baseRef, "--base-sha", publication.submission.baseCommit, "--head-ref", authority.headRef, "--mission-id", "${mission.missionId}", "--intent-id", publication.intentId]. For operation=update also add ["--expected-remote-head", delivery.continuation.previousPublication.submission.candidateCommit]. Do not interpolate unquoted shell text. It inherits your native GitHub projection and reads PAPERCLIP_TASK_ID/PAPERCLIP_RUN_ID; do not add an operator token, copy credentials, change access policies or run another model.
 This preflight only reads Git/GitHub. Its report must have status=pass; include that exact parsed JSON as preflight in the n5-claim-publication body. Missing/stale/foreign/refused reports grant no publication write. On refusal, report the bounded reason and finish without a push, PR or blind retry; this already admitted publisher run still consumes its normal admission/usage. Do not infer actual push success from permissions.push or a read-only report. Council stores publisher_run_report provenance, separately from subsequent native publication readback.

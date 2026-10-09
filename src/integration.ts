@@ -669,7 +669,7 @@ export async function verifyIntegratedCandidate(
 }
 
 export type ContributionBundleProof = { protocol: "council-contribution-proof-v1"; attachmentId: string; sha256: string; byteSize: number;
-  segmentRootCommit: string; commit: string; changedPaths: string[]; checks: IntegratedCandidateCheck[]; verifiedAt: string; closureClaimedAt?: string; closedAt?: string };
+  segmentRootCommit: string; commit: string; changedPaths: string[]; checks: IntegratedCandidateCheck[]; verifiedAt: string; readyAt?: string; closureClaimedAt?: string; closedAt?: string };
 
 export async function verifyContributionBundle(ctx: PluginContext, input: Pick<IntegratedCandidateInput, "companyId" | "issueId" | "attachmentId" | "expectedSha256" | "baseCommit" | "candidateCommit"> & { contributionId: string; ownedPaths: string[] }): Promise<ContributionBundleProof> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.contributionId)) throw new Error("Contribution UUID required");

@@ -1,3 +1,4 @@
+import { integrateDelivery } from "./integration-fixture.mjs";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
@@ -51,16 +52,17 @@ async function waitForUpdatedNativeHead(api, issueId, objectId, remote, p) {
 function feedbackFor(view, p, config, issueId, runId, remote) {
   return { protocol: "publisher-github-feedback-v1", provenance: "publisher_run_report",
     missionId: config.missionId, intentId: p.intentId, issueId, runId, observedAt: new Date().toISOString(), url: remote.url,
-    repository: view.delivery.authority.repository, headSha: remote.headSha, baseRef: view.delivery.authority.baseRef, headRef: remote.headRef, draft: true,
+    repository: view.delivery.authority.repository, headSha: remote.headSha, baseRef: view.delivery.authority.baseRef, headRef: remote.headRef, draft: !config.integrationMode,
     checks: [{ name: "fixture-ci", state: "passed", evidenceUrl: remote.url }],
     reviews: [{ id: p.operation === "update" ? 2 : 1, author: "fixture-reviewer", headSha: remote.headSha,
-      state: p.operation === "update" ? "APPROVED" : "CHANGES_REQUESTED", body: p.operation === "update" ? "The alpha marker is corrected" : "Material defect: alpha.txt must contain corrected marker",
+      state: p.operation === "update" || config.integrationMode ? "APPROVED" : "CHANGES_REQUESTED", body: p.operation === "update" ? "The alpha marker is corrected" : "Material defect: alpha.txt must contain corrected marker",
       url: remote.url + "#pullrequestreview-" + (p.operation === "update" ? 2 : 1), submittedAt: new Date().toISOString() }] };
 }
 
 export async function publishDelivery({ api, call, config, issueId, runId, git }) {
   let view = await call({ command: "n5-inspect" });
   const p = view.delivery.publication;
+  if (p.operation === "integrate") return integrateDelivery({ api, call, config, issueId, runId, git });
   assert.equal(git("rev-parse", "HEAD"), p.submission.candidateCommit);
   const claim = await preflightPublicationClaim({ view, p, call, config, issueId, runId });
   assert.equal((await call(claim)).effectPermission, "execute");
@@ -86,7 +88,7 @@ export async function publishDelivery({ api, call, config, issueId, runId, git }
   const refresh = await api("POST", `/api/issues/${issueId}/external-objects/refresh`, { objectIds: [objectId] });
   if (config.feedbackMode) await waitForUpdatedNativeHead(api, issueId, objectId, remote, p);
   view = await call({ command: "n5-inspect" });
-  const feedbackReport = config.feedbackMode ? feedbackFor(view, p, config, issueId, runId, remote) : undefined;
+  const feedbackReport = config.feedbackMode || config.integrationMode ? feedbackFor(view, p, config, issueId, runId, remote) : undefined;
   const body = { command: "n5-observe-delivery", commandId: randomUUID(), expectedVersion: view.version,
     ...(feedbackReport ? { feedbackReport } : {}),
     checks: { headSha: remote.headSha, state: "passed", evidenceRefs: ["fixture:exact-head-check"] },

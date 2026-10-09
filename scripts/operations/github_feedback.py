@@ -22,25 +22,14 @@ def read_api(path):
         raise ValueError("GitHub response exceeds bounded read scope")
     return json.loads(result.stdout)
 
-def report(args):
-    match = re.fullmatch(r"https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/pull/([1-9][0-9]*)", args.url)
-    if not match or match[1] != args.repository or not re.fullmatch(r"[a-f0-9]{40}", args.head):
-        raise ValueError("Exact canonical repository PR and SHA required")
-    if not all(os.environ.get(key) for key in ["PAPERCLIP_TASK_ID", "PAPERCLIP_RUN_ID"]):
-        raise ValueError("Current admitted publisher context required")
-    prefix = "repos/" + args.repository
-    pr_path = prefix + "/pulls/" + match[2]
-    pr = read_api(pr_path)
-    if pr["head"]["sha"] != args.head or pr.get("html_url") != args.url or pr.get("state") != "open":
-        raise ValueError("Observed PR changed; no feedback on a replacement head")
-    checks = read_api(prefix + "/commits/" + args.head + "/check-runs?per_page=100")
-    statuses = read_api(prefix + "/commits/" + args.head + "/status?per_page=100")
-    reviews = read_api(pr_path + "/reviews?per_page=100")
-    if checks.get("total_count", 101) > 100 or statuses.get("sha") != args.head or len(statuses.get("statuses", [])) >= 100 or len(checks.get("check_runs", [])) != checks.get("total_count") or not isinstance(reviews, list) or len(reviews) >= 100:
+def read_checks(prefix, head, url):
+    checks = read_api(prefix + "/commits/" + head + "/check-runs?per_page=100")
+    statuses = read_api(prefix + "/commits/" + head + "/status?per_page=100")
+    if checks.get("total_count", 101) > 100 or statuses.get("sha") != head or len(statuses.get("statuses", [])) >= 100 or len(checks.get("check_runs", [])) != checks.get("total_count"):
         raise ValueError("Complete check/review inventory is not within the declared bound")
     named = {}
     for item in checks["check_runs"]:
-        if item.get("head_sha") != args.head:
+        if item.get("head_sha") != head:
             raise ValueError("Check run belongs to another head")
         state = "pending" if item["status"] != "completed" else "passed" if item["conclusion"] in ["success", "neutral", "skipped"] else "failed"
         previous = named.get(item["name"])
@@ -53,7 +42,24 @@ def report(args):
         status_names.add(item["context"])
         if item["context"] in named:
             raise ValueError("Ambiguous check-run and status names require explicit policy")
-        named[item["context"]] = {"name": item["context"], "state": "passed" if item["state"] == "success" else "pending" if item["state"] == "pending" else "failed", "evidenceUrl": item.get("target_url") or args.url}
+        named[item["context"]] = {"name": item["context"], "state": "passed" if item["state"] == "success" else "pending" if item["state"] == "pending" else "failed", "evidenceUrl": item.get("target_url") or url}
+    return [{key: value for key, value in item.items() if key != "id"} for item in named.values()]
+
+def report(args):
+    match = re.fullmatch(r"https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/pull/([1-9][0-9]*)", args.url)
+    if not match or match[1] != args.repository or not re.fullmatch(r"[a-f0-9]{40}", args.head):
+        raise ValueError("Exact canonical repository PR and SHA required")
+    if not all(os.environ.get(key) for key in ["PAPERCLIP_TASK_ID", "PAPERCLIP_RUN_ID"]):
+        raise ValueError("Current admitted publisher context required")
+    prefix = "repos/" + args.repository
+    pr_path = prefix + "/pulls/" + match[2]
+    pr = read_api(pr_path)
+    if pr["head"]["sha"] != args.head or pr.get("html_url") != args.url or pr.get("state") != "open":
+        raise ValueError("Observed PR changed; no feedback on a replacement head")
+    checks = read_checks(prefix, args.head, args.url)
+    reviews = read_api(pr_path + "/reviews?per_page=100")
+    if not isinstance(reviews, list) or len(reviews) >= 100:
+        raise ValueError("Complete review inventory exceeds bound")
     observations = []
     for item in reviews:
         if item["state"] == "PENDING":
@@ -70,7 +76,7 @@ def report(args):
             "intentId": args.intent_id, "issueId": os.environ["PAPERCLIP_TASK_ID"], "runId": os.environ["PAPERCLIP_RUN_ID"],
             "observedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(), "url": args.url, "repository": args.repository,
             "headSha": args.head, "baseRef": pr["base"]["ref"], "headRef": pr["head"]["ref"], "draft": pr["draft"],
-            "checks": [{key: value for key, value in item.items() if key != "id"} for item in named.values()], "reviews": observations}
+            "checks": checks, "reviews": observations}
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

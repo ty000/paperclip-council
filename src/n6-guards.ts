@@ -1,3 +1,5 @@
+import { integratedResult } from "./integration-contract.js";
+import { assertIntegrationRecoveryStable } from "./integration-recovery.js";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { assertN6SourceAccounting } from "./n6-accounting.js";
 import { canonicalPayloadHash, getMission, MissionError, type MissionRecord } from "./missions.js";
@@ -43,6 +45,11 @@ export async function assertN6AcceptedSource(ctx: PluginContext, m: MissionRecor
     bundleSha256: submission.sha256, evidenceRevision: submission.evidenceRevision, mandateHash: submission.mandateHash };
   if (canonicalPayloadHash(actual) !== canonicalPayloadHash(dep.expectedResult)) {
     throw new MissionError(409, "n6_result_mismatch", "Accepted predecessor differs from the authorized exact result");
+  }
+  if (dep.protocol === "integrated-result-v1") {
+    const integrated = integratedResult(source);
+    await assertIntegrationRecoveryStable(ctx, source);
+    if (dep.integrated && canonicalPayloadHash(dep.integrated) !== canonicalPayloadHash(integrated)) throw new MissionError(409, "n6_integrated_result_mismatch", "Pin the exact verified integrated predecessor; PR acceptance alone cannot release delivery");
   }
   await assertN6SourceAccounting(ctx, source);
   return source;
@@ -90,5 +97,6 @@ export async function readN6Handoff(ctx: PluginContext, m: MissionRecord) {
   return { sourceMissionId: source.missionId, sourceRootIssueId: source.rootIssueId, expectedResult: m.aggregate.n6!.expectedResult,
     attachmentId: accepted.attachmentId, downloadPath: `/api/attachments/${accepted.attachmentId}/content`,
     sha256: accepted.sha256, byteSize: accepted.byteSize, baseCommit: accepted.baseCommit, candidateCommit: accepted.candidateCommit,
-    instruction: "Download with injected Bearer auth; verify SHA256, Git bundle and exact candidate before consuming. Never substitute main or a branch." };
+    ...(m.aggregate.n6!.protocol === "integrated-result-v1" ? { integrated: integratedResult(source) } : {}),
+    instruction: m.aggregate.n6!.protocol === "integrated-result-v1" ? "Verify the original accepted artifact and integrated report binding. Fetch and check out the exact integrated.integratedCommit from the authorized repository before planning downstream work; pin it as the new sourceBaseCommit. The pre-merge candidate is evidence, not the downstream Git base. Never substitute floating main." : "Download with injected Bearer auth; verify SHA256, Git bundle and exact candidate before consuming. Never substitute main or a branch." };
 }

@@ -61,7 +61,7 @@ type Slot = {
   issueState: "planned" | "creation_claimed" | "confirmed" | "unknown";
   intentId?: string;
   childIssueId?: string;
-  parentIssueId?: string;
+  parentIssueId?: string | null;
   issueUnknown?: string;
   dispatchState?: "claimed" | "requested" | "unknown";
   dispatchReservationId?: string;
@@ -493,7 +493,7 @@ async function assertRecoveryChild(ctx: PluginContext, mission: MissionRecord, c
   const child = contribution.childIssueId ? await ctx.issues.get(contribution.childIssueId, mission.companyId) : null;
   if (!contribution.commit || !contribution.authorRunId || contribution.authorRunId !== contribution.dispatchRunId
     || contribution.dispatchState !== "requested" || contribution.issueState !== "confirmed" || child?.status !== "done"
-    || child.companyId !== mission.companyId || child.projectId !== mission.projectId || child.parentId !== (contribution.parentIssueId ?? mission.rootIssueId)
+    || child.companyId !== mission.companyId || child.projectId !== mission.projectId || child.parentId !== (contribution.parentIssueId !== undefined ? contribution.parentIssueId : mission.rootIssueId)
     || child.assigneeAgentId !== physicalAgent(mission, contribution.assigneeAgentId, { issueId: contribution.childIssueId })) {
     throw new MissionError(409, "recovery_child_incomplete", "Recovery retains two attributed, completed native children");
   }
@@ -707,7 +707,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
     const requestedUnits = integer(input.body.requestedUnits, "requestedUnits");
     const issue = await ctx.issues.get(slot.childIssueId, mission.companyId);
     if (!issue || issue.companyId !== mission.companyId || issue.projectId !== mission.projectId
-        || issue.parentId !== (slot.parentIssueId ?? mission.rootIssueId) || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
+        || issue.parentId !== (slot.parentIssueId !== undefined ? slot.parentIssueId : mission.rootIssueId) || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
         || issue.status !== "in_progress") {
       throw new MissionError(409, "child_ownership_changed", "Synthetic contribution run needs its mapped in-progress child issue");
     }
@@ -966,8 +966,9 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
   }
   if (mission.aggregate.n6) await (await import("./n6-guards.js")).assertN6LaunchReady(ctx, mission, input.body);
   const root = await ctx.issues.get(mission.rootIssueId, mission.companyId);
+  const rootLeaf = mission.aggregate.projectMandate?.completion?.result === "integrated-verified" ? mission.aggregate.hierarchy?.leaves?.find(l => l.issueId === mission.rootIssueId) : undefined;
   if (!root || root.companyId !== mission.companyId || root.projectId !== mission.projectId
-      || root.assigneeAgentId !== mission.aggregate.responsibilities.integrationLeadAgentId
+      || root.assigneeAgentId !== (rootLeaf?.assigneeAgentId ?? mission.aggregate.responsibilities.integrationLeadAgentId)
       || !["backlog", "todo", ...(mission.aggregate.n6 || mission.aggregate.hierarchy?.leaves ? ["blocked"] : [])].includes(root.status)) {
     throw new MissionError(409, "root_ownership_changed",
       "Root issue must be assigned to the integration lead and not already running");
@@ -1183,7 +1184,7 @@ async function assertPriorContributions(ctx: PluginContext, mission: MissionReco
     const priorIssue = prior.childIssueId ? await ctx.issues.get(prior.childIssueId, mission.companyId) : null;
     const attributed = [prior.commit, prior.authorRunId, prior.dispatchState === "requested", prior.dispatchReservationId,
       prior.dispatchRunId, prior.authorRunId === prior.dispatchRunId].every(Boolean);
-    const expected = { companyId: mission.companyId, projectId: mission.projectId, parentId: prior.parentIssueId ?? mission.rootIssueId,
+    const expected = { companyId: mission.companyId, projectId: mission.projectId, parentId: prior.parentIssueId !== undefined ? prior.parentIssueId : mission.rootIssueId,
       assigneeAgentId: physicalAgent(mission, prior.assigneeAgentId, { issueId: prior.childIssueId }), status: "done" };
     if (!attributed || !priorIssue || Object.entries(expected).some(([key, value]) => priorIssue[key as keyof typeof priorIssue] !== value)) {
       throw new MissionError(409, "prior_contribution_incomplete", "Every earlier contribution must be attributed to its confirmed native run and its mapped child issue must be done");
@@ -1232,7 +1233,7 @@ async function eligibleDispatchAgent(ctx: PluginContext, mission: MissionRecord,
   const issue = await ctx.issues.get(slot.childIssueId!, mission.companyId);
   const agent = await ctx.agents.get(slot.assigneeAgentId, mission.companyId);
   if (!issue || issue.companyId !== mission.companyId || issue.projectId !== mission.projectId
-      || issue.parentId !== (slot.parentIssueId ?? mission.rootIssueId) || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
+      || issue.parentId !== (slot.parentIssueId !== undefined ? slot.parentIssueId : mission.rootIssueId) || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
       || !["backlog", ...(resumed || slot.parentIssueId ? ["blocked"] : [])].includes(issue.status) || !agent || agent.companyId !== mission.companyId
       || !["active", "idle", "running"].includes(agent.status)) {
     throw new MissionError(409, "native_dispatch_ineligible", "Native child or assignee is no longer eligible for dispatch");
@@ -1522,7 +1523,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       if (slot.commit) throw new MissionError(409, "contribution_recorded", "Contribution was already recorded");
       const issue = await ctx.issues.get(slot.childIssueId, mission.companyId);
       if (!issue || issue.companyId !== mission.companyId || issue.projectId !== mission.projectId
-          || issue.parentId !== (slot.parentIssueId ?? mission.rootIssueId) || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
+          || issue.parentId !== (slot.parentIssueId !== undefined ? slot.parentIssueId : mission.rootIssueId) || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
           || issue.status !== "in_progress") {
         throw new MissionError(409, "child_ownership_changed", "Child issue is not in progress under the assigned contributor");
       }
@@ -1554,7 +1555,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       for (const slot of state.contributions) {
         const issue = await ctx.issues.get(slot.childIssueId!, mission.companyId);
         if (!issue || issue.companyId !== mission.companyId || issue.projectId !== mission.projectId
-            || issue.parentId !== (slot.parentIssueId ?? mission.rootIssueId) || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
+            || issue.parentId !== (slot.parentIssueId !== undefined ? slot.parentIssueId : mission.rootIssueId) || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
             || issue.status !== "done") {
           throw new MissionError(409, "child_not_done", "Both mapped native child issues must be done before integration");
         }
@@ -1591,7 +1592,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
       if (!COMMIT.test(baseCommit) || !COMMIT.test(candidateCommit) || !DIGEST.test(expectedSha256)) {
         throw new MissionError(422, "invalid_candidate_identity", "Candidate Git and digest identity is malformed");
       }
-      if (completionPolicy(mission) && (state.sourceBaseCommit !== baseCommit || state.contributions.some(s => !s.proof?.closedAt))) {
+      if (completionPolicy(mission) && (state.sourceBaseCommit !== baseCommit || state.contributions.some(s => !(s.proof?.closedAt || completionPolicy(mission)?.result === "integrated-verified" && s.proof?.readyAt)))) {
         throw new MissionError(409, "contribution_proof_pending", "All closed child proofs and the original source base must bind integration");
       }
       let verified: IntegratedCandidateVerification;

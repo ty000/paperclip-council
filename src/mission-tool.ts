@@ -8,7 +8,7 @@ import { getMissionByOrdinaryIssue, getMissionByN6WorkIssue, getMissionByN1Issue
 const agentCommands = new Set(["select-model-profile", "n6-inspect", "n6-coordinate", "n6-facilitation-outcome", "inspect", "plan", "materialize", "dispatch", "reconcile-usage", "record-contribution", "publish",
   "ordinary-inspect", "ordinary-verdict",
   "confirm-review-handoff", "prepare-resubmission", "attest-transmission", "attest-n3-transmission", "n3-inspect", "n3-opinion", "n3-synthesize",
-  "n5-inspect", "n5-rebind-plan", "n5-claim-publication", "n5-observe-delivery"]);
+  "n5-claim-merge", "n5-observe-integration", "n5-inspect", "n5-rebind-plan", "n5-claim-publication", "n5-observe-delivery"]);
 export async function missionToolRequest(ctx: PluginContext, value: unknown, runCtx: ToolRunContext): Promise<PluginApiRequestInput> {
   const params = value as { operation?: string; body?: Record<string, unknown> };
   if (!params || Object.keys(params).some(k => !["operation", "body"].includes(k)) || !["command", "decision"].includes(params.operation ?? "")

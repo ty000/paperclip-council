@@ -2,7 +2,7 @@ import { MissionError } from "./mission-primitives.js";
 import type { MissionRecord } from "./missions.js";
 
 export type HierarchyPolicy = { protocol: "council-hierarchy-v1"; maxContributions: number; execution: "sequential"; adoptExistingChildren: boolean };
-export type HierarchyLeaf = { contributionId: string; issueId: string; parentId: string; assigneeAgentId: string;
+export type HierarchyLeaf = { contributionId: string; issueId: string; parentId: string | null; assigneeAgentId: string;
   title: string; descriptionHash: string; documentRevisionId: string; ownedPaths: string[]; blockedByIssueIds: string[]; pendingBlockerIds: string[] };
 export type HierarchyNode = { issueId: string; parentId: string | null; title: string; descriptionHash: string; assigneeAgentId: string | null; blockedByIssueIds: string[];
   historicalStatus?: "done" | "cancelled";

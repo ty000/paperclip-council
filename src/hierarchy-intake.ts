@@ -32,7 +32,7 @@ async function leaf(ctx: PluginContext, policy: ProjectMandate, issue: Awaited<R
     throw new MissionError(422, "hierarchy_work_document", "Add council-work JSON with ownedPaths only to each existing leaf; dependencies remain native relations");
   }
   const relations = await ctx.issues.relations.get(issue.id, policy.companyId);
-  return { contributionId: randomUUID(), issueId: issue.id, parentId: issue.parentId!, assigneeAgentId: issue.assigneeAgentId,
+  return { contributionId: randomUUID(), issueId: issue.id, parentId: issue.parentId, assigneeAgentId: issue.assigneeAgentId,
     title: issue.title, descriptionHash: canonicalPayloadHash(issue.description), documentRevisionId: doc.latestRevisionId,
     ownedPaths: paths(work.ownedPaths, policy), blockedByIssueIds: relations.blockedBy.map(blocker => blocker.id).sort(),
     pendingBlockerIds: relations.blockedBy.filter(blocker => !["done", "cancelled"].includes(blocker.status)).map(blocker => blocker.id) };
@@ -83,6 +83,16 @@ function requireSeparateOwnership(leaves: HierarchyLeaf[]) {
 export async function prepareHierarchy(ctx: PluginContext, policy: ProjectMandate, rootId: string, issues: Awaited<ReturnType<typeof projectIssues>>, imported?: LinearReadinessSnapshot): Promise<HierarchyState | undefined> {
   const contract = policy.content.hierarchy;
   const previews = descendants(rootId, issues);
+  if (!previews.length && policy.content.publication?.contract?.integration) {
+    const root = await ctx.issues.get(rootId, policy.companyId);
+    if (!root || root.projectId !== policy.projectId) throw new MissionError(409, "delivery_leaf_identity", "Exact existing code delivery leaf required");
+    const pair = await validateRosterPair(ctx, policy.companyId, policy.content.teamRosterId, policy.content.councilRosterId);
+    if (!pair.eligible || pair.team.head.publishedRevision !== policy.content.teamRevision) throw new MissionError(409, "hierarchy_roster_drift", "Current pinned contributor roster required");
+    const allowed = new Set(pair.team.revision.content.members.map(member => member.agentId).filter(id => id !== policy.content.leadAgentId));
+    const item = await leaf(ctx, policy, root as any, allowed);
+    requireWaiting([root]);
+    return { ...contract!, leaves: [item], ancestorIds: [], nodes: [{ issueId: root.id, parentId: root.parentId, title: root.title, descriptionHash: canonicalPayloadHash(root.description), assigneeAgentId: root.assigneeAgentId, blockedByIssueIds: item.blockedByIssueIds }] };
+  }
   if (!previews.length) return contract;
   if (!contract?.adoptExistingChildren) throw new MissionError(409, "project_hierarchy_pending", "Existing children are retained; their adoption requires explicit hierarchy authority in the project mandate");
   const sources = await Promise.all([issues.find(item => item.id === rootId)!, ...previews].map(async preview => {

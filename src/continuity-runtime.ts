@@ -99,7 +99,7 @@ async function advanceReview(ctx: PluginContext, m: MissionRecord, job: PluginJo
   m = await reconcileN5(ctx, m);
   m = await reconcilePublicationFeedback(ctx, m);
   if (completionPolicy(m)) {
-    if (!inspectN5(m)?.publicationReady) return waiting("native_delivery_pending", "Le résultat autorisé attend sa preuve de publication exacte et ses coûts terminaux.");
+    if (!(completionPolicy(m)?.result === "integrated-verified" ? inspectN5(m)?.integratedReady : inspectN5(m)?.publicationReady)) return waiting("native_delivery_pending", "Le résultat autorisé attend sa preuve de publication exacte et ses coûts terminaux.");
     return finishAuthorizedResult(ctx, m);
   }
   return inspectN5(m)?.ready

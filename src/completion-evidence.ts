@@ -1,3 +1,4 @@
+import { integratedResult } from "./integration-contract.js";
 import { MissionError } from "./mission-primitives.js";
 import type { MissionRecord } from "./missions.js";
 import type { N1State } from "./n1-missions.js";
@@ -14,11 +15,14 @@ export function completionEvidence(m: MissionRecord) {
     throw new MissionError(409, "completion_children_proof", "All necessary children require verified source contributions and observed terminal closure before parent consolidation");
   }
   const delivery = inspectN5(m);
-  if (policy.result !== "accepted-candidate" && (!delivery?.publicationReady || delivery.authority.contract?.result !== policy.result)) {
+  const integrated = policy.result === "integrated-verified" ? integratedResult(m) : undefined;
+  if (integrated && m.aggregate.n5!.authority.contract!.integration!.parentObligations.length && !m.aggregate.n5!.integration!.obligations) throw new MissionError(409, "completion_parent_obligations", "Parent obligations need their own exact native evidence document; the last merge is insufficient");
+  if (policy.result !== "accepted-candidate" && (!(integrated || delivery?.publicationReady) || delivery?.authority.contract?.result !== policy.result)) {
     throw new MissionError(409, "completion_delivery_proof", "A draft PR satisfies only explicit draft-result authority; final exact-head settled delivery must match the result");
   }
   if (policy.result === "accepted-candidate" && m.aggregate.n5) throw new MissionError(409, "completion_result_scope", "An accepted-candidate result cannot imply a publication result");
   return { protocol: policy.protocol, result: policy.result, companyId: m.companyId, missionId: m.missionId, rootIssueId: m.rootIssueId,
+    ...(integrated ? { integrated, parentObligations: m.aggregate.n5!.integration!.obligations ?? null } : {}),
     mandate: m.aggregate.mandate, submission, contributionProofs: n1.contributions.map(s => ({ contributionId: s.contributionId,
       issueId: s.childIssueId, runId: s.authorRunId, reservationId: s.dispatchReservationId, proof: s.proof })),
     reviewOperations: m.aggregate.n2!.rounds.map(r => ({ submissionId: r.submissionId, operationId: r.verdict!.operationId, verdict: r.verdict!.verdict })),

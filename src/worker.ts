@@ -7,6 +7,7 @@ import { ModelSelectionError } from "./model-state.js";
 import { handleN6WorkAgent } from "./n6-work-api.js";
 import { getMissionByN6WorkIssue } from "./missions.js";
 import { handleN6Board } from "./n6-runtime.js";
+import { handleIntegrationRequest } from "./integration-runtime.js";
 import { handleN5Agent, handleN5Board } from "./n5-runtime.js";
 import { handleN3Specialist } from "./n3-runtime.js";
 import { N3OpinionError } from "./n3-opinions.js";
@@ -218,6 +219,7 @@ async function handleMissionAgentCommand(input: PluginApiRequestInput, context: 
   const command = input.body && typeof input.body === "object" && !Array.isArray(input.body)
     ? (input.body as Record<string, unknown>).command : null;
   if (String(command).startsWith("n6-") || await getMissionByN6WorkIssue(context, input.companyId, input.params.issueId)) return handleN6WorkAgent(context, input);
+  if (["n5-claim-merge", "n5-observe-integration"].includes(String(command))) return handleIntegrationRequest(context, input);
   if (typeof command === "string" && command.startsWith("n5-")) return handleN5Agent(context, input);
   const ordinary = await getMissionByOrdinaryIssue(context, input.companyId, input.params.issueId);
   if (ordinary) return handleN2AgentApi(input, context);
@@ -260,7 +262,7 @@ async function handleRequest(input: PluginApiRequestInput, context: PluginContex
   if (input.routeKey === "admission-read" || input.routeKey === "admission-command") return handleN1AdmissionApi(input, context);
   if (input.routeKey === "mission-agent-command") return handleMissionAgentCommand(input, context);
   if (input.routeKey.startsWith("roster")) return handleRosterApi(input, context);
-  if (input.routeKey === "mission-command" && ["configure-delivery", "reconcile-delivery", "request-delivery-correction"].includes(String((input.body as { command?: string })?.command))) return handleN5Board(context, input);
+  if (input.routeKey === "mission-command" && ["configure-delivery", "reconcile-delivery", "request-delivery-correction", "record-parent-obligations", "reconcile-integration-recovery"].includes(String((input.body as { command?: string })?.command))) return handleN5Board(context, input);
   if (input.routeKey.startsWith("mission")) return handleMissionApi(input, context);
   if (input.routeKey !== "foundation-probe") {
     return { status: 404, body: { error: "Unknown route" } };

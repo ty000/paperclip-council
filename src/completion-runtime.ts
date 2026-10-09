@@ -4,6 +4,7 @@ import type { MissionRecord } from "./missions.js";
 import type { N1State } from "./n1-missions.js";
 import { n2Cas, nativeN2Profile } from "./n2-missions.js";
 import { completionEvidence } from "./completion-evidence.js";
+import { integratedResult } from "./integration-contract.js";
 import { completionPolicy, type CompletionState } from "./completion-contract.js";
 import { assertProjectDeparture } from "./project-mandate-guard.js";
 import { physicalAgent } from "./model-state.js";
@@ -93,6 +94,17 @@ async function finishNotification(ctx: PluginContext, m: MissionRecord) {
 export async function reconcileCompletion(ctx: PluginContext, m: MissionRecord) {
   if (!completionPolicy(m) || m.aggregate.completion?.state === "closed") return m;
   await assertProjectDeparture(ctx, m); await assertClosureAccounting(ctx, m);
+  if (completionPolicy(m)?.result === "integrated-verified") {
+    integratedResult(m);
+    if (m.aggregate.n5?.integration?.recovery) await (await import("./integration-recovery.js")).assertIntegrationRecoveryStable(ctx, m);
+    const obligations = m.aggregate.n5!.integration!.obligations;
+    if (m.aggregate.n5!.authority.contract!.integration!.parentObligations.length) {
+      const doc = await ctx.issues.documents.get(m.rootIssueId, `council-parent-obligations-${m.missionId}`, m.companyId);
+      if (!obligations || doc?.id !== obligations.documentId || doc.latestRevisionId !== obligations.revisionId || canonicalPayloadHash(doc.body) !== obligations.bodyHash) throw new MissionError(409, "completion_parent_obligations", "Exact own parent evidence must remain current before closure");
+    }
+    const { closeQualifiedContribution } = await import("./contribution-proof.js");
+    for (const slot of (m.aggregate.n1 as N1State).contributions) m = await closeQualifiedContribution(ctx, m, slot.contributionId, (before, aggregate) => n2Cas(ctx, before, aggregate));
+  }
   if (!m.aggregate.completion) {
     const evidence = completionEvidence(m), proofId = canonicalPayloadHash(evidence), documentKey = `council-completion-${m.missionId}`;
     const runId = m.aggregate.n2!.rounds.at(-1)!.handoff.reviewerRunId;

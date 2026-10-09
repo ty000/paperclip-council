@@ -35,11 +35,12 @@ assert(!continuityMode || deliveryMode);
 assert(!projectIntakeMode || continuityMode);
 const feedbackMode = process.env.COUNCIL_PR_FEEDBACK === "1";
 assert(!feedbackMode || hierarchyCount === 3 && projectIntakeMode);
-const completionMode = process.env.COUNCIL_PROOF_COMPLETION === "1";
-assert(!completionMode || feedbackMode && hierarchyCount === 3);
+const integrationMode = process.env.COUNCIL_INTEGRATED_DELIVERY === "1";
+const completionMode = process.env.COUNCIL_PROOF_COMPLETION === "1" || integrationMode;
+assert(!completionMode || feedbackMode && hierarchyCount === 3 || integrationMode && hierarchyCount === 1);
 assert(!prePlanResumeMode || !completionMode && leadCommandMode);
 const success = completionMode ? "INSTALLED PROOF COMPLETION PROVIDER-FREE VALIDATED" : feedbackMode ? "INSTALLED PR FEEDBACK PROVIDER-FREE VALIDATED" : hierarchyCount ? "INSTALLED VARIABLE HIERARCHY PROVIDER-FREE VALIDATED" : n6Mode ? "INSTALLED N6 DEPENDENCY PROVIDER-FREE VALIDATED" : deliveryMode ? "INSTALLED ORDINARY DELIVERY PROVIDER-FREE VALIDATED" : "INSTALLED ORDINARY COUNCIL PROVIDER-FREE VALIDATED";
-const artifactPrefix = completionMode ? "proof-completion-installed-" : feedbackMode ? "pr-feedback-installed-" : hierarchyCount ? `hierarchy-${hierarchyCount}-installed-` : n6Mode ? "n6-installed-" : deliveryMode ? "n5-ordinary-installed-" : "n2-ordinary-installed-";
+const artifactPrefix = integrationMode ? "integrated-delivery-installed-" : completionMode ? "proof-completion-installed-" : feedbackMode ? "pr-feedback-installed-" : hierarchyCount ? `hierarchy-${hierarchyCount}-installed-` : n6Mode ? "n6-installed-" : deliveryMode ? "n5-ordinary-installed-" : "n2-ordinary-installed-";
 const runtime = await mkdtemp("/tmp/council-ordinary-installed-");
 const output = resolve(repository, process.argv[2] ?? `artifacts/${artifactPrefix}${Date.now()}.json`);
 assert(output.startsWith(resolve(repository, `artifacts/${artifactPrefix}`)));
@@ -50,7 +51,7 @@ const proof: any = { schema: "council-ordinary-installed-v1", outcome: "RUNNING"
   head: gitAt(repository, "rev-parse", "HEAD"), hostSha, hostRoot: host, runtime, timeline: [], checks: {},
   boundary: "Installed Council owns N1 child completion/root waiting, N2/N3 state, admission, dispatch and reconciliation. Only CLI model/content/usage are deterministic. Owner prepares N1; Council finishes recorded children without implicit parent wakes and parks its verified candidate awaiting review. Agent demand wake policy remains enabled.",
   source: Object.fromEntries(await Promise.all([...new Set([fixture, fileURLToPath(import.meta.url), resolve(here, "ordinary-delivery-fixture.mjs"), resolve(here, "ordinary-delivery-scenario.ts"), resolve(here, "n6-scenario.ts"), resolve(here, "n6-coordination-fixture.mjs"), resolve(repository, "dist/worker.js"), resolve(repository, "dist/contribution-command.js"),
-    resolve(repository, "scripts/operations/workspace_preflight.py"), resolve(repository, "scripts/operations/publisher_preflight.py"), resolve(repository, "scripts/operations/github_feedback.py"), resolve(here, "native-run-exception-scenario.ts"), resolve(here, "hierarchy-scenario.ts"),
+    resolve(repository, "scripts/operations/workspace_preflight.py"), resolve(repository, "scripts/operations/publisher_preflight.py"), resolve(repository, "scripts/operations/github_feedback.py"), resolve(here, "native-run-exception-scenario.ts"), resolve(here, "hierarchy-scenario.ts"), resolve(here, "integration-fixture.mjs"), resolve(repository, "scripts/operations/github_integration.py"), resolve(repository, "scripts/operations/integrate_delivery.py"),
     ...gitAt(repository, "ls-files", "src").split("\n").map(path => resolve(repository, path)),
     ...gitAt(repository, "ls-files", "--others", "--exclude-standard", "src").split("\n").filter(Boolean).map(path => resolve(repository, path))])].map(async p => [p, createHash("sha256").update(await readFile(p)).digest("hex")]))) };
 const record = (event: string, details: any = {}) => proof.timeline.push({ ordinal: proof.timeline.length + 1, at: new Date().toISOString(), event, ...details });
@@ -184,15 +185,15 @@ try {
     const historical = await api("POST", `/api/companies/${companyId}/issues`, { title: "Historical task retained", description: "Do not adopt without explicit inclusion", projectId, status: "backlog", assigneeAgentId: actors.lead });
     const settings = await api("GET", "/api/instance/settings/experimental");
     await api("PATCH", "/api/instance/settings/experimental", { ...settings, enableExternalObjects: true });
-    await writeFile(fixtureConfig, JSON.stringify({ pluginId, companyId, projectId, projectIntake: true, hierarchyCount, feedbackMode, completionMode,
+    await writeFile(fixtureConfig, JSON.stringify({ pluginId, companyId, projectId, projectIntake: true, hierarchyCount, feedbackMode, completionMode, integrationMode,
       prePlanResume: prePlanResumeMode, leadCommandBlock: leadCommandMode, councilRepository: repository, repoPath, runtime, actors, baseCommit, delivery: true }));
     const policyPath = `/api/plugins/${pluginId}/api/companies/${companyId}/projects/${projectId}/mandate`;
     const policyBody = { companyId, commandId: randomUUID(), expectedVersion: 0, enabled: true, authorizeNewTasks: true,
       teamRosterId: team.head.rosterId, councilRosterId: council.head.rosterId, n3Slots, template: mandate,
       criteriaSource: "project-defaults", allowedPaths: ["alpha.txt", "beta.txt", ...(hierarchyCount === 3 ? ["gamma.txt"] : [])],
-      ...(completionMode ? { completion: { protocol: "council-proof-close-v1", result: "draft-pr" } } : {}),
+      ...(completionMode ? { completion: { protocol: "council-proof-close-v1", result: integrationMode ? "integrated-verified" : "draft-pr" } } : {}),
       ...(hierarchyCount ? { hierarchy: { protocol: "council-hierarchy-v1", maxContributions: hierarchyCount, execution: "sequential", adoptExistingChildren: true } } : {}),
-      publication: { publisherAgentId: actors.publisher, qaAgentId: actors.quality, repository: "ty000/paperclip-council", baseRef: "main", headRefPrefix: "codex/project-task", ...(feedbackMode ? { contract: { protocol: "council-pr-contract-v1", draftOnly: true, result: "draft-pr", feedback: "review-and-correct", requiredChecks: ["fixture-ci"] } } : {}) } };
+      publication: { publisherAgentId: actors.publisher, qaAgentId: actors.quality, repository: "ty000/paperclip-council", baseRef: "main", headRefPrefix: "codex/project-task", ...(integrationMode ? { contract: { protocol: "council-pr-contract-v1", draftOnly: false, result: "integrated-verified", feedback: "review-and-correct", requiredChecks: ["fixture-ci"], integration: { protocol: "council-integrated-delivery-v1", mergeMethod: "squash", requiredChecks: ["integrated-ci"], parentObligations: [] } } } : feedbackMode ? { contract: { protocol: "council-pr-contract-v1", draftOnly: true, result: "draft-pr", feedback: "review-and-correct", requiredChecks: ["fixture-ci"] } } : {}) } };
     const configured = await api("POST", policyPath, policyBody);
     assert.equal((await api("POST", policyPath, policyBody)).outcome, "replayed");
     if (nativeSetupMode) {
@@ -209,7 +210,7 @@ try {
     await api("PATCH", `/api/issues/${hierarchy.id}`, { assigneeAgentId: actors.lead });
     if (hierarchyCount) {
       proof.hierarchyTasks = await prepareHierarchyTasks(api, companyId, projectId, actors, hierarchyCount);
-      root = proof.hierarchyTasks.root;
+      root = integrationMode ? proof.hierarchyTasks.leaves[0] : proof.hierarchyTasks.root;
     } else {
     root = await api("POST", `/api/companies/${companyId}/issues`, { title: "Ordinary N1 to N2", description: "Produce two attributed complementary contributions and the reviewed publication", projectId, status: "backlog", assigneeAgentId: actors.lead });
     }
@@ -228,7 +229,14 @@ try {
     await writeFile(fixtureConfig, JSON.stringify({ pluginId, companyId, projectId, missionId, rootIssueId: root.id, repoPath, runtime, actors, baseCommit, delivery: deliveryMode, n6: n6Mode, coordination: coordinationMode }));
   }
   let delivery: any;
-  if (projectIntakeMode) delivery = nominalDeliveryObserver({ api, companyId, missionPath, runtime, proof });
+  if (integrationMode) delivery = { advance: async () => {}, complete: (m: any) => m.aggregate.completion?.state === "closed", finish: async () => {
+    const view = await api("GET", `${missionPath}?companyId=${companyId}`);
+    assert.equal(view.n5.integratedReady, true);
+    const remote = JSON.parse(await readFile(resolve(runtime, "github-transport.json"), "utf8"));
+    assert.equal(remote.mergeCount, 1); assert.equal(remote.createCount, 1);
+    proof.delivery = { remote, final: view.n5, integrated: true };
+  } };
+  else if (projectIntakeMode) delivery = nominalDeliveryObserver({ api, companyId, missionPath, runtime, proof });
   else if (continuityMode) {
     delivery = await prepareOrdinaryDelivery({ api, companyId, actors, rootIssueId: root.id, missionPath, runtime, proof, save, nominal: true });
     created = await api("GET", `${missionPath}?companyId=${companyId}`);
@@ -285,7 +293,7 @@ try {
   let mission = (await api("GET", `${missionPath}?companyId=${companyId}`)).mission;
   if (continuityMode) {
     await waitFor("scheduled N1 settlement", async () => (await api("GET", `${missionPath}?companyId=${companyId}`)).mission,
-      m => m.aggregate.phase === "ready_for_review", 180000);
+      m => m.aggregate.phase === "ready_for_review", integrationMode ? 360000 : 180000);
     const jobs = await api("GET", `/api/plugins/${pluginId}/jobs`);
     const job = jobs.find((j: any) => j.jobKey === "mission-continuity"); assert(job);
     await waitFor("completed native job before restart", () => api("GET", `/api/plugins/${pluginId}/jobs/${job.id}/runs`),
@@ -345,7 +353,7 @@ try {
     await delivery?.advance(value);
     await n6?.advance(value);
     return value;
-  }, value => completionMode ? value.aggregate.completion?.state === "closed" : delivery ? delivery.complete(value) : value.aggregate.n2?.status === "accepted", continuityMode ? feedbackMode ? 900000 : 300000 : 120000);
+  }, value => completionMode ? value.aggregate.completion?.state === "closed" : delivery ? delivery.complete(value) : value.aggregate.n2?.status === "accepted", continuityMode ? integrationMode ? 720000 : feedbackMode ? 900000 : 300000 : 120000);
   await delivery?.finish();
   await n6?.finish();
   if (continuityMode) {
@@ -368,11 +376,11 @@ try {
   }
   proof.runs = await api("GET", `/api/companies/${companyId}/heartbeat-runs`);
   proof.admission = (await api("GET", `${admissionPath}?companyId=${companyId}&periodKey=${profile.periodKey}`)).envelope;
-  assert.equal(proof.runs.length, (feedbackMode ? 16 : hierarchyCount ? hierarchyCount + 5 : continuityMode ? 7 : coordinationMode ? 14 : n6Mode ? 11 : deliveryMode ? 12 : 10) + Number(prePlanResumeMode));
+  assert.equal(proof.runs.length, (integrationMode ? 8 : feedbackMode ? 16 : hierarchyCount ? hierarchyCount + 5 : continuityMode ? 7 : coordinationMode ? 14 : n6Mode ? 11 : deliveryMode ? 12 : 10) + Number(prePlanResumeMode));
   assert(proof.runs.every((run: any) => run.status === "succeeded"));
   assert.equal(proof.mission.aggregate.n2.ordinary.tasks.length, feedbackMode ? 10 : continuityMode ? 3 : 7);
   assert(proof.admission.reservations.every((item: any) => item.status === "settled"));
-  assert.equal(proof.admission.allowance.knownUsageUnits, (feedbackMode ? 2400 : hierarchyCount ? (hierarchyCount + 5) * 150 : continuityMode ? 1050 : coordinationMode ? 2100 : n6Mode ? 1650 : deliveryMode ? 1800 : 1500) + Number(prePlanResumeMode) * 150);
+  assert.equal(proof.admission.allowance.knownUsageUnits, (integrationMode ? 1200 : feedbackMode ? 2400 : hierarchyCount ? (hierarchyCount + 5) * 150 : continuityMode ? 1050 : coordinationMode ? 2100 : n6Mode ? 1650 : deliveryMode ? 1800 : 1500) + Number(prePlanResumeMode) * 150);
   if (prePlanResumeMode) {
     assert.equal(proof.mission.missionId, proof.prePlanResume.originalMissionId);
     assert.equal(proof.mission.rootIssueId, proof.prePlanResume.originalRootId);
@@ -393,7 +401,7 @@ try {
   assert.equal(proof.agentApiReadbacks.length, feedbackMode ? 10 : continuityMode ? 3 : 7);
   proof.gatewayRefusal = JSON.parse(await readFile(resolve(runtime, "gateway-refusal.json"), "utf8"));
   proof.issues = await Promise.all([...new Set(proof.mission.aggregate.n2.ordinary.tasks.map((task: any) => task.issueId))].map(id => api("GET", `/api/issues/${id}`)));
-  if (hierarchyCount) await verifyHierarchyTasks(api, proof, root.id);
+  if (hierarchyCount && !integrationMode) await verifyHierarchyTasks(api, proof, root.id);
   if (completionMode) {
     const c = proof.mission.aggregate.completion;
     assert.equal(c.state, "closed"); assert.equal(c.notification.state, "confirmed");
@@ -412,7 +420,12 @@ try {
     proof.completion = { state: c, evidence, comment: matching[0], checks: { childrenHeldUntilTerminalProof: "PASS", parentResultProof: "PASS", singleNativeNotification: "PASS", noAdditionalRun: "PASS" } };
     proof.boundary += " Explicit draft-result proof closure verifies child bundles before recording, holds children until exact succeeded run costs settle, closes all original parents bottom-up after dependencies and accepted exact-head publication, and confirms one agent-attributed native comment without another provider wake. No manual task transition after activation, no merge/deployment/install result inferred.";
   }
-  if (projectIntakeMode) {
+  if (integrationMode) {
+    const parent = await api("GET", `/api/issues/${proof.hierarchyTasks.root.id}`);
+    assert.notEqual(parent.status, "done", "Parent own obligations remain separate");
+    proof.boundary += " One native existing code leaf owns one PR and a separately admitted integration run; real Git squash commit and post-merge report pass, while GitHub HTTP/writes are deterministic fixtures. Original parent stays pending its own obligations. No recette activation or real GitHub merge occurred.";
+  }
+  if (projectIntakeMode && !integrationMode) {
     const view = await api("GET", `${missions}?companyId=${companyId}`);
     assert.equal(view.missions.length, 1);
     for (const id of [proof.projectIntake.incompleteRootId, proof.projectIntake.hierarchyRootId]) {

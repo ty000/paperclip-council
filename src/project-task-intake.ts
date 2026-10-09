@@ -1,3 +1,4 @@
+import { isIntegratedLeaf, assertPreviousDelivery } from "./delivery-leaves.js";
 import { randomUUID } from "node:crypto";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { canonicalPayloadHash, createMission, getMission, getMissionByRootIssue, MissionError, parseMissionMandate, type MissionRecord } from "./missions.js";
@@ -98,7 +99,7 @@ async function pinTask(ctx: PluginContext, initial: Intake, policy: ProjectManda
   if (root?.originKind === LINEAR_ORIGIN) {
     intake = await prepareImported(ctx, intake, policy, issues);
     root = await ctx.issues.get(intake.rootIssueId, intake.companyId);
-  } else requireManualRoot(root, policy);
+  } else if (!(root && isIntegratedLeaf(root as any, policy, issues))) requireManualRoot(root, policy);
   if (!root) throw new MissionError(409, "project_task_missing", "The original root must remain readable");
   const hierarchy = await prepareHierarchy(ctx, policy, root.id, issues, intake.state.linearIntake?.snapshot);
   if (!root.title.trim() || !root.description?.trim()) throw new MissionError(422, "project_task_description", "Describe the expected result in this task before admission");
@@ -202,6 +203,8 @@ async function advance(ctx: PluginContext, initial: Intake, latest: ProjectManda
 
 async function activateTask(ctx: PluginContext, intake: Intake, m: MissionRecord, policy: ProjectMandate, issues: Awaited<ReturnType<typeof projectIssues>>) {
   if (m.aggregate.n1) return { intake, mission: m };
+  const predecessor = await assertPreviousDelivery(ctx, m, policy, issues);
+  if (predecessor && !m.aggregate.deliveryPredecessor) m = await n2Cas(ctx, m, { ...m.aggregate, deliveryPredecessor: predecessor });
   const root = await ctx.issues.get(m.rootIssueId, m.companyId);
   const source = intake.state.snapshot!.source;
   const doc = source.taskDocumentRevisionId ? await ctx.issues.documents.get(m.rootIssueId, "council-task", m.companyId) : null;
@@ -232,7 +235,8 @@ function eligibleManualRoot(issue: Awaited<ReturnType<typeof projectIssues>>[num
     && issue.assigneeAgentId === policy.content.leadAgentId;
 }
 
-function eligibleRoot(issue: Awaited<ReturnType<typeof projectIssues>>[number], policy: ProjectMandate) {
+function eligibleRoot(issue: Awaited<ReturnType<typeof projectIssues>>[number], policy: ProjectMandate, issues: Awaited<ReturnType<typeof projectIssues>>) {
+  if (policy.content.publication?.contract?.integration && issue.originKind === "manual") return isIntegratedLeaf(issue, policy, issues);
   if (issue.parentId || policy.content.baselineRootIds.includes(issue.id)) return false;
   return issue.originKind === LINEAR_ORIGIN ? eligibleLinearRoot(issue, policy) : eligibleManualRoot(issue, policy);
 }
@@ -242,7 +246,7 @@ export async function reconcileProjectTasks(ctx: PluginContext) {
   for (const policy of await listProjectMandates(ctx)) {
     if (!policy.content.enabled) continue;
     const issues = await projectIssues(ctx, policy.companyId, policy.projectId);
-    for (const root of issues.filter(issue => eligibleRoot(issue, policy))) {
+    for (const root of issues.filter(issue => eligibleRoot(issue, policy, issues))) {
       await ctx.db.execute(`INSERT INTO ${projectTable(ctx, "project_task_intakes")} (company_id, root_issue_id, project_id, policy_revision_id, mission_id, state)
         VALUES ($1, $2, $3, $4, $5, $6::jsonb) ON CONFLICT DO NOTHING`, [policy.companyId, root.id, policy.projectId, policy.revisionId, randomUUID(), JSON.stringify({ commands: {}, questions: {} })]);
     }

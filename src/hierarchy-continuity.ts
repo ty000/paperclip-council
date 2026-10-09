@@ -54,7 +54,8 @@ export async function advanceHierarchyChildren(ctx: PluginContext, initial: Miss
     }
     if (!await reconcileChild(ctx, m, contribution.contributionId)) return "hierarchy_child_running";
     m = await fresh(ctx, m);
-    if (!state(m).contributions.find(s => s.contributionId === contribution.contributionId)!.proof?.closedAt) {
+    const proof = state(m).contributions.find(s => s.contributionId === contribution.contributionId)!.proof;
+    if (!(proof?.closedAt || m.aggregate.projectMandate?.completion?.result === "integrated-verified" && proof?.readyAt)) {
       throw new MissionError(409, "hierarchy_child_closure_pending", "Exact native child closure must precede the next stage");
     }
   }

@@ -1,3 +1,4 @@
+import { integratedResult } from "./integration-contract.js";
 import { n5Readiness } from "./n5-readiness.js";
 import type { MissionRecord } from "./missions.js";
 import type { N2Submission } from "./n2-missions.js";
@@ -8,6 +9,7 @@ export type N5State = {
   plan: N5Plan;
   authority: { publisherAgentId: string; repository: string; baseRef: string; headRef: string; authorizedBy: string; authorizedAt: string;
     publisherPreflight?: "publisher-run-report-v1"; contract?: import("./pr-contract.js").PrContract };
+  integration?: import("./integration-contract.js").IntegratedDelivery;
   feedback?: import("./pr-contract.js").PublicationFeedback;
   feedbackHistory?: import("./pr-contract.js").PublicationFeedback[];
   planHistory?: Array<{ plan: N5Plan; reason: string; runId: string; at: string }>;
@@ -16,7 +18,7 @@ export type N5State = {
     previousPlan: N5Plan; previousPublication: NonNullable<N5State["publication"]>;
     reopen: { state: "claimed"; reservationId: string }; updateAdmitted?: boolean };
   publication?: { intentId: string; submission: N2Submission; issueId: string | null; runId: string | null;
-    operation?: "create" | "update"; targetUrl?: string;
+    operation?: "create" | "update" | "integrate"; targetUrl?: string;
     reservationId: string; settlementCommandId: string; settledAt?: string;
     createdAt: string; claimedAt?: string; creation: "preparing" | "claimed" | "confirmed"; wake: "pending" | "claimed";
     state: "pending" | "unknown" | "opened"; claimCommandId?: string;
@@ -35,12 +37,15 @@ export function inspectN5(mission: MissionRecord) {
   const n5 = mission.aggregate.n5;
   if (!n5) return null;
   const readiness = n5Readiness(mission, n5);
+  let integratedReady = false;
+  if (n5.authority.contract?.integration) { try { integratedResult(mission); integratedReady = true; } catch { /* Retain a blocked integrated result. */ } }
   const source = n5.authority.contract ? "publisher_run_report" : "attributed_actor_observation";
-  return { ...n5, ...readiness, checksSource: source, reviewsSource: source, ...nextDeliveryAction(mission, n5, readiness.ready) };
+  return { ...n5, ...readiness, integratedReady, ready: n5.authority.contract?.integration ? integratedReady : readiness.ready, checksSource: source, reviewsSource: source, ...nextDeliveryAction(mission, n5, readiness.ready) };
 }
 
 function nextDeliveryAction(mission: MissionRecord, n5: N5State, ready: boolean) {
   const n2 = mission.aggregate.n2; const p = n5.publication;
+  if (n5.integration) return { nextActor: n5.authority.publisherAgentId, nextAction: `Integrated delivery ${n5.integration.state}; retain the exact merge intent and report. No second merge or next delivery before verified checks and terminal settlement.` };
   if (n5.continuation && n2?.status !== "accepted") {
     if (!n2?.correction?.runId) return { nextActor: mission.ownerUserId, nextAction: "Use the original one-shot owner resume response; inspect native root/run after an attempted or uncertain resume, never repeat it" };
     if (n2.status === "review_handoff" || n2.status === "reviewing") return { nextActor: n5.plan.qaAgentId, nextAction: "Complete the fresh independent N2/N3 review of the corrected candidate" };
