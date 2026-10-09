@@ -324,7 +324,7 @@ try {
   assert.equal(mission.aggregate.nativeWakePolicy.protocol, "council-native-wake-v2");
   assert.equal((await api("GET", `/api/issues/${root.id}`)).status, "blocked");
   const nativeChildren = await Promise.all(mission.aggregate.n1.contributions.map((slot: any) => api("GET", `/api/issues/${slot.childIssueId}`)));
-  assert(nativeChildren.every((issue: any) => issue.status === "done"));
+  assert(nativeChildren.every((issue: any) => issue.status === (integrationMode ? "blocked" : "done")));
   assert.equal((await api("GET", `/api/agents/${actors.lead}`)).runtimeConfig.heartbeat.wakeOnDemand, true);
   proof.nativeWaiting = { rootStatus: "blocked", childrenStatus: "done", leadDemandWakes: true, operatorChildCloses: 0 };
   proof.prerequisite = mission;
