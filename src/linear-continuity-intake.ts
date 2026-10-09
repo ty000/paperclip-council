@@ -1,4 +1,5 @@
 import type { PluginContext } from "@paperclipai/plugin-sdk";
+import { ensureMissionRepository } from "./repository-occupation.js";
 import type { MissionRecord } from "./missions.js";
 import type { ProjectMandate } from "./project-mandate-state.js";
 import { n2Cas } from "./n2-missions.js";
@@ -25,6 +26,7 @@ export async function prepareLinearContinuity(ctx: PluginContext, initial: Missi
       || expectedMode === FIXED_CAMPAIGN_MODE && existing.binding.campaignId !== m.missionId)) {
     throw new MissionError(409, "linear_continuity_policy_changed", "Retain the exact project continuity mode and original campaign identity; manual configuration cannot downgrade them");
   }
+  if (policy.content.linearContinuity.mode === FIXED_CAMPAIGN_MODE) await ensureMissionRepository(ctx, m, true);
   if (!m.aggregate.linearContinuity) {
     if (m.aggregate.phase !== "draft" || m.aggregate.n1) throw new MissionError(409, "linear_continuity_late_opt_in", "Existing execution is not retroactively upgraded");
     const subject = m.aggregate.projectMandate.linearIntake.subject;

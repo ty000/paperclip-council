@@ -6,6 +6,7 @@ import { parseLinearReadiness, LINEAR_READINESS_KEY } from "./linear-intake-cont
 import { applyLinearChanges, settleLinearSafePoint } from "./linear-continuity-control.js";
 import { reconcileLinearTransport, queueLinearPublication, saveLinearContinuity, linearPublicationState } from "./linear-continuity-transport.js";
 import { campaignControlCommands, controlFixedCampaign } from "./linear-campaign-control.js";
+import { reconcileRepositoryRelease } from "./repository-release.js";
 import { readProjectMandate } from "./project-mandate-state.js";
 
 async function configure(ctx: PluginContext, m: MissionRecord, body: Record<string, unknown>, owner: string) {
@@ -59,5 +60,7 @@ export async function reconcileLinearContinuity(ctx: PluginContext, initial: Mis
     proofId: completion.proofId, documentKey: completion.documentKey, revisionId: completion.documentRevisionId, result: m.aggregate.projectMandate?.completion?.result });
   else m = await queueLinearPublication(ctx, m, "progress", { phase: m.aggregate.phase, control: m.aggregate.linearContinuity!.control,
     sourceRevision: m.aggregate.linearContinuity!.sourceSha256, workResultAcquired: false, n5State: m.aggregate.n5?.integration?.state ?? null });
-  return reconcileLinearTransport(ctx, m);
+  m = await reconcileLinearTransport(ctx, m);
+  await reconcileRepositoryRelease(ctx, m);
+  return m;
 }
