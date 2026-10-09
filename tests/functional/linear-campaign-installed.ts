@@ -11,6 +11,7 @@ import { packageDigests, journals, jobRuns, verifyNativeSourceDescription, repos
 import { canonicalPayloadHash } from "../../src/mission-primitives.js";
 import { assertIndependentCampaignReviewer } from "../../src/campaign-closure-subject.js";
 import { nativeRunBindings } from "../../src/native-run-bindings.js";
+import { integratedResult } from "../../src/integration-contract.js";
 import { installCampaignGitHubTransport, campaignTransportPath } from "./linear-campaign-github.js";
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -143,7 +144,7 @@ function verifySerialResult(result: Awaited<ReturnType<typeof observeCampaign>>,
   assert.equal(new Set(ordered.map((member: any) => member.missionId)).size, members.length);
   const [first, second] = ordered;
   assert.equal(second.aggregate.deliveryPredecessor.sourceMissionId, first.missionId);
-  assert.notEqual(first.aggregate.n5.publication.observation.url, second.aggregate.n5.publication.observation.url);
+  assert.notEqual(integratedResult(first).url, integratedResult(second).url);
   const firstComplete = Date.parse(first.aggregate.completion.completedAt);
   const secondRuns = runs.filter((run: any) => run.contextSnapshot?.issueId === second.aggregate.n1.coordination.issueId);
   assert(secondRuns.length > 0); assert(secondRuns.every((run: any) => Date.parse(run.startedAt) >= firstComplete));
