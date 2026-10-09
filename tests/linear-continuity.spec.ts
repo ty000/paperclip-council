@@ -6,6 +6,7 @@ import { LINEAR_CONTINUITY_EVENT, LINEAR_CONTINUITY_PROTOCOL, linearAuthorityHas
 import { reconcileLinearTransport, handleLinearContinuityNotice, queueLinearPublication } from "../src/linear-continuity-transport.js";
 import { applyLinearChanges, assertLinearContinuityDeparture, settleLinearSafePoint } from "../src/linear-continuity-control.js";
 import { reconcileLinearCancellation, handleCancellationRequest } from "../src/linear-continuity-cancellation.js";
+import { ensureLinearContextGuidance } from "../src/linear-context-guidance.js";
 
 const f = vi.hoisted(() => ({ m: null as any, bindings: [] as any[], reservations: [] as any[], runStatus: "running", emitted: [] as any[], launch: vi.fn(), settlement: vi.fn(), docs: new Map<string, any>(), issues: new Map<string, any>() }));
 vi.mock("../src/missions.js", async original => ({ ...await original(), getMission: async (_c: any, companyId: string, id: string) => f.m?.companyId === companyId && f.m?.missionId === id ? structuredClone(f.m) : null }));
@@ -29,7 +30,8 @@ vi.mock("../src/project-mandate-guard.js", () => ({ assertProjectDeparture: asyn
 const ctx = { issues: { documents: {
   get: async (_id: any, key: string) => structuredClone(f.docs.get(key) ?? null),
   upsert: async (input: any) => { const doc = { id: randomUUID(), latestRevisionId: randomUUID(), ...input }; f.docs.set(input.key, doc); return doc; },
-}, get: async (id: string) => structuredClone(f.issues.get(id)), update: async (id: string, body: any) => { f.issues.set(id, { ...f.issues.get(id), ...body }); } },
+}, get: async (id: string) => structuredClone(f.issues.get(id)), update: async (id: string, body: any) => { f.issues.set(id, { ...f.issues.get(id), ...body }); },
+  summaries: { getOrchestration: async () => ({ runs: [] }) } },
   events: { emit: async (...args: any[]) => { f.emitted.push(args); } } } as any;
 const digest = (char: string) => char.repeat(64);
 function proof(key: string, body: any) {
@@ -63,7 +65,8 @@ async function answer(overrides: Partial<LinearContinuityResponse> = {}, eventOv
 function change(kind = "context", extra: any = {}) {
   const state = f.m.aggregate.linearContinuity;
   const content = { commandId: randomUUID(), sequence: state.sequence + 1, kind, affectedNativeIds: [f.m.rootIssueId],
-    previousSourceSha256: state.sourceSha256, sourceSha256: state.sourceSha256, authoritySha256: state.binding.authoritySha256, impact: "context-only", ...extra };
+    previousSourceSha256: state.sourceSha256, sourceSha256: state.sourceSha256, authoritySha256: state.binding.authoritySha256, impact: "context-only",
+    ...(kind === "context" ? { context: "Clarify the existing native interface; keep acceptance criteria" } : {}), ...extra };
   return { ...content, evidence: proof(`decision-${content.commandId}`, { command: content }) };
 }
 
@@ -121,6 +124,20 @@ it("applies targeted context without changing mandate, history or budget; replay
   expect(f.m.aggregate.linearContinuity.sourceSha256).toBe(digest("f")); expect(f.m.aggregate.mandate).toEqual(original);
   const version = f.m.version; await applyLinearChanges(ctx, f.m); expect(f.m.version).toBe(version);
   expect(f.m.aggregate.linearContinuity.publications[0].kind).toBe("decision");
+  expect(f.m.aggregate.linearContinuity.contextAnnotations[0].context).toBe(update.context);
+});
+it("delivers an annotation only to its original idle product assignment, without altering other work", async () => {
+  const other = randomUUID(), target = f.m.rootIssueId;
+  f.m.aggregate.hierarchy = { nodes: [{ issueId: target }, { issueId: other }] };
+  for (const id of [target, other]) f.issues.set(id, { id, companyId: f.m.companyId, projectId: f.m.projectId, description: "Original product" });
+  const update = change(); await answer({ changes: [update] }); await applyLinearChanges(ctx, f.m);
+  await ensureLinearContextGuidance(ctx, f.m, target); await ensureLinearContextGuidance(ctx, f.m, other);
+  expect(f.issues.get(target).description).toContain(update.context);
+  expect(f.issues.get(other).description).toBe("Original product");
+  const retained = f.issues.get(target).description; await ensureLinearContextGuidance(ctx, f.m, target);
+  expect(f.issues.get(target).description).toBe(retained);
+  f.issues.get(target).executionRunId = randomUUID();
+  await expect(ensureLinearContextGuidance(ctx, f.m, target)).rejects.toMatchObject({ code: "linear_context_assignment" });
 });
 it.each(["scope", "unknown", "foreign-node", "foreign-authority"])("holds %s changes with a native arbitration publication", async kind => {
   const extra = kind === "foreign-node" ? { affectedNativeIds: [randomUUID()] } : kind === "foreign-authority" ? { authoritySha256: digest("f") } : { impact: kind };
@@ -200,6 +217,17 @@ it("persists consumed change and publication intent atomically and requires a li
   expect(f.m.aggregate.mandate.objective).toBe("original");
 });
 
+
+it("retains every unresolved arbitration when a later held command receives a decision", async () => {
+  const first = change("context", { impact: "unknown" }); await answer({ changes: [first] }); await applyLinearChanges(ctx, f.m);
+  const last = change("context", { impact: "scope" }); await answer({ changes: [last] }); await applyLinearChanges(ctx, f.m);
+  await queueLinearPublication(ctx, f.m, "decision", { resolvesCommandId: last.commandId, authorizedBy: "owner", text: "Keep original work" });
+  const decision = f.m.aggregate.linearContinuity.publications.at(-1);
+  decision.acknowledgement = { reference: proof("last-decision-readback", {}), responseSha256: digest("e"), confirmedAt: new Date().toISOString() };
+  await answer({ changes: [change("context")] });
+  await expect(applyLinearChanges(ctx, f.m)).rejects.toMatchObject({ code: "linear_arbitration_pending" });
+  expect(f.m.aggregate.linearContinuity.contextAnnotations).toBeUndefined();
+});
 
 it("pins project opt-in before admission and holds incompatible peers without another intake or budget", async () => {
   f.m.aggregate.phase = "draft"; delete f.m.aggregate.linearContinuity;

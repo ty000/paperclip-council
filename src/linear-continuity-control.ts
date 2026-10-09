@@ -8,6 +8,7 @@ import { readOrdinaryRun, settleOrdinaryRunUsage } from "./g4-native.js";
 import { assertContinuityBinding, linearAuthorityHash, responseFresh, type LinearContinuityChange } from "./linear-continuity-contract.js";
 import { linearPublicationState, saveLinearContinuity } from "./linear-continuity-transport.js";
 import { readLinearProof } from "./linear-continuity-documents.js";
+import { appliedContextAnnotations } from "./linear-context-guidance.js";
 
 const terminal = new Set(["succeeded", "failed", "cancelled", "timed_out"]);
 function originalSettlement(m: MissionRecord, reservationId: string) {
@@ -68,12 +69,12 @@ function affectedNativeIds(m: MissionRecord) {
 }
 function assertArbitrationResolved(m: MissionRecord, kind: LinearContinuityChange["kind"]) {
   const state = m.aggregate.linearContinuity!;
-  const blocked = state.consumed.findLast(command => command.outcome === "arbitration_required");
-  if (!blocked || ["pause", "cancel"].includes(kind)) return;
-  const resolved = state.publications.some(publication => publication.kind === "decision"
-    && publication.payload.resolvesCommandId === blocked.commandId && publication.payload.authorizedBy === m.ownerUserId
-    && Boolean(publication.acknowledgement));
-  if (!resolved) throw new MissionError(409, "linear_arbitration_pending", "A linked owner decision must be published and read back before dependent continuation");
+  if (["pause", "cancel"].includes(kind)) return;
+  const unresolved = state.consumed.filter(command => command.outcome === "arbitration_required").some(command =>
+    !state.publications.some(publication => publication.kind === "decision"
+      && publication.payload.resolvesCommandId === command.commandId && publication.payload.authorizedBy === m.ownerUserId
+      && Boolean(publication.acknowledgement)));
+  if (unresolved) throw new MissionError(409, "linear_arbitration_pending", "Every held command needs a linked owner decision published and read back before dependent continuation");
 }
 export async function applyLinearChanges(ctx: PluginContext, initial: MissionRecord) {
   let m = initial; const response = m.aggregate.linearContinuity?.observation?.response;
@@ -115,6 +116,7 @@ async function applyOneChange(ctx: PluginContext, m: MissionRecord, change: Line
   const controls = { context: state.control, pause: "pause_requested", resume: "running", cancel: "cancel_requested" } as const;
   const next = { ...state, sourceSha256: change.sourceSha256, sequence: change.sequence,
     control: controls[change.kind], controlReason: retainedControlReason(state, change.kind),
+    contextAnnotations: appliedContextAnnotations(state, change),
     consumed: [...state.consumed, { commandId: change.commandId, sequence: change.sequence, payloadSha256, evidence: change.evidence, outcome: "applied" as const }] };
   const subject = { ...m, aggregate: { ...m.aggregate, linearContinuity: next } };
   return saveLinearContinuity(ctx, m, linearPublicationState(subject, "decision", { commandId: change.commandId, kindOfDecision: change.kind,

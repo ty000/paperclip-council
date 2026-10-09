@@ -3,6 +3,7 @@ import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { canonicalPayloadHash, type MissionRecord } from "../src/missions.js";
 import { assertHierarchySources } from "../src/hierarchy-runtime.js";
 import { ensureHierarchyLaunchGuidance } from "../src/hierarchy-guidance.js";
+import { linearContextGuidance } from "../src/linear-context-guidance.js";
 
 function fixture() {
   const issue = { id: "child", companyId: "company", projectId: "project", parentId: "root", title: "Port", description: "Implement the port", assigneeAgentId: "agent" };
@@ -40,5 +41,14 @@ describe("hierarchy assignment carries Council handoff instructions", () => {
     const f = fixture(); delete f.m.aggregate.hierarchy;
     await ensureHierarchyLaunchGuidance(f.ctx, f.m, "child");
     expect(f.update).not.toHaveBeenCalled();
+  });
+  it("accepts exact targeted context suffixes while retaining product source verification", async () => {
+    const f = fixture();
+    f.m.aggregate.linearContinuity = { contextAnnotations: [{ commandId: "command", sequence: 1,
+      affectedNativeIds: ["child"], context: "Preserve this interface", evidence: { key: "source", documentId: "doc", revisionId: "rev" } }] } as any;
+    f.issue.description += `\n\n${linearContextGuidance(f.m, "child")[0]}`;
+    await expect(assertHierarchySources(f.ctx, f.m)).resolves.toBeUndefined();
+    f.issue.description = f.issue.description.replace("Preserve this interface", "Changed annotation");
+    await expect(assertHierarchySources(f.ctx, f.m)).rejects.toMatchObject({ code: "hierarchy_source_changed" });
   });
 });

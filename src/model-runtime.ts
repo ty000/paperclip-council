@@ -9,6 +9,7 @@ import { collectInterventionHistory, publishInterventionHistory } from "./model-
 import { assertWorkspacePreflight } from "./workspace-preflight.js";
 import { assertNativeRunInventory } from "./native-runs.js";
 import { assertProjectDeparture } from "./project-mandate-guard.js";
+import { ensureLinearContextGuidance } from "./linear-context-guidance.js";
 
 type LaunchInput = { taskKey: string; interventionKey: string; launchKey: string; logicalAgentId: string; family: TaskFamily; issueId?: string | null; expectedRoles: readonly RoleKey[] };
 const terminal = new Set(["succeeded", "failed", "cancelled", "timed_out", "interrupted"]);
@@ -172,6 +173,7 @@ async function attachHistory(ctx: PluginContext, m: MissionRecord, launch: Model
 }
 
 export async function bindVariantIssue(ctx: PluginContext, initial: MissionRecord, launchKey: string, issueId: string): Promise<MissionRecord> {
+  await ensureLinearContextGuidance(ctx, initial, issueId);
   let m = initial; let launch = modelLaunch(m, launchKey);
   if (!launch) return m;
   if (launch.issueId && launch.issueId !== issueId) throw new ModelSelectionError("model_issue_conflict", "Launch already belongs to a different native issue");

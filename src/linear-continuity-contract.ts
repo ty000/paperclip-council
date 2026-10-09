@@ -14,7 +14,8 @@ export type LinearContinuityBinding = z.infer<typeof continuityBindingSchema>;
 const changeSchema = z.object({ commandId: uuid, sequence: z.number().int().positive(),
   kind: z.enum(["context", "pause", "resume", "cancel"]), affectedNativeIds: z.array(uuid).min(1).max(33),
   previousSourceSha256: hash, sourceSha256: hash, authoritySha256: hash,
-  impact: z.enum(["context-only", "criteria", "scope", "unknown"]), evidence: documentReferenceSchema }).strict();
+  impact: z.enum(["context-only", "criteria", "scope", "unknown"]), context: z.string().trim().min(1).max(4000).optional(),
+  evidence: documentReferenceSchema }).strict().refine(change => change.kind !== "context" || Boolean(change.context), "Context changes need an explicit bounded annotation");
 export type LinearContinuityChange = z.infer<typeof changeSchema>;
 const acknowledgementSchema = z.object({ intentId: uuid, payloadSha256: hash, status: z.literal("confirmed"),
   publicationReceipt: documentReferenceSchema }).strict();
@@ -37,6 +38,7 @@ export type LinearContinuityState = { protocol: typeof LINEAR_CONTINUITY_PROTOCO
     requestSha256: string; documentKey: string; document?: NativeProofReference; lastEmittedAt?: string };
   observation?: { reference: NativeProofReference; response: LinearContinuityResponse; bodySha256: string };
   publications: LinearPublication[]; safeSettlementIds: Record<string, string>;
+  contextAnnotations?: Array<{ commandId: string; sequence: number; affectedNativeIds: string[]; context: string; evidence: NativeProofReference }>;
   cancelledNodes?: Array<{ issueId: string; state: "claimed" | "confirmed" }>;
   cancellation?: { previousPublication: NonNullable<NonNullable<MissionRecord["aggregate"]["n5"]>["publication"]>;
     claimCommandId?: string; claimedAt?: string; state: "pending" | "unknown" | "closed"; report?: Record<string, unknown> } };
