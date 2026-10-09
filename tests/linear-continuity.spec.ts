@@ -95,6 +95,17 @@ it("persists request/outbox before hints; lost notification and restart preserve
   await reconcileLinearTransport(ctx, f.m); expect(f.emitted).toHaveLength(2);
   expect(f.emitted[1][2]).toEqual(f.emitted[0][2]);
 });
+it("keeps the request window at exactly five minutes even when the clock advances between reads", async () => {
+  const now = Date.now(); let reads = 0;
+  vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(now);
+  const clock = vi.spyOn(Date, "now").mockImplementation(() => now + ++reads);
+  try {
+    await reconcileLinearTransport(ctx, f.m);
+    const challenge = f.m.aggregate.linearContinuity.challenge;
+    expect(Date.parse(challenge.expiresAt) - Date.parse(challenge.requestedAt)).toBe(300_000);
+    expect(challenge.payload).toMatchObject({ requestedAt: challenge.requestedAt, expiresAt: challenge.expiresAt });
+  } finally { clock.mockRestore(); vi.useRealTimers(); }
+});
 it.each(["foreign-actor", "foreign-company", "bad-nonce", "old-protocol", "expired"])("rejects %s without advancing authority", async kind => {
   const override: any = {}, event: any = {};
   if (kind === "foreign-actor") event.actorId = "other";
