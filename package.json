@@ -1,6 +1,6 @@
 {
   "name": "@paperclipai/plugin-council",
-  "version": "0.7.36",
+  "version": "0.7.37",
   "description": "Revisioned Council rosters, durable review decisions, mission admission and integrated candidate verification for Paperclip workflows",
   "type": "module",
   "private": true,
@@ -47,6 +47,7 @@
     "qualification:live:n1": "node scripts/qualification/run-live-n1.mjs",
     "qualification:live:n2": "node scripts/qualification/run-live-n2.mjs",
     "qualification:live:n2:isolated": "node scripts/qualification/run-live-n2-isolated.mjs",
+    "test:repository": "tsx tests/receipts/repository-occupation.ts",
     "test:receipts": "tsx tests/receipts/run.ts",
     "test:profiles:browser": "tsx tests/receipts/model-profiles-browser.ts",
     "qualification:prepare:n45": "node scripts/qualification/run-n45-campaign.mjs prepare",

@@ -567,7 +567,7 @@ la première publication, en conservant la même autorité de livraison.
 
 ### Fixed-source Linear campaign controls (V1, L1a)
 
-Source support in `0.7.27` adds an explicit project `linearContinuity` policy:
+Source support since `0.7.27` adds an explicit project `linearContinuity` policy:
 `{ "protocol": "council-linear-continuity-v1", "mode": "milestone-fixed-v1" }`.
 Without that mode, existing missions retain their original continuity policy.
 The fixed mode negotiates only `fixed-source` and `publication-readback`, rejects
@@ -588,3 +588,43 @@ milestone feature. Repository exclusion, milestone import, the real Linear
 publisher, campaign sequencing and global closure remain downstream work.
 No operational configuration is changed, and no gateway/provider or installed
 runtime qualification is claimed by the unit tests.
+
+### Durable campaign repository occupation (L1b)
+
+`0.7.28` adds private migration `008_repository_occupation.sql`. The canonical
+GitHub repository comes from the pinned publication or native primary workspace;
+if both exist they must agree. Clone URL, SSH and owner/repo spellings share one
+lowercase identity across all companies in this plugin namespace.
+
+Every new mission registers its original company/mission identity before its
+mission INSERT. Ordinary holders can coexist. A fixed campaign upgrades its own
+holder to exclusive before continuity preparation; ordinary/manual admissions and
+the common departure guard refuse a competing holder. No caller-controlled leaf
+membership is accepted; campaign leaf reuse remains L4 work.
+
+A single versioned registry row supplies atomic arbitration using the supported
+SDK SQL surface. Its first-campaign bootstrap inventories existing Council
+missions; the same CAS fences concurrent new admissions. Legacy missions with
+unknown targets conservatively block campaigns. The bounded registry accepts at
+most 2048 retained identities; it has no TTL, transfer, new budget or scheduler.
+Unsupported repository hosts, conflicting targets and unavailable native readback
+fail closed. Missing targets remain compatible with ordinary work only while no
+exclusive holder could conflict. No target is inferred from a filesystem path.
+
+Pause, lost INSERT response and uncertain effects retain the original identity.
+Release requires Council's closed completion or reconciled cancellation, confirmed
+Linear publications, settled costs without exposure, and a complete idle native
+run inventory. An accepted candidate alone is not this terminal proof. Existing
+terminal holders are reconciled on the next exclusive acquisition as well as by
+the existing completion/continuity paths. A failed pre-insert intent must resume
+under its original mission ID; there is no automatic orphan deletion. These
+restrictions may require resolving old unfinished missions before the first V1
+campaign. External Git activity and non-Council actors remain outside this guard.
+
+`PAPERCLIP_TEST_HOST_ROOT=/absolute/existing/host pnpm test:repository` exercises
+actual temporary PostgreSQL, the host's SQL/migration validators, competing
+ordinary/campaign admissions, legacy adoption, a fresh child-process restart and
+uncertain-effect retention/release. The host checkout and its dependencies are
+read-only; all database writes use the harness's private temporary socket and
+cluster. This is isolated storage evidence, not recipe installation, activation,
+a Linear write or a provider execution.

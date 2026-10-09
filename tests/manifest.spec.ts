@@ -68,7 +68,7 @@ describe("paperclip council manifest", () => {
     });
     expect(((parsed.instanceConfigSchema!.properties as Record<string, unknown>).modelProfileMapping as Record<string, unknown>))
       .toMatchObject(MODEL_PROFILE_MAPPING_SCHEMA);
-    expect(parsed.version).toBe("0.7.36");
+    expect(parsed.version).toBe("0.7.37");
     expect((parsed.instanceConfigSchema!.properties as Record<string, unknown>).workspacePreflight)
       .toMatchObject({ type: "object", additionalProperties: false, required: ["codexHome"] });
     expect(JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version).toBe(parsed.version);

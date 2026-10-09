@@ -1,3 +1,5 @@
+// Repository arbitration is exercised with real SQL in repository-occupation tests.
+vi.mock("../src/repository-occupation.js", () => ({ ensureMissionRepository: vi.fn(async () => {}), releaseReconciledRepository: vi.fn(async () => {}) }));
 import { randomUUID } from "node:crypto";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -63,6 +65,14 @@ function harness(config: Record<string, unknown> = { modelVariantsEnabled: true,
 beforeEach(() => vi.resetAllMocks());
 
 describe("mission native-variant eligibility", () => {
+  it("holds manual creation before its mission INSERT when repository admission refuses", async () => {
+    const { ensureMissionRepository } = await import("../src/repository-occupation.js");
+    const h = harness({});
+    vi.mocked(ensureMissionRepository).mockRejectedValueOnce(new Error("repository occupied"));
+    await expect(h.create()).rejects.toThrow("repository occupied");
+    expect(h.execute).not.toHaveBeenCalled();
+    expect(h.rows).toHaveLength(0);
+  });
   it("pins the explicit workspace preflight only on a newly created ordinary fixed-variant mission", async () => {
     const profile = { codexHome: "/native/observed/home", codexCommand: "/tools/codex" };
     const h = harness({ modelVariantsEnabled: true, n2RuntimeProfile: "ordinary-cli-v1", workspacePreflight: profile });
