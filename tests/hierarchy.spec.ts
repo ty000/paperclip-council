@@ -5,6 +5,7 @@ import type { MissionRecord } from "../src/missions.js";
 import type { ProjectMandate } from "../src/project-mandate-state.js";
 import { parseHierarchyPolicy } from "../src/hierarchy-contract.js";
 import { prepareHierarchy } from "../src/hierarchy-intake.js";
+import { assertIntegratedLeafContract } from "../src/integration-contract.js";
 import { assertHierarchySources, assertHierarchyDependencies } from "../src/hierarchy-runtime.js";
 import { prepareHierarchyCoordinator, type N1Coordination } from "../src/hierarchy-coordinator.js";
 vi.mock("../src/rosters.js", () => ({ validateRosterPair: async () => ({ eligible: true,
@@ -74,6 +75,23 @@ describe("explicit native hierarchy contract", () => {
     const hierarchy = await prepareHierarchy(f.ctx, f.policy, "root", previews);
     f.ctx.issues.list = vi.fn(async () => previews);
     await expect(assertHierarchySources(f.ctx, { companyId: "company", projectId: "project", aggregate: { hierarchy } } as MissionRecord)).resolves.toBeUndefined();
+  });
+  it("materializes one delivery leaf from a fixed campaign policy whose root bound covers multiple source leaves", async () => {
+    const root = { id: "delivery", parentId: null, companyId: "company", projectId: "project", assigneeAgentId: "a",
+      title: "Delivery A", description: "One campaign delivery", status: "backlog" };
+    const policy = { companyId: "company", projectId: "project", content: { teamRevision: "team-v1", leadAgentId: "lead", allowedPaths: ["src"],
+      linearContinuity: { protocol: "council-linear-continuity-v1", mode: "milestone-fixed-v1" },
+      publication: { contract: { integration: {} } },
+      hierarchy: { protocol: "council-hierarchy-v1", maxContributions: 2, execution: "sequential", adoptExistingChildren: true } } } as ProjectMandate;
+    const ctx = { issues: { list: async () => [root], get: async () => root,
+      documents: { get: async () => ({ latestRevisionId: "work-v1", body: JSON.stringify({ ownedPaths: ["src/a"] }) }) },
+      relations: { get: async () => ({ blockedBy: [], blocks: [] }) } } } as unknown as PluginContext;
+    const hierarchy = (await prepareHierarchy(ctx, policy, root.id, [root] as any))!;
+    expect(hierarchy).toMatchObject({ maxContributions: 2, leaves: [{ issueId: root.id }] });
+    expect(() => assertIntegratedLeafContract({ aggregate: { hierarchy } } as MissionRecord, { integration: {} } as any)).not.toThrow();
+    const invalid = { ...hierarchy, leaves: [...hierarchy.leaves!, { ...hierarchy.leaves![0]!, issueId: "another" }] };
+    expect(() => assertIntegratedLeafContract({ aggregate: { hierarchy: invalid } } as MissionRecord, { integration: {} } as any))
+      .toThrowError(expect.objectContaining({ code: "integration_one_leaf" }));
   });
 });
 

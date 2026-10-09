@@ -1,4 +1,5 @@
 import { parseLinearContinuityPolicy } from "./linear-continuity-intake.js";
+import { FIXED_CAMPAIGN_MODE } from "./linear-continuity-contract.js";
 import { readTaskIntake, rebindUnstartedTask } from "./project-intake-rebind.js";
 import { inspectProjectReadiness } from "./project-readiness.js";
 import { operatingProfileHash } from "./project-mandate-state.js";
@@ -63,8 +64,23 @@ async function deliveryPolicy(ctx: PluginContext, companyId: string, body: Recor
   const delegatedPublication = await publication(ctx, companyId, body.publication);
   const hierarchy = body.hierarchy === undefined ? undefined : parseHierarchyPolicy(body.hierarchy);
   const completion = parseCompletionPolicy(body.completion, delegatedPublication, hierarchy);
-  if (delegatedPublication?.contract?.integration && (!hierarchy?.adoptExistingChildren || hierarchy.maxContributions !== 1 || completion?.result !== "integrated-verified")) throw new MissionError(422, "integration_leaf_policy", "Integrated deliveries explicitly adopt one existing code leaf and require integrated proof closure; native result dependencies sequence separate deliveries");
   return { publication: delegatedPublication, ...(hierarchy ? { hierarchy } : {}), ...(completion ? { completion } : {}) };
+}
+
+function integratedLeafBound(linearContinuity: ReturnType<typeof parseLinearContinuityPolicy>) {
+  if (linearContinuity?.mode === FIXED_CAMPAIGN_MODE) return { min: 2, max: 12,
+    message: "A fixed campaign explicitly adopts 2–12 source leaves; each resulting integrated delivery remains one leaf and requires integrated proof closure" };
+  return { min: 1, max: 1,
+    message: "Integrated deliveries explicitly adopt one existing code leaf and require integrated proof closure; native result dependencies sequence separate deliveries" };
+}
+
+function assertIntegratedDeliveryPolicy(delivery: Awaited<ReturnType<typeof deliveryPolicy>>, bound: ReturnType<typeof integratedLeafBound>) {
+  if (!delivery.publication?.contract?.integration) return;
+  const hierarchy = delivery.hierarchy;
+  const bounded = Boolean(hierarchy && hierarchy.maxContributions >= bound.min && hierarchy.maxContributions <= bound.max);
+  if (!hierarchy?.adoptExistingChildren || !bounded || delivery.completion?.result !== "integrated-verified") {
+    throw new MissionError(422, "integration_leaf_policy", bound.message);
+  }
 }
 
 async function policyContent(ctx: PluginContext, companyId: string, projectId: string, ownerId: string, body: Record<string, any>): Promise<ProjectMandateContent> {
@@ -95,6 +111,7 @@ async function policyContent(ctx: PluginContext, companyId: string, projectId: s
   const linearIntake = parseLinearIntakePolicy(body.linearIntake, { allowedPaths, hierarchy: delivery.hierarchy, criteriaSource: body.criteriaSource },
     pair.team.revision.content.members.map(member => member.agentId).filter(id => id !== leadAgentId));
   const linearContinuity = parseLinearContinuityPolicy(body.linearContinuity, linearIntake);
+  assertIntegratedDeliveryPolicy(delivery, integratedLeafBound(linearContinuity));
   return { enabled: body.enabled === true, ownerUserId: ownerId, leadAgentId, teamRosterId: pair.team.head.rosterId, teamRevision,
     councilRosterId: pair.council.head.rosterId, councilRevision, n3Slots, template, criteriaSource: body.criteriaSource,
     allowedPaths, ...delivery, ...(linearIntake ? { linearIntake } : {}), ...(linearContinuity ? { linearContinuity } : {}),
