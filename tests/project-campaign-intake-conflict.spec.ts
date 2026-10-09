@@ -57,7 +57,7 @@ function fixture() {
   });
   const ctx = { db: { namespace: "test", query, execute }, config: { get: async () => ({}) },
     companies: { get: async () => ({ defaultResponsibleUserId: "owner" }) }, issues: {
-      askUserQuestions: vi.fn(async () => ({ issueId: rootIssueId, addresseeUserId: "owner" })), requestWakeup: vi.fn(),
+      askUserQuestions: vi.fn(async (issueId: string) => ({ issueId, addresseeUserId: "owner" })), requestWakeup: vi.fn(),
     } } as any;
   return { ctx, intake, leaves, reads, mission: () => mission, noConflict: () => { conflict = false; } };
 }
@@ -79,7 +79,7 @@ it("rereads after a real campaign CAS conflict and preserves the original missio
   expect(x.mission().aggregate.campaignClosure).toEqual(before.aggregate.campaignClosure);
   expect(x.mission().aggregate.linearContinuity!.publications).toEqual([publication]);
   expect([...x.leaves]).toEqual(leafMissions); expect(x.leaves.size).toBe(1);
-  expect(x.reads.slice(0, 3)).toEqual([1, 2, 2]);
+  expect(x.reads.slice(0, 5)).toEqual([1, 1, 2, 2, 2]);
   expect(f.create.mock.calls.every(call => JSON.stringify(call[3]) === JSON.stringify(x.intake.state.createBody))).toBe(true);
   expect(x.ctx.issues.requestWakeup).not.toHaveBeenCalled();
   expect(x.ctx.issues.askUserQuestions).not.toHaveBeenCalled();
@@ -106,4 +106,54 @@ it("does not swallow a transport failure whose effect is unknown", async () => {
   await reconcileProjectTasks(x.ctx);
   expect(x.intake.state.questions).toHaveProperty("project_intake_transport");
   expect(x.ctx.issues.askUserQuestions).toHaveBeenCalledTimes(1);
+});
+
+it("leaves a closed campaign and both closed members untouched on every later intake pass", async () => {
+  const x = fixture(), root = x.mission();
+  root.aggregate.completion = { state: "closed", proofId: "retained-proof", notification: { state: "confirmed" } } as any;
+  root.aggregate.campaignClosure!.phase = "closed";
+  const members = [1, 2].map(() => {
+    const member = structuredClone(root);
+    member.missionId = randomUUID(); member.rootIssueId = randomUUID();
+    delete member.aggregate.linearContinuity; delete member.aggregate.campaignClosure;
+    member.aggregate.repositoryCampaign = { campaignRootMissionId: root.missionId };
+    return member;
+  });
+  const missions = [root, ...members];
+  const intakes = missions.map(mission => ({ ...structuredClone(x.intake), root_issue_id: mission.rootIssueId,
+    mission_id: mission.missionId, state: { ...structuredClone(x.intake.state),
+      questions: { historical: { message: "Original decision retained", confirmed: true } },
+      ...(mission.aggregate.repositoryCampaign ? { repositoryCampaign: { campaignRootMissionId: root.missionId } } : {}) } }));
+  const before = structuredClone({ missions, intakes });
+  x.ctx.db.query = vi.fn(async (sql: string, parameters: string[]) => {
+    if (sql.includes("project_mandates")) return [f.policy];
+    if (sql.includes("project_task_intakes")) return structuredClone(intakes);
+    return missions.filter(m => m.missionId === parameters[1]).map(m => ({
+      company_id: m.companyId, project_id: m.projectId, mission_id: m.missionId, root_issue_id: m.rootIssueId,
+      owner_user_id: m.ownerUserId, version: m.version, aggregate: structuredClone(m.aggregate),
+      created_at: new Date(), updated_at: new Date(),
+    }));
+  });
+  // Later policy changes cannot turn the historical result into another admission.
+  f.policy.content.operatingProfileHash = "later-profile";
+  await reconcileProjectTasks(x.ctx);
+  await reconcileProjectTasks(x.ctx);
+  expect({ missions, intakes }).toEqual(before);
+  expect(f.create).not.toHaveBeenCalled(); expect(prepareLinearContinuity).not.toHaveBeenCalled();
+  expect(x.ctx.db.execute).not.toHaveBeenCalled();
+  expect(x.ctx.issues.askUserQuestions).not.toHaveBeenCalled(); expect(x.ctx.issues.requestWakeup).not.toHaveBeenCalled();
+});
+
+it.each(["not closed", "cancelled", "ordinary closed", "foreign root", "foreign project"])("does not exempt %s work from its existing intake guards", async condition => {
+  const x = fixture(), m = x.mission();
+  if (condition !== "not closed" && condition !== "cancelled") m.aggregate.completion = { state: "closed" } as any;
+  if (condition === "cancelled") m.aggregate.linearContinuity!.control = "cancelled";
+  if (condition === "ordinary closed") delete m.aggregate.linearContinuity;
+  if (condition === "foreign root") x.intake.root_issue_id = randomUUID();
+  if (condition === "foreign project") x.intake.project_id = randomUUID();
+  vi.mocked(prepareLinearContinuity).mockRejectedValue(new MissionError(409, "repository_mission_changed", "Existing guard retained"));
+  await reconcileProjectTasks(x.ctx);
+  expect(x.ctx.issues.askUserQuestions).toHaveBeenCalledTimes(1);
+  expect(x.intake.state.questions).toHaveProperty("repository_mission_changed");
+  expect(x.ctx.issues.requestWakeup).not.toHaveBeenCalled();
 });
