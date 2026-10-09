@@ -111,7 +111,13 @@ function verifySerialResult(result: Awaited<ReturnType<typeof observeCampaign>>,
   const { control, members, runs } = result;
   verifyCampaignRunCounts(result);
   assert.equal(members.length, 2); assert(members.every(member => member.aggregate.completion?.state === "closed"));
-  const ordered = [...members].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+  const plan = control.aggregate.linearContinuity.publications.find((publication: any) => publication.payload.campaignPlan);
+  assert(plan?.acknowledgement);
+  const ordered = plan.payload.campaignPlan.leaves.map((leaf: any) => {
+    const member = members.find(item => item.rootIssueId === leaf.nativeId);
+    assert(member); return member;
+  });
+  assert.equal(new Set(ordered.map((member: any) => member.missionId)).size, members.length);
   const [first, second] = ordered;
   assert.equal(second.aggregate.deliveryPredecessor.sourceMissionId, first.missionId);
   assert.notEqual(first.aggregate.n5.publication.observation.url, second.aggregate.n5.publication.observation.url);
@@ -120,12 +126,10 @@ function verifySerialResult(result: Awaited<ReturnType<typeof observeCampaign>>,
   assert(secondRuns.length > 0); assert(secondRuns.every((run: any) => Date.parse(run.startedAt) >= firstComplete));
   assert(control.aggregate.linearContinuity.publications.every((publication: any) => publication.acknowledgement));
   assert(runs.every((run: any) => run.status === "succeeded"));
-  const plan = control.aggregate.linearContinuity.publications.find((publication: any) => publication.payload.campaignPlan);
-  assert(plan?.acknowledgement);
   assert(runs.every((run: any) => Date.parse(run.startedAt) >= Date.parse(plan.acknowledgement.confirmedAt)), "Plan acknowledgement precedes every run");
   assert.equal(git(setup.council.workspace.repoPath, "show", "main:alpha.txt"), "alpha contribution");
   assert.equal(git(setup.council.workspace.repoPath, "show", "main:beta.txt"), "beta contribution");
-  return { orderedMissionIds: ordered.map(member => member.missionId), runCount: runs.length,
+  return { orderedMissionIds: ordered.map((member: any) => member.missionId), runCount: runs.length,
     noRootImplementation: true, serialPredecessor: true, bothFilesIntegrated: true };
 }
 
