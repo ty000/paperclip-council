@@ -343,3 +343,20 @@ it("fixed policy is opt-in and rejects unknown modes or fields", () => {
   expect(parseLinearContinuityPolicy({ protocol: LINEAR_CONTINUITY_PROTOCOL, mode: FIXED_CAMPAIGN_MODE }, {})).toEqual({ protocol: LINEAR_CONTINUITY_PROTOCOL, mode: FIXED_CAMPAIGN_MODE });
   for (const extra of [{ mode: "auto" }, { autoCleanup: true }]) expect(() => parseLinearContinuityPolicy({ protocol: LINEAR_CONTINUITY_PROTOCOL, ...extra }, {})).toThrow();
 });
+it("project preparation rejects a pre-existing legacy continuity state instead of downgrading fixed policy", async () => {
+  f.m.aggregate.phase = "draft";
+  const before = structuredClone(f.m);
+  const policy = { content: { linearContinuity: { protocol: LINEAR_CONTINUITY_PROTOCOL, mode: FIXED_CAMPAIGN_MODE } } } as any;
+  await expect(prepareLinearContinuity(ctx, f.m, policy)).rejects.toMatchObject({ code: "linear_continuity_policy_changed" });
+  expect(f.m).toEqual(before); expect(f.emitted).toHaveLength(0);
+  fixedCampaign();
+  await expect(prepareLinearContinuity(ctx, f.m, policy)).rejects.toMatchObject({ code: "linear_continuity_policy_changed" });
+});
+it("manual owner configuration cannot opt a fixed-policy project into legacy remote controls", async () => {
+  f.m.aggregate.phase = "draft"; f.m.aggregate.projectMandate.revisionId = "pinned-policy";
+  const binding = f.m.aggregate.linearContinuity.binding; delete f.m.aggregate.linearContinuity;
+  const fixedCtx = { ...ctx, db: { namespace: "council", query: async () => [{ revision_id: "pinned-policy", version: 1,
+    content: { linearContinuity: { protocol: LINEAR_CONTINUITY_PROTOCOL, mode: FIXED_CAMPAIGN_MODE } } }] } };
+  await expect(handleLinearContinuityBoard(fixedCtx, nativeControl("configure-linear-continuity", { binding }))).rejects.toMatchObject({ code: "linear_continuity_project_policy" });
+  expect(f.m.aggregate.linearContinuity).toBeUndefined(); expect(f.emitted).toHaveLength(0);
+});
