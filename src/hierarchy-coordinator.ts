@@ -4,10 +4,16 @@ import { MissionError, canonicalPayloadHash } from "./mission-primitives.js";
 import type { MissionRecord } from "./missions.js";
 
 export type N1Coordination = { intentId: string; issueId: string | null; state: "preparing" | "claimed" | "confirmed";
-  commandId: string; commandHash: string; ownerUserId: string; preparedVersion: number };
+  commandId: string; commandHash: string; ownerUserId: string; preparedVersion: number; instructionsVersion?: "lead-commands-v1" };
 type Persist = (m: MissionRecord, coordination: N1Coordination) => Promise<MissionRecord>;
 
 function instructions(m: MissionRecord) {
+  if ((m.aggregate.n1?.coordination as N1Coordination | undefined)?.instructionsVersion === "lead-commands-v1") return `Coordinate Council mission ${m.missionId}, original root ${m.rootIssueId}, on this admitted native task. Read Council inspect with missionId=${m.missionId}; inspect.n1.leadCommands contains the executable plan/materialize shell block and its usage. Use it to generate technical identities and a fresh version. The pinned hierarchy is the plan; do not invent IDs or replacement leaves. Before planning, read this task's mandate and hierarchy below. The council-execution documents exist only after materialization and are for contributors.
+Preserve a journaled request after any refusal, lost response or mismatched business readback. Stop for exact readback; do not retry with a new identity. Dispatch and publish remain subject to existing Council admission, predecessor settlement and exact candidate proof. No direct wake, dependency removal or extra budget. The parent remains pending delivery evidence.
+Plugins/skills à utiliser : accès Paperclip authentifié et Council inspect, puis son bloc leadCommands pour plan/materialize ; ensuite les contrôles Git/Paperclip déjà accessibles pour dispatch, settlement et publish. Aucune installation de skill ni modification de droits.
+Modèle et effort recommandés : conserver le modèle et l'effort du profil Council déjà épinglé pour ce lead ; réévaluer uniquement sur ambiguïté substantielle via une nouvelle autorisation. Mapping indépendant absent du checkout et du chemin partagé vérifiés le 2026-10-09 ; aucun modèle de substitution n'est configuré. Disponibilité sur la cible non vérifiée par ce texte.
+Mandate: ${JSON.stringify(m.aggregate.mandate)}
+Hierarchy: ${JSON.stringify(m.aggregate.hierarchy)}`;
   return `Coordinate the existing hierarchy for Council mission ${m.missionId}, original root ${m.rootIssueId}. This operational task avoids the root's unresolved child dependencies; it grants no additional budget or rights.
 If inspect.n1.proofPolicy is council-proof-close-v1, pin sourceBaseCommit from the full Git base SHA in the plan command before any contribution. Keep that base for publish; each child must supply the verified child bundle using its generated reporting command and Council closes it only after exact terminal settlement.
 Read Council inspect on this exact task with missionId=${m.missionId}. Use the pinned hierarchy leaves as the contribution plan: preserve contribution IDs, existing child IDs, descriptions, assignees, ownership and native blockers. Call materialize for each mapped leaf: it creates only an immutable council-execution document with the authenticated reporting command; contributors must read that document before starting. The controller admits each child only after its predecessors finish and their exact usage settles. No replacement child, direct wakeup or blocker removal. Publish only the common verified candidate after all leaf evidence and settlement. The original parent remains pending delivery evidence.
@@ -22,7 +28,7 @@ export async function prepareHierarchyCoordinator(ctx: PluginContext, initial: M
   let m = initial; let intent = m.aggregate.n1?.coordination as N1Coordination | undefined;
   if (!intent) {
     intent = { intentId: randomUUID(), issueId: null, state: "preparing", commandId: String(body.commandId),
-      commandHash: canonicalPayloadHash(body), ownerUserId: m.ownerUserId, preparedVersion: m.version + 1 };
+      commandHash: canonicalPayloadHash(body), ownerUserId: m.ownerUserId, preparedVersion: m.version + 1, instructionsVersion: "lead-commands-v1" };
     m = await persist(m, intent);
   }
   if (intent.commandHash !== canonicalPayloadHash(body) || intent.ownerUserId !== m.ownerUserId) throw new MissionError(409, "hierarchy_coordinator_command", "Reuse the original coordinator command and owner; no replacement identity");

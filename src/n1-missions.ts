@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import { assertProjectDeparture, assertProjectPaths } from "./project-mandate-guard.js";
 import { assertLinearAdmissionFresh } from "./linear-intake-admission-guard.js";
 import { contributionCountAllowed, leadIssueId } from "./hierarchy-contract.js";
+import { leadCommandsFor } from "./lead-command.js";
 import { prepareHierarchyCoordinator, type N1Coordination } from "./hierarchy-coordinator.js";
 import { assertHierarchySources, assertHierarchyDependencies, materializeHierarchyGuidance } from "./hierarchy-runtime.js";
 import { ensureHierarchyLaunchGuidance } from "./hierarchy-guidance.js";
@@ -367,7 +368,7 @@ export function inspectN1State(mission: MissionRecord) {
       : state.contributions.length === 0
         ? state.rootDispatchState === "unknown" || state.rootDispatchState === "claimed"
           ? "Owner must reconcile the root lead wakeup before any further launch."
-          : "Owner may start the Integration Lead; the lead then records the two-contributor plan."
+          : "The admitted Integration Lead must use inspect.n1.leadCommands to record the pinned hierarchy or business contribution plan; the owner starts it only if no admitted run exists."
         : state.contributions.some((slot) => slot.issueState === "planned")
           ? "Integration Lead must complete the native parent plan with outcomes, interfaces, sources and acceptance checks, then materialize and read back the child descriptions before dispatch."
           : state.contributions.some((slot) => !slot.dispatchState)
@@ -386,6 +387,7 @@ export function inspectN1State(mission: MissionRecord) {
     ...(mission.aggregate.projectMandate ? { projectMandate: mission.aggregate.projectMandate } : {}),
     nextAction,
     participants: state.contributions,
+    ...leadCommandsFor(mission.missionId, state),
     ...(completionPolicy(mission) ? { proofPolicy: completionPolicy(mission), sourceBaseCommit: state.sourceBaseCommit } : {}),
     candidate: state.candidate ?? null,
     reservations: { activation: state.activationReservationId, periodKey: state.periodKey },

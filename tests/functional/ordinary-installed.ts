@@ -12,7 +12,7 @@ import { installOrdinaryGitHubTransport, nominalDeliveryObserver, prepareOrdinar
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repository = resolve(here, "../..");
-const host = resolve(repository, ".paperclip/qualification/paperclip");
+const host = resolve(process.env.PAPERCLIP_TEST_HOST_ROOT ?? resolve(repository, ".paperclip/qualification/paperclip"));
 const gitAt = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 const hostSha = "61b3fd57a695614dc4a37e2303f426a34a9795cf";
 assert.equal(gitAt(host, "rev-parse", "HEAD"), hostSha);
@@ -24,9 +24,12 @@ const continuityMode = process.env.COUNCIL_CONTINUITY === "1";
 const projectIntakeMode = process.env.COUNCIL_PROJECT_INTAKE === "1";
 const nativeSetupMode = process.env.COUNCIL_NATIVE_SETUP === "1";
 assert(!nativeSetupMode || projectIntakeMode);
+const prePlanResumeMode = process.env.COUNCIL_PREPLAN_RESUME === "1";
+const leadCommandMode = process.env.COUNCIL_LEAD_COMMAND_BLOCK === "1";
 const deliveryMode = process.env.COUNCIL_ORDINARY_DELIVERY === "1";
 const hierarchyCount = Number(process.env.COUNCIL_HIERARCHY_COUNT ?? 0);
 assert([0, 1, 3].includes(hierarchyCount) && (!hierarchyCount || projectIntakeMode));
+assert(!prePlanResumeMode || hierarchyCount > 0 && projectIntakeMode);
 assert(!(n6Mode && deliveryMode));
 assert(!continuityMode || deliveryMode);
 assert(!projectIntakeMode || continuityMode);
@@ -34,6 +37,7 @@ const feedbackMode = process.env.COUNCIL_PR_FEEDBACK === "1";
 assert(!feedbackMode || hierarchyCount === 3 && projectIntakeMode);
 const completionMode = process.env.COUNCIL_PROOF_COMPLETION === "1";
 assert(!completionMode || feedbackMode && hierarchyCount === 3);
+assert(!prePlanResumeMode || !completionMode && leadCommandMode);
 const success = completionMode ? "INSTALLED PROOF COMPLETION PROVIDER-FREE VALIDATED" : feedbackMode ? "INSTALLED PR FEEDBACK PROVIDER-FREE VALIDATED" : hierarchyCount ? "INSTALLED VARIABLE HIERARCHY PROVIDER-FREE VALIDATED" : n6Mode ? "INSTALLED N6 DEPENDENCY PROVIDER-FREE VALIDATED" : deliveryMode ? "INSTALLED ORDINARY DELIVERY PROVIDER-FREE VALIDATED" : "INSTALLED ORDINARY COUNCIL PROVIDER-FREE VALIDATED";
 const artifactPrefix = completionMode ? "proof-completion-installed-" : feedbackMode ? "pr-feedback-installed-" : hierarchyCount ? `hierarchy-${hierarchyCount}-installed-` : n6Mode ? "n6-installed-" : deliveryMode ? "n5-ordinary-installed-" : "n2-ordinary-installed-";
 const runtime = await mkdtemp("/tmp/council-ordinary-installed-");
@@ -43,7 +47,7 @@ await mkdir(dirname(output), { recursive: true });
 await access(output).then(() => { throw new Error("Evidence output already exists"); }, () => undefined);
 const fixture = resolve(here, "ordinary-cli-fixture.mjs");
 const proof: any = { schema: "council-ordinary-installed-v1", outcome: "RUNNING", startedAt: new Date().toISOString(),
-  head: gitAt(repository, "rev-parse", "HEAD"), hostSha, runtime, timeline: [], checks: {},
+  head: gitAt(repository, "rev-parse", "HEAD"), hostSha, hostRoot: host, runtime, timeline: [], checks: {},
   boundary: "Installed Council owns N1 child completion/root waiting, N2/N3 state, admission, dispatch and reconciliation. Only CLI model/content/usage are deterministic. Owner prepares N1; Council finishes recorded children without implicit parent wakes and parks its verified candidate awaiting review. Agent demand wake policy remains enabled.",
   source: Object.fromEntries(await Promise.all([...new Set([fixture, fileURLToPath(import.meta.url), resolve(here, "ordinary-delivery-fixture.mjs"), resolve(here, "ordinary-delivery-scenario.ts"), resolve(here, "n6-scenario.ts"), resolve(here, "n6-coordination-fixture.mjs"), resolve(repository, "dist/worker.js"), resolve(repository, "dist/contribution-command.js"),
     resolve(repository, "scripts/operations/workspace_preflight.py"), resolve(repository, "scripts/operations/publisher_preflight.py"), resolve(repository, "scripts/operations/github_feedback.py"), resolve(here, "native-run-exception-scenario.ts"), resolve(here, "hierarchy-scenario.ts"),
@@ -141,7 +145,8 @@ try {
     periodEnd: new Date(Date.now() + 3600000).toISOString(), periodAllowanceUnits: 20000, runReservationUnits: 1000,
     initialKnownUsageUnits: 0, initialExposureUnits: 0, initialTokenAccountingSource: "fresh-isolated-company", maxCorrections: 1 as const };
   await api("POST", `/api/plugins/${pluginId}/config`, { companyId, configJson: { apiBaseUrl: base, councilAgentId: actors.council,
-    councilApiKey: { type: "secret_ref", secretId: secret.id }, n1OperatingProfile: profile, n2RuntimeProfile: "ordinary-cli-v1" } });
+    councilApiKey: { type: "secret_ref", secretId: secret.id }, n1OperatingProfile: profile, n2RuntimeProfile: "ordinary-cli-v1",
+    ...(prePlanResumeMode ? { nativeRunLimit: hierarchyCount + 6 } : {}) } });
   await workerManager.stopAll(); await app.locals.paperclipShutdown();
   await new Promise<void>((r, reject) => server!.close(e => e ? reject(e) : r()));
   workerManager = createPluginWorkerManager();
@@ -179,7 +184,8 @@ try {
     const historical = await api("POST", `/api/companies/${companyId}/issues`, { title: "Historical task retained", description: "Do not adopt without explicit inclusion", projectId, status: "backlog", assigneeAgentId: actors.lead });
     const settings = await api("GET", "/api/instance/settings/experimental");
     await api("PATCH", "/api/instance/settings/experimental", { ...settings, enableExternalObjects: true });
-    await writeFile(fixtureConfig, JSON.stringify({ pluginId, companyId, projectId, projectIntake: true, hierarchyCount, feedbackMode, completionMode, councilRepository: repository, repoPath, runtime, actors, baseCommit, delivery: true }));
+    await writeFile(fixtureConfig, JSON.stringify({ pluginId, companyId, projectId, projectIntake: true, hierarchyCount, feedbackMode, completionMode,
+      prePlanResume: prePlanResumeMode, leadCommandBlock: leadCommandMode, councilRepository: repository, repoPath, runtime, actors, baseCommit, delivery: true }));
     const policyPath = `/api/plugins/${pluginId}/api/companies/${companyId}/projects/${projectId}/mandate`;
     const policyBody = { companyId, commandId: randomUUID(), expectedVersion: 0, enabled: true, authorizeNewTasks: true,
       teamRosterId: team.head.rosterId, councilRosterId: council.head.rosterId, n3Slots, template: mandate,
@@ -249,6 +255,32 @@ try {
     }
     return runs.find((run: any) => run.id === rootRunId);
   }, run => run?.status === "succeeded", 120000);
+  if (prePlanResumeMode) {
+    const before = await waitFor("terminal pre-plan usage reconciled", () => api("GET", `${missionPath}?companyId=${companyId}`),
+      view => view.continuity?.observation?.code === "continuity_candidate_missing", 180000);
+    assert.equal(before.mission.aggregate.n1.contributions.length, 0);
+    const original = before.mission, coordinator = original.aggregate.n1.coordination.issueId;
+    const oldReservation = original.aggregate.n1.activationReservationId;
+    const suspend = await api("POST", `${missionPath}/commands`, { companyId, command: "suspend-continuity", commandId: randomUUID(), expectedVersion: original.version });
+    await api("PATCH", `/api/issues/${coordinator}`, { status: "blocked" });
+    const grant = { companyId, command: "prepare-n1-resume", commandId: randomUUID(), expectedVersion: suspend.mission.version,
+      authorizeOneResume: true, authorizeContinuityResume: true, previousOwnerUserId: "local-board", reason: "Qualify one explicitly authorized terminal pre-plan resume" };
+    const resumed = await api("POST", `${missionPath}/commands`, grant);
+    assert.equal((await api("POST", `${missionPath}/commands`, grant)).outcome, "replayed");
+    assert.deepEqual(resumed.mission.aggregate.hierarchy, original.aggregate.hierarchy);
+    assert.deepEqual(resumed.mission.aggregate.n1.coordination, original.aggregate.n1.coordination);
+    assert.equal(resumed.mission.aggregate.continuity.deadline, original.aggregate.continuity.deadline);
+    assert.deepEqual(resumed.mission.aggregate.mandate, original.aggregate.mandate);
+    const next = await waitFor("one scheduled resumed lead", () => api("GET", `${missionPath}?companyId=${companyId}`),
+      view => Boolean(view.mission.aggregate.n1.rootDispatchRunId) && view.mission.aggregate.n1.rootDispatchRunId !== rootRunId, 180000);
+    proof.prePlanResume = { originalMissionId: original.missionId, originalRootId: original.rootIssueId, coordinator,
+      priorRunId: rootRunId, priorReservationId: oldReservation, grant, resumedRunId: next.mission.aggregate.n1.rootDispatchRunId,
+      originalDeadline: original.aggregate.continuity.deadline };
+    rootRunId = next.mission.aggregate.n1.rootDispatchRunId;
+    await waitFor("resumed lead plan and candidate", () => api("GET", `/api/companies/${companyId}/heartbeat-runs`),
+      runs => runs.some((run: any) => run.id === rootRunId && run.status === "succeeded"), 120000);
+    proof.boundary += " One fixture lead terminates before planning. Native job settles its usage; owner explicitly suspends continuity, parks the original coordinator and grants one same-mission resume, with no rights/instruction/workspace repair. The grant is replayed without an extra run; the scheduled job starts the resumed lead.";
+  }
   let mission = (await api("GET", `${missionPath}?companyId=${companyId}`)).mission;
   if (continuityMode) {
     await waitFor("scheduled N1 settlement", async () => (await api("GET", `${missionPath}?companyId=${companyId}`)).mission,
@@ -335,11 +367,19 @@ try {
   }
   proof.runs = await api("GET", `/api/companies/${companyId}/heartbeat-runs`);
   proof.admission = (await api("GET", `${admissionPath}?companyId=${companyId}&periodKey=${profile.periodKey}`)).envelope;
-  assert.equal(proof.runs.length, feedbackMode ? 16 : hierarchyCount ? hierarchyCount + 5 : continuityMode ? 7 : coordinationMode ? 14 : n6Mode ? 11 : deliveryMode ? 12 : 10);
+  assert.equal(proof.runs.length, (feedbackMode ? 16 : hierarchyCount ? hierarchyCount + 5 : continuityMode ? 7 : coordinationMode ? 14 : n6Mode ? 11 : deliveryMode ? 12 : 10) + Number(prePlanResumeMode));
   assert(proof.runs.every((run: any) => run.status === "succeeded"));
   assert.equal(proof.mission.aggregate.n2.ordinary.tasks.length, feedbackMode ? 10 : continuityMode ? 3 : 7);
   assert(proof.admission.reservations.every((item: any) => item.status === "settled"));
-  assert.equal(proof.admission.allowance.knownUsageUnits, feedbackMode ? 2400 : hierarchyCount ? (hierarchyCount + 5) * 150 : continuityMode ? 1050 : coordinationMode ? 2100 : n6Mode ? 1650 : deliveryMode ? 1800 : 1500);
+  assert.equal(proof.admission.allowance.knownUsageUnits, (feedbackMode ? 2400 : hierarchyCount ? (hierarchyCount + 5) * 150 : continuityMode ? 1050 : coordinationMode ? 2100 : n6Mode ? 1650 : deliveryMode ? 1800 : 1500) + Number(prePlanResumeMode) * 150);
+  if (prePlanResumeMode) {
+    assert.equal(proof.mission.missionId, proof.prePlanResume.originalMissionId);
+    assert.equal(proof.mission.rootIssueId, proof.prePlanResume.originalRootId);
+    const old = proof.admission.reservations.find((item: any) => item.reservationId === proof.prePlanResume.priorReservationId);
+    assert.equal(old.status, "settled"); assert.equal(old.usage.units, 150);
+    assert.equal(proof.runs.filter((run: any) => run.contextSnapshot.issueId === proof.prePlanResume.coordinator).length, 2);
+    proof.prePlanResume.checks = { sameMissionSourceDeadline: "PASS", oldCostRetained: "PASS", replayNoExtraDeparture: "PASS", exactRunLimit: "PASS" };
+  }
   const { acceptedN5Submission } = await import("../../src/n5-preflight.js");
   proof.n5Handoff = acceptedN5Submission(proof.mission);
   const n2 = proof.mission.aggregate.n2;
