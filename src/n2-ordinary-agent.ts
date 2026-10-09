@@ -1,6 +1,6 @@
 import { modelLaunch, physicalAgent } from "./model-state.js";
 import { recordVariantWake } from "./model-runtime.js";
-import { ordinaryTaskInstructions } from "./n2-ordinary-instructions.js";
+import { projectOrdinaryTaskInstructions } from "./project-role-instructions.js";
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { readOrdinaryRun } from "./g4-native.js";
 import { canonicalPayloadHash, MissionError, type MissionRecord } from "./missions.js";
@@ -52,7 +52,7 @@ export async function executeOrdinaryN2Agent(ctx: PluginContext, initial: Missio
   const mission = binding.mission; const task = binding.task; const round = n3Round(mission)!;
   if (["inspect", "ordinary-inspect", "n3-inspect"].includes(String(body.command))) {
     return { missionId: mission.missionId, version: mission.version, phase: mission.aggregate.phase,
-      task, instructions: ordinaryTaskInstructions(mission, task), n2: inspectN2State(mission), n3: inspectN3(mission), rootIssueId: mission.rootIssueId, n5Feedback: mission.aggregate.n5?.feedback };
+      task, instructions: projectOrdinaryTaskInstructions(mission, task), n2: inspectN2State(mission), n3: inspectN3(mission), rootIssueId: mission.rootIssueId, n5Feedback: mission.aggregate.n5?.feedback };
   }
   const prior = runtimeReceipt(mission, runtimeUuid(body.commandId, "commandId"), task.agentId, canonicalPayloadHash(body));
   if (prior) {

@@ -1,12 +1,17 @@
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import type { MissionRecord } from "./missions.js";
 import { MissionError } from "./mission-primitives.js";
+import { projectRoleContext } from "./project-workflow.js";
 
 /** Short assignment context; the existing document retains the full reporting command. */
 export function hierarchyLaunchGuidance(m: MissionRecord, issueId: string): string | null {
-  if (!m.aggregate.hierarchy?.leaves?.some(leaf => leaf.issueId === issueId)) return null;
+  const leaf = m.aggregate.hierarchy?.leaves?.find(leaf => leaf.issueId === issueId);
+  if (!leaf) return null;
   const key = `council-execution-${m.missionId}`;
-  return `Council execution ${m.missionId}: before implementation, read the body of GET /api/issues/${issueId}/documents/${key} using your authenticated Paperclip access. This document defines your owned paths and mandatory contribution reporting command. After committing, execute that command to register the exact commit and Git proof with Council. A Paperclip work product or comment alone is not the handoff. Do not mark this issue done yourself: Council closes it after your run finishes and its usage settles. Read only the relevant source and contract sections; exclude compiled bundles and unrelated documentation from searches.`;
+  const predecessor = leaf.blockedByIssueIds.length ? `native issues ${leaf.blockedByIssueIds.join(", ")}` : "none declared";
+  const context = projectRoleContext(m, "contributor", { paths: leaf.ownedPaths, predecessor });
+  const guidance = `Council execution ${m.missionId}: before implementation, read the body of GET /api/issues/${issueId}/documents/${key} using your authenticated Paperclip access. This document defines your owned paths and mandatory contribution reporting command. After committing, execute that command to register the exact commit and Git proof with Council. A Paperclip work product or comment alone is not the handoff. Do not mark this issue done yourself: Council closes it after your run finishes and its usage settles. Read only the relevant source and contract sections; exclude compiled bundles and unrelated documentation from searches.`;
+  return context ? `${context}\n\n${guidance}` : guidance;
 }
 
 /** Expose the document in the description actually delivered by the native wake. */

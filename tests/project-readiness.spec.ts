@@ -17,7 +17,10 @@ function fixture() {
   const policy = { companyId, projectId, version: 1, revisionId: randomUUID(), authorizedBy: "owner",
     content: { enabled: true, ownerUserId: "owner", operatingProfileHash: operatingProfileHash(config),
       teamRosterId: "team", teamRevision: "r1", councilRosterId: "council", councilRevision: "r2",
-      n3Slots: [{ specialistAgentId: "specialist" }], publication: { publisherAgentId: "publisher", qaAgentId: "qa" } } } as ProjectMandate;
+      n3Slots: [{ specialistAgentId: "specialist" }], publication: { publisherAgentId: "publisher", qaAgentId: "qa" },
+      workflow: { protocol: "council-project-workflow-v1", commands: [{ key: "static-audit", kind: "audit",
+        command: "pnpm exec fallow audit --base origin/main", roles: ["lead", "contributor"],
+        tool: { name: "fallow", versionCommand: "pnpm exec fallow --version", expectedVersion: "3.23.0" } }] } } } as ProjectMandate;
   native.profile.mockResolvedValue({ periodKey: "current" });
   native.admission.mockResolvedValue({ blockers: [], availablePeriodUnits: 5000 });
   native.pair.mockResolvedValue({ eligible: true,
@@ -38,9 +41,17 @@ describe("native project setup diagnosis", () => {
     const f = fixture(); const view = await inspectProjectReadiness(f.ctx, f.companyId, f.projectId, f.policy);
     expect(view.configurationReady).toBe(true); expect(view.launchAuthorized).toBe(false);
     expect(view.policyRevisionId).toBe(f.policy.revisionId);
+    expect(view.workflow?.commands[0]).toMatchObject({ key: "static-audit", tool: { expectedVersion: "3.23.0" } });
     expect(view.checks.filter(check => check.state === "run-check-required").map(check => check.key))
       .toEqual(["effective-agent-environment", "github-publication"]);
     expect(JSON.stringify(view)).not.toContain("must-not-be-disclosed"); expect(f.execute).not.toHaveBeenCalled();
+  });
+  it("keeps a mandate without pinned commands blocked for new work", async () => {
+    const f = fixture(); delete f.policy.content.workflow;
+    const view = await inspectProjectReadiness(f.ctx, f.companyId, f.projectId, f.policy);
+    expect(view.configurationReady).toBe(false);
+    expect(view.checks).toContainEqual(expect.objectContaining({ key: "workflow", state: "blocked" }));
+    expect(view.checks).toContainEqual(expect.objectContaining({ key: "effective-agent-environment", state: "run-check-required" }));
   });
   it("fails configuration diagnosis on budget uncertainty, a relative checkout and actor drift", async () => {
     const f = fixture();

@@ -9,7 +9,7 @@ import type { RoleKey } from "./model-catalogue.js";
 import { inspectVariant } from "./model-variants.js";
 import { prepareVariantLaunch, bindVariantIssue, claimVariantWake, recordVariantWake, observeVariantRun } from "./model-runtime.js";
 import { reconcileReplacedCouncilSettlement, replaceMissingOpinion } from "./n2-ordinary-replacement.js";
-import { ordinaryTaskInstructions } from "./n2-ordinary-instructions.js";
+import { projectOrdinaryTaskInstructions } from "./project-role-instructions.js";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
@@ -243,7 +243,7 @@ async function dispatchTask(ctx: PluginContext, initial: MissionRecord, initialT
       title: `Council ${task.kind} ${task.slotId ?? ""} ${task.submissionId}`, status: "backlog", assigneeAgentId: agentId,
       inheritExecutionWorkspaceFromIssueId: mission.rootIssueId,
       originKind: "plugin:private.paperclip-council:ordinary", originId: task.taskId,
-      description: ordinaryTaskInstructions(mission, task) });
+      description: projectOrdinaryTaskInstructions(mission, task) });
     task = { ...task, issueId: issue.id, creation: "confirmed" };
     mission = await saveOrdinaryTask(ctx, mission, task);
   }
@@ -256,7 +256,7 @@ async function dispatchTask(ctx: PluginContext, initial: MissionRecord, initialT
   task = currentOrdinaryTask(mission, task.taskId);
   if (task.kind === "correction") {
     const root = await ctx.issues.get(task.issueId!, mission.companyId);
-    await ctx.issues.update(task.issueId!, { status: "in_progress", description: `${root?.description ?? ""}\n\n${ordinaryTaskInstructions(mission, task)}` }, mission.companyId);
+    await ctx.issues.update(task.issueId!, { status: "in_progress", description: `${root?.description ?? ""}\n\n${projectOrdinaryTaskInstructions(mission, task)}` }, mission.companyId);
   } else await ctx.issues.update(task.issueId!, { status: "todo" }, mission.companyId);
   const wake = await ctx.issues.requestWakeup(task.issueId!, mission.companyId, { idempotencyKey: `council:ordinary:${task.taskId}`,
     reason: "council_ordinary_admitted", actorUserId: mission.ownerUserId });

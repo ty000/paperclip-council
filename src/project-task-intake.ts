@@ -117,6 +117,7 @@ async function pinTask(ctx: PluginContext, initial: Intake, policy: ProjectManda
     authorizedBy: policy.authorizedBy, operatingProfileHash: policy.content.operatingProfileHash, mandateHash: canonicalPayloadHash(mandate),
     allowedPaths: policy.content.allowedPaths, publication: policy.content.publication,
     ...(policy.content.completion ? { completion: policy.content.completion } : {}),
+    ...(policy.content.workflow ? { workflow: policy.content.workflow } : {}),
     ...(intake.state.linearIntake ? { linearIntake: { subject: intake.state.linearIntake.snapshot.subject, bodySha256: intake.state.linearIntake.snapshot.bodySha256 } } : {}),
     source: { rootIssueId: root.id, title: root.title, descriptionHash: canonicalPayloadHash(root.description), taskDocumentRevisionId } };
   return save(ctx, intake, { ...intake.state, createBody, snapshot, ...(hierarchy ? { hierarchy } : {}) });
