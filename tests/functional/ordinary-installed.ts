@@ -127,6 +127,7 @@ try {
   if (integrationMode) gitAt(repoPath, "branch", "-m", "main");
   const baseCommit = gitAt(repoPath, "rev-parse", "HEAD");
   gitAt(repoPath, "branch", "base", baseCommit);
+  if (integrationMode) gitAt(repoPath, "checkout", "-b", "fixture-work");
   await chmod(fixture, 0o755);
   const fixtureConfig = resolve(runtime, "fixture.json");
   const actors: Record<string, string> = {};
