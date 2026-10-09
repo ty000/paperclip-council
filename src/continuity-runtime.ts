@@ -114,12 +114,25 @@ async function finishAuthorizedResult(ctx: PluginContext, m: MissionRecord): Pro
     : waiting("completion_proof_pending", "Council conserve la clôture revendiquée et attend sa lecture native.");
 }
 
+function campaignObservation(m: MissionRecord): Observation {
+  if (m.aggregate.completion?.state === "closed") return { state: "complete", code: "campaign_proof_closed",
+    nextAction: "La campagne est close après revue globale et lecture confirmée du bilan terminal." };
+  const closure = m.aggregate.campaignClosure;
+  if (closure?.phase === "blocked") return { state: "blocked", code: closure.blockedReason ?? "campaign_review_blocked",
+    nextAction: "La revue globale conserve un reste explicite ; une décision du propriétaire est requise." };
+  if (closure && ["publishing", "closing"].includes(closure.phase)) return waiting("campaign_terminal_publication_pending",
+    "Council attend la lecture confirmée du bilan terminal puis la clôture des parents de la campagne.");
+  return closure ? waiting("campaign_global_review_pending", "Council attend la revue globale des livraisons et des obligations de la milestone.")
+    : waiting("campaign_deliveries_pending", "Council suit les livraisons de la milestone une par une avant leur revue globale.");
+}
+
 export async function advanceContinuity(ctx: PluginContext, initial: MissionRecord, job: PluginJobContext): Promise<Observation> {
   let m = await fresh(ctx, initial);
   if (m.aggregate.linearContinuity) {
     m = await (await import("./linear-continuity-runtime.js")).reconcileLinearContinuity(ctx, m);
     const linear = m.aggregate.linearContinuity!;
     if (linear.control !== "running" || linear.controlReason) return waiting("linear_control_hold", "Council réconcilie les opérations admises au point sûr ; aucun nouveau départ, fusion ou clôture.");
+    if (linear.mode === "milestone-fixed-v1" && !m.aggregate.repositoryCampaign) return campaignObservation(m);
   }
   const policy = m.aggregate.continuity;
   if (!policy?.enabled) return waiting("continuity_disabled", "La progression déléguée est désactivée.");
