@@ -17,9 +17,15 @@ function assertUnstartedHierarchy(m: MissionRecord, state: N1State, owner: strin
   const leaves = m.aggregate.hierarchy!.leaves!;
   if (coordinator?.state !== "confirmed" || !coordinator.issueId || coordinator.issueId === m.rootIssueId
       || coordinator.ownerUserId !== owner || owner !== m.ownerUserId || !leaves.length
-      || state.contributions.length !== leaves.length || !state.contributions.every(slot => unstartedLeaf(m, slot))) {
+      || !unstartedPlan(m, state, leaves.length)) {
     throw new MissionError(409, "hierarchy_resume_decision", "Only the confirmed original hierarchy coordinator before any leaf execution can resume");
   }
+}
+
+function unstartedPlan(m: MissionRecord, state: N1State, leafCount: number) {
+  if (!state.contributions.length) return !m.aggregate.commandReceipts.some(receipt => receipt.command === "plan")
+    && !m.aggregate.journal.some(entry => entry.action === "contribution_plan_recorded");
+  return state.contributions.length === leafCount && state.contributions.every(slot => unstartedLeaf(m, slot));
 }
 
 function unstartedLeaf(m: MissionRecord, slot: N1State["contributions"][number]) {
