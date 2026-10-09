@@ -425,6 +425,13 @@ try {
   if (integrationMode) {
     const parent = await api("GET", `/api/issues/${proof.hierarchyTasks.root.id}`);
     assert.notEqual(parent.status, "done", "Parent own obligations remain separate");
+    const leaf = await api("GET", `/api/issues/${root.id}`), result = proof.completion.evidence.integrated;
+    assert.equal(leaf.status, "done");
+    assert(proof.completion.comment.body.includes(result.url));
+    assert(proof.completion.comment.body.includes(result.integratedCommit));
+    assert(!proof.completion.comment.body.includes("sans publication autorisée"));
+    Object.assign(proof.delivery, { nativeLeafStatus: leaf.status, nativeParentStatus: parent.status,
+      notificationIncludesIntegratedCommit: true });
     proof.boundary += " One native existing code leaf owns one PR and a separately admitted integration run; real Git squash commit and post-merge report pass, while GitHub HTTP/writes are deterministic fixtures. Original parent stays pending its own obligations. No recette activation or real GitHub merge occurred.";
   }
   if (projectIntakeMode && !integrationMode) {

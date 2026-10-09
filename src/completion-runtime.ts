@@ -10,6 +10,11 @@ import { assertProjectDeparture } from "./project-mandate-guard.js";
 import { physicalAgent } from "./model-state.js";
 import { leadIssueId } from "./hierarchy-contract.js";
 
+function deliveredResultDescription(evidence: ReturnType<typeof completionEvidence>) {
+  if (evidence.integrated) return `${evidence.integrated.url}\nCommit intégré : ${evidence.integrated.integratedCommit}.`;
+  return evidence.publication?.observation?.url ?? "Candidat accepté sans publication autorisée";
+}
+
 async function assertClosureAccounting(ctx: PluginContext, m: MissionRecord) {
   const { envelope } = await nativeN2Profile(ctx, m);
   const reservations = envelope.reservations.filter(r => r.missionId === m.missionId);
@@ -110,7 +115,7 @@ export async function reconcileCompletion(ctx: PluginContext, m: MissionRecord) 
     const runId = m.aggregate.n2!.rounds.at(-1)!.handoff.reviewerRunId;
     const authorAgentId = physicalAgent(m, m.aggregate.responsibilities.finalReviewerAgentId, { runId });
     m = await n2Cas(ctx, m, { ...m.aggregate, completion: { state: "closing", proofId, documentKey, body: JSON.stringify({ ...evidence, proofId }), qualifiedAt: new Date().toISOString(), closedNodeIds: [],
-      notification: { state: "pending", authorAgentId, body: `Council : résultat autorisé terminé (${evidence.result}).\nCandidat : ${evidence.submission.candidateCommit}.\n${evidence.publication?.observation?.url ?? "Candidat accepté sans publication autorisée"}\nPreuve native : ${documentKey}.\nProof ID : ${proofId}` } } });
+      notification: { state: "pending", authorAgentId, body: `Council : résultat autorisé terminé (${evidence.result}).\nCandidat : ${evidence.submission.candidateCommit}.\n${deliveredResultDescription(evidence)}\nPreuve native : ${documentKey}.\nProof ID : ${proofId}` } } });
   }
   if (canonicalPayloadHash(completionEvidence(m)) !== m.aggregate.completion!.proofId) throw new MissionError(409, "completion_subject_changed", "Retain the original proof; a changed candidate or evidence cannot consume its closure");
   m = await finishProofDocument(ctx, m, m.aggregate.completion!);
