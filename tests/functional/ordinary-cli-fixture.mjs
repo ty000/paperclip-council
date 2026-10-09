@@ -59,6 +59,11 @@ async function observe(read, ok, label) {
   throw new Error(`Timeout ${label}`);
 }
 const git = (...args) => execFileSync("git", args, { cwd: config.repoPath, encoding: "utf8" }).trim();
+const canonicalHash = value => {
+  const stable = entry => Array.isArray(entry) ? entry.map(stable) : entry && typeof entry === "object"
+    ? Object.fromEntries(Object.entries(entry).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => [key, stable(item)])) : entry;
+  return createHash("sha256").update(JSON.stringify(stable(value))).digest("hex");
+};
 await api("POST", `/api/issues/${issueId}/checkout`, { agentId, expectedStatuses: ["todo", "in_progress"] });
 const inspectCommand = config.campaignReview ? "campaign-review-inspect" : coordinationActor ? "n6-inspect" : agentId === config.actors.publisher ? "n5-inspect" : "inspect";
 let inspection = await observe(async () => { try { return await call({ command: inspectCommand }); }
@@ -102,6 +107,22 @@ else if (issueId === config.n6RootIssueId) {
 else if (config.campaignReview) {
   const subject = inspection.campaignClosure.subject;
   assert.equal(subject.campaignRootMissionId, config.missionId);
+  assert.equal(subject.results.length, 2, "The global review requires both serial delivery results");
+  for (const criterion of subject.coverage.filter(item => item.sourceDocument)) {
+    const source = criterion.sourceDocument;
+    const document = await api("GET", `/api/issues/${source.issueId}/documents/${source.key}`);
+    assert.equal(document.latestRevisionId, source.revisionId);
+    assert.equal(canonicalHash(document.body), source.bodySha256);
+    const selected = source.selector?.split(".").reduce((value, key) => value?.[key], JSON.parse(document.body));
+    assert.notEqual(selected, undefined, `Pinned source selector ${source.selector} must resolve`);
+  }
+  for (const result of subject.results) {
+    const document = await api("GET", `/api/issues/${result.issueId}/documents/${result.completionDocument.key}`);
+    assert.equal(document.latestRevisionId, result.completionDocument.revisionId);
+    assert.equal(canonicalHash(document.body), result.completionDocument.bodySha256);
+  }
+  assert.equal(git("show", "main:alpha.txt"), "alpha contribution");
+  assert.equal(git("show", "main:beta.txt"), "beta contribution");
   const resultBySource = new Map(subject.results.map(result => [result.sourceId, result]));
   const rows = subject.coverage.map(criterion => {
     const related = resultBySource.get(criterion.criterionId.replace(/^source:/, ""));
@@ -111,7 +132,8 @@ else if (config.campaignReview) {
     return { criterionId: criterion.criterionId, sourceSha256: criterion.sourceSha256,
       deliveryOrObligationIds: related ? [related.resultId] : ["transverse:campaign"],
       verification: { environment: "isolated installed campaign fixture",
-        method: related ? "Matched the pinned source node to its proof-closed integrated delivery" : "Checked the pinned campaign sources against both proof-closed deliveries and acknowledged publications" },
+        method: related ? "Read the exact native source and completion revisions and verified both attributed files on Git main; semantic judgment is deterministic fixture output"
+          : "Read every exact native source and completion revision and verified alpha.txt plus beta.txt on Git main; semantic judgment is deterministic fixture output" },
       result: "satisfied", proofIds, remainder: null };
   });
   summary = { schema: "council-linear-campaign-review-report-v1", campaignRootMissionId: subject.campaignRootMissionId,
