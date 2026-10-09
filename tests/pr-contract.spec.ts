@@ -34,11 +34,35 @@ it("preserves legacy contracts and rejects inconsistent draft authority", () => 
   expect(() => parsePrContract({ ...fixture().contract, result: "reviewed-pr" })).toThrow();
   expect(() => parsePrContract({ ...fixture().contract, requiredChecks: [] })).toThrow();
 });
-it("green CI plus a changes-requested review never becomes delivery or merge ready", () => {
-  const { m, p } = fixture(); expect(inspectN5(m)).toMatchObject({ ready: false, mergeReady: false, contractConformant: true });
-  p.reviews!.state = "approved"; expect(inspectN5(m)?.publicationReady).toBe(false);
-  p.feedbackReport!.reviews[0]!.state = "APPROVED"; expect(inspectN5(m)).toMatchObject({ publicationReady: true, mergeReady: false });
-  p.observation!.draft = false; expect(inspectN5(m)).toMatchObject({ publicationReady: false, contractConformant: false });
+it("delivers a fresh checked exact draft without requiring approval or treating it as merge-ready", () => {
+  const { m, p } = fixture();
+  expect(inspectN5(m)).toMatchObject({ ready: true, publicationReady: true, mergeReady: false, contractConformant: true });
+  p.feedbackReport!.checks[0]!.state = "pending";
+  p.checks!.state = "pending";
+  expect(inspectN5(m)?.publicationReady).toBe(false);
+  p.feedbackReport!.checks[0]!.state = "passed";
+  p.checks!.state = "passed";
+  p.feedbackReport!.observedAt = new Date(Date.now() - 400_000).toISOString();
+  expect(inspectN5(m)).toMatchObject({ publicationReady: false, mergeReady: false, nativeReadbackFresh: true });
+  p.feedbackReport!.observedAt = new Date().toISOString();
+  p.observation!.lastResolvedAt = new Date(Date.now() - 400_000).toISOString();
+  expect(inspectN5(m)?.publicationReady).toBe(false);
+  p.observation!.lastResolvedAt = new Date().toISOString();
+  p.observation!.draft = false;
+  expect(inspectN5(m)).toMatchObject({ publicationReady: false, contractConformant: false });
+});
+it("retains passed checks and approval for reviewed delivery only while feedback is fresh", () => {
+  const { m, p } = fixture();
+  m.aggregate.n5!.authority.contract = parsePrContract({ ...m.aggregate.n5!.authority.contract!, result: "reviewed-pr", draftOnly: false });
+  p.observation!.draft = false;
+  p.feedbackReport!.draft = false;
+  expect(inspectN5(m)).toMatchObject({ publicationReady: false, mergeReady: false });
+  p.feedbackReport!.reviews[0]!.state = "APPROVED";
+  p.reviews!.state = "approved";
+  p.feedbackReport!.observedAt = new Date(Date.now() - 400_000).toISOString();
+  expect(inspectN5(m)).toMatchObject({ publicationReady: false, mergeReady: false, nativeReadbackFresh: true });
+  p.feedbackReport!.observedAt = new Date().toISOString();
+  expect(inspectN5(m)).toMatchObject({ publicationReady: true, mergeReady: true, nativeReadbackFresh: true });
 });
 it("keeps historical objections until the same author supersedes or dismisses them", () => {
   const { contract, report } = fixture(); report.reviews[0]!.headSha = "b".repeat(40);

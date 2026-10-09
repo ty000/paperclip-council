@@ -12,6 +12,7 @@ import { canonicalPayloadHash, getMission, MissionError, type MissionRecord } fr
 import { n2Cas, nativeN2Profile } from "./n2-missions.js";
 import { executeOrdinaryN2Board, reconcileOrdinaryN2 } from "./n2-ordinary-runtime.js";
 import { reconcileN5 } from "./n5-runtime.js";
+import { reconcileControllerGithubFeedback } from "./github-feedback-controller.js";
 import { inspectN5 } from "./n5-state.js";
 import { physicalAgent } from "./model-state.js";
 import { readOrdinaryRun, settleOrdinaryRunUsage } from "./g4-native.js";
@@ -97,6 +98,7 @@ async function advanceReview(ctx: PluginContext, m: MissionRecord, job: PluginJo
   if (!m.aggregate.n5 && completionPolicy(m)) return finishAuthorizedResult(ctx, m);
   if (!m.aggregate.n5) return { state: "complete", code: "accepted_without_publication", nextAction: "Le candidat est accepté. Aucune publication n'a été autorisée." };
   m = await reconcileN5(ctx, m);
+  m = await reconcileControllerGithubFeedback(ctx, m, job);
   m = await reconcilePublicationFeedback(ctx, m);
   if (completionPolicy(m)) {
     if (!(completionPolicy(m)?.result === "integrated-verified" ? inspectN5(m)?.integratedReady : inspectN5(m)?.publicationReady)) return waiting("native_delivery_pending", "Le résultat autorisé attend sa preuve de publication exacte et ses coûts terminaux.");

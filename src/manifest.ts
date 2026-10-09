@@ -13,7 +13,7 @@ export const missionToolDeclaration = {
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
-  version: "0.7.26",
+  version: "0.7.32",
   displayName: "Paperclip Council",
   description: "Private Council integration with revisioned rosters, bounded admission and checked candidate preparation.",
   author: "Local Paperclip integration",
@@ -52,6 +52,7 @@ const manifest: PaperclipPluginManifestV1 = {
     "issue.interactions.read",
     "issue.interactions.respond",
     "secrets.read-ref",
+    "http.outbound",
     "ui.page.register",
   ],
   agents: managedAgentDeclarations(),
@@ -95,6 +96,11 @@ const manifest: PaperclipPluginManifestV1 = {
         format: "secret-ref",
         title: "Council agent API key",
         description: "Reference to the Paperclip company secret containing the dedicated council agent token.",
+      },
+      githubFeedbackToken: {
+        format: "secret-ref",
+        title: "GitHub feedback read token",
+        description: "Optional native secret reference for bounded read-only api.github.com feedback refreshes. It grants nothing until the owner pins the same reference in a project publication mandate.",
       },
       n2RuntimeProfile: {
         type: "string", enum: ["ordinary-cli-v1", "paperclip_runner-experimental"],

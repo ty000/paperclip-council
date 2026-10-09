@@ -1,16 +1,20 @@
 import { parseIntegrationContract, type IntegrationContract } from "./integration-contract.js";
 import { canonicalPayloadHash, MissionError } from "./mission-primitives.js";
 import type { MissionRecord } from "./missions.js";
+import { parseGithubFeedbackRefreshShape, type GithubFeedbackRefreshAuthority } from "./github-feedback-authority.js";
 
 export type PrContract = { protocol: "council-pr-contract-v1"; draftOnly: boolean; result: "draft-pr" | "reviewed-pr" | "integrated-verified"; integration?: IntegrationContract;
-  feedback: "review-and-correct"; requiredChecks: string[] };
+  feedback: "review-and-correct"; requiredChecks: string[]; feedbackRefresh?: GithubFeedbackRefreshAuthority };
 export type GithubFeedback = { protocol: "publisher-github-feedback-v1"; provenance: "publisher_run_report";
   missionId: string; intentId: string; issueId: string; runId: string; observedAt: string;
   url: string; repository: string; headSha: string; baseRef: string; headRef: string; draft: boolean;
   checks: Array<{ name: string; state: "pending" | "passed" | "failed"; evidenceUrl: string }>;
   reviews: Array<{ id: number; author: string; headSha: string; state: "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED";
     body: string; url: string; submittedAt: string }> };
-export type PublicationFeedback = { report: GithubFeedback; reportHash: string; reviewSubmissionId?: string; previousPublication?: NonNullable<NonNullable<MissionRecord["aggregate"]["n5"]>["publication"]>;
+export type ControllerGithubFeedback = Omit<GithubFeedback, "protocol" | "provenance" | "runId"> & {
+  protocol: "controller-github-feedback-v1"; provenance: "council_continuity_http"; jobRunId: string };
+export type GithubFeedbackEvidence = GithubFeedback | ControllerGithubFeedback;
+export type PublicationFeedback = { report: GithubFeedbackEvidence; reportHash: string; reviewSubmissionId?: string; previousPublication?: NonNullable<NonNullable<MissionRecord["aggregate"]["n5"]>["publication"]>;
   previousApplication?: NonNullable<MissionRecord["aggregate"]["n2"]>["application"];
   state: "reported" | "reviewing" | "correction_requested" | "resolved" };
 
@@ -25,7 +29,8 @@ export function parsePrContract(value: unknown): PrContract | undefined {
   }
   if ((v.result === "integrated-verified") !== (v.integration !== undefined)) throw new MissionError(422, "integration_scope", "Only an explicit integrated result delegates merge authority");
   const integration = v.integration === undefined ? undefined : parseIntegrationContract(v.integration);
-  return { ...(integration ? { integration } : {}), protocol: v.protocol, draftOnly: v.draftOnly, result: v.result, feedback: v.feedback, requiredChecks: [...v.requiredChecks] };
+  const feedbackRefresh = parseGithubFeedbackRefreshShape(v.feedbackRefresh);
+  return { ...(integration ? { integration } : {}), ...(feedbackRefresh ? { feedbackRefresh } : {}), protocol: v.protocol, draftOnly: v.draftOnly, result: v.result, feedback: v.feedback, requiredChecks: [...v.requiredChecks] };
 }
 
 export function validateGithubFeedback(m: MissionRecord, value: unknown, actor: { agentId?: string | null; runId?: string | null }, observation: { url: string; headSha: string; draft: boolean; baseRef: string; headRef: string }) {
@@ -48,7 +53,7 @@ export function validateGithubFeedback(m: MissionRecord, value: unknown, actor: 
   return structuredClone(f);
 }
 
-export function githubFeedbackStates(contract: PrContract, report: GithubFeedback) {
+export function githubFeedbackStates(contract: PrContract, report: GithubFeedbackEvidence) {
   const required = contract.requiredChecks.map(name => report.checks.find(check => check.name === name));
   const checks = required.some(check => check?.state === "failed") ? "failed" : required.every(check => check?.state === "passed") ? "passed" : "pending";
   const latest = new Map<string, GithubFeedback["reviews"][number]>();

@@ -6,7 +6,7 @@ import { completionPolicy } from "./completion-contract.js";
 import { sourceBase, recordContributionProof, closeQualifiedContribution } from "./contribution-proof.js";
 import { recoverContribution } from "./contribution-recovery.js";
 import { prepareN1Resume, verifyResumedLeadRun } from "./n1-resume.js";
-import { finishN1Disposition } from "./native-wake-policy.js";
+import { finishN1Disposition, restoreRecoveredCandidateWait } from "./native-wake-policy.js";
 import { settledResumeReservation, n1ResumeGrants, n1ResumeOrdinal, priorLeadRunIds, type N1Resume, type ResumeTarget } from "./n1-resume-state.js";
 import { physicalAgent, isLogicalActor } from "./model-state.js";
 import { contributionModelFamily, prepareVariantLaunch, bindVariantIssue, claimVariantWake, recordVariantWake, observeVariantRun } from "./model-runtime.js";
@@ -525,6 +525,7 @@ async function recoverIntegration(ctx: PluginContext, mission: MissionRecord, bo
   try {
     candidate = await verifyIntegratedCandidate(ctx, {
       companyId: mission.companyId, issueId: mission.rootIssueId,
+      attachmentIssueId: candidateAttachmentTarget(mission, n1LeadExecution(mission).issueId),
       attachmentId: uuid(body.attachmentId, "attachmentId"),
       expectedSha256: boundedString(body.expectedSha256, "expectedSha256", 64),
       baseCommit, candidateCommit: boundedString(body.candidateCommit, "candidateCommit", 40),
@@ -535,7 +536,7 @@ async function recoverIntegration(ctx: PluginContext, mission: MissionRecord, bo
   } catch (error) {
     throw new MissionError(422, "recovery_git_verification_failed", error instanceof Error ? error.message : "Recovery Git proof failed");
   }
-  return commandCas(ctx, mission, body, "user", actorUserId, {
+  const result = await commandCas(ctx, mission, body, "user", actorUserId, {
     ...mission.aggregate,
     phase: "ready_for_review", control: { status: "inactive", reason: "candidate_ready_for_review" },
     n1: { ...state, contributions, candidate, candidateRecordedVersion: mission.version + 1, lastIntegrationFailure: undefined },
@@ -544,6 +545,8 @@ async function recoverIntegration(ctx: PluginContext, mission: MissionRecord, bo
       reason, candidate: candidate.candidate, originalAuthorRunId: slot.authorRunId, at: new Date().toISOString(),
     }],
   });
+  result.mission = await restoreRecoveredCandidateWait(ctx, result.mission);
+  return result;
 }
 
 async function recoverCandidate(ctx: PluginContext, mission: MissionRecord, body: Record<string, unknown>, actorUserId: string) {
@@ -563,6 +566,7 @@ async function recoverCandidate(ctx: PluginContext, mission: MissionRecord, body
   try {
     candidate = await verifyIntegratedCandidate(ctx, {
       companyId: mission.companyId, issueId: mission.rootIssueId,
+      attachmentIssueId: candidateAttachmentTarget(mission, n1LeadExecution(mission).issueId),
       attachmentId: uuid(body.attachmentId, "attachmentId"),
       expectedSha256: boundedString(body.expectedSha256, "expectedSha256", 64),
       baseCommit, candidateCommit: boundedString(body.candidateCommit, "candidateCommit", 40),
@@ -573,7 +577,7 @@ async function recoverCandidate(ctx: PluginContext, mission: MissionRecord, body
   } catch (error) {
     throw new MissionError(422, "recovery_git_verification_failed", error instanceof Error ? error.message : "Recovery Git proof failed");
   }
-  return commandCas(ctx, mission, body, "user", actorUserId, {
+  const result = await commandCas(ctx, mission, body, "user", actorUserId, {
     ...mission.aggregate,
     phase: "ready_for_review", control: { status: "inactive", reason: "candidate_ready_for_review" },
     n1: { ...state, candidate, candidateRecordedVersion: mission.version + 1, lastIntegrationFailure: undefined },
@@ -583,6 +587,8 @@ async function recoverCandidate(ctx: PluginContext, mission: MissionRecord, body
       originalLeadRunId: state.rootDispatchRunId, at: new Date().toISOString(),
     }],
   });
+  result.mission = await restoreRecoveredCandidateWait(ctx, result.mission);
+  return result;
 }
 
 export async function executeN1BoardCommand(ctx: PluginContext, input: {
@@ -620,7 +626,14 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
   if (["recover-integration", "recover-candidate", "recover-contribution"].includes(String(input.body.command))) {
     const commandId = uuid(input.body.commandId, "commandId");
     const replay = receipt(mission, commandId, input.actorUserId!, canonicalPayloadHash(input.body));
-    if (replay) return { outcome: "replayed" as const, mission, receipt: replay };
+    if (replay) {
+      const recoveredCandidate = n1State(mission)?.candidate?.candidate.candidateCommit;
+      if (input.body.command !== "recover-contribution" && mission.aggregate.phase === "ready_for_review"
+          && recoveredCandidate === input.body.candidateCommit) {
+        mission = await restoreRecoveredCandidateWait(ctx, mission);
+      }
+      return { outcome: "replayed" as const, mission, receipt: replay };
+    }
     requireFreshCommand(mission, input.body);
     if (input.body.command === "recover-contribution") {
       const next = await recoverContribution(ctx, mission, {
