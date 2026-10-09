@@ -22,6 +22,7 @@ import { n45Profile as validateN45Profile } from "../../scripts/qualification/n4
 import { runSyntheticN2 } from "./n2-synthetic.js";
 import { createFunctionalRuntimeCleanup } from "./runtime-cleanup.js";
 import { runDeliveryCoordinationBrowser } from "./delivery-coordination-browser.js";
+import { runDraftUploadProof } from "./draft-upload-proof.js";
 // @ts-expect-error The qualification evidence contract is intentionally plain ESM.
 import { writeClaimedArtifact } from "../../scripts/qualification/evidence-contract.mjs";
 
@@ -52,13 +53,15 @@ const liveN2Authorized = process.env.COUNCIL_N2_LIVE_AUTHORIZED === "1";
 const isolatedLiveN2Authorized = process.env.COUNCIL_N2_ISOLATED_LIVE_AUTHORIZED === "1";
 const n2NativeLifecycleMode = process.env.COUNCIL_N2_NATIVE_LIFECYCLE === "1";
 const n2PrerequisiteMode = process.env.COUNCIL_N2_PREREQUISITE === "1";
+const draftUploadProofMode = process.env.COUNCIL_DRAFT_UPLOAD_PROOF === "1";
 assert([liveN1Authorized, liveN2Authorized, isolatedLiveN2Authorized].filter(Boolean).length <= 1,
   "Only one native campaign can be authorized at a time");
-assert(!(n2PrerequisiteMode && (liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized)),
+assert(!(n2PrerequisiteMode && (liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized || draftUploadProofMode)),
   "The provider-free N2 prerequisite cannot run inside a LIVE campaign");
-assert(!(n2NativeLifecycleMode && (n2PrerequisiteMode || liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized)), "Native deterministic qualification excludes every LIVE mode");
-assert(!(n45Profile && (n2NativeLifecycleMode || n2PrerequisiteMode || liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized)), "N45 preparation excludes every execution mode");
-assert(!(ordinaryCampaignProfile && (n45Profile || n2NativeLifecycleMode || n2PrerequisiteMode || liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized)), "Ordinary preparation excludes execution modes");
+assert(!(n2NativeLifecycleMode && (n2PrerequisiteMode || liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized || draftUploadProofMode)), "Native deterministic qualification excludes every LIVE mode");
+assert(!(draftUploadProofMode && (liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized)), "Draft upload proof excludes every LIVE mode");
+assert(!(n45Profile && (n2NativeLifecycleMode || n2PrerequisiteMode || liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized || draftUploadProofMode)), "N45 preparation excludes every execution mode");
+assert(!(ordinaryCampaignProfile && (n45Profile || n2NativeLifecycleMode || n2PrerequisiteMode || liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized || draftUploadProofMode)), "Ordinary preparation excludes execution modes");
 const liveNativeAuthorized = liveN1Authorized || liveN2Authorized || isolatedLiveN2Authorized;
 const liveN2Campaign = liveN2Authorized || isolatedLiveN2Authorized;
 const liveEnvironmentPrefix = isolatedLiveN2Authorized
@@ -141,7 +144,8 @@ const requireServer = createRequire(resolve(root, "server/package.json"));
 const { eq, inArray, sql } = requireServer("drizzle-orm");
 const evidence: Record<string, any> = {
   schemaVersion: 1,
-  proofId: ordinaryCampaignProfile ? "paperclip-council-ordinary-campaign-preparation-v1" : n45Profile ? "paperclip-council-n45-provider-free-preparation-v1" : n2NativeLifecycleMode ? `paperclip-council-${process.env.COUNCIL_N5_CONTINUATION === "1" ? "n5-continuation" : process.env.COUNCIL_N5_NATIVE_LIFECYCLE === "1" ? "n5" : process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1" ? "n3" : "n2"}-native-deterministic-lifecycle-v1` : n2PrerequisiteMode
+  proofId: ordinaryCampaignProfile ? "paperclip-council-ordinary-campaign-preparation-v1" : n45Profile ? "paperclip-council-n45-provider-free-preparation-v1" : n2NativeLifecycleMode ? `paperclip-council-${process.env.COUNCIL_N5_CONTINUATION === "1" ? "n5-continuation" : process.env.COUNCIL_N5_NATIVE_LIFECYCLE === "1" ? "n5" : process.env.COUNCIL_N3_NATIVE_LIFECYCLE === "1" ? "n3" : "n2"}-native-deterministic-lifecycle-v1` : draftUploadProofMode
+    ? "paperclip-council-draft-upload-publication-proof-v1" : n2PrerequisiteMode
     ? "paperclip-council-n2-native-stage-prerequisite-v1"
     : isolatedLiveN2Authorized
     ? "paperclip-council-n2-isolated-observable-native-qualification-v1"
@@ -163,6 +167,8 @@ const evidence: Record<string, any> = {
     ? "COUNCIL_N2_ISOLATED_LIVE_AUTHORIZED=1 COUNCIL_N2_ISOLATED_LIVE_CANDIDATE_SHA=<exact-head> COUNCIL_N2_ISOLATED_LIVE_MODEL=gpt-5.6-sol COUNCIL_N2_ISOLATED_LIVE_EFFORT=high COUNCIL_N2_ISOLATED_LIVE_RUN_UNITS=<positive> COUNCIL_N2_ISOLATED_LIVE_PERIOD_UNITS=<exactly-3x-run> pnpm qualification:live:n2:isolated"
     : liveN1Authorized
     ? "COUNCIL_N1_LIVE_AUTHORIZED=1 COUNCIL_N1_LIVE_MODEL=gpt-5.6-sol COUNCIL_N1_LIVE_EFFORT=high COUNCIL_N1_LIVE_RUN_UNITS=<positive> COUNCIL_N1_LIVE_PERIOD_UNITS=<at-least-3x-run> pnpm qualification:live:n1"
+    : draftUploadProofMode
+    ? "pnpm qualification:proof:draft-upload"
     : n2PrerequisiteMode
     ? "pnpm qualification:preflight:n2"
     : "COUNCIL_PACKAGE_EXPECTED_COMMIT=<candidate-sha> PAPERCLIP_TEST_HOST_ROOT=<checkout> PAPERCLIP_PLAYWRIGHT_EXECUTABLE_PATH=<chromium> pnpm test:functional",
@@ -253,7 +259,8 @@ function redactedResponse(method: string, path: string, value: any) {
 }
 
 async function request(actor: string, method: string, path: string, body?: unknown) {
-  const headers: Record<string, string> = { "content-type": "application/json", origin: baseUrl };
+  const form = body instanceof FormData;
+  const headers: Record<string, string> = { ...(!form ? { "content-type": "application/json" } : {}), origin: baseUrl };
   if (actor === "human") headers.cookie = cookie;
   if (actor === "intruder") headers.cookie = intruderCookie;
   const agent = agentTokens.get(actor);
@@ -264,7 +271,7 @@ async function request(actor: string, method: string, path: string, body?: unkno
   const response = await fetch(baseUrl + path, {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : form ? body : JSON.stringify(body),
     signal: AbortSignal.timeout(30_000),
   });
   const raw = await response.text();
@@ -276,7 +283,8 @@ async function request(actor: string, method: string, path: string, body?: unkno
     runId: agent?.runId || null,
     method,
     path,
-    body: path.startsWith("/api/auth/") || path.includes("/secrets") ? "[credential material omitted]" : body,
+    body: path.startsWith("/api/auth/") || path.includes("/secrets") ? "[credential material omitted]"
+      : form ? "[multipart attachment bytes omitted]" : body,
     httpStatus: response.status,
     response: redactedResponse(method, path, value),
     persistentSnapshot: await safeSnapshot(),
@@ -305,6 +313,7 @@ async function createN2PrerequisiteFixtureRun(
   actor: string,
   contextIssueId: string,
   fixtureSource: "fixture:n2-prerequisite:deterministic-heartbeat" | "fixture:n2-handoff-guard:deterministic-reviewer"
+    | "fixture:draft-upload-proof:integrator"
     = "fixture:n2-prerequisite:deterministic-heartbeat",
 ) {
   const current = agentTokens.get(actor);
@@ -734,6 +743,28 @@ try {
       n2PrerequisiteHandoffCommandsConsumable: "PASS",
     });
     evidence.outcome = "N2 native-stage prerequisite validated";
+  } else if (draftUploadProofMode) {
+    const executorIdentity = agentTokens.get("executor");
+    assert(executorIdentity, "draft upload proof executor identity must exist");
+    agentTokens.set("executor", { ...executorIdentity, companyId });
+    const result = await runDraftUploadProof({
+      request, pluginId, runtime, companyId, projectId, ownerUserId: userId,
+      agents: { lead: executorId, contributorA: contributorAId, contributorB: contributorBId, reviewer: councilId },
+      createFixtureRun: createN2PrerequisiteFixtureRun,
+      finishFixtureRuns: finishN2PrerequisiteFixtureRuns,
+      seedMission: seedSyntheticMission,
+    });
+    evidence.configuration.fixtureBoundary = "One synthetic integrator heartbeat row supplies API-key and run identity; no wakeup, adapter process, model, provider, review or publisher is invoked.";
+    evidence.draftUploadProof = result;
+    Object.assign(evidence.results, {
+      draftUploadIntegratorIdentity: "PASS",
+      draftUploadSameBundleVerified: "PASS",
+      draftUploadForeignTaskRefused: "PASS",
+      draftUploadPublicRouteReadyForReview: "PASS",
+      draftUploadZeroProviderUsage: "PASS",
+      draftUploadFixtureLifecycleFinished: "PASS",
+    });
+    evidence.outcome = "DRAFT UPLOAD PUBLICATION PROOF VALIDATED";
   } else {
 
   const migrationNames = [

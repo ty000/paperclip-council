@@ -9,6 +9,8 @@ artifacts/n2-live-*.json
 artifacts/n2-live-*-accepted.png
 artifacts/n2-prerequisite-*.json
 artifacts/n2-prerequisite-*.proof.json
+artifacts/draft-upload-proof-*.json
+artifacts/draft-upload-proof-*.proof.json
 artifacts/ui-page.png
 .npm-cache/
 .pnpm-store/

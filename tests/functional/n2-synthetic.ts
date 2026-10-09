@@ -7,7 +7,7 @@ import { resolve } from "node:path";
 type ApiResult = { status: number; body: any; headers: Headers };
 type ApiRequest = (actor: string, method: string, path: string, body?: unknown) => Promise<ApiResult>;
 
-type CandidateFixture = {
+export type CandidateFixture = {
   baseCommit: string;
   contributionACommit: string;
   contributionBCommit: string;
@@ -19,7 +19,7 @@ function git(repository: string, args: string[]): string {
   return execFileSync("git", args, { cwd: repository, encoding: "utf8" }).trim();
 }
 
-async function createCandidateFixture(runtime: string): Promise<CandidateFixture> {
+export async function createCandidateFixture(runtime: string): Promise<CandidateFixture> {
   const repository = resolve(runtime, "n2-synthetic-candidate");
   await mkdir(repository, { recursive: true });
   git(repository, ["init", "-b", "main"]);

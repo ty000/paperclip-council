@@ -63,7 +63,7 @@ async function uploadCandidate() {
   git("bundle", "create", path, "refs/heads/base", "refs/heads/candidate");
   const bytes = await readFile(path); const expectedSha256 = createHash("sha256").update(bytes).digest("hex");
   const form = new FormData(); form.append("file", new Blob([bytes]), "candidate.bundle");
-  const attached = await api("POST", `/api/companies/${config.companyId}/issues/${config.integrationMode ? issueId : config.rootIssueId}/attachments`, form);
+  const attached = await api("POST", `/api/companies/${config.companyId}/issues/${config.completionMode ? issueId : config.rootIssueId}/attachments`, form);
   return { attachmentId: attached.id, candidateCommit, baseCommit: config.baseCommit, expectedSha256 };
 }
 let summary;
@@ -132,7 +132,7 @@ else if (inspection.task) {
 } else if (agentId === config.actors.lead && config.prePlanResume && await writeFile(resolve(config.runtime, "preplan-first-terminal"), runId, { flag: "wx" })
   .then(() => true, error => { if (error.code === "EEXIST") return false; throw error; })) {
   summary = { fixture: "Terminal lead before any plan; explicit resume required", runId, issueId };
-} else if (agentId === config.actors.lead && config.integrationMode && inspection.n1.integration?.runId === runId) {
+} else if (agentId === config.actors.lead && config.completionMode && inspection.n1.integration?.runId === runId) {
   git("commit", "--allow-empty", "-m", "fixture final leaf integration");
   const candidate = await uploadCandidate();
   await command("publish", candidate);
