@@ -54,7 +54,8 @@ export async function reconcileLinearTransport(ctx: PluginContext, initial: Miss
     challenge = { ...challenge, lastEmittedAt: new Date().toISOString() };
     m = await saveLinearContinuity(ctx, m, { ...m.aggregate.linearContinuity!, challenge });
     await ctx.events.emit("linear-continuity-request", m.companyId, { protocol: LINEAR_CONTINUITY_PROTOCOL,
-      companyId: m.companyId, missionId: m.missionId, challengeId: challenge.challengeId, requestSha256: challenge.requestSha256, request: document });
+      companyId: m.companyId, missionId: m.missionId, nativeRootId: m.rootIssueId,
+      challengeId: challenge.challengeId, requestSha256: challenge.requestSha256, request: document });
   }
   return m;
 }
