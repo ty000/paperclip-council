@@ -124,6 +124,7 @@ try {
   gitAt(repoPath, "config", "user.email", "fixture@example.test");
   await writeFile(resolve(repoPath, "README.md"), "Ordinary Council fixture\n");
   gitAt(repoPath, "add", "."); gitAt(repoPath, "commit", "-m", "fixture base");
+  if (integrationMode) gitAt(repoPath, "branch", "-m", "main");
   const baseCommit = gitAt(repoPath, "rev-parse", "HEAD");
   gitAt(repoPath, "branch", "base", baseCommit);
   await chmod(fixture, 0o755);
