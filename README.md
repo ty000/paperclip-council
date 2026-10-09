@@ -564,3 +564,27 @@ tâche à admettre, sans lancement ni acceptation. Toute V2 préparée, publicat
 consommation inconnue ou seconde reprise de ce type est refusée. Une révision de
 plan déjà écrite peut être liée par le propriétaire via `configure-delivery` avant
 la première publication, en conservant la même autorité de livraison.
+
+### Fixed-source Linear campaign controls (V1, L1a)
+
+Source support in `0.7.27` adds an explicit project `linearContinuity` policy:
+`{ "protocol": "council-linear-continuity-v1", "mode": "milestone-fixed-v1" }`.
+Without that mode, existing missions retain their original continuity policy.
+The fixed mode negotiates only `fixed-source` and `publication-readback`, rejects
+remote Linear commands and retains the engaged source hash when content changes.
+A restored source still requires explicit native resume.
+
+The current company/mission owner can use the native `mission-command` route with
+`pause-linear-campaign`, `resume-linear-campaign` or `cancel-linear-campaign`.
+Each command requires the original `missionId`, a unique `commandId`, the current
+`expectedVersion` and a bounded `reason`. Replays retain the original receipt;
+resume requires fresh source, reconciled runs and acknowledged publications.
+Pause/resume preserve the current phase, including pre-admission preparation.
+Cancellation retains integrated work and lists an observed open PR for manual
+cleanup; this mode never launches a `cancel-pr` publisher.
+
+This is the control/protocol slice of integration plan L1, not the complete
+milestone feature. Repository exclusion, milestone import, the real Linear
+publisher, campaign sequencing and global closure remain downstream work.
+No operational configuration is changed, and no gateway/provider or installed
+runtime qualification is claimed by the unit tests.

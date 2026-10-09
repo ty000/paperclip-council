@@ -8,6 +8,8 @@ import { physicalAgent } from "./model-state.js";
 import { linearPublicationState, saveLinearContinuity } from "./linear-continuity-transport.js";
 import { assertProjectDeparture } from "./project-mandate-guard.js";
 import { z } from "@paperclipai/plugin-sdk";
+import { FIXED_CAMPAIGN_MODE } from "./linear-continuity-contract.js";
+import { uncertainLinearEffects } from "./linear-continuity-control.js";
 
 const reportSchema = z.object({ protocol: z.literal("publisher-cancellation-report-v1"), companyId: z.string().uuid(), missionId: z.string().uuid(),
   intentId: z.string().uuid(), issueId: z.string().uuid(), runId: z.string().uuid(), repository: z.string(), url: z.string().url(),
@@ -49,7 +51,9 @@ export async function reconcileLinearCancellation(ctx: PluginContext, initial: M
   let m = initial; const state = m.aggregate.linearContinuity!;
   if (state.control !== "cancel_requested") return m;
   const n5 = m.aggregate.n5, p = n5?.publication;
-  if (n5?.integration?.state !== "verified" && p?.claimedAt) {
+  const manualCleanup = state.mode === FIXED_CAMPAIGN_MODE;
+  if (manualCleanup && uncertainLinearEffects(m)) throw new MissionError(409, "linear_cancel_effect_unknown", "Reconcile original effects before cancellation; open PR cleanup remains manual");
+  if (!manualCleanup && n5?.integration?.state !== "verified" && p?.claimedAt) {
     if (!state.cancellation) return admitCancellationPublisher(ctx, m);
     m = await reconcileCancellationPublisher(ctx, m);
     if (m.aggregate.linearContinuity!.cancellation?.state !== "closed" || !m.aggregate.n5?.publication?.settledAt) return m;
@@ -58,7 +62,8 @@ export async function reconcileLinearCancellation(ctx: PluginContext, initial: M
   m = await closeRemainingProductNodes(ctx, m);
   const subject = { ...m, aggregate: { ...m.aggregate, linearContinuity: { ...m.aggregate.linearContinuity!, control: "cancelled" as const } } };
   return saveLinearContinuity(ctx, m, linearPublicationState(subject, "cancellation", { workResultAcquired: false, campaignSuccess: false,
-    integratedCommitRetained: m.aggregate.n5?.integration?.report?.integratedCommit ?? null, cancelledNodes: m.aggregate.linearContinuity!.cancelledNodes }));
+    integratedCommitRetained: m.aggregate.n5?.integration?.report?.integratedCommit ?? null, cancelledNodes: m.aggregate.linearContinuity!.cancelledNodes,
+    ...(manualCleanup ? { pullRequestCleanup: "manual", openPullRequest: p?.observation?.state === "open" ? p.observation.url : null } : {}) }));
 }
 export async function reconcileCancellationPublisher(ctx: PluginContext, initial: MissionRecord) {
   let m = initial; const p = m.aggregate.n5!.publication!;

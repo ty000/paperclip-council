@@ -5,6 +5,7 @@ import { continuityBindingSchema, assertContinuityBinding, LINEAR_CONTINUITY_PRO
 import { parseLinearReadiness, LINEAR_READINESS_KEY } from "./linear-intake-contract.js";
 import { applyLinearChanges, settleLinearSafePoint } from "./linear-continuity-control.js";
 import { reconcileLinearTransport, queueLinearPublication, saveLinearContinuity, linearPublicationState } from "./linear-continuity-transport.js";
+import { campaignControlCommands, controlFixedCampaign } from "./linear-campaign-control.js";
 
 async function configure(ctx: PluginContext, m: MissionRecord, body: Record<string, unknown>, owner: string) {
   if (m.aggregate.linearContinuity || m.aggregate.phase !== "draft" || m.aggregate.n1 || !m.aggregate.projectMandate?.linearIntake) throw new MissionError(409, "linear_continuity_opt_in", "Enable once for a natively imported mission with the existing continuity job; history is not upgraded automatically");
@@ -23,6 +24,7 @@ export async function handleLinearContinuityBoard(ctx: PluginContext, input: Plu
   if (body.command === "reconcile-linear-continuity") return { status: 200, body: { outcome: "reconciled", mission: await reconcileLinearContinuity(ctx, m) } };
   const prior = runtimeReceipt(m, runtimeUuid(body.commandId, "commandId"), owner, canonicalPayloadHash(body));
   if (prior) return { status: 200, body: { outcome: "replayed", mission: m, receipt: prior, effectPermission: "none" } };
+  if (campaignControlCommands.includes(String(body.command))) return { status: 200, body: await controlFixedCampaign(ctx, m, body, owner) };
   if (body.command === "configure-linear-continuity") return { status: 200, body: await configure(ctx, m, body, owner) };
   if (!m.aggregate.linearContinuity || !["question", "decision"].includes(String(body.kind)) || typeof body.text !== "string" || !body.text.trim() || body.text.length > 4000) throw new MissionError(422, "linear_arbitration_input", "Existing continuity and bounded owner question/decision text required");
   const resolvesCommandId = body.resolvesCommandId === undefined ? undefined : runtimeUuid(body.resolvesCommandId, "resolvesCommandId");

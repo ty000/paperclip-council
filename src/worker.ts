@@ -2,6 +2,7 @@ import { registerContinuityJob } from "./continuity-runtime.js";
 import { registerLinearSourceResults } from "./linear-intake-revalidation.js";
 import { registerLinearContinuity } from "./linear-continuity-transport.js";
 import { handleLinearContinuityBoard } from "./linear-continuity-runtime.js";
+import { campaignControlCommands } from "./linear-campaign-control.js";
 import { handleCancellationRequest } from "./linear-continuity-cancellation.js";
 import { handleProjectMandate } from "./project-mandate-configuration.js";
 import { listContinuityMissions } from "./missions.js";
@@ -256,7 +257,7 @@ async function handleRequest(input: PluginApiRequestInput, context: PluginContex
   }
   if (input.routeKey.startsWith("model-profiles-")) return handleModelProfiles(context, input);
   if (input.routeKey.startsWith("project-mandate-")) return handleProjectMandate(context, input);
-  if (input.routeKey === "mission-command" && ["configure-linear-continuity", "reconcile-linear-continuity", "publish-linear-arbitration"].includes(String((input.body as { command?: string })?.command))) return handleLinearContinuityBoard(context, input);
+  if (input.routeKey === "mission-command" && ["configure-linear-continuity", "reconcile-linear-continuity", "publish-linear-arbitration", ...campaignControlCommands].includes(String((input.body as { command?: string })?.command))) return handleLinearContinuityBoard(context, input);
   if (input.routeKey === "model-selection-read") return inspectModelSelections(context, input);
   const profileCommand = (input.body as { command?: string } | null)?.command;
   if (["mission-command", "mission-agent-command"].includes(input.routeKey) && profileCommand === "select-model-profile") return chooseModelProfile(context, input);
