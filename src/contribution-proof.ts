@@ -7,12 +7,14 @@ import type { N1State } from "./n1-missions.js";
 import { readAdmission } from "./admission.js";
 import { readOrdinaryRun } from "./g4-native.js";
 import { physicalAgent } from "./model-state.js";
+import { integratedResult } from "./integration-contract.js";
 import { completionPolicy } from "./completion-contract.js";
 import { verifyContributionBundle, type ContributionBundleProof } from "./integration.js";
 
 export function sourceBase(m: MissionRecord, value: unknown) {
   if (!completionPolicy(m)) return undefined;
   if (typeof value !== "string" || !/^[a-f0-9]{40}$/.test(value)) throw new MissionError(422, "contribution_source_base", "Pin the full source base commit before any contribution");
+  if (m.aggregate.deliveryPredecessor && value !== m.aggregate.deliveryPredecessor.result.integratedCommit) throw new MissionError(409, "delivery_source_base", "The next delivery must pin the exact verified integrated predecessor as its Git base");
   return value;
 }
 export async function recordContributionProof(ctx: PluginContext, m: MissionRecord, contributionId: string, commit: string, value: unknown): Promise<ContributionBundleProof | undefined> {
@@ -34,20 +36,43 @@ export async function closeQualifiedContribution(ctx: PluginContext, m: MissionR
   const [envelope, run] = await Promise.all([readAdmission(ctx, { companyId: m.companyId, periodKey: (m.aggregate.n1 as N1State).periodKey }),
     readOrdinaryRun(ctx, { companyId: m.companyId, issueId: slot.childIssueId!, agentId, runId: slot.dispatchRunId! })]);
   slot = assertContributionClosure(m, contributionId, envelope, run.status);
+  const held = await holdPendingDelivery(ctx, m, slot, agentId, contributionId, persist);
+  if (held) return held;
+  return finishQualifiedClosure(ctx, m, slot, agentId, contributionId, persist);
+}
+
+async function finishQualifiedClosure(ctx: PluginContext, m: MissionRecord, slot: N1State["contributions"][number], agentId: string, contributionId: string,
+  persist: (m: MissionRecord, aggregate: MissionAggregate) => Promise<MissionRecord>) {
   if (!slot.proof!.closureClaimedAt) {
     const n1 = m.aggregate.n1 as N1State;
     m = await persist(m, { ...m.aggregate, n1: { ...n1, contributions: n1.contributions.map(s => s.contributionId === contributionId
       ? { ...s, proof: { ...s.proof!, closureClaimedAt: new Date().toISOString() } } : s) } });
   }
   const issue = await ctx.issues.get(slot.childIssueId!, m.companyId);
-  if (!issue || issue.projectId !== m.projectId || issue.parentId !== (slot.parentIssueId ?? m.rootIssueId) || issue.assigneeAgentId !== agentId
-      || !["blocked", "done"].includes(issue.status)) throw new MissionError(409, "contribution_closure_identity", "Retain the original child and claimed closure; no replacement issue or native wake");
-  if (issue.status !== "done") await ctx.issues.update(issue.id, { status: "done" }, m.companyId);
-  const after = await ctx.issues.get(issue.id, m.companyId);
-  if (!after || after.id !== issue.id || after.companyId !== m.companyId || after.projectId !== m.projectId || after.parentId !== issue.parentId || after.assigneeAgentId !== agentId || after.status !== "done") throw new MissionError(409, "contribution_closure_unknown", "The retained native closure must be observed before another contribution");
+  if (!contributionIssueMatches(issue, m, slot, agentId) || !["blocked", "done"].includes(issue!.status)) throw new MissionError(409, "contribution_closure_identity", "Retain the original child and claimed closure; no replacement issue or native wake");
+  if (issue!.status !== "done") await ctx.issues.update(issue!.id, { status: "done" }, m.companyId);
+  const after = await ctx.issues.get(issue!.id, m.companyId);
+  if (after?.id !== issue!.id || !contributionIssueMatches(after, m, slot, agentId) || after!.status !== "done") throw new MissionError(409, "contribution_closure_unknown", "The original closure must be observed");
   await finishContributionWait(ctx, m, contributionId);
   const n1 = m.aggregate.n1 as N1State;
   if (!n1.contributions.find(s => s.contributionId === contributionId)!.proof!.closedAt) m = await persist(m, { ...m.aggregate,
     n1: { ...n1, contributions: n1.contributions.map(s => s.contributionId === contributionId ? { ...s, proof: { ...s.proof!, closedAt: new Date().toISOString() } } : s) } });
   return m;
+}
+
+async function holdPendingDelivery(ctx: PluginContext, m: MissionRecord, slot: N1State["contributions"][number], agentId: string, contributionId: string,
+  persist: (m: MissionRecord, aggregate: MissionAggregate) => Promise<MissionRecord>) {
+  if (completionPolicy(m)?.result !== "integrated-verified") return null;
+  try { integratedResult(m); return null; } catch { /* Contribution proof is not delivery proof. */ }
+  const issue = await ctx.issues.get(slot.childIssueId!, m.companyId);
+  if (!contributionIssueMatches(issue, m, slot, agentId) || issue!.status !== "blocked") throw new MissionError(409, "contribution_delivery_pending", "The original proved code leaf must remain blocked until integrated delivery");
+  if (slot.proof!.readyAt) return m;
+  const n1 = m.aggregate.n1 as N1State;
+  return persist(m, { ...m.aggregate, n1: { ...n1, contributions: n1.contributions.map(s => s.contributionId === contributionId
+    ? { ...s, proof: { ...s.proof!, readyAt: new Date().toISOString() } } : s) } });
+}
+
+function contributionIssueMatches(issue: Awaited<ReturnType<PluginContext["issues"]["get"]>>, m: MissionRecord, slot: N1State["contributions"][number], agentId: string) {
+  const expected = { companyId: m.companyId, projectId: m.projectId, parentId: slot.parentIssueId !== undefined ? slot.parentIssueId : m.rootIssueId, assigneeAgentId: agentId };
+  return Boolean(issue && Object.entries(expected).every(([key, value]) => (issue[key as keyof typeof issue] ?? null) === value));
 }

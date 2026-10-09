@@ -52,7 +52,7 @@ async function configure(ctx: PluginContext, m: MissionRecord, body: Record<stri
   await assertN6Acyclic(ctx, m, source);
   await idleRoot(ctx, m);
   const admission = admissionAuthority(body);
-  const dep: N6Dependency = { protocol: "accepted-result-v1", sourceMissionId: source.missionId, sourceRootIssueId: source.rootIssueId,
+  const dep: N6Dependency = { ...dependencyProtocol(body, source), sourceMissionId: source.missionId, sourceRootIssueId: source.rootIssueId,
     expectedResult: subject(body.expectedResult), authorizedBy: actorId, authorizedAt: new Date().toISOString(),
     intentId: randomUUID(), guardIssueId: null, guardCreation: "claimed", relationConfirmed: false,
     ...admission, reservationId: randomUUID(), activationCommandId: randomUUID(), startCommandId: randomUUID() };
@@ -130,6 +130,11 @@ export async function reconcileN6(ctx: PluginContext, initial: MissionRecord): P
     return m.aggregate.n6!.blockage === error.code ? m : save(ctx, m, { ...m.aggregate.n6!, blockage: error.code });
   }
   if (!m.aggregate.n6!.verifiedAt) {
+    if (m.aggregate.n6!.protocol === "integrated-result-v1" && !m.aggregate.n6!.integrated) {
+      const { integratedResult } = await import("./integration-contract.js");
+      const source = await readN6Source(ctx, m, m.aggregate.n6!);
+      m = await save(ctx, m, { ...m.aggregate.n6!, integrated: integratedResult(source) });
+    }
     const artifact = await readN6Handoff(ctx, m);
     const at = new Date().toISOString();
     m = await n2Cas(ctx, m, { ...m.aggregate, n6: { ...m.aggregate.n6!, verifiedAt: at, verifiedArtifact: artifact, blockage: undefined },
@@ -166,4 +171,11 @@ export async function handleN6Board(ctx: PluginContext, input: PluginApiRequestI
     if (error instanceof MissionError || error instanceof AdmissionError) return { status: error.status, body: { error: error.message, code: error.code } };
     throw error;
   }
+}
+
+function dependencyProtocol(body: Record<string, unknown>, source: MissionRecord): Pick<N6Dependency, "protocol" | "integrated"> {
+  const protocol = body.protocol === undefined ? "accepted-result-v1" : body.protocol;
+  if (!["accepted-result-v1", "integrated-result-v1"].includes(String(protocol))) throw new MissionError(422, "n6_protocol", "Explicit supported result dependency required");
+  if (protocol === "integrated-result-v1" && !source.aggregate.n5?.authority.contract?.integration) throw new MissionError(422, "n6_integration_authority", "The predecessor must already have explicit integration authority");
+  return { protocol: protocol as N6Dependency["protocol"], ...(protocol === "integrated-result-v1" ? { integrated: body.integrated as N6Dependency["integrated"] } : {}) };
 }

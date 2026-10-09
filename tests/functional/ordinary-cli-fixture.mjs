@@ -13,6 +13,10 @@ assert.equal(new URL(base).hostname, "127.0.0.1");
 const issueId = process.env.PAPERCLIP_TASK_ID;
 const agentId = process.env.PAPERCLIP_AGENT_ID;
 const runId = process.env.PAPERCLIP_RUN_ID;
+process.on("uncaughtException", async error => {
+  await writeFile(resolve(config.runtime, `fixture-failure-${runId}.json`), JSON.stringify({ runId, message: String(error.message).slice(0, 2000) })).catch(() => {});
+  process.exitCode = 1;
+});
 const headers = { authorization: `Bearer ${process.env.PAPERCLIP_API_KEY}`, "x-paperclip-run-id": runId };
 async function api(method, path, body, expected) {
   const form = body instanceof FormData;
@@ -59,7 +63,7 @@ async function uploadCandidate() {
   git("bundle", "create", path, "refs/heads/base", "refs/heads/candidate");
   const bytes = await readFile(path); const expectedSha256 = createHash("sha256").update(bytes).digest("hex");
   const form = new FormData(); form.append("file", new Blob([bytes]), "candidate.bundle");
-  const attached = await api("POST", `/api/companies/${config.companyId}/issues/${config.rootIssueId}/attachments`, form);
+  const attached = await api("POST", `/api/companies/${config.companyId}/issues/${config.integrationMode ? issueId : config.rootIssueId}/attachments`, form);
   return { attachmentId: attached.id, candidateCommit, baseCommit: config.baseCommit, expectedSha256 };
 }
 let summary;
@@ -128,6 +132,11 @@ else if (inspection.task) {
 } else if (agentId === config.actors.lead && config.prePlanResume && await writeFile(resolve(config.runtime, "preplan-first-terminal"), runId, { flag: "wx" })
   .then(() => true, error => { if (error.code === "EEXIST") return false; throw error; })) {
   summary = { fixture: "Terminal lead before any plan; explicit resume required", runId, issueId };
+} else if (agentId === config.actors.lead && config.integrationMode && inspection.n1.integration?.runId === runId) {
+  git("commit", "--allow-empty", "-m", "fixture final leaf integration");
+  const candidate = await uploadCandidate();
+  await command("publish", candidate);
+  summary = { fixture: "N1 admitted final integration", candidateCommit: candidate.candidateCommit };
 } else if (agentId === config.actors.lead) {
   const contributions = inspection.n1.hierarchy?.leaves ?? ["alpha", "beta"].map(name => ({ contributionId: randomUUID(), assigneeAgentId: config.actors[name], title: name, ownedPaths: [`${name}.txt`] }));
   if (config.leadCommandBlock) {
@@ -143,6 +152,8 @@ else if (inspection.task) {
     await command("plan", { contributions, ...(config.completionMode ? { sourceBaseCommit: config.baseCommit } : {}) });
     for (const slot of contributions) await command("materialize", { contributionId: slot.contributionId });
   }
+  if (config.integrationMode) summary = { fixture: "N1 one existing code leaf planned/materialized; native driver continues" };
+  else {
   for (const slot of contributions) {
     const dispatched = await command("dispatch", { contributionId: slot.contributionId, reservationId: randomUUID(), requestedUnits: 1000 });
     const item = dispatched.mission.aggregate.n1.contributions.find(item => item.contributionId === slot.contributionId);
@@ -156,6 +167,7 @@ else if (inspection.task) {
   const candidate = await uploadCandidate();
   await command("publish", candidate);
   summary = { fixture: "N1 real CLI prerequisite", candidateCommit: candidate.candidateCommit };
+  }
 } else {
   const name = Object.entries(config.actors).find(([name, id]) => ["alpha", "beta", "gamma"].includes(name) && id === agentId)?.[0];
   assert(name);

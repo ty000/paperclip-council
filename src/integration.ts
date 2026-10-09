@@ -33,6 +33,7 @@ export type IntegratedCandidateInput = {
   companyId: string;
   issueId: string;
   attachmentId: string;
+  attachmentIssueId?: string;
   expectedByteSize?: number;
   expectedSha256: string;
   baseCommit: string;
@@ -58,6 +59,7 @@ export type IntegratedCandidateVerification = {
   subject: { companyId: string; issueId: string };
   candidate: {
     attachmentId: string;
+    attachmentIssueId?: string;
     byteSize: number;
     sha256: string;
     baseCommit: string;
@@ -348,10 +350,10 @@ function validateContributions(input: IntegratedCandidateInput): Array<{
 
 async function readIssueBoundBundle(
   ctx: PluginContext,
-  input: Pick<IntegratedCandidateInput, "companyId" | "issueId" | "attachmentId" | "expectedByteSize">,
+  input: Pick<IntegratedCandidateInput, "companyId" | "issueId" | "attachmentIssueId" | "attachmentId" | "expectedByteSize">,
   expectedSha256: string,
 ): Promise<{ bytes: Buffer; sha256: string }> {
-  const attachments = await ctx.issues.listAttachments(input.issueId, input.companyId);
+  const attachments = await ctx.issues.listAttachments(input.attachmentIssueId ?? input.issueId, input.companyId);
   if (!attachments.some((attachment) => attachment.id === input.attachmentId)) {
     throw new Error("Integrated candidate attachment is not attached to this issue");
   }
@@ -654,6 +656,7 @@ export async function verifyIntegratedCandidate(
       subject: { companyId: input.companyId, issueId: input.issueId },
       candidate: {
         attachmentId: input.attachmentId,
+        ...(input.attachmentIssueId ? { attachmentIssueId: input.attachmentIssueId } : {}),
         byteSize: bytes.byteLength,
         sha256,
         baseCommit,
@@ -669,7 +672,7 @@ export async function verifyIntegratedCandidate(
 }
 
 export type ContributionBundleProof = { protocol: "council-contribution-proof-v1"; attachmentId: string; sha256: string; byteSize: number;
-  segmentRootCommit: string; commit: string; changedPaths: string[]; checks: IntegratedCandidateCheck[]; verifiedAt: string; closureClaimedAt?: string; closedAt?: string };
+  segmentRootCommit: string; commit: string; changedPaths: string[]; checks: IntegratedCandidateCheck[]; verifiedAt: string; readyAt?: string; closureClaimedAt?: string; closedAt?: string };
 
 export async function verifyContributionBundle(ctx: PluginContext, input: Pick<IntegratedCandidateInput, "companyId" | "issueId" | "attachmentId" | "expectedSha256" | "baseCommit" | "candidateCommit"> & { contributionId: string; ownedPaths: string[] }): Promise<ContributionBundleProof> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.contributionId)) throw new Error("Contribution UUID required");

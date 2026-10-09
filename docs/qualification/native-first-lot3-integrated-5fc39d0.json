@@ -1,0 +1,102 @@
+{
+  "schema": "council-integrated-delivery-qualification.v1",
+  "outcome": "INSTALLED PROOF COMPLETION PROVIDER-FREE VALIDATED",
+  "qualifiedSourceSha": "5fc39d0e5d9b1f9b7ef087c75e4664dfdcc25909",
+  "councilVersion": "0.7.25",
+  "finishedAt": "2026-10-09T12:19:24.939Z",
+  "host": {
+    "sha": "61b3fd57a695614dc4a37e2303f426a34a9795cf",
+    "sdkVersion": "1.0.0",
+    "trackedUnchanged": true
+  },
+  "rawEvidence": {
+    "path": "artifacts/integrated-delivery-installed-lot3-5fc39d0.json",
+    "sha256": "2c360137da99249bb1790a90a1b9ea5af5215a1fd919494e45cdc518f27ebec2",
+    "retainedLocally": true
+  },
+  "source": {
+    "verifiedFiles": 133,
+    "relativeInventorySha256": "3d3cbdae47d0ea7b44ecfe5c0549b5275f5c96cdff703bf586da8bbbbf1edd58",
+    "workerSha256": "61c3c6ec299cbd977f0ac94a1fc6b224d3c92f22414106e6d19fb82c8e1305cc",
+    "helperSha256": {
+      "scripts/operations/github_integration.py": "49fb467ba79b22c098109806d38836158836c656bad3df35d80479138e42c978",
+      "scripts/operations/integrate_delivery.py": "46d2b360f97b527111842b9f1885990dd771b689b0c4056ff277651b7268dbc8"
+    }
+  },
+  "checks": {
+    "exactAgentApiBindings": "PASS",
+    "reportWhileRunningDoesNotAdmit": "PASS",
+    "realN1Prerequisite": "PASS",
+    "installedOrdinaryN2N3": "PASS",
+    "expectedCliRunsSucceeded": "PASS",
+    "replayNoExtraRun": "PASS",
+    "allReservationsSettled": "PASS",
+    "n5Handoff": "PASS"
+  },
+  "completionChecks": {
+    "childrenHeldUntilTerminalProof": "PASS",
+    "parentResultProof": "PASS",
+    "singleNativeNotification": "PASS",
+    "noAdditionalRun": "PASS"
+  },
+  "nativeRuns": {
+    "total": 8,
+    "succeeded": 8,
+    "settledReservations": 8,
+    "knownTokenUnits": 1200,
+    "remainingExposure": 0,
+    "usageSource": "deterministic fixture"
+  },
+  "delivery": {
+    "protocol": "integrated-result-v1",
+    "repository": "ty000/paperclip-council",
+    "baseRef": "main",
+    "fixturePrUrl": "https://github.com/ty000/paperclip-council/pull/4242",
+    "baseCommit": "c32489e2b60b389d487eb37d68b137a149bb5b00",
+    "candidateCommit": "7d599ecc34d365a73d01602a53b0b8ffb3e1b3bb",
+    "integratedCommit": "433d08c26cbd51efcf9d55544701f5b0b771c014",
+    "integrationReportHash": "fdd84a14499386180c699a8b9804850574dbcd400a67fb315bb39063fc67cf6a",
+    "postMergeChecks": [
+      {
+        "name": "integrated-ci",
+        "state": "passed",
+        "evidenceUrl": "https://github.com/ty000/paperclip-council/pull/4242"
+      }
+    ],
+    "baseContainsIntegrated": true,
+    "mergeParents": [
+      "c32489e2b60b389d487eb37d68b137a149bb5b00"
+    ],
+    "simulatedMergeCount": 1,
+    "integrationState": "verified",
+    "nativeLeafStatus": "done",
+    "nativeParentStatus": "backlog",
+    "notificationIncludesIntegratedCommit": true,
+    "proofId": "4cc1e4b5f2e0bf3413a66d35ebe887fad53000f218f7274021e44e72a12aeed8",
+    "proofDocumentKey": "council-completion-715ea8dd-8297-4057-8d07-30adc93aa723",
+    "proofRevisionId": "5281ae5e-63a5-48e5-99ee-5a8e2f6a1a0f",
+    "notificationCommentId": "cbf81c3d-97a6-4cc8-8701-bbf559ed5b1c"
+  },
+  "cleanup": {
+    "databaseCleaned": true,
+    "serverStopped": true,
+    "runtimeRemoved": true
+  },
+  "boundaries": {
+    "nativePaperclipApiWorkerJobsRunsAccountingDocuments": true,
+    "realLocalGitSquashAndAncestry": true,
+    "githubTransportAndEffects": "deterministic fixture",
+    "modelContentAndTokenUsage": "deterministic fixture",
+    "recetteInstalled": false,
+    "recetteActivated": false,
+    "realGithubMerge": false,
+    "realProviderRun": false,
+    "nativeCodeLeavesQualified": 1,
+    "twoLeafSequencing": "deterministic tests; full native campaign pending"
+  },
+  "replay": {
+    "checkout": "5fc39d0e5d9b1f9b7ef087c75e4664dfdcc25909",
+    "hostSha": "61b3fd57a695614dc4a37e2303f426a34a9795cf",
+    "command": "PAPERCLIP_TEST_HOST_ROOT=<prepared host at hostSha> COUNCIL_INTEGRATED_DELIVERY=1 COUNCIL_ORDINARY_DELIVERY=1 COUNCIL_CONTINUITY=1 COUNCIL_PROJECT_INTAKE=1 COUNCIL_HIERARCHY_COUNT=1 COUNCIL_LEAD_COMMAND_BLOCK=1 pnpm exec tsx tests/functional/ordinary-installed.ts artifacts/integrated-delivery-installed-<new-unique-name>.json"
+  }
+}

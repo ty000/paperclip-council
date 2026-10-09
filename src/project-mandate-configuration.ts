@@ -62,6 +62,7 @@ async function deliveryPolicy(ctx: PluginContext, companyId: string, body: Recor
   const delegatedPublication = await publication(ctx, companyId, body.publication);
   const hierarchy = body.hierarchy === undefined ? undefined : parseHierarchyPolicy(body.hierarchy);
   const completion = parseCompletionPolicy(body.completion, delegatedPublication, hierarchy);
+  if (delegatedPublication?.contract?.integration && (!hierarchy?.adoptExistingChildren || hierarchy.maxContributions !== 1 || completion?.result !== "integrated-verified")) throw new MissionError(422, "integration_leaf_policy", "Integrated deliveries explicitly adopt one existing code leaf and require integrated proof closure; native result dependencies sequence separate deliveries");
   return { publication: delegatedPublication, ...(hierarchy ? { hierarchy } : {}), ...(completion ? { completion } : {}) };
 }
 

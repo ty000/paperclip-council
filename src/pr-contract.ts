@@ -1,7 +1,8 @@
+import { parseIntegrationContract, type IntegrationContract } from "./integration-contract.js";
 import { canonicalPayloadHash, MissionError } from "./mission-primitives.js";
 import type { MissionRecord } from "./missions.js";
 
-export type PrContract = { protocol: "council-pr-contract-v1"; draftOnly: boolean; result: "draft-pr" | "reviewed-pr";
+export type PrContract = { protocol: "council-pr-contract-v1"; draftOnly: boolean; result: "draft-pr" | "reviewed-pr" | "integrated-verified"; integration?: IntegrationContract;
   feedback: "review-and-correct"; requiredChecks: string[] };
 export type GithubFeedback = { protocol: "publisher-github-feedback-v1"; provenance: "publisher_run_report";
   missionId: string; intentId: string; issueId: string; runId: string; observedAt: string;
@@ -17,12 +18,14 @@ export function parsePrContract(value: unknown): PrContract | undefined {
   if (value === undefined) return undefined;
   const v = value as PrContract;
   if (!v || Array.isArray(v) || v.protocol !== "council-pr-contract-v1" || typeof v.draftOnly !== "boolean"
-      || (v.result !== "draft-pr" && v.result !== "reviewed-pr") || (v.result === "draft-pr") !== v.draftOnly
+      || !["draft-pr", "reviewed-pr", "integrated-verified"].includes(v.result) || (v.result === "draft-pr") !== v.draftOnly
       || v.feedback !== "review-and-correct" || !Array.isArray(v.requiredChecks) || !v.requiredChecks.length || v.requiredChecks.length > 20
       || v.requiredChecks.some(name => typeof name !== "string" || !name.trim() || name.length > 200) || new Set(v.requiredChecks).size !== v.requiredChecks.length) {
     throw new MissionError(422, "pr_contract_required", "Explicit draft/result policy, bounded required checks and delegated independent feedback review required");
   }
-  return { protocol: v.protocol, draftOnly: v.draftOnly, result: v.result, feedback: v.feedback, requiredChecks: [...v.requiredChecks] };
+  if ((v.result === "integrated-verified") !== (v.integration !== undefined)) throw new MissionError(422, "integration_scope", "Only an explicit integrated result delegates merge authority");
+  const integration = v.integration === undefined ? undefined : parseIntegrationContract(v.integration);
+  return { ...(integration ? { integration } : {}), protocol: v.protocol, draftOnly: v.draftOnly, result: v.result, feedback: v.feedback, requiredChecks: [...v.requiredChecks] };
 }
 
 export function validateGithubFeedback(m: MissionRecord, value: unknown, actor: { agentId?: string | null; runId?: string | null }, observation: { url: string; headSha: string; draft: boolean; baseRef: string; headRef: string }) {

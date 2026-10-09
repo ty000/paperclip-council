@@ -20,7 +20,7 @@ export async function rebindN6Result(ctx: PluginContext, m: MissionRecord, body:
   if (Object.keys(body).some(k => !["companyId", "command", "commandId", "expectedVersion", "expectedResult", "reason", "preserveCoordinationRelease"].includes(k))) {
     throw new MissionError(403, "n6_rebind_scope", "Rebind cannot replace source, root, mandate, budget or authority");
   }
-  const next = { ...dep, expectedResult: expected, blockage: undefined };
+  const next = { ...dep, expectedResult: expected, blockage: undefined, ...(dep.protocol === "integrated-result-v1" ? { integrated: undefined } : {}) };
   const artifact = await readN6Handoff(ctx, { ...m, aggregate: { ...m.aggregate, n6: next } });
   // Canonical tuple comes from immutable accepted submission, not caller-supplied additional fields.
   if (canonicalPayloadHash(artifact.expectedResult) !== canonicalPayloadHash(expected)) throw new MissionError(409, "n6_rebind_scope", "Exact accepted tuple required");

@@ -4,10 +4,16 @@ import type { MissionRecord } from "./missions.js";
 import type { N1State } from "./n1-missions.js";
 import { n2Cas, nativeN2Profile } from "./n2-missions.js";
 import { completionEvidence } from "./completion-evidence.js";
+import { integratedResult } from "./integration-contract.js";
 import { completionPolicy, type CompletionState } from "./completion-contract.js";
 import { assertProjectDeparture } from "./project-mandate-guard.js";
 import { physicalAgent } from "./model-state.js";
 import { leadIssueId } from "./hierarchy-contract.js";
+
+function deliveredResultDescription(evidence: ReturnType<typeof completionEvidence>) {
+  if (evidence.integrated) return `${evidence.integrated.url}\nCommit intégré : ${evidence.integrated.integratedCommit}.`;
+  return evidence.publication?.observation?.url ?? "Candidat accepté sans publication autorisée";
+}
 
 async function assertClosureAccounting(ctx: PluginContext, m: MissionRecord) {
   const { envelope } = await nativeN2Profile(ctx, m);
@@ -93,12 +99,23 @@ async function finishNotification(ctx: PluginContext, m: MissionRecord) {
 export async function reconcileCompletion(ctx: PluginContext, m: MissionRecord) {
   if (!completionPolicy(m) || m.aggregate.completion?.state === "closed") return m;
   await assertProjectDeparture(ctx, m); await assertClosureAccounting(ctx, m);
+  if (completionPolicy(m)?.result === "integrated-verified") {
+    integratedResult(m);
+    if (m.aggregate.n5?.integration?.recovery) await (await import("./integration-recovery.js")).assertIntegrationRecoveryStable(ctx, m);
+    const obligations = m.aggregate.n5!.integration!.obligations;
+    if (m.aggregate.n5!.authority.contract!.integration!.parentObligations.length) {
+      const doc = await ctx.issues.documents.get(m.rootIssueId, `council-parent-obligations-${m.missionId}`, m.companyId);
+      if (!obligations || doc?.id !== obligations.documentId || doc.latestRevisionId !== obligations.revisionId || canonicalPayloadHash(doc.body) !== obligations.bodyHash) throw new MissionError(409, "completion_parent_obligations", "Exact own parent evidence must remain current before closure");
+    }
+    const { closeQualifiedContribution } = await import("./contribution-proof.js");
+    for (const slot of (m.aggregate.n1 as N1State).contributions) m = await closeQualifiedContribution(ctx, m, slot.contributionId, (before, aggregate) => n2Cas(ctx, before, aggregate));
+  }
   if (!m.aggregate.completion) {
     const evidence = completionEvidence(m), proofId = canonicalPayloadHash(evidence), documentKey = `council-completion-${m.missionId}`;
     const runId = m.aggregate.n2!.rounds.at(-1)!.handoff.reviewerRunId;
     const authorAgentId = physicalAgent(m, m.aggregate.responsibilities.finalReviewerAgentId, { runId });
     m = await n2Cas(ctx, m, { ...m.aggregate, completion: { state: "closing", proofId, documentKey, body: JSON.stringify({ ...evidence, proofId }), qualifiedAt: new Date().toISOString(), closedNodeIds: [],
-      notification: { state: "pending", authorAgentId, body: `Council : résultat autorisé terminé (${evidence.result}).\nCandidat : ${evidence.submission.candidateCommit}.\n${evidence.publication?.observation?.url ?? "Candidat accepté sans publication autorisée"}\nPreuve native : ${documentKey}.\nProof ID : ${proofId}` } } });
+      notification: { state: "pending", authorAgentId, body: `Council : résultat autorisé terminé (${evidence.result}).\nCandidat : ${evidence.submission.candidateCommit}.\n${deliveredResultDescription(evidence)}\nPreuve native : ${documentKey}.\nProof ID : ${proofId}` } } });
   }
   if (canonicalPayloadHash(completionEvidence(m)) !== m.aggregate.completion!.proofId) throw new MissionError(409, "completion_subject_changed", "Retain the original proof; a changed candidate or evidence cannot consume its closure");
   m = await finishProofDocument(ctx, m, m.aggregate.completion!);

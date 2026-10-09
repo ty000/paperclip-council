@@ -39,7 +39,7 @@ async function assertRecoveryChild(ctx: PluginContext, m: MissionRecord, slot: N
   const agentId = physicalAgent(m, slot.assigneeAgentId, { issueId: slot.childIssueId, runId: slot.dispatchRunId });
   const issue = await ctx.issues.get(slot.childIssueId!, m.companyId);
   if (!issue || issue.companyId !== m.companyId || issue.projectId !== m.projectId
-      || issue.parentId !== (slot.parentIssueId ?? m.rootIssueId) || issue.assigneeAgentId !== agentId
+      || issue.parentId !== (slot.parentIssueId !== undefined ? slot.parentIssueId : m.rootIssueId) || issue.assigneeAgentId !== agentId
       || !["done", "blocked"].includes(issue.status) || issue.checkoutRunId || issue.executionRunId) {
     throw new MissionError(409, "contribution_recovery_issue", "The original terminal child must retain its identity without any native run lock");
   }

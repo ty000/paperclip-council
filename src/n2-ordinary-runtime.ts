@@ -1,3 +1,4 @@
+import { candidateAttachmentTarget } from "./candidate-attachment.js";
 import { feedbackCorrectionRound } from "./pr-contract.js";
 import { prepareFeedbackContinuation } from "./pr-feedback.js";
 import { physicalAgent } from "./model-state.js";
@@ -42,7 +43,8 @@ async function requireCli(ctx: PluginContext, mission: MissionRecord, agentId: s
 async function assertRootIdle(ctx: PluginContext, mission: MissionRecord) {
   const root = await ctx.issues.get(mission.rootIssueId, mission.companyId);
   const summary = await ctx.issues.summaries.getOrchestration({ companyId: mission.companyId, issueId: mission.rootIssueId, includeSubtree: false });
-  if (!root || root.assigneeAgentId !== (mission.aggregate.hierarchy?.leaves ? mission.aggregate.responsibilities.integrationLeadAgentId : physicalAgent(mission, mission.aggregate.responsibilities.integrationLeadAgentId, { issueId: mission.rootIssueId }))
+  const rootLeaf = mission.aggregate.projectMandate?.completion?.result === "integrated-verified" ? mission.aggregate.hierarchy?.leaves?.find(l => l.issueId === mission.rootIssueId) : undefined;
+  if (!root || root.assigneeAgentId !== (rootLeaf ? physicalAgent(mission, rootLeaf.assigneeAgentId, { issueId: rootLeaf.issueId }) : mission.aggregate.hierarchy?.leaves ? mission.aggregate.responsibilities.integrationLeadAgentId : physicalAgent(mission, mission.aggregate.responsibilities.integrationLeadAgentId, { issueId: mission.rootIssueId }))
       || root.status !== (mission.aggregate.nativeWakePolicy ? "blocked" : "in_progress")
       || root.executionPolicy || root.executionState || summary.runs.some(run => ["queued", "running"].includes(run.status))) {
     throw new MissionError(409, "ordinary_root_not_idle", "Root must remain under its lead, without native review policy/state or active run");
@@ -218,6 +220,7 @@ async function recoverTerminalResubmission(
     runId: identity.runId,
     journalAction: "owner_recovered_terminal_resubmission",
     correctionTaskId: task.taskId,
+    attachmentIssueId: candidateAttachmentTarget(mission, task.issueId),
   });
 }
 

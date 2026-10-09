@@ -109,6 +109,7 @@ export type MissionAggregate = {
   workspacePreflight?: import("./workspace-preflight.js").WorkspacePreflightProfile;
   continuity?: import("./continuity-policy.js").ContinuityPolicy;
   projectMandate?: import("./project-mandate-state.js").ProjectMandateSnapshot;
+  deliveryPredecessor?: { sourceMissionId: string; result: ReturnType<typeof import("./integration-contract.js").integratedResult> };
   completion?: import("./completion-contract.js").CompletionState;
   hierarchy?: import("./hierarchy-contract.js").HierarchyState;
   nativeWakePolicy?: import("./native-wake-policy.js").NativeWakePolicy;
@@ -362,7 +363,7 @@ export async function getMissionByRootIssue(
 /** Only exact persisted N1 operational/leaf bindings, with ambiguity retained. */
 export async function getMissionByN1Issue(ctx: PluginContext, companyId: string, issueId: string): Promise<MissionRecord | null> {
   const rows = await ctx.db.query<MissionRow>(`SELECT ${selectColumns} FROM ${table(ctx)} WHERE company_id = $1
-    AND (aggregate->'n1'->'coordination'->>'issueId' = $2 OR aggregate->'n1'->'contributions' @> $3::jsonb) LIMIT 2`,
+    AND (aggregate->'n1'->'coordination'->>'issueId' = $2 OR aggregate->'n1'->'integration'->>'issueId' = $2 OR aggregate->'n1'->'contributions' @> $3::jsonb) LIMIT 2`,
     [companyId, issueId, JSON.stringify([{ childIssueId: issueId }])]);
   if (rows.length > 1) throw new MissionError(409, "n1_task_ambiguous", "N1 task must belong to one mission");
   return rows[0] ? parseMissionRow(rows[0]) : null;
@@ -537,7 +538,12 @@ export async function createMission(ctx: PluginContext, companyId: string, actor
   try {
     const issue = await ctx.issues.get(create.rootIssueId, companyId);
     if (!issue || issue.companyId !== companyId) throw new MissionError(404, "root_issue_not_found", "Root issue not found in this company");
-    if (issue.parentId) throw new MissionError(422, "root_issue_required", "Mission issue must be a root issue");
+    if (issue.parentId) {
+      const { readProjectMandate, projectIssues } = await import("./project-mandate-state.js");
+      const policy = await readProjectMandate(ctx, companyId, create.projectId);
+      const { isIntegratedLeaf } = await import("./delivery-leaves.js");
+      if (!policy?.content.enabled || policy.authorizedBy !== ownerUserId || !isIntegratedLeaf(issue as any, policy, await projectIssues(ctx, companyId, create.projectId))) throw new MissionError(422, "root_issue_required", "A child can own a mission only under explicit current per-leaf integrated delivery authority");
+    }
     if (issue.projectId !== create.projectId) throw new MissionError(422, "project_scope_mismatch", "Mission project must match the root issue project");
     const project = await ctx.projects.get(create.projectId, companyId);
     if (!project || project.companyId !== companyId || project.archivedAt) {

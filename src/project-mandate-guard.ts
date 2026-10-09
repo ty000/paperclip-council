@@ -1,3 +1,4 @@
+import { assertDeliveryPredecessor } from "./delivery-leaves.js";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { canonicalPayloadHash, MissionError } from "./mission-primitives.js";
 import type { MissionRecord } from "./missions.js";
@@ -25,6 +26,7 @@ export async function assertProjectDeparture(ctx: PluginContext, m: MissionRecor
   if (canonicalPayloadHash(pinned.completion ?? null) !== canonicalPayloadHash(policy.content.completion ?? null)) {
     throw new MissionError(409, "completion_authority_changed", "Completion must retain the exact pinned result authority");
   }
+  await assertDeliveryPredecessor(ctx, m);
   await assertHierarchySources(ctx, m);
 }
 

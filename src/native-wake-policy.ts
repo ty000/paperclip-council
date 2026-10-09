@@ -10,9 +10,14 @@ import { n1LeadExecution } from "./n1-integration-state.js";
 export type NativeWakePolicy = { protocol: "council-native-wake-v1" }
   | { protocol: "council-native-wake-v2"; rootBaseline: Array<{ runId: string; agentId: string }>; runLimit?: number };
 
+function mappedParent(m: MissionRecord, issueId: string) {
+  const leaf = m.aggregate.hierarchy?.leaves?.find(item => item.issueId === issueId);
+  return leaf ? leaf.parentId : m.rootIssueId;
+}
+
 function matchesIssue(issue: Awaited<ReturnType<PluginContext["issues"]["get"]>>, m: MissionRecord, issueId: string, agentId: string) {
   const bindings = { id: issueId, companyId: m.companyId, projectId: m.projectId, assigneeAgentId: agentId,
-    parentId: issueId === leadIssueId(m) || issueId === n1LeadExecution(m).issueId ? null : m.aggregate.hierarchy?.leaves?.find(leaf => leaf.issueId === issueId)?.parentId ?? m.rootIssueId };
+    parentId: issueId === leadIssueId(m) || issueId === n1LeadExecution(m).issueId ? null : mappedParent(m, issueId) };
   return Boolean(issue && Object.entries(bindings).every(([key, expected]) => (issue[key as keyof typeof issue] ?? null) === expected));
 }
 
@@ -66,16 +71,21 @@ export async function finishN1Disposition(ctx: PluginContext, m: MissionRecord, 
       throw new MissionError(409, "native_candidate_disposition", "Only the recorded candidate's exact lead run may park the root");
     }
     await observeStatus(ctx, m, issueId, agentId, "blocked");
-    if (issueId !== m.rootIssueId) {
+    if (issueId !== m.rootIssueId) await parkProductRoot(ctx, m);
+  }
+  return m;
+}
+
+async function parkProductRoot(ctx: PluginContext, m: MissionRecord) {
       const root = await ctx.issues.get(m.rootIssueId, m.companyId);
-      if (!root || root.parentId || root.assigneeAgentId !== m.aggregate.responsibilities.integrationLeadAgentId
-          || !["backlog", "blocked"].includes(root.status) || root.checkoutRunId || root.executionRunId) {
+      const leaf = m.aggregate.projectMandate?.completion?.result === "integrated-verified" ? m.aggregate.hierarchy?.leaves?.find(l => l.issueId === m.rootIssueId) : undefined;
+      const agentId = leaf ? physicalAgent(m, leaf.assigneeAgentId, { issueId: leaf.issueId }) : m.aggregate.responsibilities.integrationLeadAgentId;
+      const expected = { companyId: m.companyId, projectId: m.projectId, parentId: leaf?.parentId ?? null, assigneeAgentId: agentId };
+      if (!root || Object.entries(expected).some(([key, value]) => (root[key as keyof typeof root] ?? null) !== value)
+          || !["backlog", "blocked"].includes(root.status) || [root.checkoutRunId, root.executionRunId].some(Boolean)) {
         throw new MissionError(409, "hierarchy_root_wait_unknown", "Original product root must remain waiting under its declared lead");
       }
       if (root.status !== "blocked") await ctx.issues.update(root.id, { status: "blocked" }, m.companyId);
       const after = await ctx.issues.get(root.id, m.companyId);
       if (after?.status !== "blocked") throw new MissionError(409, "hierarchy_root_wait_unknown", "Product root waiting state was not observed");
-    }
-  }
-  return m;
 }

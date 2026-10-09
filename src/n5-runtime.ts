@@ -1,3 +1,4 @@
+import { assertIntegratedLeafContract, assertPublicationOperation, integrationAdmissionPending } from "./integration-contract.js";
 import { parsePrContract, validateGithubFeedback, githubFeedbackStates } from "./pr-contract.js";
 import { n5PublisherInstructions } from "./n5-instructions.js";
 import { requestN5Correction, rebindN5Plan } from "./n5-continuation.js";
@@ -38,6 +39,7 @@ async function authorize(ctx: PluginContext, m: MissionRecord, body: Record<stri
   const baseRef = text(body.baseRef, "baseRef"); const headRef = text(body.headRef, "headRef");
   validatePublicationRefs(repository, baseRef, headRef);
   const contract = parsePrContract(body.contract);
+  assertIntegratedLeafContract(m, contract);
   if (contract && (!m.aggregate.projectMandate || !m.aggregate.continuity)) throw new MissionError(422, "pr_feedback_delegation", "Project mandate and durable ordinary continuity must delegate the feedback loop");
   assertProjectPublication(m, { publisherAgentId, repository, baseRef, headRef, contract });
   const plan = await readN5Plan(ctx, m, runtimeUuid(body.planRevisionId, "planRevisionId"), body.planDocumentKey === undefined ? undefined : text(body.planDocumentKey, "planDocumentKey"));
@@ -81,7 +83,7 @@ export async function startN5Publication(ctx: PluginContext, initial: MissionRec
   return resumeN5Creation(ctx, m);
 }
 
-async function resumeN5Creation(ctx: PluginContext, initial: MissionRecord) {
+export async function resumeN5Creation(ctx: PluginContext, initial: MissionRecord) {
   let m = initial; let p = m.aggregate.n5?.publication;
   if (!p || p.creation === "confirmed" || p.issueId) return m;
   let publisherAgentId = modelLaunch(m, p.reservationId)?.agentId ?? m.aggregate.n5!.authority.publisherAgentId;
@@ -152,6 +154,10 @@ export async function reconcileN5(ctx: PluginContext, initial: MissionRecord) {
   await assertNativeRunInventory(ctx, initial);
   let m = initial;
   if (!m.aggregate.n5) return m;
+  if (integrationAdmissionPending(m)) {
+    const { startIntegratedDelivery } = await import("./integration-runtime.js");
+    if (inspectN5(m)?.publicationReady) return startIntegratedDelivery(ctx, m);
+  }
   if (!m.aggregate.n5.publication || m.aggregate.n5.continuation && !m.aggregate.n5.continuation.updateAdmitted
       && m.aggregate.n2?.status === "accepted" && m.aggregate.n2.activeSubmissionId !== m.aggregate.n5.publication.submission.submissionId) return startN5Publication(ctx, m);
   let p = m.aggregate.n5.publication;
@@ -167,8 +173,15 @@ export async function reconcileN5(ctx: PluginContext, initial: MissionRecord) {
     m = await observeVariantRun(ctx, m, p.reservationId);
     m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...p, settledAt: new Date().toISOString() } });
   }
-  if (m.aggregate.n2?.ordinary && (!m.aggregate.n5!.authority.contract || p.observation?.matchesCandidate && p.feedbackReport && p.observation.draft === m.aggregate.n5!.authority.contract.draftOnly)) await ctx.issues.update(p.issueId!, { status: "done" }, m.companyId);
-  return m.aggregate.n5!.publication!.claimedAt ? refreshN5Observation(ctx, m) : m;
+  if (ordinaryPublisherClosable(m)) await ctx.issues.update(p.issueId!, { status: "done" }, m.companyId);
+  return p.operation === "integrate" ? m : m.aggregate.n5!.publication!.claimedAt ? refreshN5Observation(ctx, m) : m;
+}
+
+function ordinaryPublisherClosable(m: MissionRecord) {
+  const n5 = m.aggregate.n5!, p = n5.publication!;
+  if (!m.aggregate.n2?.ordinary) return false;
+  if (p.operation === "integrate") return n5.integration?.state === "verified";
+  return !n5.authority.contract || Boolean(p.observation?.matchesCandidate && p.feedbackReport && p.observation.draft === n5.authority.contract.draftOnly);
 }
 
 async function executeN5Board(ctx: PluginContext, input: { companyId: string; missionId: string; actorUserId: string | null; body: Record<string, unknown> }) {
@@ -182,13 +195,23 @@ async function executeN5Board(ctx: PluginContext, input: { companyId: string; mi
       { actorType: "user", actorId: input.actorUserId, userId: input.actorUserId }, input.body) : reconciled;
     return { outcome: "reconciled", mission: updated };
   }
+  if (input.body.command === "reconcile-integration-recovery") {
+    const { reconcileIntegrationRecovery } = await import("./integration-recovery.js");
+    const prior = runtimeReceipt(m, runtimeUuid(input.body.commandId, "commandId"), input.actorUserId, canonicalPayloadHash(input.body));
+    return prior ? { outcome: "replayed", effectPermission: "none", mission: m, receipt: prior } : reconcileIntegrationRecovery(ctx, m, input.body, input.actorUserId);
+  }
+  if (input.body.command === "record-parent-obligations") {
+    const { recordParentObligations } = await import("./integration-runtime.js");
+    const prior = runtimeReceipt(m, runtimeUuid(input.body.commandId, "commandId"), input.actorUserId, canonicalPayloadHash(input.body));
+    return prior ? { outcome: "replayed", effectPermission: "none", mission: m, receipt: prior } : recordParentObligations(ctx, m, input.body, input.actorUserId);
+  }
   if (input.body.command === "request-delivery-correction") return requestN5Correction(ctx, m, input.body, input.actorUserId);
   const prior = runtimeReceipt(m, runtimeUuid(input.body.commandId, "commandId"), input.actorUserId, canonicalPayloadHash(input.body));
   if (prior) return { outcome: "replayed", effectPermission: "none", mission: m, receipt: prior };
   return authorize(ctx, m, input.body, input.actorUserId);
 }
 
-async function bindPublisher(ctx: PluginContext, m: MissionRecord, input: PluginApiRequestInput) {
+export async function bindPublisher(ctx: PluginContext, m: MissionRecord, input: PluginApiRequestInput) {
   const n5 = m.aggregate.n5; const p = n5?.publication;
   const launch = p ? modelLaunch(m, p.reservationId) : undefined;
   if (!n5 || !p || !p.issueId || input.params.issueId !== p.issueId || input.actor.actorType !== "agent"
@@ -229,6 +252,7 @@ export async function handleN5Agent(ctx: PluginContext, input: PluginApiRequestI
       return { status: 200, body: { outcome: "replayed", effectPermission: "none", mission: m, receipt: prior } };
     }
     const n5 = m.aggregate.n5!; let p = n5.publication!;
+    assertPublicationOperation(p);
     if (body.command === "n5-claim-publication") {
       if (p.claimedAt) throw new MissionError(409, "n5_effect_already_claimed", "One publication intent is already consumed; correlate readback without another effect");
       await assertNativeRunInventory(ctx, m);

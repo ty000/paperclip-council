@@ -2,7 +2,8 @@ import type { N3CandidateSubject } from "./n3-opinions.js";
 import type { MissionRecord } from "./missions.js";
 
 export type N6Dependency = {
-  protocol: "accepted-result-v1";
+  protocol: "accepted-result-v1" | "integrated-result-v1";
+  integrated?: ReturnType<typeof import("./integration-contract.js").integratedResult>;
   sourceMissionId: string;
   sourceRootIssueId: string;
   expectedResult: N3CandidateSubject;
@@ -33,5 +34,5 @@ export function inspectN6(mission: MissionRecord) {
     nextActor: dispatched ? mission.aggregate.responsibilities.integrationLeadAgentId : dependency.coordination?.nextActor ?? dependency.authorizedBy,
     nextAction: dependency.coordination && dependency.coordination.state !== "released" ? `Coordination ${dependency.coordination.state}: ${dependency.coordination.reason}` : dispatched ? "Lead executes the admitted downstream mission"
       : dependency.blockage ? "Waiting for the authorized predecessor: exact acceptance, unchanged candidate/mandate and settled usage are required. Owner can reconcile the same dependency." : "Wait for the exact accepted predecessor and settled usage; reconcile-result-dependency recovers missed events",
-    publicationRequired: false };
+    publicationRequired: dependency.protocol === "integrated-result-v1" };
 }

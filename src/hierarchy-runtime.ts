@@ -41,6 +41,16 @@ async function assertLinearNode(ctx: PluginContext, m: MissionRecord, node: Hier
   requireLinear(doc?.latestRevisionId === node.linearSource.documentRevisionId && canonicalPayloadHash(doc.body) === node.linearSource.bodySha256, "linear_source_document_changed");
 }
 
+async function sourceBlockerIds(ctx: PluginContext, m: MissionRecord, issueId: string, ids: string[]) {
+  const slot = (m.aggregate.n1 as import("./n1-missions.js").N1State | undefined)?.contributions.find(s => s.childIssueId === issueId) as import("./n1-missions.js").N1State["contributions"][number] | undefined;
+  const waitId = slot?.nativeWait?.issueId;
+  if (m.aggregate.projectMandate?.completion?.result !== "integrated-verified" || !waitId || !ids.includes(waitId)) return ids.sort();
+  const wait = await ctx.issues.get(waitId, m.companyId);
+  const expected = { companyId: m.companyId, projectId: m.projectId, originKind: "plugin:private.paperclip-council:operation:contribution-settlement", originId: `${m.missionId}:${slot!.contributionId}`, parentId: null, assigneeAgentId: null, assigneeUserId: null };
+  if (!wait || Object.entries(expected).some(([k, v]) => (wait[k as keyof typeof wait] ?? null) !== v)) throw new MissionError(409, "hierarchy_wait_identity", "Only the exact durable Council technical wait is separate from product dependencies");
+  return ids.filter(id => id !== waitId).sort();
+}
+
 /** All sources remain native. Changes require a new owner decision, never inferred adoption. */
 export async function assertHierarchySources(ctx: PluginContext, m: MissionRecord) {
   const hierarchy = m.aggregate.hierarchy;
@@ -48,7 +58,7 @@ export async function assertHierarchySources(ctx: PluginContext, m: MissionRecor
   await assertLinearReadiness(ctx, m);
   const issues = await projectIssues(ctx, m.companyId, m.projectId);
   const expected = new Set(hierarchy.nodes.map(node => node.issueId));
-  const operational = new Set([m.aggregate.n5?.publication?.issueId, m.aggregate.n5?.continuation?.previousPublication.issueId].filter(Boolean));
+  const operational = new Set([m.aggregate.n5?.publication?.issueId, m.aggregate.n5?.continuation?.previousPublication.issueId, m.aggregate.n5?.integration?.previousPublication.issueId].filter(Boolean));
   if (issues.some(issue => issue.parentId && expected.has(issue.parentId) && !expected.has(issue.id) && !operational.has(issue.id))) {
     throw new MissionError(409, "hierarchy_source_changed", "A new descendant is outside the pinned hierarchy; retain all tasks without another departure");
   }
@@ -62,7 +72,7 @@ export async function assertHierarchySources(ctx: PluginContext, m: MissionRecor
     if (!issue || issue.id !== node.issueId || issue.companyId !== m.companyId || issue.projectId !== m.projectId
         || !issues.some(item => item.id === issue.id) || issue.parentId !== node.parentId || issue.title !== node.title
         || !descriptionMatchesSource(m, issue.id, issue.description, node.descriptionHash)
-        || issue.assigneeAgentId !== agentId || canonicalPayloadHash(relations.blockedBy.map(item => item.id).sort()) !== canonicalPayloadHash(node.blockedByIssueIds)) {
+        || issue.assigneeAgentId !== agentId || canonicalPayloadHash(await sourceBlockerIds(ctx, m, node.issueId, relations.blockedBy.map(item => item.id))) !== canonicalPayloadHash(node.blockedByIssueIds)) {
       throw new MissionError(409, "hierarchy_source_changed", "Pinned task identity, result, assignment or native dependencies changed; no replacement or blocker removal");
     }
     if (leaf && (await ctx.issues.documents.get(leaf.issueId, "council-work", m.companyId))?.latestRevisionId !== leaf.documentRevisionId) {

@@ -7,7 +7,9 @@ import { completionEvidence } from "../src/completion-evidence.js";
 import { parseCompletionPolicy } from "../src/completion-contract.js";
 import { assertContributionClosure } from "../src/contribution-closure.js";
 
-const f = vi.hoisted(() => ({ m: null as any, reservations: [] as any[], delivery: null as any, guard: vi.fn() }));
+const f = vi.hoisted(() => ({ m: null as any, reservations: [] as any[], delivery: null as any, integrated: null as any, guard: vi.fn() }));
+vi.mock("../src/integration-contract.js", () => ({ integratedResult: () => f.integrated }));
+vi.mock("../src/contribution-proof.js", () => ({ closeQualifiedContribution: async (_ctx: unknown, m: any) => m }));
 vi.mock("../src/n2-missions.js", () => ({ nativeN2Profile: async () => ({ envelope: { reservations: f.reservations } }),
   n2Cas: async (_ctx: unknown, m: any, aggregate: any) => (f.m = { ...m, version: m.version + 1, aggregate }) }));
 vi.mock("../src/n5-preflight.js", () => ({ acceptedN5Submission: (m: any) => m.aggregate.n2.submissions.at(-1) }));
@@ -18,6 +20,7 @@ vi.mock("../src/model-state.js", () => ({ physicalAgent: (_m: unknown, agent: st
 const hierarchy = { protocol: "council-hierarchy-v1", execution: "sequential", adoptExistingChildren: true, maxContributions: 3 };
 beforeEach(() => {
   vi.resetAllMocks();
+  f.integrated = null;
   f.m = { companyId: "company", projectId: "project", missionId: "mission", rootIssueId: "root", version: 1,
     aggregate: { mandate: { acceptanceCriteria: ["explicit result"] }, responsibilities: { finalReviewerAgentId: "reviewer", integrationLeadAgentId: "lead" },
       projectMandate: { completion: { protocol: "council-proof-close-v1", result: "draft-pr" } },
@@ -76,6 +79,16 @@ it("closes parents bottom-up only after proof, then confirms one agent-attribute
   expect(result.aggregate.completion?.proofId).toBe(canonicalPayloadHash(completionEvidence(result)));
   await reconcileCompletion(c.ctx, result);
   expect(c.createComment).toHaveBeenCalledOnce(); expect(c.upsert).toHaveBeenCalledOnce();
+});
+it("reports the integrated PR and commit in the native completion notification", async () => {
+  f.m.aggregate.projectMandate.completion.result = "integrated-verified";
+  f.m.aggregate.n5 = { authority: { contract: { integration: { parentObligations: [] } } }, integration: {} };
+  f.integrated = { protocol: "integrated-result-v1", url: "https://github.com/test/repo/pull/1", integratedCommit: "e".repeat(40) };
+  f.delivery = { authority: { contract: { result: "integrated-verified" } }, publication: {} };
+  const c = context(); await reconcileCompletion(c.ctx, f.m);
+  expect(c.comments[0].body).toContain(f.integrated.url);
+  expect(c.comments[0].body).toContain(`Commit intégré : ${f.integrated.integratedCommit}`);
+  expect(c.comments[0].body).not.toContain("sans publication autorisée");
 });
 it("closes the settled planner and distinct integration task without leaving an operational task orphaned", async () => {
   f.m.aggregate.n1.integration = { issueId: "integration", settledAt: "observed" };
