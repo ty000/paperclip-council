@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { expect, it } from "vitest";
 import { canonicalPayloadHash, type MissionRecord } from "../src/missions.js";
-import { validateCampaignReviewReport, type CampaignClosureSubject } from "../src/campaign-closure-contract.js";
+import { assertCampaignClosureReadback, validateCampaignReviewReport, type CampaignClosureSubject } from "../src/campaign-closure-contract.js";
 import { controlFixedCampaign } from "../src/linear-campaign-control.js";
+import { nativeRunBindings } from "../src/native-run-bindings.js";
 
 const hash = (value: unknown) => canonicalPayloadHash(value);
 function subject(): CampaignClosureSubject {
@@ -58,4 +59,22 @@ it("rejects a competing cancellation after the terminal publication CAS claim", 
           settlementCommandId: randomUUID(), runId: randomUUID(), wake: "claimed" }, proofDocument: { key: "proof", body: "{}" }, nativeClosures: [] } } } as unknown as MissionRecord;
   await expect(controlFixedCampaign({} as never, mission, { command: "cancel-linear-campaign", reason: "Stop", commandId: randomUUID(), expectedVersion: 7 }, "owner"))
     .rejects.toMatchObject({ code: "linear_campaign_terminal_claimed" });
+});
+
+it("includes the exact global review run in native safepoint and release bindings", () => {
+  const agentId = randomUUID(), issueId = randomUUID(), runId = randomUUID(), reservationId = randomUUID();
+  const mission = { aggregate: { campaignClosure: { task: { agentId, issueId, runId, reservationId, wake: "claimed" } } } } as MissionRecord;
+  expect(nativeRunBindings(mission)).toContainEqual({ agentId, issueId, runId, reservationId, pending: false });
+  mission.aggregate.campaignClosure!.task.runId = null;
+  expect(nativeRunBindings(mission)[0]).toMatchObject({ agentId, issueId, reservationId, pending: true });
+});
+
+it("requires comment readback before statuses and the campaign root status last", () => {
+  const rootSourceId = randomUUID(), leafSourceId = randomUUID(), readbackSha256 = hash("readback");
+  const updates = [{ sourceId: leafSourceId, state: "completed" }, { sourceId: rootSourceId, state: "completed" }];
+  const effects = [{ sourceId: rootSourceId, kind: "comment", readbackSha256 },
+    { sourceId: leafSourceId, kind: "status", readbackSha256 }, { sourceId: rootSourceId, kind: "status", readbackSha256 }];
+  expect(() => assertCampaignClosureReadback(rootSourceId, updates, effects)).not.toThrow();
+  expect(() => assertCampaignClosureReadback(rootSourceId, updates, [effects[1], effects[0], effects[2]])).toThrowError(/comment first/);
+  expect(() => assertCampaignClosureReadback(rootSourceId, [...updates].reverse(), effects)).toThrowError(/root last/);
 });

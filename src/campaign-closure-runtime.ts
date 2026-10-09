@@ -10,7 +10,7 @@ import { linearPublicationState } from "./linear-continuity-transport.js";
 import { readLinearProof } from "./linear-continuity-documents.js";
 import { assertLinearContinuityDeparture } from "./linear-continuity-control.js";
 import { campaignMembersSafe, listCampaignMembers } from "./repository-campaign.js";
-import { campaignClosureFingerprint, validateCampaignReviewReport,
+import { assertCampaignClosureReadback, campaignClosureFingerprint, validateCampaignReviewReport,
   type CampaignClosureState, type CampaignReviewTask } from "./campaign-closure-contract.js";
 import { assertIndependentCampaignReviewer, campaignTerminalStatusUpdates, currentCampaignClosureSubject } from "./campaign-closure-subject.js";
 
@@ -210,14 +210,7 @@ async function observeClosurePublication(ctx: PluginContext, initial: MissionRec
   let receipt: any;
   try { receipt = JSON.parse(document.body); } catch { throw new MissionError(409, "campaign_close_ack", "The global publication acknowledgement must be valid JSON"); }
   const statusUpdates = (publication.payload.statusUpdates ?? []) as Array<{ sourceId: string; state: string }>;
-  const effects = Array.isArray(receipt.effects) ? receipt.effects : [];
-  const expected = [{ sourceId: initial.aggregate.linearContinuity!.binding.sourceRootId, kind: "comment" },
-    ...statusUpdates.map(update => ({ sourceId: update.sourceId, kind: "status" }))];
-  if (effects.length !== expected.length || effects.some((effect: any, index: number) => effect?.sourceId !== expected[index]!.sourceId
-      || effect?.kind !== expected[index]!.kind || !/^[a-f0-9]{64}$/.test(effect?.readbackSha256 ?? ""))
-      || statusUpdates.at(-1)?.sourceId !== initial.aggregate.linearContinuity!.binding.sourceRootId) {
-    throw new MissionError(409, "campaign_close_ack", "Global acknowledgement must read back the root comment first, every active status, and the terminal root last");
-  }
+  assertCampaignClosureReadback(initial.aggregate.linearContinuity!.binding.sourceRootId, statusUpdates, receipt.effects);
   return saveClosure(ctx, initial, { ...state, phase: "closing", publicationAcknowledgedAt: publication.acknowledgement.confirmedAt });
 }
 

@@ -36,7 +36,7 @@ export type CampaignClosureSubject = {
   allowedProofIds: string[];
 };
 
-export const campaignReviewRowSchema = z.object({
+const campaignReviewRowSchema = z.object({
   criterionId: z.string().trim().min(1).max(200),
   sourceSha256: digest,
   deliveryOrObligationIds: z.array(z.string().trim().min(1).max(200)).min(1).max(33),
@@ -46,7 +46,7 @@ export const campaignReviewRowSchema = z.object({
   remainder: z.string().trim().min(1).max(4_000).nullable(),
 }).strict();
 
-export const campaignReviewReportSchema = z.object({
+const campaignReviewReportSchema = z.object({
   schema: z.literal("council-linear-campaign-review-report-v1"),
   campaignRootMissionId: z.string().uuid(),
   taskId: z.string().uuid(),
@@ -127,4 +127,22 @@ export function validateCampaignReviewReport(subject: CampaignClosureSubject, ta
 export function campaignClosureFingerprint(subject: CampaignClosureSubject) {
   return canonicalPayloadHash({ sourceSha256: subject.sourceSha256, mandateSha256: subject.mandateSha256,
     coverageSha256: subject.coverageSha256, resultsSha256: subject.resultsSha256 });
+}
+
+export function assertCampaignClosureReadback(rootSourceId: string,
+  statusUpdates: Array<{ sourceId: string; state: string }>, effects: unknown) {
+  const observed = Array.isArray(effects) ? effects as Array<Record<string, unknown>> : [];
+  if (!statusUpdates.length || statusUpdates.length > 33
+      || statusUpdates.at(-1)?.sourceId !== rootSourceId
+      || statusUpdates.some(update => update.state !== "completed")
+      || new Set(statusUpdates.map(update => update.sourceId)).size !== statusUpdates.length) {
+    throw new MissionError(409, "campaign_close_ack", "Terminal status readback requires each active source exactly once and the campaign root last");
+  }
+  const expected = [{ sourceId: rootSourceId, kind: "comment" },
+    ...statusUpdates.map(update => ({ sourceId: update.sourceId, kind: "status" }))];
+  if (observed.length !== expected.length || observed.some((effect, index) => effect.sourceId !== expected[index]!.sourceId
+      || effect.kind !== expected[index]!.kind || typeof effect.readbackSha256 !== "string"
+      || !/^[a-f0-9]{64}$/.test(effect.readbackSha256))) {
+    throw new MissionError(409, "campaign_close_ack", "Global acknowledgement must read back the root comment first, every active status, and the terminal root last");
+  }
 }

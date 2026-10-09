@@ -3,6 +3,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { canonicalPayloadHash, type MissionRecord } from "../src/missions.js";
 import { LINEAR_READINESS_KEY, LINEAR_SOURCE_KEY } from "../src/linear-intake-contract.js";
 import { campaignTerminalStatusUpdates, currentCampaignClosureSubject } from "../src/campaign-closure-subject.js";
+import { hierarchyLaunchGuidance } from "../src/hierarchy-guidance.js";
 
 const f = vi.hoisted(() => ({ members: [] as MissionRecord[], evidence: { review: "exact leaf review" },
   integrated: { url: "https://example.test/pull/1", integratedCommit: "a".repeat(40) } }));
@@ -26,7 +27,7 @@ function source(id: string, projectId: string, teamId: string, parentId: string 
 let root: MissionRecord; let issues: Map<string, any>; let documents: Map<string, any>;
 beforeEach(() => {
   issues = new Map(); documents = new Map();
-  const companyId = randomUUID(), projectId = randomUUID(), teamId = randomUUID();
+  const companyId = randomUUID(), projectId = randomUUID(), linearProjectId = randomUUID(), teamId = randomUUID();
   const rootIssueId = randomUUID(), parentIssueId = randomUUID(), leafIssueId = randomUUID();
   const rootSourceId = randomUUID(), parentSourceId = randomUUID(), leafSourceId = randomUUID(), milestoneId = randomUUID();
   const prdContent = "Exact PRD content", tadContent = "Exact TAD content";
@@ -41,13 +42,13 @@ beforeEach(() => {
     { sourceId: parentSourceId, sourceParentId: rootSourceId, nativeParentSourceId: rootSourceId, role: "milestone-root" },
     { sourceId: leafSourceId, sourceParentId: parentSourceId, nativeParentSourceId: parentSourceId, role: "milestone-node" },
   ];
-  const campaign = { schema: "linear-milestone-campaign-readiness.v1", mode: "milestone-fixed-v1", projectId,
+  const campaign = { schema: "linear-milestone-campaign-readiness.v1", mode: "milestone-fixed-v1", projectId: linearProjectId,
     ticketSourceId: rootSourceId, milestoneId, references, materialSourceSha256: digest("material"),
     stateCompatibility: { status: "compatible", observationSha256: digest("state") }, nativeMapping };
   const rootCampaign = { ...campaign, marker: { schema: "linear-milestone-campaign.v1", milestoneId, ...references },
     milestone: { id: milestoneId, name: "Milestone", description: "Global result" }, referenceContents };
-  const sourceBodies = [source(rootSourceId, projectId, teamId, null, rootCampaign),
-    source(parentSourceId, projectId, teamId, rootSourceId), source(leafSourceId, projectId, teamId, parentSourceId)];
+  const sourceBodies = [source(rootSourceId, linearProjectId, teamId, null, rootCampaign),
+    source(parentSourceId, linearProjectId, teamId, rootSourceId), source(leafSourceId, linearProjectId, teamId, parentSourceId)];
   sourceBodies.forEach(body => { body.organizationId = sourceBodies[0]!.organizationId; body.provenance.rootSourceId = rootSourceId;
     body.provenance.intakeId = sourceBodies[0]!.provenance.intakeId; body.provenance.activationId = sourceBodies[0]!.provenance.activationId; });
   const nativeIds = [rootIssueId, parentIssueId, leafIssueId];
@@ -124,4 +125,14 @@ it("refuses a manual parent Done instead of treating it as global proof", async 
   const parent = root.aggregate.hierarchy!.nodes![1]!;
   issues.get(parent.issueId).status = "done";
   await expect(currentCampaignClosureSubject(context(), root)).rejects.toMatchObject({ code: "campaign_review_manual_done" });
+});
+
+it("accepts only the exact persisted Council execution suffix on a delivery leaf", async () => {
+  const member = f.members[0]!, leaf = root.aggregate.hierarchy!.nodes!.at(-1)!;
+  member.aggregate.hierarchy = { protocol: "council-hierarchy-v1", maxContributions: 1, execution: "sequential",
+    adoptExistingChildren: true, leaves: [{ issueId: leaf.issueId }] } as any;
+  issues.get(leaf.issueId).description += `\n\n${hierarchyLaunchGuidance(member, leaf.issueId)}`;
+  await expect(currentCampaignClosureSubject(context(), root)).resolves.toMatchObject({ campaignRootMissionId: root.missionId });
+  issues.get(leaf.issueId).description += "\n\nUnattributed manual change";
+  await expect(currentCampaignClosureSubject(context(), root)).rejects.toMatchObject({ code: "campaign_review_native_drift" });
 });
