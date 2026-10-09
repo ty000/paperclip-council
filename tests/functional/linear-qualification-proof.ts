@@ -5,8 +5,17 @@ import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { LinearHost } from "./linear-intake-host.js";
 import { hierarchyLaunchGuidance } from "../../src/hierarchy-guidance.js";
+import { nativeRunBindings } from "../../src/native-run-bindings.js";
 const git = (root: string, ...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 const councilSchema = "plugin_private_paperclip_council_270061461e";
+
+export function unclaimedRepositoryVersionConflict(value: any, missions: any[]) {
+  if (value.observation.code !== "repository_mission_changed") return false;
+  const mission = missions.find(item => item.missionId === value.missionId);
+  // A refused version check can be reread. A pending native wake retains its
+  // original uncertainty and must not be hidden by this observation exception.
+  return Boolean(mission && !nativeRunBindings(mission).some(binding => binding.pending));
+}
 
 export function verifyNativeSourceDescription(issue: { id: string; description: string }, original: string, missions: any[]) {
   const guidance = missions.map(mission => hierarchyLaunchGuidance(mission, issue.id)).filter(Boolean);

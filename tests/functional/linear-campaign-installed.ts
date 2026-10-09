@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { startLinearHost, waitForLinear, linearHostCommit, type LinearHost } from "./linear-intake-host.js";
 import { startLinearSource, type LinearSource } from "./linear-intake-source.js";
 import { installLinearCouncil, installLinearIntake, linearCampaignPolicy } from "./linear-intake-setup.js";
-import { packageDigests, journals, jobRuns, verifyNativeSourceDescription, repositoryOccupation, continuityObservations } from "./linear-qualification-proof.js";
+import { packageDigests, journals, jobRuns, verifyNativeSourceDescription, repositoryOccupation, continuityObservations, unclaimedRepositoryVersionConflict } from "./linear-qualification-proof.js";
 import { canonicalPayloadHash } from "../../src/mission-primitives.js";
 import { assertIndependentCampaignReviewer } from "../../src/campaign-closure-subject.js";
 import { nativeRunBindings } from "../../src/native-run-bindings.js";
@@ -51,16 +51,6 @@ async function bootstrapCampaign(host: LinearHost, source: LinearSource, proof: 
   return { companyId, council, intake, family, root, readiness };
 }
 
-function unclaimedVersionConflict(value: any, current: any[]) {
-  if (value.observation.code !== "repository_mission_changed") return false;
-  const mission = current.find(item => item.missionId === value.missionId);
-  const publication = mission?.aggregate.n5?.publication;
-  if (publication?.creation !== "confirmed") return false;
-  // A version conflict before claiming a wake can be reread under the same
-  // retained intent. A claimed or uncertain wake must never take this exception.
-  return publication.wake === "pending" && !publication.runId;
-}
-
 function completedJobSnapshot(jobs: Awaited<ReturnType<typeof jobRuns>>) {
   const runs = jobs.flatMap(group => group.runs);
   if (runs.some((run: any) => !["succeeded", "failed", "cancelled"].includes(run.status))) return null;
@@ -77,7 +67,7 @@ async function assertNominalObservations(host: LinearHost, council: Council, com
   // The job publishes its new observation after advancing the mission. Do not
   // combine a new wake claim with the previous observation during that interval.
   if (stable === null || stable !== completedJobSnapshot(after)) return false;
-  const blocked = observations.filter(value => value.observation.state === "blocked" && !unclaimedVersionConflict(value, current));
+  const blocked = observations.filter(value => value.observation.state === "blocked" && !unclaimedRepositoryVersionConflict(value, current));
   assert.equal(blocked.length, 0, `Native continuity requires diagnosis: ${JSON.stringify(blocked)}`);
   return true;
 }
