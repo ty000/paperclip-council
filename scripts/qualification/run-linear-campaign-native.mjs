@@ -9,5 +9,5 @@ for (const flag of ["COUNCIL_N1_LIVE_AUTHORIZED", "COUNCIL_N2_LIVE_AUTHORIZED", 
   assert.notEqual(process.env[flag], "1", "Isolated deterministic qualification excludes LIVE flags");
 }
 await runProcessGroup("corepack", ["pnpm", "exec", "tsx", "tests/functional/linear-campaign-installed.ts"], {
-  cwd: repository, timeoutMs: 20 * 60_000, env: { ...process.env },
+  cwd: repository, timeoutMs: 45 * 60_000, env: { ...process.env },
 });

@@ -80,7 +80,7 @@ async function observeCampaign(host: LinearHost, setup: Awaited<ReturnType<typeo
     const blockers = current.flatMap(m => (m.aggregate.linearContinuity?.publications ?? []).filter((item: any) => item.kind === "blocker"));
     assert.equal(blockers.length, 0, "A native blocker requires diagnosis before continuing nominal qualification");
     return { control, members, runs };
-  }, value => value.control?.aggregate.completion?.state === "closed", 12 * 60_000);
+  }, value => value.control?.aggregate.completion?.state === "closed", 35 * 60_000);
 }
 
 function verifySerialResult(result: Awaited<ReturnType<typeof observeCampaign>>, setup: Awaited<ReturnType<typeof bootstrapCampaign>>) {

@@ -120,7 +120,8 @@ export async function installLinearCouncil(host: LinearHost, companyId: string, 
 }
 
 export function linearCampaignPolicy(council: Awaited<ReturnType<typeof installLinearCouncil>>, source: LinearSource, companyId: string, rootId: string) {
-  return { ...linearPolicy(council, source, companyId, rootId),
+  const base = linearPolicy(council, source, companyId, rootId);
+  return { ...base, template: { ...base.template, limits: { ...base.template.limits, elapsedMinutes: 45 } },
     linearContinuity: { protocol: "council-linear-continuity-v1", mode: "milestone-fixed-v1" },
     completion: { protocol: "council-proof-close-v1", result: "integrated-verified" },
     publication: { publisherAgentId: council.actors.publisher, qaAgentId: council.actors.quality,

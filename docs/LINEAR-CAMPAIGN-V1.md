@@ -21,7 +21,10 @@ LINEAR_INTAKE_TEST_REPOSITORY=/absolute/path/to/built/paperclip-linear-intake \
 corepack pnpm qualification:native:linear-campaign
 ```
 
-The launcher refuses live flags and bounds the process group to twenty minutes.
+The launcher refuses live flags and bounds the process group to forty-five minutes.
+The campaign observation is bounded to thirty-five minutes to accommodate the native
+one-minute scheduler and two serial review/integration sequences. Its isolated mandate
+allows forty-five minutes within the original one-hour test accounting period.
 The host strips provider keys and uses private storage and embedded PostgreSQL.
 Do not rebuild or edit either package, its lockfile, or the qualification fixtures
 during the run. The report records source/build digests before and after, exact
