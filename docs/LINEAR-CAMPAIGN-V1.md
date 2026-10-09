@@ -25,6 +25,10 @@ The launcher refuses live flags and bounds the process group to forty-five minut
 The campaign observation is bounded to thirty-five minutes to accommodate the native
 one-minute scheduler and two serial review/integration sequences. Its isolated mandate
 allows forty-five minutes within the original one-hour test accounting period.
+The nominal fixture authorizes eight runs per delivery (three N1, three review,
+two publication/integration), then one global review: exactly seventeen runs and
+2,550 synthetic token units at 150 per run. The original 20,000-unit period and
+1,000-unit reservations remain unchanged; legacy Todo retains its three-run limit.
 The host strips provider keys and uses private storage and embedded PostgreSQL.
 Do not rebuild or edit either package, its lockfile, or the qualification fixtures
 during the run. The report records source/build digests before and after, exact

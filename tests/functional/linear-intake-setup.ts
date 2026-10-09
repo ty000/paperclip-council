@@ -98,7 +98,8 @@ export async function installLinearCouncil(host: LinearHost, companyId: string, 
     initialTokenAccountingSource: "new-isolated-company", maxCorrections: 1 };
   await host.api("POST", `/api/plugins/${pluginId}/config`, { companyId, configJson: {
     apiBaseUrl: host.base, councilAgentId: actors.council, councilApiKey: secret,
-    n1OperatingProfile: profile, n2RuntimeProfile: "ordinary-cli-v1", nativeRunLimit: 3,
+    // Each campaign leaf needs 3 N1, 3 N2 and 2 N5 runs; legacy stops after N1.
+    n1OperatingProfile: profile, n2RuntimeProfile: "ordinary-cli-v1", nativeRunLimit: campaign ? 8 : 3,
   } });
   const project = await host.api("POST", `/api/companies/${companyId}/projects`, { name: "Linear source qualification", status: "in_progress",
     workspace: { name: "fixture", sourceType: "local_path", cwd: workspace.repoPath, isPrimary: true,

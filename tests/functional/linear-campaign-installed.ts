@@ -10,6 +10,7 @@ import { installLinearCouncil, installLinearIntake, linearCampaignPolicy } from 
 import { packageDigests, journals, jobRuns, verifyNativeSourceDescription } from "./linear-qualification-proof.js";
 import { canonicalPayloadHash } from "../../src/mission-primitives.js";
 import { assertIndependentCampaignReviewer } from "../../src/campaign-closure-subject.js";
+import { nativeRunBindings } from "../../src/native-run-bindings.js";
 import { installCampaignGitHubTransport, campaignTransportPath } from "./linear-campaign-github.js";
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -50,6 +51,19 @@ async function bootstrapCampaign(host: LinearHost, source: LinearSource, proof: 
   return { companyId, council, intake, family, root, readiness };
 }
 
+async function assertNominalCampaignJobs(host: LinearHost, council: Council, companyId: string, proof: any) {
+  const jobs = await jobRuns(host, council.pluginId);
+  const failed = jobs.flatMap(group => group.runs.filter((run: any) => run.status === "failed"));
+  assert.equal(failed.length, 0, "A failed native Council job requires diagnosis before continuing qualification");
+  proof.latestJournals = await journals(host, companyId);
+  const questions = proof.latestJournals.intake.flatMap((row: any) =>
+    Object.entries(row.state.questions ?? {}).filter(([code]) => code !== "previous_delivery_pending")
+      .map(([code, question]) => ({ missionId: row.mission_id, code, question })));
+  // The second leaf legitimately waits for its predecessor. Every other retained
+  // intake question is a non-nominal condition, even when the scheduled job succeeds.
+  assert.equal(questions.length, 0, `Native intake requires diagnosis: ${JSON.stringify(questions)}`);
+}
+
 async function observeCampaign(host: LinearHost, setup: Awaited<ReturnType<typeof bootstrapCampaign>>, proof: any, save: () => Promise<void>) {
   const { council, companyId, root } = setup;
   let priorState = ""; let checkedJobsAt = 0;
@@ -57,9 +71,7 @@ async function observeCampaign(host: LinearHost, setup: Awaited<ReturnType<typeo
     assert(!existsSync(resolve(host.runtime, "qualification-stop")), "Qualification explicitly stopped for diagnosis");
     if (Date.now() - checkedJobsAt >= 10_000) {
       checkedJobsAt = Date.now();
-      const jobs = await jobRuns(host, council.pluginId);
-      const failed = jobs.flatMap(group => group.runs.filter((run: any) => run.status === "failed"));
-      assert.equal(failed.length, 0, "A failed native Council job requires diagnosis before continuing qualification");
+      await assertNominalCampaignJobs(host, council, companyId, proof);
     }
     const current = await missions(host, council, companyId);
     const control = current.find(m => m.rootIssueId === root.id);
@@ -83,8 +95,21 @@ async function observeCampaign(host: LinearHost, setup: Awaited<ReturnType<typeo
   }, value => value.control?.aggregate.completion?.state === "closed", 35 * 60_000);
 }
 
+function verifyCampaignRunCounts(result: Awaited<ReturnType<typeof observeCampaign>>) {
+  const memberRunIds = result.members.flatMap(member => {
+    const ids = nativeRunBindings(member).map(binding => binding.runId);
+    assert.equal(ids.length, 8); assert(ids.every(Boolean));
+    assert.equal(result.runs.filter((run: any) => ids.includes(run.id)).length, 8);
+    return ids;
+  });
+  const expected = [...memberRunIds, result.control.aggregate.campaignClosure.task.runId];
+  assert.equal(new Set(expected).size, 17);
+  assert.deepEqual(result.runs.map((run: any) => run.id).sort(), expected.sort());
+}
+
 function verifySerialResult(result: Awaited<ReturnType<typeof observeCampaign>>, setup: Awaited<ReturnType<typeof bootstrapCampaign>>) {
   const { control, members, runs } = result;
+  verifyCampaignRunCounts(result);
   assert.equal(members.length, 2); assert(members.every(member => member.aggregate.completion?.state === "closed"));
   const ordered = [...members].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
   const [first, second] = ordered;
