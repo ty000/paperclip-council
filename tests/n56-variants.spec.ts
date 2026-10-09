@@ -138,7 +138,9 @@ it("launches and attributes a physical publisher while retaining its logical aut
   expect(current.aggregate.n5!.authority.publisherAgentId).toBe(publisher);
   expect(modelLaunch(current, p.reservationId)).toMatchObject({ agentId: physical, runId: p.runId, state: "bound" });
   expect((await handleN5Agent(ctx as unknown as PluginContext, request(p.issueId!, publisher, p.runId!, "n5-inspect"))).status).toBe(403);
-  expect((await handleN5Agent(ctx as unknown as PluginContext, request(p.issueId!, physical, p.runId!, "n5-inspect"))).status).toBe(200);
+  expect(await handleN5Agent(ctx as unknown as PluginContext, request(p.issueId!, physical, p.runId!, "n5-inspect"))).toMatchObject({
+    status: 200, body: { missionId: current.missionId, rootIssueId: current.rootIssueId, version: current.version },
+  });
   await reconcileN5(ctx as unknown as PluginContext, current);
   expect(settleOrdinaryRunUsage).toHaveBeenCalledWith(ctx, expect.objectContaining({ agentId: physical, reservationId: p.reservationId, runId: p.runId }));
   expect(observeVariantRun).toHaveBeenCalledWith(ctx, expect.anything(), p.reservationId);
