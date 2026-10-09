@@ -76,7 +76,10 @@ export async function assertHierarchySources(ctx: PluginContext, m: MissionRecor
   const issues = await projectIssues(ctx, m.companyId, m.projectId);
   const campaignOwners = await campaignNodeOwners(ctx, m);
   const expected = new Set(hierarchy.nodes.map(node => node.issueId));
-  const operational = new Set([m.aggregate.n5?.publication?.issueId, m.aggregate.n5?.continuation?.previousPublication.issueId, m.aggregate.n5?.integration?.previousPublication.issueId].filter(Boolean));
+  const operational = new Set([m, ...campaignOwners.values()].flatMap(owner => [
+    owner.aggregate.n5?.publication?.issueId, owner.aggregate.n5?.continuation?.previousPublication.issueId,
+    owner.aggregate.n5?.integration?.previousPublication.issueId,
+  ]).filter(Boolean));
   if (issues.some(issue => issue.parentId && expected.has(issue.parentId) && !expected.has(issue.id) && !operational.has(issue.id))) {
     throw new MissionError(409, "hierarchy_source_changed", "A new descendant is outside the pinned hierarchy; retain all tasks without another departure");
   }

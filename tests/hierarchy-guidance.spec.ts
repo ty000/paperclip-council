@@ -24,6 +24,24 @@ function fixture() {
   return { ctx, m, issue, document, update };
 }
 
+function campaignFixture() {
+  const f = fixture();
+  const operations = ["publisher-current", "publisher-previous", "publisher-integration"].map(id => ({
+    ...f.issue, id, parentId: f.issue.id, title: "Council publisher",
+  }));
+  const member = { ...f.m, missionId: "leaf-mission", rootIssueId: f.issue.id, aggregate: { ...f.m.aggregate,
+    repositoryCampaign: { campaignRootMissionId: f.m.missionId }, n5: {
+      publication: { issueId: operations[0]!.id }, continuation: { previousPublication: { issueId: operations[1]!.id } },
+      integration: { previousPublication: { issueId: operations[2]!.id } },
+    } } } as unknown as MissionRecord;
+  campaign.members = [member];
+  f.m.aggregate.campaignClosure = { phase: "reviewing" } as never;
+  f.m.aggregate.linearContinuity = { publications: [{ payload: { campaignPlan: { schema: "council-linear-delivery-plan-v1",
+    campaignRootMissionId: f.m.missionId, leaves: [{ sourceId: "source", nativeId: f.issue.id }] } } }] } as never;
+  f.ctx.issues.list = async () => [f.issue, ...operations] as never;
+  return { ...f, member, operations };
+}
+
 describe("hierarchy assignment carries Council handoff instructions", () => {
   it("exposes the exact document and completion rule in the native issue without changing the pinned product source", async () => {
     const f = fixture();
@@ -74,5 +92,26 @@ describe("hierarchy assignment carries Council handoff instructions", () => {
     f.issue.assigneeAgentId = physical;
     f.issue.description += `\n\n${modelLaunchGuidance(member, launch, "child")}`;
     await expect(assertHierarchySources(f.ctx, f.m)).resolves.toBeUndefined();
+  });
+  it("allows only recorded publisher identities from exact planned members during global review", async () => {
+    const f = campaignFixture();
+    expect(f.m.aggregate.n5).toBeUndefined();
+    await expect(assertHierarchySources(f.ctx, f.m)).resolves.toBeUndefined();
+    f.operations.push({ ...f.operations[0]!, id: "unrecorded-publisher" });
+    await expect(assertHierarchySources(f.ctx, f.m)).rejects.toMatchObject({ code: "hierarchy_source_changed" });
+    expect(f.update).not.toHaveBeenCalled();
+  });
+  it("does not borrow a recorded publisher from a member outside the pinned delivery plan", async () => {
+    const f = campaignFixture(); f.member.rootIssueId = "other-leaf";
+    await expect(assertHierarchySources(f.ctx, f.m)).rejects.toMatchObject({ code: "hierarchy_source_changed" });
+    expect(f.update).not.toHaveBeenCalled();
+  });
+  it("retains existing single-mission publisher exclusions without enabling campaign ownership", async () => {
+    const f = fixture(), publisher = { ...f.issue, id: "publisher", parentId: f.issue.id };
+    f.m.aggregate.n5 = { publication: { issueId: publisher.id } } as never;
+    f.ctx.issues.list = async () => [f.issue, publisher] as never;
+    await expect(assertHierarchySources(f.ctx, f.m)).resolves.toBeUndefined();
+    publisher.id = "unrecorded-publisher";
+    await expect(assertHierarchySources(f.ctx, f.m)).rejects.toMatchObject({ code: "hierarchy_source_changed" });
   });
 });
