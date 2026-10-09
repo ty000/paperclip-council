@@ -40,8 +40,8 @@ export async function reconcileLinearTransport(ctx: PluginContext, initial: Miss
   let challenge = state.challenge;
   // Expiry or a changed outbox permits a fresh observation nonce, never a new publication intent.
   if (!challenge || Date.parse(challenge.expiresAt) <= Date.now() || canonicalPayloadHash(challenge.payload.publications) !== canonicalPayloadHash(requests)) {
-    const challengeId = randomUUID(), nonce = randomBytes(32).toString("hex"), requestedAt = new Date().toISOString();
-    const expiresAt = new Date(Date.now() + 300_000).toISOString();
+    const challengeId = randomUUID(), nonce = randomBytes(32).toString("hex"), requestedAtMs = Date.now();
+    const requestedAt = new Date(requestedAtMs).toISOString(), expiresAt = new Date(requestedAtMs + 300_000).toISOString();
     const payload = { protocol: LINEAR_CONTINUITY_PROTOCOL, ...(state.mode ? { mode: state.mode } : {}), binding: state.binding, challengeId, nonce, requestedAt, expiresAt,
       sourceSha256: state.sourceSha256, consumedSequence: state.sequence, control: state.control, publications: requests };
     challenge = { challengeId, nonce, requestedAt, expiresAt, payload, requestSha256: canonicalPayloadHash(payload), documentKey: `council-linear-request-${challengeId}` };
