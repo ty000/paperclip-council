@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { reconcileProjectTasks } from "../src/project-task-intake.js";
 import type { MissionRecord } from "../src/missions.js";
+import { MissionError } from "../src/missions.js";
 import { LINEAR_ORIGIN } from "../src/linear-intake-contract.js";
 
 const f = vi.hoisted(() => ({ policy: {} as any, issues: [] as any[], mission: null as MissionRecord | null, create: vi.fn(), activate: vi.fn(), configure: vi.fn(), guard: vi.fn() }));
@@ -107,6 +108,16 @@ describe("stable project task intake", () => {
     await reconcileProjectTasks(c.ctx); const body = c.receipt().state.commands.activate;
     await reconcileProjectTasks(c.ctx);
     expect(f.activate.mock.calls[1]![0]).toEqual(body); expect(f.configure).toHaveBeenCalledTimes(1);
+  });
+  it.each(["configure", "activate"] as const)("retains a question and frozen %s command when its CAS conflicts", async step => {
+    const c = context();
+    f[step].mockRejectedValue(new MissionError(409, "version_conflict", "Mission changed concurrently", { currentVersion: 8 }));
+    await reconcileProjectTasks(c.ctx);
+    const command = structuredClone(c.receipt().state.commands[step === "configure" ? "configure-continuity" : "activate"]);
+    await reconcileProjectTasks(c.ctx);
+    expect(c.ask).toHaveBeenCalledTimes(1);
+    expect(c.receipt().state.questions.version_conflict).toBeDefined();
+    expect(f[step].mock.calls.map(call => call[0])).toEqual([command, command]);
   });
   it("asks one native owner question for incomplete information over repeated passes without creating a mission", async () => {
     const c = context(); f.issues[0].description = "";

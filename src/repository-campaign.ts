@@ -7,6 +7,42 @@ import { uncertainLinearEffects } from "./linear-continuity-control.js";
 import type { N1State } from "./n1-missions.js";
 
 export type RepositoryCampaignMembership = { campaignRootMissionId: string };
+type CampaignPlanLeaf = { sourceId: string; nativeId: string };
+
+export function fixedCampaignPlanLeaves(root: MissionRecord): CampaignPlanLeaf[] | null {
+  const plans = root.aggregate.linearContinuity?.publications.filter(publication => {
+    const plan = publication.payload.campaignPlan as { schema?: string } | undefined;
+    return plan?.schema === "council-linear-delivery-plan-v1";
+  }) ?? [];
+  if (plans.length !== 1) return null;
+  const plan = plans[0]!.payload.campaignPlan as { campaignRootMissionId?: unknown; leaves?: unknown };
+  if (plan.campaignRootMissionId !== root.missionId || !Array.isArray(plan.leaves)
+      || !plan.leaves.length || plan.leaves.length > 33) return null;
+  const leaves: CampaignPlanLeaf[] = [];
+  for (const value of plan.leaves) {
+    if (!value || typeof value !== "object") return null;
+    const leaf = value as Record<string, unknown>;
+    if (typeof leaf.sourceId !== "string" || !leaf.sourceId || typeof leaf.nativeId !== "string" || !leaf.nativeId) return null;
+    leaves.push({ sourceId: leaf.sourceId, nativeId: leaf.nativeId });
+  }
+  if (new Set(leaves.map(leaf => leaf.sourceId)).size !== leaves.length
+      || new Set(leaves.map(leaf => leaf.nativeId)).size !== leaves.length) return null;
+  return leaves;
+}
+
+export function campaignPlanCoversMembers(root: MissionRecord, members: MissionRecord[]) {
+  const leaves = fixedCampaignPlanLeaves(root);
+  return Boolean(leaves && leaves.length === members.length && campaignPlanContainsMembers(root, members));
+}
+
+export function campaignPlanContainsMembers(root: MissionRecord, members: MissionRecord[]) {
+  const leaves = fixedCampaignPlanLeaves(root);
+  return Boolean(leaves && new Set(members.map(member => member.rootIssueId)).size === members.length
+    && new Set(members.map(member => member.missionId)).size === members.length
+    && members.every(member => member.companyId === root.companyId && member.projectId === root.projectId
+      && member.aggregate.repositoryCampaign?.campaignRootMissionId === root.missionId
+      && leaves.some(leaf => leaf.nativeId === member.rootIssueId)));
+}
 
 export async function campaignRoot(ctx: PluginContext, m: MissionRecord | Pick<MissionRecord, "companyId" | "missionId" | "projectId" | "aggregate"> & { ownerUserId?: string }) {
   const id = m.aggregate.repositoryCampaign?.campaignRootMissionId;
@@ -86,5 +122,5 @@ export async function campaignProgress(ctx: PluginContext, root: MissionRecord) 
   const members = await listCampaignMembers(ctx, root);
   const closed = members.filter(member => member.aggregate.completion?.state === "closed");
   return { memberMissionIds: members.map(member => member.missionId), closedMissionIds: closed.map(member => member.missionId),
-    allMembersClosed: members.length > 0 && closed.length === members.length };
+    allMembersClosed: campaignPlanCoversMembers(root, members) && closed.length === members.length };
 }

@@ -151,10 +151,18 @@ function trustedMembership(intake: Intake) {
 
 async function prepareControlMission(ctx: PluginContext, intake: Intake, m: MissionRecord, policy: ProjectMandate) {
   if (intake.state.repositoryCampaign) return { mission: m, controlOnly: false };
-  const mission = await prepareLinearContinuity(ctx, m, policy);
-  if (!intake.state.linearIntake?.snapshot.body.campaign) return { mission, controlOnly: false };
-  await prepareCampaignLeaves(ctx, intake, mission);
-  return { mission, controlOnly: true };
+  const controlOnly = Boolean(intake.state.linearIntake?.snapshot.body.campaign);
+  try {
+    const mission = await prepareLinearContinuity(ctx, m, policy);
+    if (controlOnly) await prepareCampaignLeaves(ctx, intake, mission);
+    return { mission, controlOnly };
+  } catch (error) {
+    // n2Cas refused this write. The campaign reconciler rereads original intents
+    // on the next job; never rebase the frozen configure/activate commands below.
+    if (controlOnly && error instanceof MissionError && error.code === "version_conflict"
+        && error.message === "Mission changed concurrently") return null;
+    throw error;
+  }
 }
 
 function orderedCampaignLeaves(preparation: LinearPreparation) {
@@ -239,19 +247,36 @@ async function advance(ctx: PluginContext, initial: Intake, latest: ProjectManda
     await advancePinned(ctx, intake, latest, policy, issues);
   } catch (error) {
     if (error instanceof MissionError && ["linear_source_pending", "linear_continuity_hold"].includes(error.code)) return;
+    // Preparation can persist campaign closure before repository release loses
+    // its version check. The driver rereads that release; a closed task needs no question.
+    if (error instanceof MissionError && error.code === "repository_release_pending" && await closedCampaignIntake(ctx, intake)) return;
     // Re-read after any ambiguous database response; never write from an obsolete intake version.
     const current = await ctx.db.query<any>(`SELECT * FROM ${projectTable(ctx, "project_task_intakes")} WHERE company_id = $1 AND root_issue_id = $2`, [intake.companyId, intake.rootIssueId]);
     await question(ctx, current[0] ? fromRow(current[0]) : intake, policy, error);
   }
 }
 
-async function advancePinned(ctx: PluginContext, initial: Intake, latest: ProjectMandate, policy: ProjectMandate,
-  issues: Awaited<ReturnType<typeof projectIssues>>) {
-  let intake = initial;
+async function closedCampaignIntake(ctx: PluginContext, intake: Intake) {
+  const existing = await getMission(ctx, intake.companyId, intake.missionId);
+  // Closed campaign work is historical. Its driver still reconciles the result
+  // and repository release; intake must not reacquire admission or configuration.
+  return existing?.rootIssueId === intake.rootIssueId && existing.projectId === intake.projectId
+      && existing.aggregate.completion?.state === "closed"
+      && Boolean(existing.aggregate.linearContinuity?.mode === "milestone-fixed-v1" || existing.aggregate.repositoryCampaign);
+}
+
+async function assertCurrentIntakeAuthority(ctx: PluginContext, intake: Intake, latest: ProjectMandate, policy: ProjectMandate) {
   if (!latest.content.enabled || latest.revisionId !== intake.revisionId || (await ctx.companies.get(intake.companyId))?.defaultResponsibleUserId !== policy.authorizedBy
       || operatingProfileHash(await ctx.config.get(intake.companyId)) !== policy.content.operatingProfileHash) {
     throw new MissionError(409, "project_authority_changed", "Project owner, operating profile or policy revision changed; retain the original intake without new effects");
   }
+}
+
+async function advancePinned(ctx: PluginContext, initial: Intake, latest: ProjectMandate, policy: ProjectMandate,
+  issues: Awaited<ReturnType<typeof projectIssues>>) {
+  let intake = initial;
+  if (await closedCampaignIntake(ctx, intake)) return;
+  await assertCurrentIntakeAuthority(ctx, intake, latest, policy);
   if (!intake.state.createBody) intake = await pinTask(ctx, intake, policy, issues);
   await createMission(ctx, intake.companyId, policy.authorizedBy, intake.state.createBody, trustedMembership(intake));
   let m = (await getMission(ctx, intake.companyId, intake.missionId))!;
@@ -260,8 +285,9 @@ async function advancePinned(ctx: PluginContext, initial: Intake, latest: Projec
   else if (canonicalPayloadHash(m.aggregate.projectMandate) !== canonicalPayloadHash(intake.state.snapshot)) {
     throw new MissionError(409, "project_snapshot_conflict", "Original task and project snapshot changed");
   }
-  const prepared = await prepareControlMission(ctx, intake, m, policy); m = prepared.mission;
-  if (prepared.controlOnly) return;
+  const prepared = await prepareControlMission(ctx, intake, m, policy);
+  if (!prepared || prepared.controlOnly) return;
+  m = prepared.mission;
   await assertProjectDeparture(ctx, m);
   if (!m.aggregate.continuity) {
     const configured = await command(ctx, intake, m, "configure-continuity", { authorizeProgression: true, n3Slots: policy.content.n3Slots });

@@ -4,8 +4,15 @@ import { canonicalPayloadHash, type MissionRecord } from "../src/missions.js";
 import { assertHierarchySources } from "../src/hierarchy-runtime.js";
 import { ensureHierarchyLaunchGuidance } from "../src/hierarchy-guidance.js";
 import { linearContextGuidance } from "../src/linear-context-guidance.js";
+import { modelLaunchGuidance } from "../src/model-state.js";
+
+const campaign = vi.hoisted(() => ({ members: [] as MissionRecord[] }));
+vi.mock("../src/repository-campaign.js", async original => ({ ...await original<any>(),
+  listCampaignMembers: async () => campaign.members,
+}));
 
 function fixture() {
+  campaign.members = [];
   const issue = { id: "child", companyId: "company", projectId: "project", parentId: "root", title: "Port", description: "Implement the port", assigneeAgentId: "agent" };
   const node = { issueId: issue.id, parentId: issue.parentId, title: issue.title, descriptionHash: canonicalPayloadHash(issue.description), assigneeAgentId: "agent", blockedByIssueIds: [] };
   const leaf = { ...node, contributionId: "contribution", documentRevisionId: "ownership-v1" };
@@ -15,6 +22,24 @@ function fixture() {
   const getDocument = vi.fn(async (_id: string, key: string) => key === "council-work" ? { latestRevisionId: "ownership-v1" } : document);
   const ctx = { issues: { list: async () => [issue], get: async () => issue, update, documents: { get: getDocument }, relations: { get: async () => ({ blockedBy: [] }) } } } as unknown as PluginContext;
   return { ctx, m, issue, document, update };
+}
+
+function campaignFixture() {
+  const f = fixture();
+  const operations = ["publisher-current", "publisher-previous", "publisher-integration"].map(id => ({
+    ...f.issue, id, parentId: f.issue.id, title: "Council publisher",
+  }));
+  const member = { ...f.m, missionId: "leaf-mission", rootIssueId: f.issue.id, aggregate: { ...f.m.aggregate,
+    repositoryCampaign: { campaignRootMissionId: f.m.missionId }, n5: {
+      publication: { issueId: operations[0]!.id }, continuation: { previousPublication: { issueId: operations[1]!.id } },
+      integration: { previousPublication: { issueId: operations[2]!.id } },
+    } } } as unknown as MissionRecord;
+  campaign.members = [member];
+  f.m.aggregate.campaignClosure = { phase: "reviewing" } as never;
+  f.m.aggregate.linearContinuity = { publications: [{ payload: { campaignPlan: { schema: "council-linear-delivery-plan-v1",
+    campaignRootMissionId: f.m.missionId, leaves: [{ sourceId: "source", nativeId: f.issue.id }] } } }] } as never;
+  f.ctx.issues.list = async () => [f.issue, ...operations] as never;
+  return { ...f, member, operations };
 }
 
 describe("hierarchy assignment carries Council handoff instructions", () => {
@@ -49,6 +74,44 @@ describe("hierarchy assignment carries Council handoff instructions", () => {
     f.issue.description += `\n\n${linearContextGuidance(f.m, "child")[0]}`;
     await expect(assertHierarchySources(f.ctx, f.m)).resolves.toBeUndefined();
     f.issue.description = f.issue.description.replace("Preserve this interface", "Changed annotation");
+    await expect(assertHierarchySources(f.ctx, f.m)).rejects.toMatchObject({ code: "hierarchy_source_changed" });
+  });
+  it("validates a campaign leaf through its exact member model binding", async () => {
+    const f = fixture(), physical = "physical-agent", launchKey = "leaf-launch";
+    const launch = { taskKey: "leaf", interventionKey: "lead", launchKey, logicalAgentId: "agent", agentId: physical,
+      roleKey: "implementation", profileId: "sol-medium", requestedProfileId: "sol-medium", family: "implementation",
+      rationale: "Pinned leaf profile", authority: "default", mappingRevision: "1", variantRevision: "1",
+      selectedAt: new Date().toISOString(), state: "bound", issueId: "child", runId: "leaf-run", ascent: false } as const;
+    const member = { ...f.m, missionId: "leaf-mission", rootIssueId: "child", aggregate: { ...f.m.aggregate,
+      repositoryCampaign: { campaignRootMissionId: "mission" }, modelSelection: { protocol: "native-variants-v1", choices: [],
+        tasks: [{ taskKey: "leaf", mapping: {} as never, variantRevision: "1", launches: [launch] }] } } } as MissionRecord;
+    campaign.members = [member];
+    f.m.aggregate.campaignClosure = {} as never;
+    f.m.aggregate.linearContinuity = { publications: [{ payload: { campaignPlan: { schema: "council-linear-delivery-plan-v1",
+      campaignRootMissionId: f.m.missionId, leaves: [{ sourceId: "source", nativeId: "child" }] } } }] } as never;
+    f.issue.assigneeAgentId = physical;
+    f.issue.description += `\n\n${modelLaunchGuidance(member, launch, "child")}`;
+    await expect(assertHierarchySources(f.ctx, f.m)).resolves.toBeUndefined();
+  });
+  it("allows only recorded publisher identities from exact planned members during global review", async () => {
+    const f = campaignFixture();
+    expect(f.m.aggregate.n5).toBeUndefined();
+    await expect(assertHierarchySources(f.ctx, f.m)).resolves.toBeUndefined();
+    f.operations.push({ ...f.operations[0]!, id: "unrecorded-publisher" });
+    await expect(assertHierarchySources(f.ctx, f.m)).rejects.toMatchObject({ code: "hierarchy_source_changed" });
+    expect(f.update).not.toHaveBeenCalled();
+  });
+  it("does not borrow a recorded publisher from a member outside the pinned delivery plan", async () => {
+    const f = campaignFixture(); f.member.rootIssueId = "other-leaf";
+    await expect(assertHierarchySources(f.ctx, f.m)).rejects.toMatchObject({ code: "hierarchy_source_changed" });
+    expect(f.update).not.toHaveBeenCalled();
+  });
+  it("retains existing single-mission publisher exclusions without enabling campaign ownership", async () => {
+    const f = fixture(), publisher = { ...f.issue, id: "publisher", parentId: f.issue.id };
+    f.m.aggregate.n5 = { publication: { issueId: publisher.id } } as never;
+    f.ctx.issues.list = async () => [f.issue, publisher] as never;
+    await expect(assertHierarchySources(f.ctx, f.m)).resolves.toBeUndefined();
+    publisher.id = "unrecorded-publisher";
     await expect(assertHierarchySources(f.ctx, f.m)).rejects.toMatchObject({ code: "hierarchy_source_changed" });
   });
 });

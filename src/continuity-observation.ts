@@ -16,7 +16,7 @@ async function retainLinearStatus(ctx: PluginContext, m: MissionRecord, stored: 
 }
 
 export async function readContinuityObservation(ctx: PluginContext, m: MissionRecord): Promise<StoredObservation | null> {
-  if (!m.aggregate.continuity) return null;
+  if (!m.aggregate.continuity && !m.aggregate.linearContinuity) return null;
   const stored = await ctx.state.get(scope(m)) as StoredObservation | null;
   if (stored && (stored.companyId !== m.companyId || stored.missionId !== m.missionId
       || !Number.isSafeInteger(stored.sequence) || stored.sequence < 1

@@ -102,7 +102,7 @@ export async function resumeN5Creation(ctx: PluginContext, initial: MissionRecor
     const recovered = await reconcileContributionIssueEffect(ctx, intent);
     if (recovered.state !== "confirmed") return m;
     m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...p, issueId: recovered.issue.id, creation: "confirmed" } });
-    return resumeN5PreWake(ctx, m, true);
+    return resumeN5PreWake(ctx, m);
   }
   // Crossing this CAS means child creation may be attempted. Recovery after
   // this point is correlation readback only and can never issue another create.
@@ -111,13 +111,14 @@ export async function resumeN5Creation(ctx: PluginContext, initial: MissionRecor
   const created = await createContributionIssueEffect(ctx, intent);
   if (created.state !== "confirmed") return m;
   m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...p, issueId: created.issue.id, creation: "confirmed" } });
-  return resumeN5PreWake(ctx, m, true);
+  return resumeN5PreWake(ctx, m);
 }
 
-async function resumeN5PreWake(ctx: PluginContext, initial: MissionRecord, newlyCreated = false) {
+async function resumeN5PreWake(ctx: PluginContext, initial: MissionRecord) {
   let m = initial; let p = m.aggregate.n5?.publication;
-  if (!p || p.creation !== "confirmed" || !p.issueId || p.runId || !m.aggregate.modelSelection && !newlyCreated) return m;
+  if (!p || p.creation !== "confirmed" || !p.issueId || p.runId) return m;
   const prior = m.aggregate.modelSelection ? modelLaunch(m, p.reservationId) : undefined;
+  if (!prior && p.wake === "claimed") return m;
   if (prior && !["selected", "assignment_claimed", "ready"].includes(prior.state)) return m;
   const issueId = p.issueId;
   await reserveN2Run(ctx, m, { reservationId: p.reservationId, effectId: p.intentId,
@@ -125,11 +126,11 @@ async function resumeN5PreWake(ctx: PluginContext, initial: MissionRecord, newly
   const prepared = prior || !m.aggregate.modelSelection ? { mission: m, binding: prior ?? null } : await prepareVariantLaunch(ctx, m, { taskKey: "delivery", interventionKey: "publisher", launchKey: p.reservationId,
     logicalAgentId: m.aggregate.n5!.authority.publisherAgentId, family: "orchestration", issueId, expectedRoles: ["publisher"] });
   m = await bindVariantIssue(ctx, prepared.mission, p.reservationId, issueId);
+  // Departure checks must succeed before either claim is persisted. The shared
+  // CAS still precedes native effects and keeps a lost wake strictly one-shot.
+  m = await claimVariantWake(ctx, m, p.reservationId, (ready, aggregate) => save(ctx,
+    { ...ready, aggregate }, { ...aggregate.n5!, publication: { ...aggregate.n5!.publication!, wake: "claimed" } }));
   p = m.aggregate.n5!.publication!;
-  if (p.wake !== "claimed") {
-    m = await save(ctx, m, { ...m.aggregate.n5!, publication: { ...p, wake: "claimed" } });
-  }
-  m = await claimVariantWake(ctx, m, p.reservationId);
   let wake: { runId: string | null };
   try {
     await ctx.issues.update(issueId, { status: "todo" }, m.companyId);
@@ -249,7 +250,9 @@ export async function handleN5Agent(ctx: PluginContext, input: PluginApiRequestI
       return { status: 200, body: await rebindN5Plan(ctx, m, input, body) };
     }
     m = await bindPublisher(ctx, m, input);
-    if (body.command === "n5-inspect") return { status: 200, body: { version: m.version, delivery: inspectN5(m) } };
+    if (body.command === "n5-inspect") return { status: 200, body: {
+      missionId: m.missionId, rootIssueId: m.rootIssueId, version: m.version, delivery: inspectN5(m),
+    } };
     const prior = runtimeReceipt(m, runtimeUuid(body.commandId, "commandId"), input.actor.agentId!, canonicalPayloadHash(body));
     if (prior) {
       await holdOrdinaryPublisher(ctx, m);
