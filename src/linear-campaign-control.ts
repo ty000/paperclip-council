@@ -12,12 +12,14 @@ async function resumeCampaign(ctx: PluginContext, m: MissionRecord) {
   const state = m.aggregate.linearContinuity!, observation = state.observation;
   if (state.control !== "paused" || !observation || !responseFresh(observation.response)
       || observation.response.availability !== "available" || observation.response.sourceSha256 !== state.sourceSha256
-      || state.publications.some(p => !p.acknowledgement) || uncertainLinearEffects(m)) {
-    throw new MissionError(409, "linear_campaign_resume_pending", "Restore the fixed source, confirm publications and reconcile original effects before explicit resume");
+      || uncertainLinearEffects(m)) {
+    throw new MissionError(409, "linear_campaign_resume_pending", "Restore the fixed source and reconcile original native effects before explicit resume");
   }
   assertContinuityBinding(m, state.binding);
   await readLinearProof(ctx, m, observation.reference);
-  for (const p of state.publications) await readLinearProof(ctx, m, p.acknowledgement!.reference);
+  for (const p of state.publications) if (p.acknowledgement) await readLinearProof(ctx, m, p.acknowledgement.reference);
+  // Resume lets the publisher reconcile the same retained intent. Every work,
+  // merge and closure boundary still requires all publication acknowledgements.
   const point = await settleLinearSafePoint(ctx, m);
   if (!point.safe) throw new MissionError(409, "linear_campaign_run_pending", "Original admitted runs and costs must reach a safe point");
   return point.mission;
