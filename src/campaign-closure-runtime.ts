@@ -173,6 +173,9 @@ async function ensureProofDocument(ctx: PluginContext, initial: MissionRecord) {
 }
 
 async function queueClosurePublication(ctx: PluginContext, initial: MissionRecord) {
+  // Earlier progress still owns its readback. Keep the approved review intact
+  // until that publication settles, then revalidate authority before any effect.
+  if (initial.aggregate.linearContinuity!.publications.some(item => !item.acknowledgement)) return initial;
   await assertProjectDeparture(ctx, initial);
   let m = await ensureProofDocument(ctx, initial); let state = m.aggregate.campaignClosure!;
   await assertProjectDeparture(ctx, m);
