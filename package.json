@@ -30,6 +30,7 @@
   },
   "scripts": {
     "qualification:native:contribution-wait": "node scripts/qualification/run-contribution-wait-native.mjs",
+    "qualification:proof:draft-upload": "node scripts/qualification/run-draft-upload-proof.mjs",
     "qualification:native:linear-intake": "node scripts/qualification/run-linear-intake-native.mjs",
     "build": "tsc && node ./esbuild.config.mjs",
     "clean": "rm -rf dist",
