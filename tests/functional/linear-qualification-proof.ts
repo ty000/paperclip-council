@@ -43,6 +43,12 @@ export async function journals(host: LinearHost, companyId: string) {
   return { intake: Array.from(intake) as any[], challenges: Array.from(challenges) as any[] };
 }
 
+export async function repositoryOccupation(host: LinearHost) {
+  const rows = await host.db.$client.unsafe(`SELECT version, document FROM ${councilSchema}.repository_occupation WHERE singleton = true`);
+  assert.equal(rows.length, 1);
+  return { version: Number(rows[0].version), document: rows[0].document };
+}
+
 export async function jobRuns(host: LinearHost, pluginId: string) {
   const jobs = await host.api("GET", `/api/plugins/${pluginId}/jobs`);
   return Promise.all(jobs.map(async (job: any) => ({ jobKey: job.jobKey,

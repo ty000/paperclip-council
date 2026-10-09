@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { startLinearHost, waitForLinear, linearHostCommit, type LinearHost } from "./linear-intake-host.js";
 import { startLinearSource, type LinearSource } from "./linear-intake-source.js";
 import { installLinearCouncil, installLinearIntake, linearCampaignPolicy } from "./linear-intake-setup.js";
-import { packageDigests, journals, jobRuns, verifyNativeSourceDescription } from "./linear-qualification-proof.js";
+import { packageDigests, journals, jobRuns, verifyNativeSourceDescription, repositoryOccupation } from "./linear-qualification-proof.js";
 import { canonicalPayloadHash } from "../../src/mission-primitives.js";
 import { assertIndependentCampaignReviewer } from "../../src/campaign-closure-subject.js";
 import { nativeRunBindings } from "../../src/native-run-bindings.js";
@@ -213,6 +213,9 @@ async function verifyClosure(host: LinearHost, source: LinearSource, setup: Awai
   await verifyRemoteDeliveries(host, proof);
   proof.intake = await intake.action("inspect-intake"); assert.equal(proof.intake.requests.length, 1);
   proof.finalJournals = await journals(host, companyId);
+  proof.repositoryRelease = await waitForLinear("terminal campaign releases its repository", () => repositoryOccupation(host),
+    value => Object.keys(value.document.holders).length === 0);
+  assert.equal(proof.repositoryRelease.document.initialized, true);
   proof.jobs = { council: await jobRuns(host, council.pluginId), intake: await jobRuns(host, intake.pluginId) };
 }
 
@@ -229,7 +232,7 @@ async function scenario(host: LinearHost, proof: any, save: () => Promise<void>,
     await verifyClosure(host, source, setup, proof);
     assert.deepEqual(protectedSource(source), sourceBefore);
     proof.checks = { completeImport: "PASS", noImporterWake: "PASS", serialIntegratedLeaves: "PASS",
-      independentGlobalClosure: "PASS", terminalReadback: "PASS", singleBudget: "PASS", noProvider: "PASS" };
+      independentGlobalClosure: "PASS", terminalReadback: "PASS", repositoryReleased: "PASS", singleBudget: "PASS", noProvider: "PASS" };
   } finally {
     proof.sourceReads = source.calls; proof.publications = { comments: source.comments, effects: source.effects };
     restoreGitHub(); await source.close();

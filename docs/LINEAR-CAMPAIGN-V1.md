@@ -49,6 +49,8 @@ Git commits and the read-only host revision.
   and statuses are read back; the campaign ticket is the final terminal write.
 - Native parents close after their children and the Linear acknowledgement. Every
   reservation is settled in the same original admission period.
+- The terminal campaign releases its exclusive repository occupation after native
+  reconciliation, so a later campaign is not held by completed work.
 
 The companion `qualification:native:linear-intake` exercises legacy Todo import,
 source hold, worker restart under the original identity, early Board refusal,
