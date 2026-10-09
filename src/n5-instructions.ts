@@ -1,8 +1,10 @@
+import { cancellationInstructions } from "./linear-cancellation-instructions.js";
 import { integrationInstructions } from "./integration-instructions.js";
 import type { MissionRecord } from "./missions.js";
 import { fileURLToPath } from "node:url";
 
 export function n5PublisherInstructions(mission: MissionRecord): string {
+  if (mission.aggregate.n5?.publication?.operation === "cancel-pr") return cancellationInstructions(mission);
   if (mission.aggregate.n5?.publication?.operation === "integrate") return integrationInstructions(mission);
   const preflight = mission.aggregate.n5?.authority.publisherPreflight ? `
 Before n5-claim-publication, run the Council read-only preflight in YOUR current native publisher environment. Use python3 with the argv vector [${JSON.stringify(fileURLToPath(new URL("../scripts/operations/publisher_preflight.py", import.meta.url)))}, "--repo", <absolute current repository root>, "--repository", authority.repository, "--candidate", publication.submission.candidateCommit, "--base-ref", authority.baseRef, "--base-sha", publication.submission.baseCommit, "--head-ref", authority.headRef, "--mission-id", "${mission.missionId}", "--intent-id", publication.intentId]. For operation=update also add ["--expected-remote-head", delivery.continuation.previousPublication.submission.candidateCommit]. Do not interpolate unquoted shell text. It inherits your native GitHub projection and reads PAPERCLIP_TASK_ID/PAPERCLIP_RUN_ID; do not add an operator token, copy credentials, change access policies or run another model.

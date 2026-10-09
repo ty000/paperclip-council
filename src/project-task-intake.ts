@@ -1,3 +1,4 @@
+import { prepareLinearContinuity } from "./linear-continuity-intake.js";
 import { isIntegratedLeaf, assertPreviousDelivery } from "./delivery-leaves.js";
 import { randomUUID } from "node:crypto";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
@@ -183,6 +184,7 @@ async function advance(ctx: PluginContext, initial: Intake, latest: ProjectManda
     if (!m.aggregate.projectMandate) m = await n2Cas(ctx, m, { ...m.aggregate, projectMandate: intake.state.snapshot!,
       ...(intake.state.hierarchy ? { hierarchy: intake.state.hierarchy } : {}) });
     else if (canonicalPayloadHash(m.aggregate.projectMandate) !== canonicalPayloadHash(intake.state.snapshot)) throw new MissionError(409, "project_snapshot_conflict", "Original task and project snapshot changed");
+    m = await prepareLinearContinuity(ctx, m, policy);
     await assertProjectDeparture(ctx, m);
     if (!m.aggregate.continuity) {
       const prepared = await command(ctx, intake, m, "configure-continuity", { authorizeProgression: true, n3Slots: policy.content.n3Slots });
@@ -194,7 +196,7 @@ async function advance(ctx: PluginContext, initial: Intake, latest: ProjectManda
     intake = activated.intake; m = activated.mission;
     await preparePublication(ctx, intake, m, policy);
   } catch (error) {
-    if (error instanceof MissionError && error.code === "linear_source_pending") return;
+    if (error instanceof MissionError && ["linear_source_pending", "linear_continuity_hold"].includes(error.code)) return;
     // Re-read after any ambiguous database response; never write from an obsolete intake version.
     const current = await ctx.db.query<any>(`SELECT * FROM ${projectTable(ctx, "project_task_intakes")} WHERE company_id = $1 AND root_issue_id = $2`, [intake.companyId, intake.rootIssueId]);
     await question(ctx, current[0] ? fromRow(current[0]) : intake, policy, error);

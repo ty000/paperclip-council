@@ -1,5 +1,8 @@
 import { registerContinuityJob } from "./continuity-runtime.js";
 import { registerLinearSourceResults } from "./linear-intake-revalidation.js";
+import { registerLinearContinuity } from "./linear-continuity-transport.js";
+import { handleLinearContinuityBoard } from "./linear-continuity-runtime.js";
+import { handleCancellationRequest } from "./linear-continuity-cancellation.js";
 import { handleProjectMandate } from "./project-mandate-configuration.js";
 import { listContinuityMissions } from "./missions.js";
 import { handleModelProfiles, chooseModelProfile, inspectModelSelections, reconcileModelMeasurements } from "./model-api.js";
@@ -220,6 +223,7 @@ async function handleMissionAgentCommand(input: PluginApiRequestInput, context: 
     ? (input.body as Record<string, unknown>).command : null;
   if (String(command).startsWith("n6-") || await getMissionByN6WorkIssue(context, input.companyId, input.params.issueId)) return handleN6WorkAgent(context, input);
   if (["n5-claim-merge", "n5-observe-integration"].includes(String(command))) return handleIntegrationRequest(context, input);
+  if (["n5-claim-cancellation", "n5-observe-cancellation"].includes(String(command))) return handleCancellationRequest(context, input);
   if (typeof command === "string" && command.startsWith("n5-")) return handleN5Agent(context, input);
   const ordinary = await getMissionByOrdinaryIssue(context, input.companyId, input.params.issueId);
   if (ordinary) return handleN2AgentApi(input, context);
@@ -252,6 +256,7 @@ async function handleRequest(input: PluginApiRequestInput, context: PluginContex
   }
   if (input.routeKey.startsWith("model-profiles-")) return handleModelProfiles(context, input);
   if (input.routeKey.startsWith("project-mandate-")) return handleProjectMandate(context, input);
+  if (input.routeKey === "mission-command" && ["configure-linear-continuity", "reconcile-linear-continuity", "publish-linear-arbitration"].includes(String((input.body as { command?: string })?.command))) return handleLinearContinuityBoard(context, input);
   if (input.routeKey === "model-selection-read") return inspectModelSelections(context, input);
   const profileCommand = (input.body as { command?: string } | null)?.command;
   if (["mission-command", "mission-agent-command"].includes(input.routeKey) && profileCommand === "select-model-profile") return chooseModelProfile(context, input);
@@ -283,6 +288,7 @@ const plugin = definePlugin({
     registerDecisionReceiptBridge(context);
     registerN2FinishedEventHandler(context);
     registerLinearSourceResults(context);
+    registerLinearContinuity(context);
     registerContinuityJob(context, () => listContinuityMissions(context));
   },
   async onHealth() { return { status: "ok", message: "Council decision adapter ready" }; },

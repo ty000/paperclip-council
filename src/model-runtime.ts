@@ -9,6 +9,7 @@ import { collectInterventionHistory, publishInterventionHistory } from "./model-
 import { assertWorkspacePreflight } from "./workspace-preflight.js";
 import { assertNativeRunInventory } from "./native-runs.js";
 import { assertProjectDeparture } from "./project-mandate-guard.js";
+import { ensureLinearContextGuidance } from "./linear-context-guidance.js";
 
 type LaunchInput = { taskKey: string; interventionKey: string; launchKey: string; logicalAgentId: string; family: TaskFamily; issueId?: string | null; expectedRoles: readonly RoleKey[] };
 const terminal = new Set(["succeeded", "failed", "cancelled", "timed_out", "interrupted"]);
@@ -85,7 +86,7 @@ function assertRoleFamily(roleKey: string, revision: string, family: TaskFamily)
 /** Called only by existing authorized dispatchers. This function never grants another attempt or wakes an agent. */
 export async function prepareVariantLaunch(ctx: PluginContext, initial: MissionRecord, input: LaunchInput) {
   assertContinuityDeparture(initial);
-  await assertProjectDeparture(ctx, initial);
+  await assertProjectDeparture(ctx, initial, initial.aggregate.n5?.publication?.operation === "cancel-pr" && initial.aggregate.n5.publication.reservationId === input.launchKey ? input.launchKey : undefined);
   await assertNativeRunInventory(ctx, initial, true);
   let m = initial; const state = m.aggregate.modelSelection;
   if (!state) return { mission: m, binding: null };
@@ -172,6 +173,7 @@ async function attachHistory(ctx: PluginContext, m: MissionRecord, launch: Model
 }
 
 export async function bindVariantIssue(ctx: PluginContext, initial: MissionRecord, launchKey: string, issueId: string): Promise<MissionRecord> {
+  await ensureLinearContextGuidance(ctx, initial, issueId);
   let m = initial; let launch = modelLaunch(m, launchKey);
   if (!launch) return m;
   if (launch.issueId && launch.issueId !== issueId) throw new ModelSelectionError("model_issue_conflict", "Launch already belongs to a different native issue");
@@ -206,7 +208,7 @@ export function claimVariantWake<T>(ctx: PluginContext, m: MissionRecord, launch
 export async function claimVariantWake<T>(ctx: PluginContext, m: MissionRecord, launchKey: string,
   persist?: (mission: MissionRecord, aggregate: MissionAggregate) => Promise<T>): Promise<MissionRecord | T> {
   assertContinuityDeparture(m);
-  await assertProjectDeparture(ctx, m);
+  await assertProjectDeparture(ctx, m, m.aggregate.n5?.publication?.operation === "cancel-pr" && m.aggregate.n5.publication.reservationId === launchKey ? launchKey : undefined);
   await assertNativeRunInventory(ctx, m, true);
   const launch = modelLaunch(m, launchKey);
   if (!launch) return persist ? persist(m, m.aggregate) : m;

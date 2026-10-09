@@ -115,7 +115,12 @@ async function finishAuthorizedResult(ctx: PluginContext, m: MissionRecord): Pro
 }
 
 export async function advanceContinuity(ctx: PluginContext, initial: MissionRecord, job: PluginJobContext): Promise<Observation> {
-  const m = await fresh(ctx, initial);
+  let m = await fresh(ctx, initial);
+  if (m.aggregate.linearContinuity) {
+    m = await (await import("./linear-continuity-runtime.js")).reconcileLinearContinuity(ctx, m);
+    const linear = m.aggregate.linearContinuity!;
+    if (linear.control !== "running" || linear.controlReason) return waiting("linear_control_hold", "Council réconcilie les opérations admises au point sûr ; aucun nouveau départ, fusion ou clôture.");
+  }
   const policy = m.aggregate.continuity;
   if (!policy?.enabled) return waiting("continuity_disabled", "La progression déléguée est désactivée.");
   const company = await ctx.companies.get(m.companyId);

@@ -47,7 +47,7 @@ function taskBindings(m: MissionRecord, tasks: TaskBinding[]) {
 function publisherBindings(m: MissionRecord) {
   const n5 = m.aggregate.n5;
   if (!n5) return [];
-  return [n5.publication, n5.integration?.previousPublication, n5.continuation?.previousPublication].filter(Boolean).flatMap(p =>
+  return [n5.publication, n5.integration?.previousPublication, n5.continuation?.previousPublication, m.aggregate.linearContinuity?.cancellation?.previousPublication].filter(Boolean).flatMap(p =>
     binding(m, p!.issueId, n5.authority.publisherAgentId, p!.runId, p!.reservationId, p!.wake === "claimed" && !p!.runId));
 }
 

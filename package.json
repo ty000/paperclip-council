@@ -1,6 +1,6 @@
 {
   "name": "@paperclipai/plugin-council",
-  "version": "0.7.25",
+  "version": "0.7.26",
   "description": "Revisioned Council rosters, durable review decisions, mission admission and integrated candidate verification for Paperclip workflows",
   "type": "module",
   "private": true,
@@ -13,6 +13,7 @@
     "scripts/operations/github_feedback.py",
     "scripts/operations/github_integration.py",
     "scripts/operations/integrate_delivery.py",
+    "scripts/operations/cancel_delivery.py",
     "README.md",
     "LICENSE"
   ],
