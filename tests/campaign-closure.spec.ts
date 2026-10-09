@@ -55,8 +55,8 @@ it("rejects a competing cancellation after the terminal publication CAS claim", 
   const s = subject(), taskId = randomUUID();
   const mission = { companyId: randomUUID(), projectId: randomUUID(), missionId: s.campaignRootMissionId,
     rootIssueId: randomUUID(), ownerUserId: "owner", version: 7, aggregate: { completion: undefined,
-      linearContinuity: { mode: "milestone-fixed-v1", control: "running" },
-      campaignClosure: { protocol: "council-linear-campaign-closure-v1", phase: "publishing", subject: s,
+      linearContinuity: { mode: "milestone-fixed-v1", terminalPublicationProtocol: "council-terminal-publication-claim-v1", control: "running" },
+      campaignClosure: { protocol: "council-linear-campaign-closure-v1", phase: "publishing", subject: s, terminalClaim: { intentId: randomUUID(), payloadSha256: hash("payload"), claimedVersion: 7, claimedAt: new Date().toISOString() },
         task: { taskId, agentId: randomUUID(), issueId: randomUUID(), creation: "confirmed", reservationId: randomUUID(),
           settlementCommandId: randomUUID(), runId: randomUUID(), wake: "claimed" }, proofDocument: { key: "proof", body: "{}" }, nativeClosures: [] } } } as unknown as MissionRecord;
   await expect(controlFixedCampaign({} as never, mission, { command: "cancel-linear-campaign", reason: "Stop", commandId: randomUUID(), expectedVersion: 7 }, "owner"))

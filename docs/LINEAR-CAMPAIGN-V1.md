@@ -56,6 +56,68 @@ The companion `qualification:native:linear-intake` exercises legacy Todo import,
 source hold, worker restart under the original identity, early Board refusal,
 dependency order and settled N1. It stops before N2 on purpose.
 
+## Explicit recovery and terminal publication permission
+
+A source mismatch, incompatible human status or unavailable source/publication
+persists a hold with a bounded diagnostic. A later healthy read cannot clear it.
+Intake keeps reporting a retained source diagnostic even when the current source
+is available, so a lost initial unavailable response cannot hide the hold.
+The operator restores the pinned source and uses `resume-linear-campaign`; its
+mission CAS records `resumeVersion` and invalidates the old observation/challenge;
+a fresh reply is required before another departure. Intake uses this resume marker to
+retain its own source hold across old challenges and process restarts. The marker
+alone grants no write permission and resets no budget, source or effect identity.
+
+The fixed campaign exchange requires `council-terminal-publication-claim-v1`
+and the three capabilities `fixed-source`, `publication-readback`, and
+`terminal-publication-claim`. Existing fixed campaigns without the protocol marker
+remain held; upgrading a package does not silently adopt or authorize their pending
+publications. The legacy Todo continuity exchange retains its previous contract.
+
+Recording the global closure intent does not authorize Linear writes. Intake first
+requests the exact intent/hash claim in its existing continuity response. Council
+rechecks source, project authority, integrated results and the approved proof before
+one mission CAS grants permission for the complete terminal publication. The next
+existing continuity request carries that persisted grant. Lost messages reuse the
+same grant and local claimed effects remain readback-only, never blindly resent.
+
+Before this claim, pause is allowed while publishing; cancellation withdraws the
+unclaimed closure intent without inventing a success acknowledgement. A stale
+`running` challenge without the grant cannot publish the terminal result. Once the
+claim wins, a competing pause/cancellation is refused until its original effects
+are reconciled: the campaign cannot produce both success and cancellation. An
+automatic source/publication hold after the claim still permits explicit resume
+under the same grant, source and budget after verification. There is no timeout
+that releases an uncertain terminal effect.
+
+These recovery controls have targeted source tests. The installed audit receipt
+below additionally qualifies the nominal terminal permission exchange. It does
+not turn the recovery scenarios into installed tests or authorize recette activation.
+
+## Cancellation and occupied-intake recovery
+
+Fixed campaign cancellation leaves integrated commits and historical technical
+task statuses intact. Product nodes must be terminal; every original member run,
+effect and reservation must be reconciled before the repository can be released.
+A technical review or publication task marked `done` or `blocked` does not itself
+retain occupation once its exact run and costs are settled. Unknown effects,
+unaccounted runs and remaining exposure still prevent release.
+
+The cancellation publication carries `cancellationSummary` with schema
+`council-linear-cancellation-summary-v1`: `retainedDeliveries` identifies member
+mission, native issue, source issue, observed PR URL, integrated commit and
+`verified`; `remainingWork` lists unfinished and unstarted source leaves;
+`openPullRequests` lists exact observed URLs for manual cleanup. A merged result
+whose checks failed remains retained with `verified: false` and remains unfinished.
+No PR closure or success is inferred. Cancellation before plan publication uses
+the original prepared intake mapping rather than omitting unstarted work.
+
+An intake held by repository occupation requires the explicit owner
+`resume-repository-intake` command described in [project mandates](PROJECT-MANDATES.md).
+The existing job does not restart it merely because occupation disappears or its
+question was published. These recovery boundaries are covered by source tests;
+the installed receipts below remain attached to their original candidates.
+
 ## Evidence
 
 Reports live under `.runtime/lot4/native-*/campaign-proof.json` (campaign) and
@@ -65,7 +127,34 @@ with `packageBytesUnchanged: true` and successful cleanup qualifies its exact pa
 Pending or failed reports retain their original result and are never rewritten as
 successful evidence. Real gateway reads/writes and the recette pilot remain L6.
 
-### Qualified candidates — 9 October 2026
+### Audit corrections — 9 October 2026, 22:20 UTC
+
+The [installed audit receipt](linear-v1-audit-native.json) qualifies Council
+`60905259ef43af2edbafd2d2588abd991dd60db0` (`0.7.41`) with intake
+`3bae49255651fddc37e0c66b016ea73e8940d660` (`0.6.1`) on the unchanged host
+`61b3fd57a695614dc4a37e2303f426a34a9795cf`. All eight acceptance checks pass:
+seventeen successful native runs, two serial Git integrations, eleven global
+coverage rows, exact terminal claim then acknowledgement, child-before-parent
+native closure, empty repository registry and seventeen settled reservations
+in the original period (2,550 fixture token units).
+
+Server and database stopped successfully; tracked host files and the recorded
+package source/build bytes remained unchanged. The receipt binds the retained
+raw report by SHA-256 and rechecks every recorded source/build file after cleanup.
+Later intake commits through `b0280d02` change only documentation and the CI gate,
+its tests and configuration; they do not change the qualified runtime files.
+This evidence commit likewise adds only documentation. The source regression
+suite contains 1,407 passing Council tests and one skipped test; typecheck, build
+and the static gate pass.
+
+This is an isolated installed qualification. Linear and GitHub responses,
+model judgments and token usage remain fixtures. Source divergence, restart,
+cancellation races and occupied-intake recovery have targeted source/PostgreSQL
+evidence; the nominal installed run does not claim to exercise all those faults.
+Real Q-LR/Q-LW, authorized recette installation/configuration, provider execution
+and the public HTTPS webhook remain outside this receipt.
+
+### Historical qualified candidates — 9 October 2026
 
 | Scenario | Council commit | Intake commit | Receipt |
 | --- | --- | --- | --- |

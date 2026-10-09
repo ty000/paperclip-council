@@ -133,6 +133,40 @@ it("releases a cancelled campaign with only the already admitted, safely stopped
   expect(releaseReconciledRepository).toHaveBeenCalledExactlyOnceWith(f.ctx, f.root);
 });
 
+it.each(["done", "blocked"])("releases partial cancellation with historical %s technical tasks without rewriting their status", async status => {
+  const f = campaignFixture();
+  delete f.root.aggregate.completion;
+  f.root.aggregate.linearContinuity!.control = "cancelled";
+  const partial = f.members[1]!;
+  delete partial.aggregate.completion;
+  f.issues.get(partial.rootIssueId)!.status = "cancelled";
+  const historical = nativeRunBindings(partial)[1]!.issueId;
+  f.issues.get(historical)!.status = status;
+  await expect(reconcileRepositoryRelease(f.ctx, f.root)).resolves.toBe(true);
+  expect(f.issues.get(historical)!.status).toBe(status);
+  expect(releaseReconciledRepository).toHaveBeenCalledExactlyOnceWith(f.ctx, f.root);
+});
+
+it.each(["pending task", "active run", "unknown run", "unknown usage", "remaining exposure", "uncertain merge"])("retains cancelled campaign occupation for %s", async reason => {
+  const f = campaignFixture();
+  delete f.root.aggregate.completion;
+  f.root.aggregate.linearContinuity!.control = "cancelled";
+  const partial = f.members[1]!;
+  delete partial.aggregate.completion;
+  f.issues.get(partial.rootIssueId)!.status = "cancelled";
+  const binding = nativeRunBindings(partial)[1]!;
+  f.issues.get(binding.issueId)!.status = "blocked";
+  if (reason === "pending task") f.issues.get(partial.rootIssueId)!.status = "blocked";
+  if (reason === "active run") f.runs.get(binding.issueId)![0]!.status = "running";
+  if (reason === "unknown run") f.runs.get(binding.issueId)!.push({ id: randomUUID(), issueId: binding.issueId, agentId: binding.agentId, status: "succeeded" });
+  const reservation = f.envelope.reservations.find(item => item.reservationId === binding.reservationId)!;
+  if (reason === "unknown usage") reservation.usage.status = "unknown";
+  if (reason === "remaining exposure") reservation.remainingExposure.units = 1;
+  if (reason === "uncertain merge") partial.aggregate.n5 = { integration: { mergeClaimedAt: new Date().toISOString(), state: "unknown" } } as any;
+  await expect(reconcileRepositoryRelease(f.ctx, f.root)).resolves.toBe(false);
+  expect(releaseReconciledRepository).not.toHaveBeenCalled();
+});
+
 it("preserves cancellation before a campaign plan or any member exists", async () => {
   const f = campaignFixture();
   delete f.root.aggregate.completion;

@@ -1,3 +1,4 @@
+import { repositoryIntakeHeld } from "./project-intake-recovery.js";
 import { prepareLinearContinuity } from "./linear-continuity-intake.js";
 import { isIntegratedLeaf, assertPreviousDelivery } from "./delivery-leaves.js";
 import { randomUUID } from "node:crypto";
@@ -26,6 +27,7 @@ type IntakeState = { createBody?: Record<string, unknown>; snapshot?: ProjectMan
   linearIntake?: LinearPreparation;
   repositoryCampaign?: { campaignRootMissionId: string; campaignRootIssueId: string; sourceId: string };
   commands: Record<string, Record<string, unknown>>; questions: Record<string, { message: string; confirmed: boolean }>;
+  repositoryHold?: { status: "held" | "released"; heldAt: string };
   plan?: { key: string; body: string } };
 type Intake = { companyId: string; rootIssueId: string; projectId: string; revisionId: string; missionId: string; version: number; state: IntakeState };
 function fromRow(row: any): Intake {
@@ -52,11 +54,16 @@ async function question(ctx: PluginContext, initial: Intake, policy: ProjectMand
     pending = { message: error instanceof MissionError ? error.message.slice(0, 2000) : "Native readback is unavailable; inspect the retained intake before any continuation", confirmed: false };
     intake = await save(ctx, intake, { ...intake.state, questions: { ...intake.state.questions, [code]: pending } });
   }
+  if (code === "repository_occupied" && intake.state.repositoryHold?.status !== "held") {
+    intake = await save(ctx, intake, { ...intake.state, repositoryHold: { status: "held", heldAt: new Date().toISOString() } });
+  }
   if (pending.confirmed) return;
   const interaction = await ctx.issues.askUserQuestions(intake.rootIssueId, { idempotencyKey: `council:intake:${intake.revisionId}:${intake.rootIssueId}:${code}`,
     addresseeUserId: policy.authorizedBy, continuationPolicy: "none", title: "Council — information ou décision requise",
     payload: { version: 1, title: "Compléter la tâche dans le mandat existant", questions: [{ id: "project-task", selectionMode: "single", required: true,
-      prompt: `${pending.message}\nMandat de projet : ${policy.revisionId}. Corrigez la tâche ou sa politique puis indiquez la décision. Cette réponse ne donne aucun droit supplémentaire.`,
+      prompt: `${pending.message}\nMandat de projet : ${policy.revisionId}. ${code === "repository_occupied"
+        ? "Après libération du dépôt, son propriétaire doit relancer cette demande avec resume-repository-intake dans Paperclip. Une réponse à cette question ne relance aucun travail."
+        : "Corrigez la tâche ou sa politique puis indiquez la décision. Cette réponse ne donne aucun droit supplémentaire."}`,
       options: [{ id: "decision", label: "Indiquer la précision ou la décision", freeText: true }] }] } }, intake.companyId);
   if (interaction.issueId !== intake.rootIssueId || interaction.addresseeUserId !== policy.authorizedBy) throw new MissionError(409, "project_question_binding", "Native question is not addressed to the pinned owner on this task");
   await save(ctx, intake, { ...intake.state, questions: { ...intake.state.questions, [code]: { ...pending, confirmed: true } } });
@@ -275,7 +282,7 @@ async function assertCurrentIntakeAuthority(ctx: PluginContext, intake: Intake, 
 async function advancePinned(ctx: PluginContext, initial: Intake, latest: ProjectMandate, policy: ProjectMandate,
   issues: Awaited<ReturnType<typeof projectIssues>>) {
   let intake = initial;
-  if (await closedCampaignIntake(ctx, intake)) return;
+  if (await closedCampaignIntake(ctx, intake) || repositoryIntakeHeld(intake.state)) return;
   await assertCurrentIntakeAuthority(ctx, intake, latest, policy);
   if (!intake.state.createBody) intake = await pinTask(ctx, intake, policy, issues);
   await createMission(ctx, intake.companyId, policy.authorizedBy, intake.state.createBody, trustedMembership(intake));

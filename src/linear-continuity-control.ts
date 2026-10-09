@@ -5,10 +5,11 @@ import { nativeRunBindings } from "./native-run-bindings.js";
 import { assertNativeRunInventory } from "./native-runs.js";
 import { nativeN2Profile } from "./n2-missions.js";
 import { readOrdinaryRun, settleOrdinaryRunUsage } from "./g4-native.js";
-import { FIXED_CAMPAIGN_MODE, assertContinuityBinding, linearAuthorityHash, responseFresh, type LinearContinuityChange } from "./linear-continuity-contract.js";
+import { FIXED_CAMPAIGN_MODE, assertTerminalPublicationProtocol, pendingLinearPublication, assertContinuityBinding, linearAuthorityHash, responseFresh, type LinearContinuityChange } from "./linear-continuity-contract.js";
 import { linearPublicationState, saveLinearContinuity } from "./linear-continuity-transport.js";
 import { readLinearProof } from "./linear-continuity-documents.js";
 import { appliedContextAnnotations } from "./linear-context-guidance.js";
+import { sourceHoldMessage } from "./linear-source-hold.js";
 
 const terminal = new Set(["succeeded", "failed", "cancelled", "timed_out", "interrupted"]);
 function originalSettlement(m: MissionRecord, reservationId: string) {
@@ -84,7 +85,14 @@ function assertArbitrationResolved(m: MissionRecord, kind: LinearContinuityChang
 export async function applyLinearChanges(ctx: PluginContext, initial: MissionRecord) {
   let m = initial; const response = m.aggregate.linearContinuity?.observation?.response;
   if (!response || !responseFresh(response)) return m;
-  if (m.aggregate.linearContinuity!.mode === FIXED_CAMPAIGN_MODE) return holdChangedCampaign(ctx, m, response.sourceSha256);
+  if (m.aggregate.linearContinuity!.mode === FIXED_CAMPAIGN_MODE) {
+    const diagnostic = m.aggregate.linearContinuity!.controlDiagnostic;
+    if (diagnostic) {
+      const linearContinuity = linearPublicationState(m, "blocker", { reason: sourceHoldMessage(diagnostic), diagnostic });
+      return linearContinuity === m.aggregate.linearContinuity ? m : saveLinearContinuity(ctx, m, linearContinuity);
+    }
+    return holdChangedCampaign(ctx, m, response.sourceSha256);
+  }
   for (const change of response.changes) m = await applyOneChange(ctx, m, change);
   const state = m.aggregate.linearContinuity!;
   if (response.sourceSha256 !== state.sourceSha256) return saveLinearContinuity(ctx, m, { ...state, controlReason: "source_revision_unreconciled" });
@@ -137,18 +145,29 @@ async function applyOneChange(ctx: PluginContext, m: MissionRecord, change: Line
     affectedNativeIds: change.affectedNativeIds, evidence: change.evidence, consequence: controls[change.kind] }));
 }
 /** Read current durable state at each wake/merge/closure, rather than trusting a stale actor snapshot. */
-export async function assertLinearContinuityDeparture(ctx: PluginContext, initial: MissionRecord, cancellationReservationId?: string) {
+export async function assertLinearContinuityDeparture(ctx: PluginContext, initial: MissionRecord, cancellationReservationId?: string,
+  terminalIntent?: { intentId: string; payloadSha256: string }) {
   if (!initial.aggregate.linearContinuity) return;
   const m = await getMission(ctx, initial.companyId, initial.missionId), state = m?.aggregate.linearContinuity;
   if (!m || !state) throw new MissionError(409, "linear_continuity_missing", "Original continuity binding cannot disappear");
   assertContinuityBinding(m, state.binding);
+  assertTerminalPublicationProtocol(state);
   const controlPublisher = state.mode !== FIXED_CAMPAIGN_MODE && cancellationReservationId && state.control === "cancel_requested"
     && m.aggregate.n5?.publication?.operation === "cancel-pr" && m.aggregate.n5.publication.reservationId === cancellationReservationId;
   for (const command of state.consumed) await readLinearProof(ctx, m, command.evidence);
   if (controlPublisher) return; // Only the specifically reserved cancellation actor may close the obsolete PR.
   if (state.control !== "running" || state.controlReason || !state.observation || !responseFresh(state.observation.response)
       || state.observation.response.availability !== "available" || state.observation.response.sourceSha256 !== state.sourceSha256
-      || state.publications.some(p => !p.acknowledgement)) throw new MissionError(409, "linear_continuity_hold", "Fresh compatible source, running control and Linear publication readbacks are required for new departures, merges and closure");
+      || state.publications.some(p => pendingLinearPublication(p) && !pendingTerminalClaim(m, p, terminalIntent))) throw new MissionError(409, "linear_continuity_hold", "Fresh compatible source, running control and Linear publication readbacks are required for new departures, merges and closure");
   await readLinearProof(ctx, m, state.observation.reference);
   for (const publication of state.publications) if (publication.acknowledgement) await readLinearProof(ctx, m, publication.acknowledgement.reference);
+}
+
+function pendingTerminalClaim(m: MissionRecord, publication: import("./linear-continuity-contract.js").LinearPublication,
+  intent?: { intentId: string; payloadSha256: string }) {
+  const closure = m.aggregate.campaignClosure;
+  return Boolean(intent && m.aggregate.linearContinuity?.mode === FIXED_CAMPAIGN_MODE && !m.aggregate.repositoryCampaign
+    && closure?.phase === "publishing" && !closure.terminalClaim && !publication.withdrawn && publication.kind === "closure"
+    && intent.intentId === closure.publicationIntentId && intent.payloadSha256 === closure.publicationPayloadSha256
+    && intent.intentId === publication.intentId && intent.payloadSha256 === publication.payloadSha256);
 }

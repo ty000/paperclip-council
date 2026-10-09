@@ -6,6 +6,7 @@ import { linearSourceSubjectSchema } from "./linear-intake-revalidation-contract
 export const LINEAR_CONTINUITY_EVENT = "plugin.ty000.linear-intake.council-continuity-result";
 export const LINEAR_CONTINUITY_PROTOCOL = "council-linear-continuity-v1" as const;
 export const FIXED_CAMPAIGN_MODE = "milestone-fixed-v1" as const;
+export const TERMINAL_PUBLICATION_PROTOCOL = "council-terminal-publication-claim-v1" as const;
 export type LinearContinuityPolicy = { protocol: typeof LINEAR_CONTINUITY_PROTOCOL; mode?: typeof FIXED_CAMPAIGN_MODE };
 const uuid = z.string().uuid(), hash = z.string().regex(/^[a-f0-9]{64}$/), time = z.string().datetime({ offset: true });
 const documentReferenceSchema = z.object({ key: z.string().min(1).max(200), documentId: uuid, revisionId: uuid, bodySha256: hash }).strict();
@@ -21,27 +22,41 @@ const changeSchema = z.object({ commandId: uuid, sequence: z.number().int().posi
 export type LinearContinuityChange = z.infer<typeof changeSchema>;
 const acknowledgementSchema = z.object({ intentId: uuid, payloadSha256: hash, status: z.literal("confirmed"),
   publicationReceipt: documentReferenceSchema }).strict();
+const sourceDiagnosticSchema = z.object({
+  code: z.enum(["source_changed", "source_state_changed", "source_unavailable", "publication_unavailable"]),
+  expectedSourceSha256: hash, observedSourceSha256: hash.optional(), changedSourceIds: z.array(uuid).max(33),
+  changedFields: z.array(z.enum(["membership", "hierarchy", "title", "description", "dependencies", "milestone", "references", "status", "archive"])).max(9),
+}).strict();
+export type SourceDiagnostic = z.infer<typeof sourceDiagnosticSchema>;
+export type TerminalPublicationClaim = { intentId: string; payloadSha256: string; claimedVersion: number; claimedAt: string };
 export const continuityResponseSchema = z.object({ protocol: z.literal(LINEAR_CONTINUITY_PROTOCOL), binding: continuityBindingSchema,
   mode: z.literal(FIXED_CAMPAIGN_MODE).optional(),
   challengeId: uuid, nonce: hash, requestSha256: hash, observedAt: time, validUntil: time,
-  capabilities: z.array(z.enum(["continuous-context", "cooperative-control", "publication-readback", "fixed-source"])).min(2).max(3),
+  capabilities: z.array(z.enum(["continuous-context", "cooperative-control", "publication-readback", "fixed-source", "terminal-publication-claim"])).min(2).max(3),
   sourceSha256: hash, availability: z.enum(["available", "unavailable"]),
+  diagnostic: sourceDiagnosticSchema.optional(),
+  terminalClaimRequest: z.object({ intentId: uuid, payloadSha256: hash }).strict().optional(),
   changes: z.array(changeSchema).max(32), acknowledgements: z.array(acknowledgementSchema).max(32) }).strict().refine(response => {
-    const expected = response.mode === FIXED_CAMPAIGN_MODE ? ["fixed-source", "publication-readback"]
+    const expected = response.mode === FIXED_CAMPAIGN_MODE ? ["fixed-source", "publication-readback", "terminal-publication-claim"]
       : ["continuous-context", "cooperative-control", "publication-readback"];
     return response.capabilities.length === expected.length && expected.every(c => response.capabilities.includes(c as typeof response.capabilities[number]))
-      && (response.mode !== FIXED_CAMPAIGN_MODE || response.changes.length === 0);
+      && (response.mode !== FIXED_CAMPAIGN_MODE || response.changes.length === 0)
+      && (!response.diagnostic || response.mode === FIXED_CAMPAIGN_MODE)
+      && (!response.terminalClaimRequest || response.mode === FIXED_CAMPAIGN_MODE && response.availability === "available");
   }, "The fixed campaign mode accepts no remote commands and requires its exact capabilities");
 export type LinearContinuityResponse = z.infer<typeof continuityResponseSchema>;
 export const continuityNoticeSchema = z.object({ protocol: z.literal(LINEAR_CONTINUITY_PROTOCOL), companyId: uuid,
   missionId: uuid, challengeId: uuid, response: documentReferenceSchema }).strict();
 export type LinearPublication = { intentId: string; kind: "progress" | "blocker" | "question" | "decision" | "closure" | "cancellation";
   payload: Record<string, unknown>; payloadSha256: string; documentKey: string; document?: NativeProofReference;
+  withdrawn?: { commandId: string; reason: "cancelled_before_terminal_claim" };
   acknowledgement?: { reference: NativeProofReference; responseSha256: string; confirmedAt: string } };
 export type LinearContinuityState = { protocol: typeof LINEAR_CONTINUITY_PROTOCOL; binding: LinearContinuityBinding;
   mode?: typeof FIXED_CAMPAIGN_MODE;
+  terminalPublicationProtocol?: typeof TERMINAL_PUBLICATION_PROTOCOL;
+  resumeVersion?: number;
   sourceSha256: string; sequence: number; control: "running" | "pause_requested" | "paused" | "cancel_requested" | "cancelled";
-  authorizedBy: string; controlReason?: string; consumed: Array<{ commandId: string; payloadSha256: string; sequence: number;
+  authorizedBy: string; controlReason?: string; controlDiagnostic?: SourceDiagnostic; consumed: Array<{ commandId: string; payloadSha256: string; sequence: number;
     evidence: NativeProofReference; outcome: "applied" | "arbitration_required" }>;
   challenge?: { challengeId: string; nonce: string; requestedAt: string; expiresAt: string; payload: Record<string, unknown>;
     requestSha256: string; documentKey: string; document?: NativeProofReference; lastEmittedAt?: string };
@@ -67,4 +82,15 @@ export function assertContinuityBinding(m: MissionRecord, b: LinearContinuityBin
 export function responseFresh(response: LinearContinuityResponse, now = Date.now()) {
   const observed = Date.parse(response.observedAt), until = Date.parse(response.validUntil);
   return Number.isFinite(observed) && observed <= now && now < until && until - observed > 0 && until - observed <= 120_000;
+}
+
+/** A withdrawn unclaimed terminal intent is retained history, never a successful readback. */
+export function pendingLinearPublication(publication: LinearPublication) {
+  return !publication.acknowledgement && !publication.withdrawn;
+}
+
+export function assertTerminalPublicationProtocol(state: LinearContinuityState) {
+  if (state.mode === FIXED_CAMPAIGN_MODE && state.terminalPublicationProtocol !== TERMINAL_PUBLICATION_PROTOCOL) {
+    throw new MissionError(409, "linear_terminal_protocol_missing", "Existing fixed campaigns without terminal claim negotiation remain held; no automatic adoption");
+  }
 }

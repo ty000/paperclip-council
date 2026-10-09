@@ -10,6 +10,7 @@ import { assertProjectDeparture } from "./project-mandate-guard.js";
 import { z } from "@paperclipai/plugin-sdk";
 import { FIXED_CAMPAIGN_MODE } from "./linear-continuity-contract.js";
 import { uncertainLinearEffects } from "./linear-continuity-control.js";
+import { campaignCancellationSummary } from "./linear-cancellation-summary.js";
 
 const reportSchema = z.object({ protocol: z.literal("publisher-cancellation-report-v1"), companyId: z.string().uuid(), missionId: z.string().uuid(),
   intentId: z.string().uuid(), issueId: z.string().uuid(), runId: z.string().uuid(), repository: z.string(), url: z.string().url(),
@@ -59,11 +60,12 @@ export async function reconcileLinearCancellation(ctx: PluginContext, initial: M
     if (m.aggregate.linearContinuity!.cancellation?.state !== "closed" || !m.aggregate.n5?.publication?.settledAt) return m;
   }
   if (n5?.integration?.mergeClaimedAt && !n5.integration.report) throw new MissionError(409, "linear_cancel_merge_unknown", "Read the original merge outcome; cancellation never assumes it did not happen");
+  const cancellationSummary = manualCleanup ? await campaignCancellationSummary(ctx, m) : undefined;
   m = await closeRemainingProductNodes(ctx, m);
   const subject = { ...m, aggregate: { ...m.aggregate, linearContinuity: { ...m.aggregate.linearContinuity!, control: "cancelled" as const } } };
   return saveLinearContinuity(ctx, m, linearPublicationState(subject, "cancellation", { workResultAcquired: false, campaignSuccess: false,
     integratedCommitRetained: m.aggregate.n5?.integration?.report?.integratedCommit ?? null, cancelledNodes: m.aggregate.linearContinuity!.cancelledNodes,
-    ...(manualCleanup ? { pullRequestCleanup: "manual", openPullRequest: p?.observation?.state === "open" ? p.observation.url : null } : {}) }));
+    ...(manualCleanup ? { pullRequestCleanup: "manual", openPullRequest: p?.observation?.state === "open" ? p.observation.url : null, cancellationSummary } : {}) }));
 }
 export async function reconcileCancellationPublisher(ctx: PluginContext, initial: MissionRecord) {
   let m = initial; const p = m.aggregate.n5!.publication!;

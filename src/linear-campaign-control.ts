@@ -1,7 +1,7 @@
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { MissionError, type MissionRecord } from "./missions.js";
 import { n2CommandCas } from "./n2-missions.js";
-import { FIXED_CAMPAIGN_MODE, assertContinuityBinding, responseFresh } from "./linear-continuity-contract.js";
+import { FIXED_CAMPAIGN_MODE, assertContinuityBinding, assertTerminalPublicationProtocol, responseFresh } from "./linear-continuity-contract.js";
 import { settleLinearSafePoint, uncertainLinearEffects } from "./linear-continuity-control.js";
 import { readLinearProof } from "./linear-continuity-documents.js";
 import { linearPublicationState } from "./linear-continuity-transport.js";
@@ -32,10 +32,11 @@ export async function controlFixedCampaign(ctx: PluginContext, initial: MissionR
   if (state?.mode !== FIXED_CAMPAIGN_MODE || !campaignControlCommands.includes(String(body.command))) {
     throw new MissionError(422, "linear_campaign_control", "Native campaign commands require the explicit fixed-source mode");
   }
+  assertTerminalPublicationProtocol(state);
   if (m.aggregate.completion?.state === "closed" || ["cancel_requested", "cancelled"].includes(state.control)) {
     throw new MissionError(409, "linear_campaign_terminal", "A completed or cancelling campaign cannot resume or change its result");
   }
-  if (["publishing", "closing"].includes(m.aggregate.campaignClosure?.phase ?? "")) {
+  if (body.command !== "resume-linear-campaign" && m.aggregate.campaignClosure?.terminalClaim) {
     throw new MissionError(409, "linear_campaign_terminal_claimed", "The terminal campaign publication is already claimed; reconcile its original readback before any competing control result");
   }
   if (typeof body.reason !== "string" || !body.reason.trim() || body.reason.length > 2000) {
@@ -45,7 +46,12 @@ export async function controlFixedCampaign(ctx: PluginContext, initial: MissionR
   if (command === "resume-linear-campaign") m = await resumeCampaign(ctx, m);
   const control = command === "cancel-linear-campaign" ? "cancel_requested"
     : command === "resume-linear-campaign" ? "running" : state.control === "paused" ? "paused" : "pause_requested";
-  const next = { ...m.aggregate.linearContinuity!, control, controlReason: command === "resume-linear-campaign" ? undefined : state.controlReason } as const;
+  const publications = m.aggregate.linearContinuity!.publications.map(publication => command === "cancel-linear-campaign"
+    && publication.kind === "closure" && !publication.acknowledgement
+    ? { ...publication, withdrawn: { commandId: String(body.commandId), reason: "cancelled_before_terminal_claim" as const } } : publication);
+  const next = { ...m.aggregate.linearContinuity!, publications, control,
+    ...(command === "resume-linear-campaign" ? { resumeVersion: m.version + 1, observation: undefined, challenge: undefined } : {}), controlReason: command === "resume-linear-campaign" ? undefined : state.controlReason,
+    controlDiagnostic: command === "resume-linear-campaign" ? undefined : state.controlDiagnostic } as const;
   const subject = { ...m, aggregate: { ...m.aggregate, linearContinuity: next } };
   const linearContinuity = linearPublicationState(subject, "decision", { commandId: body.commandId, command,
     reason: body.reason.trim(), authorizedBy: owner, consequence: control });

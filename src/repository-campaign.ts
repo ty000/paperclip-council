@@ -86,27 +86,30 @@ async function memberSafe(ctx: PluginContext, member: MissionRecord, documents: 
 }
 
 async function memberInventorySafe(ctx: PluginContext, member: MissionRecord, bindings: ReturnType<typeof nativeRunBindings>, terminal: false | "closed" | "cancelled") {
-  const issueIds = [...new Set([member.rootIssueId, ...(member.aggregate.hierarchy?.nodes ?? []).map(node => node.issueId), ...bindings.map(binding => binding.issueId)])];
+  const productIds = new Set([member.rootIssueId, ...(member.aggregate.hierarchy?.nodes ?? []).map(node => node.issueId)]);
+  const issueIds = [...new Set([...productIds, ...bindings.map(binding => binding.issueId)])];
   if (issueIds.length > 64) return false;
-  let cancelled = true;
+  let terminalIssues = true;
   for (const issueId of issueIds) {
     const observed = await safeIssueInventory(ctx, member, issueId, bindings);
     if (!observed.safe) return false;
-    cancelled &&= observed.cancelled;
+    // Technical review/publication issues retain their historical status. Their
+    // runs, effects and costs must be reconciled; only product work is cancelled.
+    if (productIds.has(issueId)) terminalIssues &&= observed.terminal;
   }
-  return terminal !== "cancelled" || member.aggregate.completion?.state === "closed" || cancelled;
+  return terminal !== "cancelled" || member.aggregate.completion?.state === "closed" || terminalIssues;
 }
 
 async function safeIssueInventory(ctx: PluginContext, member: MissionRecord, issueId: string, bindings: ReturnType<typeof nativeRunBindings>) {
   const issue = await ctx.issues.get(issueId, member.companyId);
   const inventory = await ctx.issues.summaries.getOrchestration({ companyId: member.companyId, issueId, includeSubtree: false });
   if (!issue || issue.companyId !== member.companyId || issue.projectId !== member.projectId || issue.checkoutRunId || issue.executionRunId
-      || inventory.companyId !== member.companyId || inventory.issueId !== issueId || inventory.runs.length > 256) return { safe: false, cancelled: false };
+      || inventory.companyId !== member.companyId || inventory.issueId !== issueId || inventory.runs.length > 256) return { safe: false, terminal: false };
   const baseline = member.aggregate.nativeWakePolicy?.protocol === "council-native-wake-v2" ? member.aggregate.nativeWakePolicy.rootBaseline : [];
   const safe = inventory.runs.every(run => terminalRuns.has(run.status) && run.issueId === issueId
     && (bindings.some(binding => binding.issueId === issueId && binding.runId === run.id && binding.agentId === run.agentId)
       || issueId === member.rootIssueId && baseline.some(item => item.runId === run.id && item.agentId === run.agentId)));
-  return { safe, cancelled: issue.status === "cancelled" };
+  return { safe, terminal: ["done", "cancelled"].includes(issue.status) };
 }
 
 export async function listCampaignMembers(ctx: PluginContext, root: MissionRecord) {

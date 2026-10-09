@@ -1,0 +1,143 @@
+{
+  "schema": "linear-v1-installed-receipt.v1",
+  "outcome": "NATIVE CAMPAIGN VALIDATED",
+  "boundary": "Isolated native Paperclip host, installed workers, bus, scheduler, PostgreSQL, admission and native runs. Linear/GitHub/model responses and usage are deterministic fixtures. Git commits and integrations are real in a private repository. No recette changes or provider execution.",
+  "startedAt": "2026-10-09T21:47:22.891Z",
+  "finishedAt": "2026-10-09T22:20:25.782Z",
+  "candidates": {
+    "councilCommit": "60905259ef43af2edbafd2d2588abd991dd60db0",
+    "intakeCommit": "3bae49255651fddc37e0c66b016ea73e8940d660",
+    "hostCommit": "61b3fd57a695614dc4a37e2303f426a34a9795cf"
+  },
+  "checks": {
+    "completeImport": "PASS",
+    "noImporterWake": "PASS",
+    "serialIntegratedLeaves": "PASS",
+    "independentGlobalClosure": "PASS",
+    "terminalReadback": "PASS",
+    "repositoryReleased": "PASS",
+    "singleBudget": "PASS",
+    "noProvider": "PASS"
+  },
+  "runs": {
+    "count": 17,
+    "succeeded": 17,
+    "fixtureUsageUnits": 2550
+  },
+  "admission": {
+    "periodKey": "linear-intake-isolated",
+    "reservations": 17,
+    "allSettled": true,
+    "accountedUnits": 2550,
+    "configureCount": 1
+  },
+  "cleanup": {
+    "serverStopped": true,
+    "databaseStopped": true,
+    "hostTrackedUnchanged": true,
+    "runtimeRetained": true
+  },
+  "packageBytesUnchanged": true,
+  "finalNativeObservationsVerified": true,
+  "nativeObservations": {
+    "count": 24,
+    "versionConflictsObserved": 3
+  },
+  "serial": {
+    "orderedMissionIds": [
+      "8b95e05a-c7e3-44b6-8e19-ba71627d580c",
+      "2ad3b0bb-fe49-41d5-b594-e9f42bdfd689"
+    ],
+    "runCount": 17,
+    "noRootImplementation": true,
+    "serialPredecessor": true,
+    "bothFilesIntegrated": true
+  },
+  "globalReview": {
+    "runId": "a8f4b036-c360-48e6-980f-9c3121af575a",
+    "agentId": "756fe2b9-adc0-4fb6-931e-f17c550a2f37",
+    "coverageRows": 11,
+    "reportSha256": "4d64e44f85f2e9a45d2f5954426a4bfb99b2cb5973a151df34951ff3a0f1ba22",
+    "proofRevisionId": "aa83634c-4ca6-4a14-bb97-533f24d087b4"
+  },
+  "terminalClaim": {
+    "intentId": "78449f89-28b7-416d-b08d-d40d25df15ed",
+    "claimedAt": "2026-10-09T22:18:24.330Z",
+    "payloadSha256": "157519822f4b77746b5cc4f2793197978788ab56ee4c3a9b3ec3e0b0107c7b7b",
+    "claimedVersion": 122,
+    "acknowledgement": {
+      "reference": {
+        "key": "linear-publication-78449f89-28b7-416d-b08d-d40d25df15ed",
+        "bodySha256": "6e18da58e3400430ea0d74477f89da73024827126cdc7140124dc606f973cf3a",
+        "documentId": "6ef9d843-338d-4fba-9874-ae1aa9890b8e",
+        "revisionId": "e3fcba13-55df-421a-bb22-a7ed24d39eb5"
+      },
+      "confirmedAt": "2026-10-09T22:19:26.245Z",
+      "responseSha256": "e66e3b3a8f1f379156c557378f437748f3df42352885ac98daec5eaa7c1549a6"
+    },
+    "campaignRootMissionId": "69218876-0a9b-47a8-b835-204dda72f2a6",
+    "nativeRootIssueId": "35954f5a-6f64-4d23-b604-fdd24cee32df",
+    "sourceRootId": "57ce8325-9de2-43da-bf69-4ecd0640515d",
+    "rootClosed": true
+  },
+  "repositoryRelease": {
+    "registryVersion": 5,
+    "remainingHolders": 0
+  },
+  "publications": {
+    "comments": 10,
+    "effects": 15
+  },
+  "integrations": [
+    {
+      "createCount": 1,
+      "mergeCount": 1,
+      "updateCount": 0,
+      "baseCommit": "6a56d68c9f4a7148090de404668a548bb48129dc",
+      "integratedCommit": "b0683ee6a238b1deeb4db0e51c10021591bef867",
+      "merged": true
+    },
+    {
+      "createCount": 1,
+      "mergeCount": 1,
+      "updateCount": 0,
+      "baseCommit": "b0683ee6a238b1deeb4db0e51c10021591bef867",
+      "integratedCommit": "c54eea256211ce5ff79b0fa455611fc46cb70417",
+      "merged": true
+    }
+  ],
+  "packageFileDigestSets": {
+    "council": {
+      "files": 814,
+      "sha256": "226268e1c067b243132dc1953af52d001d02a995568e52b82227516032358e1e"
+    },
+    "intake": {
+      "files": 197,
+      "sha256": "a2bc1401f4e5371a2bfaf9af25c01942077fb430449618d8cc7882823b8fa273"
+    }
+  },
+  "sourceBuildVerification": {
+    "council": {
+      "matched": true,
+      "sourceFiles": 226,
+      "sourceSha256": "d6b3de82578c7f9f2aad415d0992c4ae4308d530330bc7edc12c82882a635915",
+      "buildFiles": 588,
+      "buildSha256": "aa39c66a16234e1a28ad0c7059af9c899ca3aed951df89fa6f7d84f6c0da63dd",
+      "observedHead": "60905259ef43af2edbafd2d2588abd991dd60db0",
+      "launchCommit": "60905259ef43af2edbafd2d2588abd991dd60db0"
+    },
+    "intake": {
+      "matched": true,
+      "sourceFiles": 59,
+      "sourceSha256": "64d6c7596822368fd45bad5d8a26dd73ca9b02ceb60575ffc7c5e343312a2b6f",
+      "buildFiles": 138,
+      "buildSha256": "a390311c6c373353e844fbb81bfb9868d8a1e31f54a74ca92b90277f08c9c514",
+      "observedHead": "b0280d02b83e1b96321eaa62c79154b4fc25f197",
+      "launchCommit": "3bae49255651fddc37e0c66b016ea73e8940d660"
+    }
+  },
+  "rawProof": {
+    "path": ".runtime/lot4/native-oYjLeh/campaign-proof.json",
+    "sha256": "5e33ae878830b682949de2f862027823130f8277465970aa1d7c016af6baf165"
+  }
+}
