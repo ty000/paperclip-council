@@ -61,15 +61,27 @@ function unclaimedVersionConflict(value: any, current: any[]) {
   return publication.wake === "pending" && !publication.runId;
 }
 
-async function assertNominalObservations(host: LinearHost, council: Council, companyId: string, proof: any, current: any[]) {
+function completedJobSnapshot(jobs: Awaited<ReturnType<typeof jobRuns>>) {
+  const runs = jobs.flatMap(group => group.runs);
+  if (runs.some((run: any) => !["succeeded", "failed", "cancelled"].includes(run.status))) return null;
+  return JSON.stringify(runs.map((run: any) => `${run.id}:${run.status}`).sort());
+}
+
+async function assertNominalObservations(host: LinearHost, council: Council, companyId: string, proof: any, before: Awaited<ReturnType<typeof jobRuns>>) {
+  const current = await missions(host, council, companyId);
   const observations = await continuityObservations(host, companyId, council.pluginId);
   proof.nativeObservations ??= {};
   for (const value of observations) proof.nativeObservations[`${value.missionId}:${value.documentKey}`] = value;
+  const after = await jobRuns(host, council.pluginId);
+  const stable = completedJobSnapshot(before);
+  // The job publishes its new observation after advancing the mission. Do not
+  // combine a new wake claim with the previous observation during that interval.
+  if (stable === null || stable !== completedJobSnapshot(after)) return;
   const blocked = observations.filter(value => value.observation.state === "blocked" && !unclaimedVersionConflict(value, current));
   assert.equal(blocked.length, 0, `Native continuity requires diagnosis: ${JSON.stringify(blocked)}`);
 }
 
-async function assertNominalCampaignJobs(host: LinearHost, council: Council, companyId: string, proof: any, current: any[]) {
+async function assertNominalCampaignJobs(host: LinearHost, council: Council, companyId: string, proof: any) {
   const jobs = await jobRuns(host, council.pluginId);
   const failed = jobs.flatMap(group => group.runs.filter((run: any) => run.status === "failed"));
   assert.equal(failed.length, 0, "A failed native Council job requires diagnosis before continuing qualification");
@@ -81,7 +93,7 @@ async function assertNominalCampaignJobs(host: LinearHost, council: Council, com
   // closes. Retain both observations; terminal checks still require both deliveries.
   // Every other intake question is non-nominal even when the scheduled job succeeds.
   assert.equal(questions.length, 0, `Native intake requires diagnosis: ${JSON.stringify(questions)}`);
-  await assertNominalObservations(host, council, companyId, proof, current);
+  await assertNominalObservations(host, council, companyId, proof, jobs);
 }
 
 async function observeCampaign(host: LinearHost, setup: Awaited<ReturnType<typeof bootstrapCampaign>>, proof: any, save: () => Promise<void>) {
@@ -92,7 +104,7 @@ async function observeCampaign(host: LinearHost, setup: Awaited<ReturnType<typeo
     const current = await missions(host, council, companyId);
     if (Date.now() - checkedJobsAt >= 10_000) {
       checkedJobsAt = Date.now();
-      await assertNominalCampaignJobs(host, council, companyId, proof, current);
+      await assertNominalCampaignJobs(host, council, companyId, proof);
     }
     const control = current.find(m => m.rootIssueId === root.id);
     const members = current.filter(m => m.aggregate.repositoryCampaign);
@@ -235,6 +247,7 @@ async function verifyClosure(host: LinearHost, source: LinearSource, setup: Awai
   proof.repositoryRelease = await waitForLinear("terminal campaign releases its repository", () => repositoryOccupation(host),
     value => Object.keys(value.document.holders).length === 0);
   assert.equal(proof.repositoryRelease.document.initialized, true);
+  await assertNominalCampaignJobs(host, council, companyId, proof);
   proof.jobs = { council: await jobRuns(host, council.pluginId), intake: await jobRuns(host, intake.pluginId) };
 }
 
