@@ -31,11 +31,12 @@ const route = `/api/plugins/private.paperclip-council/api/issues/${issueId}/coun
 if (config.campaignMode) {
   const nativeIssue = await api("GET", `/api/issues/${issueId}`);
   const describedMissionId = /"missionId"\s*:\s*"([0-9a-f-]{36})"/i.exec(nativeIssue.description ?? "")?.[1];
+  const campaignReview = nativeIssue.description?.includes('"command":"campaign-review-inspect"') === true;
   let discovered;
   if (describedMissionId) discovered = { missionId: describedMissionId };
   else discovered = await api("POST", route, { command: "inspect" });
   assert(discovered.missionId, "Each campaign run must discover its own mission from its authenticated native task");
-  config = { ...config, missionId: discovered.missionId,
+  config = { ...config, missionId: discovered.missionId, campaignReview,
     ...(discovered.n1?.rootIssueId ? { rootIssueId: discovered.n1.rootIssueId } : {}),
     baseCommit: discovered.n1?.sourceBaseCommit ?? execFileSync("git", ["rev-parse", "main"], { cwd: config.repoPath, encoding: "utf8" }).trim() };
 } else if (config.projectIntake && !config.missionId) {
@@ -59,9 +60,10 @@ async function observe(read, ok, label) {
 }
 const git = (...args) => execFileSync("git", args, { cwd: config.repoPath, encoding: "utf8" }).trim();
 await api("POST", `/api/issues/${issueId}/checkout`, { agentId, expectedStatuses: ["todo", "in_progress"] });
-const inspectCommand = coordinationActor ? "n6-inspect" : agentId === config.actors.publisher ? "n5-inspect" : "inspect";
+const inspectCommand = config.campaignReview ? "campaign-review-inspect" : coordinationActor ? "n6-inspect" : agentId === config.actors.publisher ? "n5-inspect" : "inspect";
 let inspection = await observe(async () => { try { return await call({ command: inspectCommand }); }
   catch (e) { if (["root_dispatch_run_mismatch", "dispatch_run_mismatch"].includes(e.response?.code)) return null; throw e; } }, Boolean, "dispatch binding");
+inspection = inspection.inspection ?? inspection;
 if (config.campaignMode) {
   assert.equal(inspection.missionId, config.missionId, "Authenticated inspection must confirm the mission discovered from this native task");
   const rootIssueId = inspection.rootIssueId ?? inspection.n1?.rootIssueId;
@@ -96,6 +98,25 @@ else if (issueId === config.n6RootIssueId) {
     try { await readFile(resolve(config.runtime, "n6-finish")); return true; } catch { return false; }
   }, Boolean, "owner bounded downstream observation complete");
   summary = { fixture: "N6 downstream N1 launch", missionId: config.n6MissionId, runId, issueId, inspected: inspection.missionId };
+}
+else if (config.campaignReview) {
+  const subject = inspection.campaignClosure.subject;
+  assert.equal(subject.campaignRootMissionId, config.missionId);
+  const resultBySource = new Map(subject.results.map(result => [result.sourceId, result]));
+  const rows = subject.coverage.map(criterion => {
+    const related = resultBySource.get(criterion.criterionId.replace(/^source:/, ""));
+    const results = related ? [related] : subject.results;
+    const proofIds = [...new Set(results.flatMap(result => [result.proofId, result.completionDocument.revisionId,
+      result.completionDocument.bodySha256, result.integratedResultSha256]).concat(subject.priorPublicationSha256s))];
+    return { criterionId: criterion.criterionId, sourceSha256: criterion.sourceSha256,
+      deliveryOrObligationIds: related ? [related.resultId] : ["transverse:campaign"],
+      verification: { environment: "isolated installed campaign fixture",
+        method: related ? "Matched the pinned source node to its proof-closed integrated delivery" : "Checked the pinned campaign sources against both proof-closed deliveries and acknowledged publications" },
+      result: "satisfied", proofIds, remainder: null };
+  });
+  summary = { schema: "council-linear-campaign-review-report-v1", campaignRootMissionId: subject.campaignRootMissionId,
+    taskId: inspection.campaignClosure.task.taskId, sourceSha256: subject.sourceSha256, mandateSha256: subject.mandateSha256,
+    coverageSha256: subject.coverageSha256, resultsSha256: subject.resultsSha256, verdict: "approved", rows };
 }
 else if (agentId === config.actors.publisher) summary = await publishDelivery({ api, call, config, issueId, runId, git });
 else if (inspection.task) {
