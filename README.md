@@ -5,6 +5,16 @@ Paperclip workflows. This standalone package extracts the demonstrated
 `private.paperclip-council` integration without importing from a Paperclip
 monorepo workspace.
 
+Version `0.7.29` accepts the fixed milestone campaign readiness extension from
+Linear intake. Council verifies the original source documents, PRD/TAD content
+digests, milestone context and the separate native grouping before preparing
+work. Original Linear parents remain intact. Continuity pins the material source
+digest; native import proof retains the complete observation digest. Campaign
+documents require an explicit `milestone-fixed-v1` project policy; ordinary Todo
+documents retain their existing contract. This receiver slice is covered by unit,
+build and static checks. Serial campaign deliveries, publication and the complete
+pilot require the subsequent V1 lots; no recipe activation is claimed here.
+
 Version `0.7.19` continues an admitted sequential hierarchy after its planning
 lead finishes. The deterministic controller settles each exact child run and
 observes its verified native closure before admitting the next child. It then
