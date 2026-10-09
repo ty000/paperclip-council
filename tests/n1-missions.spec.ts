@@ -32,6 +32,7 @@ import { advanceContinuity } from "../src/continuity-runtime.js";
 import { chooseModelProfile } from "../src/model-api.js";
 import { operatingProfileHash } from "../src/project-mandate-state.js";
 import { assertHierarchySources } from "../src/hierarchy-runtime.js";
+import { handlePluginRequest } from "../src/worker.js";
 
 const id = {
   company: randomUUID(),
@@ -2102,7 +2103,7 @@ describe.each(["recover-integration", "recover-candidate"])("owner recovery: %s"
 
   it("routes owner recovery to review-ready with original receipts/attribution and no wake or acceptance", async () => {
     const h = recovery();
-    const response = await handleMissionApi({ ...agentRequest({}, { agentId: id.lead, runId: id.leadRun }, id.root),
+    const response = await handlePluginRequest({ ...agentRequest({}, { agentId: id.lead, runId: id.leadRun }, id.root),
       routeKey: "mission-command", params: { companyId: id.company, missionId: id.mission }, body: h.body,
       actor: { actorType: "user", actorId: id.owner, userId: id.owner },
     }, h.ctx);
@@ -2225,6 +2226,74 @@ describe.each(["recover-integration", "recover-candidate"])("owner recovery: %s"
     expect(verifyIntegratedCandidate).toHaveBeenCalledWith(h.ctx, expect.objectContaining({ integrationAdjustedPaths: ["alpha.txt"] }));
     expect(h.row().aggregate.n1!.contributions).toEqual(h.initial.n1!.contributions);
     expect(h.row().aggregate.journal.at(-1)).toMatchObject({ integrationAdjustedPaths: ["alpha.txt"] });
+  });
+
+  it("restores and reads back the native product wait without launching another run", async () => {
+    const h = recovery();
+    h.advanceMission(a => ({ ...a,
+      nativeWakePolicy: { protocol: "council-native-wake-v2", rootBaseline: [] },
+      projectMandate: { projectId: id.project, revisionId: randomUUID(), version: 1, authorizedBy: id.owner,
+        operatingProfileHash: "fixture", mandateHash: canonicalPayloadHash(a.mandate), allowedPaths: ["src"], publication: null,
+        completion: { protocol: "council-proof-close-v1", result: "draft-pr" },
+        source: { rootIssueId: id.root, title: "Product", descriptionHash: "fixture", taskDocumentRevisionId: null } },
+    }));
+    h.body.expectedVersion = 6;
+    h.issues.get(id.root)!.status = "backlog";
+    h.update.mockImplementation(async (...args: unknown[]) => { Object.assign(h.issues.get(String(args[0]))!, args[1]); });
+    expect((await h.apply()).mission.aggregate.phase).toBe("ready_for_review");
+    expect(h.issues.get(id.root)!.status).toBe("blocked");
+    expect(h.update).toHaveBeenCalledWith(id.root, { status: "blocked" }, id.company);
+    expect(h.requestWakeup).not.toHaveBeenCalled();
+    h.update.mockClear();
+    expect((await h.apply()).outcome).toBe("replayed");
+    expect(h.update).not.toHaveBeenCalled();
+    expect(h.requestWakeup).not.toHaveBeenCalled();
+    expect(h.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("replays the historical receipt after review starts without rewinding or reparking the product", async () => {
+    const h = recovery();
+    h.advanceMission(a => ({ ...a,
+      nativeWakePolicy: { protocol: "council-native-wake-v2", rootBaseline: [] },
+      projectMandate: { projectId: id.project, revisionId: randomUUID(), version: 1, authorizedBy: id.owner,
+        operatingProfileHash: "fixture", mandateHash: canonicalPayloadHash(a.mandate), allowedPaths: ["src"], publication: null,
+        completion: { protocol: "council-proof-close-v1", result: "draft-pr" },
+        source: { rootIssueId: id.root, title: "Product", descriptionHash: "fixture", taskDocumentRevisionId: null } },
+    }));
+    h.body.expectedVersion = 6;
+    h.issues.get(id.root)!.status = "backlog";
+    h.update.mockImplementation(async (...args: unknown[]) => { Object.assign(h.issues.get(String(args[0]))!, args[1]); });
+    await h.apply();
+    h.advanceMission(a => ({ ...a, phase: "review_handoff", control: { status: "active" } }));
+    h.update.mockClear();
+    const replay = await h.apply();
+    expect(replay).toMatchObject({ outcome: "replayed", mission: { aggregate: { phase: "review_handoff" } } });
+    expect(h.update).not.toHaveBeenCalled(); expect(h.requestWakeup).not.toHaveBeenCalled();
+    expect(h.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not restore a historical wait for a different current candidate", async () => {
+    const h = recovery();
+    h.advanceMission(a => ({ ...a,
+      nativeWakePolicy: { protocol: "council-native-wake-v2", rootBaseline: [] },
+      projectMandate: { projectId: id.project, revisionId: randomUUID(), version: 1, authorizedBy: id.owner,
+        operatingProfileHash: "fixture", mandateHash: canonicalPayloadHash(a.mandate), allowedPaths: ["src"], publication: null,
+        completion: { protocol: "council-proof-close-v1", result: "draft-pr" },
+        source: { rootIssueId: id.root, title: "Product", descriptionHash: "fixture", taskDocumentRevisionId: null } },
+    }));
+    h.body.expectedVersion = 6;
+    h.issues.get(id.root)!.status = "backlog";
+    h.update.mockImplementation(async (...args: unknown[]) => { Object.assign(h.issues.get(String(args[0]))!, args[1]); });
+    await h.apply();
+    h.advanceMission(a => ({ ...a, n1: { ...a.n1!, candidate: {
+      ...(a.n1 as N1State).candidate!, candidate: { ...(a.n1 as N1State).candidate!.candidate, candidateCommit: "9".repeat(40) },
+    } } }));
+    h.issues.get(id.root)!.status = "backlog";
+    h.update.mockClear();
+    const replay = await h.apply();
+    expect(replay).toMatchObject({ outcome: "replayed", mission: { aggregate: { phase: "ready_for_review" } } });
+    expect(h.issues.get(id.root)!.status).toBe("backlog");
+    expect(h.update).not.toHaveBeenCalled(); expect(h.requestWakeup).not.toHaveBeenCalled();
   });
 });
 
@@ -2715,7 +2784,10 @@ describe("hierarchy source integrity through two physical contribution dispatche
     expect(await publish(["outside/project.ts"])).toMatchObject({ status: 422, body: { code: "project_write_scope" } });
     const paths = integrationKind === "shared files" ? ["src/shared.ts"] : [];
     expect(await publish(paths)).toMatchObject({ status: 200 });
-    expect(verifyIntegratedCandidate).toHaveBeenLastCalledWith(h.ctx, expect.objectContaining({ integrationAdjustedPaths: paths.length ? paths : undefined }));
+    expect(verifyIntegratedCandidate).toHaveBeenLastCalledWith(h.ctx, expect.objectContaining({
+      attachmentIssueId: integration.issueId,
+      integrationAdjustedPaths: paths.length ? paths : undefined,
+    }));
     expect(h.row().aggregate.phase).toBe("integrating");
     // The old planner's settlement cannot bypass the new integration run's cost.
     expect((await h.tick()).code).toBe("hierarchy_integration_running");

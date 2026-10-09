@@ -2,9 +2,9 @@ import type { MissionRecord } from "./missions.js";
 import type { N2Submission } from "./n2-missions.js";
 import { MissionError } from "./mission-primitives.js";
 
-/** Integrated leaf actors upload on their own admitted task, preserving the product subject. */
+/** Delegated completion actors upload on their own admitted task, preserving the product subject. */
 export function candidateAttachmentTarget(m: MissionRecord, admittedIssueId: string | null | undefined) {
-  if (m.aggregate.projectMandate?.completion?.result !== "integrated-verified") return undefined;
+  if (!m.aggregate.projectMandate?.completion) return undefined;
   if (!admittedIssueId) throw new MissionError(409, "candidate_attachment_actor", "Exact admitted candidate task required");
   return admittedIssueId;
 }

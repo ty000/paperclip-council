@@ -14,6 +14,7 @@ import { normalizeN3Slots } from "./n3-opinions.js";
 import { validateRosterPair } from "./rosters.js";
 import { readNativeG4Profile } from "./g4-native.js";
 import { readAdmission } from "./admission.js";
+import { assertConfiguredGithubFeedbackRefresh } from "./github-feedback-authority.js";
 import { projectIssues, projectMandateRow, projectTable, readProjectMandate, type ProjectMandateContent, type ProjectPublication } from "./project-mandate-state.js";
 
 
@@ -48,6 +49,7 @@ async function publication(ctx: PluginContext, companyId: string, value: unknown
     }
   }
   const contract = parsePrContract(v.contract);
+  assertConfiguredGithubFeedbackRefresh(contract?.feedbackRefresh, (await ctx.config.get(companyId)).githubFeedbackToken);
   return { ...result, ...(contract ? { contract } : {}) };
 }
 async function baseline(ctx: PluginContext, companyId: string, projectId: string, included: unknown) {

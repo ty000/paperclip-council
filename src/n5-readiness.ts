@@ -3,22 +3,38 @@ import { createHash } from "node:crypto";
 import type { MissionRecord } from "./missions.js";
 import type { N5State } from "./n5-state.js";
 type Publication = NonNullable<N5State["publication"]>;
+const feedback = (p: Publication) => p.controllerFeedbackReport ?? p.feedbackReport;
 
 function currentAcceptance(m: MissionRecord, p: Publication) {
   const n2 = m.aggregate.n2;
   return n2?.status === "accepted" && n2.activeSubmissionId === p.submission.submissionId
     && p.submission.mandateHash === createHash("sha256").update(JSON.stringify(m.aggregate.mandate)).digest("hex");
 }
+function exactChecks(p: Publication) {
+  return Boolean(p.observation && p.checks
+    && p.checks.headSha === p.observation.headSha && p.checks.state === "passed");
+}
 function exactChecksAndReviews(p: Publication) {
-  if (!p.observation || !p.checks || !p.reviews) return false;
-  return p.checks.headSha === p.observation.headSha && p.checks.state === "passed"
-    && p.reviews.headSha === p.observation.headSha && p.reviews.state === "approved";
+  return Boolean(exactChecks(p) && p.observation && p.reviews
+    && p.reviews.headSha === p.observation.headSha && p.reviews.state === "approved");
+}
+function exactFeedbackBinding(p: Publication) {
+  const report = feedback(p);
+  return Boolean(report && p.observation
+    && report.headSha === p.observation.headSha
+    && report.url === p.observation.url
+    && report.draft === p.observation.draft);
+}
+function freshFeedback(p: Publication) {
+  const observed = Date.parse(feedback(p)?.observedAt ?? "");
+  return Number.isFinite(observed) && Date.now() - observed <= 300_000 && observed <= Date.now() + 5_000;
 }
 function publicationReady(n5: N5State, p: Publication, common: boolean, contractConformant: boolean) {
-  if (!n5.authority.contract || !p.feedbackReport || !p.observation) return false;
-  const states = githubFeedbackStates(n5.authority.contract, p.feedbackReport);
-  return Boolean(states.checks === "passed" && states.reviews === "approved" && common && contractConformant && p.settledAt && exactChecksAndReviews(p)
-    && p.feedbackReport.headSha === p.observation.headSha && Date.now() - Date.parse(p.feedbackReport.observedAt) <= 300_000);
+  const contract = n5.authority.contract, report = feedback(p);
+  if (!contract || !report || !p.observation || !p.settledAt || !common || !contractConformant || !exactFeedbackBinding(p) || !freshFeedback(p)) return false;
+  if (contract.result === "draft-pr") return githubFeedbackStates(contract, report).checks === "passed" && exactChecks(p);
+  const states = githubFeedbackStates(contract, report);
+  return states.checks === "passed" && states.reviews === "approved" && exactChecksAndReviews(p);
 }
 export function n5Readiness(m: MissionRecord, n5: N5State) {
   const p = n5.publication, o = p?.observation;

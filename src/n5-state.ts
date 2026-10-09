@@ -24,6 +24,7 @@ export type N5State = {
     state: "pending" | "unknown" | "opened"; claimCommandId?: string;
     readbackUnavailable?: string;
     feedbackReport?: import("./pr-contract.js").GithubFeedback;
+    controllerFeedbackReport?: import("./pr-contract.js").ControllerGithubFeedback;
     preflight?: import("./n5-publisher-preflight.js").PublisherPreflight;
     observation?: { observedAt: string; objectId: string; workProductId: string; documentRevisionId: string;
       url: string; headSha: string; baseRef: string; headRef: string; state: string; draft: boolean; lastResolvedAt: string;
@@ -39,7 +40,8 @@ export function inspectN5(mission: MissionRecord) {
   const readiness = n5Readiness(mission, n5);
   let integratedReady = false;
   if (n5.authority.contract?.integration) { try { integratedResult(mission); integratedReady = true; } catch { /* Retain a blocked integrated result. */ } }
-  const source = n5.authority.contract ? "publisher_run_report" : "attributed_actor_observation";
+  const source = n5.publication?.controllerFeedbackReport ? "council_continuity_http"
+    : n5.authority.contract ? "publisher_run_report" : "attributed_actor_observation";
   return { ...n5, ...readiness, integratedReady, ready: n5.authority.contract?.integration ? integratedReady : readiness.ready, checksSource: source, reviewsSource: source, ...nextDeliveryAction(mission, n5, readiness.ready) };
 }
 

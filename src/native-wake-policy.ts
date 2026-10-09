@@ -89,3 +89,14 @@ async function parkProductRoot(ctx: PluginContext, m: MissionRecord) {
       const after = await ctx.issues.get(root.id, m.companyId);
       if (after?.status !== "blocked") throw new MissionError(409, "hierarchy_root_wait_unknown", "Product root waiting state was not observed");
 }
+
+/** Owner recovery reuses the same native product wait as nominal candidate publication. */
+export async function restoreRecoveredCandidateWait(ctx: PluginContext, m: MissionRecord) {
+  if (!m.aggregate.nativeWakePolicy || !completionPolicy(m)) return m;
+  const state = m.aggregate.n1 as { candidate?: unknown } | undefined;
+  if (!state?.candidate || m.aggregate.phase !== "ready_for_review") {
+    throw new MissionError(409, "native_candidate_recovery", "Only a verified recovered candidate may restore the native review wait");
+  }
+  await parkProductRoot(ctx, m);
+  return m;
+}

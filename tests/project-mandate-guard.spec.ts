@@ -38,6 +38,16 @@ describe("pinned project departure authority", () => {
     }
     m.aggregate.projectMandate!.publication = null; expect(() => assertProjectPublication(m, actual)).toThrow();
   });
+  it("binds controller feedback authority separately without changing historical operating-profile hashes", () => {
+    const { m, config } = fixture(), secretRef = { type: "secret_ref" as const, secretId: "secret", version: "latest" as const };
+    const actual = { publisherAgentId: "publisher", repository: "owner/repo", baseRef: "main", headRef: "codex/task-mission",
+      contract: { protocol: "council-pr-contract-v1" as const, draftOnly: true, result: "draft-pr" as const, feedback: "review-and-correct" as const,
+        requiredChecks: ["ci"], feedbackRefresh: { protocol: "controller-github-feedback-v1" as const, secretRef } } };
+    m.aggregate.projectMandate!.publication = { ...m.aggregate.projectMandate!.publication!, contract: actual.contract };
+    expect(() => assertProjectPublication(m, actual)).not.toThrow();
+    expect(() => assertProjectPublication(m, { ...actual, contract: { ...actual.contract, feedbackRefresh: undefined } })).toThrow();
+    expect(operatingProfileHash(config)).toBe(operatingProfileHash({ ...config, githubFeedbackToken: secretRef }));
+  });
   it("leaves historical missions outside project delegation", async () => {
     const { m } = fixture(); delete m.aggregate.projectMandate;
     await expect(assertProjectDeparture({} as PluginContext, m)).resolves.toBeUndefined();

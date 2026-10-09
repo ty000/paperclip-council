@@ -56,17 +56,19 @@ describe("paperclip council manifest", () => {
       "companies.read",
       "projects.read",
       "agents.read",
+      "http.outbound",
       "ui.page.register",
     ]));
     expect(parsed.instanceConfigSchema).toMatchObject({
       required: ["apiBaseUrl", "councilAgentId", "councilApiKey"],
       properties: {
         councilApiKey: { format: "secret-ref" },
+        githubFeedbackToken: { format: "secret-ref" },
       },
     });
     expect(((parsed.instanceConfigSchema!.properties as Record<string, unknown>).modelProfileMapping as Record<string, unknown>))
       .toMatchObject(MODEL_PROFILE_MAPPING_SCHEMA);
-    expect(parsed.version).toBe("0.7.26");
+    expect(parsed.version).toBe("0.7.32");
     expect((parsed.instanceConfigSchema!.properties as Record<string, unknown>).workspacePreflight)
       .toMatchObject({ type: "object", additionalProperties: false, required: ["codexHome"] });
     expect(JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version).toBe(parsed.version);
