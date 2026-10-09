@@ -51,8 +51,14 @@ async function bootstrapCampaign(host: LinearHost, source: LinearSource, proof: 
 
 async function observeCampaign(host: LinearHost, setup: Awaited<ReturnType<typeof bootstrapCampaign>>, proof: any, save: () => Promise<void>) {
   const { council, companyId, root } = setup;
-  let priorState = "";
+  let priorState = ""; let checkedJobsAt = 0;
   return waitForLinear("two integrated leaves and native global closure", async () => {
+    if (Date.now() - checkedJobsAt >= 10_000) {
+      checkedJobsAt = Date.now();
+      const jobs = await jobRuns(host, council.pluginId);
+      const failed = jobs.flatMap(group => group.runs.filter((run: any) => run.status === "failed"));
+      assert.equal(failed.length, 0, "A failed native Council job requires diagnosis before continuing qualification");
+    }
     const current = await missions(host, council, companyId);
     const control = current.find(m => m.rootIssueId === root.id);
     const members = current.filter(m => m.aggregate.repositoryCampaign);
@@ -84,6 +90,9 @@ function verifySerialResult(result: Awaited<ReturnType<typeof observeCampaign>>,
   assert(secondRuns.length > 0); assert(secondRuns.every((run: any) => Date.parse(run.startedAt) >= firstComplete));
   assert(control.aggregate.linearContinuity.publications.every((publication: any) => publication.acknowledgement));
   assert(runs.every((run: any) => run.status === "succeeded"));
+  const plan = control.aggregate.linearContinuity.publications.find((publication: any) => publication.payload.campaignPlan);
+  assert(plan?.acknowledgement);
+  assert(runs.every((run: any) => Date.parse(run.startedAt) >= Date.parse(plan.acknowledgement.confirmedAt)), "Plan acknowledgement precedes every run");
   assert.equal(git(setup.council.workspace.repoPath, "show", "main:alpha.txt"), "alpha contribution");
   assert.equal(git(setup.council.workspace.repoPath, "show", "main:beta.txt"), "beta contribution");
   return { orderedMissionIds: ordered.map(member => member.missionId), runCount: runs.length,
@@ -128,13 +137,25 @@ async function verifyRemoteDeliveries(host: LinearHost, proof: any) {
 
 async function verifyClosure(host: LinearHost, source: LinearSource, setup: Awaited<ReturnType<typeof bootstrapCampaign>>, proof: any) {
   const { companyId, council, readiness, intake } = setup;
+  const closure = proof.final.control.aggregate.campaignClosure;
+  const nativeClosures: any[] = [];
+  assert(Date.parse(closure.completedAt) >= Date.parse(closure.publicationAcknowledgedAt));
   for (const entry of readiness.correspondence) {
     const native = await host.api("GET", `/api/issues/${entry.nativeId}`);
     const original = source.issues.get(entry.sourceId)!;
     verifyNativeSourceDescription(native, original.description, proof.final.members);
     assert.equal(native.status, entry.sourceId === source.ids.history ? "cancelled" : "done");
     assert.equal(original.statusType, entry.sourceId === source.ids.history ? "canceled" : "completed");
+    if (closure.nativeClosures.some((closed: any) => closed.issueId === native.id)) {
+      assert(Date.parse(native.completedAt) >= Date.parse(closure.publicationAcknowledgedAt), "Native parent closure follows Linear acknowledgement");
+      nativeClosures.push({ issueId: native.id, parentId: native.parentId, completedAt: native.completedAt });
+    }
   }
+  for (const parent of nativeClosures) for (const child of nativeClosures.filter(node => node.parentId === parent.issueId)) {
+    assert(Date.parse(parent.completedAt) >= Date.parse(child.completedAt));
+  }
+  assert(source.effects.every(effect => effect.sourceId !== source.ids.history), "Historical work receives no publication effect");
+  proof.nativeClosures = nativeClosures;
   const terminal = source.effects.filter(effect => effect.role === "saveIssue" && effect.state === source.ids.completed);
   assert.equal(terminal.at(-1)?.sourceId, source.ids.root, "Campaign ticket terminal publication is last");
   assert(source.comments.length >= 4, "Plan, two deliveries and global closure are visible");
@@ -184,7 +205,10 @@ await save();
 try { await scenario(host, proof, save, intakeRepository); proof.outcome = "NATIVE CAMPAIGN VALIDATED"; }
 catch (error) {
   proof.outcome = "BLOCKED"; proof.error = String(error);
-  try { if (proof.companyId) proof.failureJournals = await journals(host, proof.companyId); }
+  try {
+    if (proof.companyId) proof.failureJournals = await journals(host, proof.companyId);
+    if (proof.packages) proof.failureJobs = { council: await jobRuns(host, proof.packages.councilPluginId), intake: await jobRuns(host, proof.packages.intakePluginId) };
+  }
   catch (diagnosticError) { proof.diagnosticError = String(diagnosticError); }
 } finally {
   try { proof.cleanup = await host.cleanup(); }
