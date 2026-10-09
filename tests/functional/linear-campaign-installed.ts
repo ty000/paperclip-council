@@ -76,9 +76,10 @@ async function assertNominalObservations(host: LinearHost, council: Council, com
   const stable = completedJobSnapshot(before);
   // The job publishes its new observation after advancing the mission. Do not
   // combine a new wake claim with the previous observation during that interval.
-  if (stable === null || stable !== completedJobSnapshot(after)) return;
+  if (stable === null || stable !== completedJobSnapshot(after)) return false;
   const blocked = observations.filter(value => value.observation.state === "blocked" && !unclaimedVersionConflict(value, current));
   assert.equal(blocked.length, 0, `Native continuity requires diagnosis: ${JSON.stringify(blocked)}`);
+  return true;
 }
 
 async function assertNominalCampaignJobs(host: LinearHost, council: Council, companyId: string, proof: any) {
@@ -93,7 +94,7 @@ async function assertNominalCampaignJobs(host: LinearHost, council: Council, com
   // closes. Retain both observations; terminal checks still require both deliveries.
   // Every other intake question is non-nominal even when the scheduled job succeeds.
   assert.equal(questions.length, 0, `Native intake requires diagnosis: ${JSON.stringify(questions)}`);
-  await assertNominalObservations(host, council, companyId, proof, jobs);
+  return assertNominalObservations(host, council, companyId, proof, jobs);
 }
 
 async function observeCampaign(host: LinearHost, setup: Awaited<ReturnType<typeof bootstrapCampaign>>, proof: any, save: () => Promise<void>) {
@@ -247,7 +248,8 @@ async function verifyClosure(host: LinearHost, source: LinearSource, setup: Awai
   proof.repositoryRelease = await waitForLinear("terminal campaign releases its repository", () => repositoryOccupation(host),
     value => Object.keys(value.document.holders).length === 0);
   assert.equal(proof.repositoryRelease.document.initialized, true);
-  await assertNominalCampaignJobs(host, council, companyId, proof);
+  proof.finalNativeObservationsVerified = await waitForLinear("final stable native continuity observation",
+    () => assertNominalCampaignJobs(host, council, companyId, proof), verified => verified);
   proof.jobs = { council: await jobRuns(host, council.pluginId), intake: await jobRuns(host, intake.pluginId) };
 }
 
