@@ -106,7 +106,7 @@ async function runScenario(host: LinearHost, proof: any, save: () => Promise<voi
     proof.beforeRestart = pending;
     proof.pendingReadback = await noAdmission(host, companyId, council);
     proof.restart = await host.restartWorker(council.pluginId);
-    releaseSource(); source.controls.hold = undefined;
+    releaseSource!(); source.controls.hold = undefined;
     const restored = await journals(host, companyId);
     assert.equal(restored.intake[0].mission_id, pending.intake[0].mission_id);
     assert.equal(restored.challenges[0].challenge_id, pending.challenges[0].challenge_id);

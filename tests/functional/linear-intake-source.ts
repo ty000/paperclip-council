@@ -21,7 +21,7 @@ export async function startLinearSource(options: { campaign?: boolean } = {}) {
     uuid: ids[name], id: `L4-${index}`, parentId: name === "root" ? null : "L4-1", teamId: ids.team, projectId: ids.project,
     title: name, description: name === "root" ? "Complete retained Linear source. ".repeat(1_100) : `Preserved ${name} result.`,
     status: state.name, statusType: state.type, createdAt: now, updatedAt: now,
-    completedAt: null, canceledAt: name === "history" ? now : null, archivedAt: null,
+    completedAt: null as string | null, canceledAt: name === "history" ? now : null, archivedAt: null,
     relations: { blocks: [] as { id: string }[], blockedBy: [] as { id: string }[], relatedTo: [], duplicateOf: null },
     stateHistory: [{ state, startedAt: now, endedAt: null }],
     ...(options.campaign ? { projectMilestone: name === "root" ? null : { id: ids.milestone } } : {}),
