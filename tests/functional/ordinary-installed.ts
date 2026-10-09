@@ -454,6 +454,7 @@ try {
   try {
     if (proof.companyId && base) {
       proof.runs = await api("GET", `/api/companies/${proof.companyId}/heartbeat-runs`);
+      proof.fixtureFailures = (await Promise.all(proof.runs.map((run: any) => readFile(resolve(runtime, `fixture-failure-${run.id}.json`), "utf8").then(body => JSON.parse(body)).catch(() => null)))).filter(Boolean);
       if (proof.outcome === "BLOCKED") {
         for (const agentId of Object.values(proof.actors ?? {})) await api("PATCH", `/api/agents/${agentId}`, { status: "paused" });
         for (const run of proof.runs.filter((run: any) => ["queued", "running", "scheduled_retry"].includes(run.status))) {

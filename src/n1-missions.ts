@@ -1,5 +1,6 @@
 import { assertN1DepartureWindow, assertContinuityDeparture } from "./continuity-policy.js";
 import { n1LeadExecution, type N1Integration } from "./n1-integration-state.js";
+import { contributionStatusBeforeIntegration } from "./integration-contract.js";
 import { completionPolicy } from "./completion-contract.js";
 import { sourceBase, recordContributionProof, closeQualifiedContribution } from "./contribution-proof.js";
 import { recoverContribution } from "./contribution-recovery.js";
@@ -1556,7 +1557,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         const issue = await ctx.issues.get(slot.childIssueId!, mission.companyId);
         if (!issue || issue.companyId !== mission.companyId || issue.projectId !== mission.projectId
             || issue.parentId !== (slot.parentIssueId !== undefined ? slot.parentIssueId : mission.rootIssueId) || issue.assigneeAgentId !== physicalAgent(mission, slot.assigneeAgentId, { issueId: slot.childIssueId })
-            || issue.status !== "done") {
+            || issue.status !== contributionStatusBeforeIntegration(mission)) {
           throw new MissionError(409, "child_not_done", "Both mapped native child issues must be done before integration");
         }
       }

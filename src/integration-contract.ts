@@ -81,3 +81,6 @@ export function integrationAdmissionPending(m: MissionRecord) {
   const n5 = m.aggregate.n5;
   return Boolean(n5?.authority.contract?.integration && n5.publication?.settledAt && !n5.integration);
 }
+export function contributionStatusBeforeIntegration(m: MissionRecord) {
+  return m.aggregate.projectMandate?.completion?.result === "integrated-verified" ? "blocked" : "done";
+}

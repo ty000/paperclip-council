@@ -13,6 +13,10 @@ assert.equal(new URL(base).hostname, "127.0.0.1");
 const issueId = process.env.PAPERCLIP_TASK_ID;
 const agentId = process.env.PAPERCLIP_AGENT_ID;
 const runId = process.env.PAPERCLIP_RUN_ID;
+process.on("uncaughtException", async error => {
+  await writeFile(resolve(config.runtime, `fixture-failure-${runId}.json`), JSON.stringify({ runId, message: String(error.message).slice(0, 2000) })).catch(() => {});
+  process.exitCode = 1;
+});
 const headers = { authorization: `Bearer ${process.env.PAPERCLIP_API_KEY}`, "x-paperclip-run-id": runId };
 async function api(method, path, body, expected) {
   const form = body instanceof FormData;

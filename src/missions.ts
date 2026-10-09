@@ -363,7 +363,7 @@ export async function getMissionByRootIssue(
 /** Only exact persisted N1 operational/leaf bindings, with ambiguity retained. */
 export async function getMissionByN1Issue(ctx: PluginContext, companyId: string, issueId: string): Promise<MissionRecord | null> {
   const rows = await ctx.db.query<MissionRow>(`SELECT ${selectColumns} FROM ${table(ctx)} WHERE company_id = $1
-    AND (aggregate->'n1'->'coordination'->>'issueId' = $2 OR aggregate->'n1'->'contributions' @> $3::jsonb) LIMIT 2`,
+    AND (aggregate->'n1'->'coordination'->>'issueId' = $2 OR aggregate->'n1'->'integration'->>'issueId' = $2 OR aggregate->'n1'->'contributions' @> $3::jsonb) LIMIT 2`,
     [companyId, issueId, JSON.stringify([{ childIssueId: issueId }])]);
   if (rows.length > 1) throw new MissionError(409, "n1_task_ambiguous", "N1 task must belong to one mission");
   return rows[0] ? parseMissionRow(rows[0]) : null;
