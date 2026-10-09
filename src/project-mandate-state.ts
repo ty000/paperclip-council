@@ -14,6 +14,7 @@ export type ProjectMandateContent = {
   completion?: import("./completion-contract.js").CompletionPolicy;
   hierarchy?: import("./hierarchy-contract.js").HierarchyPolicy;
   linearIntake?: import("./linear-intake-contract.js").LinearIntakePolicy;
+  linearContinuity?: { protocol: "council-linear-continuity-v1" };
 };
 export type ProjectMandate = { companyId: string; projectId: string; version: number; revisionId: string;
   authorizedBy: string; content: ProjectMandateContent };

@@ -1,3 +1,4 @@
+import { parseLinearContinuityPolicy } from "./linear-continuity-intake.js";
 import { readTaskIntake, rebindUnstartedTask } from "./project-intake-rebind.js";
 import { inspectProjectReadiness } from "./project-readiness.js";
 import { operatingProfileHash } from "./project-mandate-state.js";
@@ -93,9 +94,10 @@ async function policyContent(ctx: PluginContext, companyId: string, projectId: s
   const allowedPaths = paths(body.allowedPaths), delivery = await deliveryPolicy(ctx, companyId, body);
   const linearIntake = parseLinearIntakePolicy(body.linearIntake, { allowedPaths, hierarchy: delivery.hierarchy, criteriaSource: body.criteriaSource },
     pair.team.revision.content.members.map(member => member.agentId).filter(id => id !== leadAgentId));
+  const linearContinuity = parseLinearContinuityPolicy(body.linearContinuity, linearIntake);
   return { enabled: body.enabled === true, ownerUserId: ownerId, leadAgentId, teamRosterId: pair.team.head.rosterId, teamRevision,
     councilRosterId: pair.council.head.rosterId, councilRevision, n3Slots, template, criteriaSource: body.criteriaSource,
-    allowedPaths, ...delivery, ...(linearIntake ? { linearIntake } : {}),
+    allowedPaths, ...delivery, ...(linearIntake ? { linearIntake } : {}), ...(linearContinuity ? { linearContinuity } : {}),
     operatingProfileHash: operatingProfileHash(config), baselineRootIds: await baseline(ctx, companyId, projectId, body.includedRootIssueIds),
     };
 }

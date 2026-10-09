@@ -154,6 +154,10 @@ export async function reconcileN5(ctx: PluginContext, initial: MissionRecord) {
   await assertNativeRunInventory(ctx, initial);
   let m = initial;
   if (!m.aggregate.n5) return m;
+  if (m.aggregate.n5.publication?.operation === "cancel-pr") {
+    const { reconcileCancellationPublisher } = await import("./linear-continuity-cancellation.js");
+    return reconcileCancellationPublisher(ctx, m);
+  }
   if (integrationAdmissionPending(m)) {
     const { startIntegratedDelivery } = await import("./integration-runtime.js");
     if (inspectN5(m)?.publicationReady) return startIntegratedDelivery(ctx, m);

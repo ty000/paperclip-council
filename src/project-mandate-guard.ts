@@ -1,4 +1,5 @@
 import { assertDeliveryPredecessor } from "./delivery-leaves.js";
+import { assertLinearContinuityDeparture } from "./linear-continuity-control.js";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { canonicalPayloadHash, MissionError } from "./mission-primitives.js";
 import type { MissionRecord } from "./missions.js";
@@ -6,7 +7,8 @@ import { operatingProfileHash } from "./project-mandate-state.js";
 import { readProjectMandate } from "./project-mandate-state.js";
 import { assertHierarchySources } from "./hierarchy-runtime.js";
 
-export async function assertProjectDeparture(ctx: PluginContext, m: MissionRecord) {
+export async function assertProjectDeparture(ctx: PluginContext, m: MissionRecord, cancellationReservationId?: string) {
+  await assertLinearContinuityDeparture(ctx, m, cancellationReservationId);
   const pinned = m.aggregate.projectMandate;
   if (!pinned) return;
   const policy = await readProjectMandate(ctx, m.companyId, m.projectId);

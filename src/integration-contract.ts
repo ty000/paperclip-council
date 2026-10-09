@@ -75,7 +75,7 @@ export function assertIntegratedLeafContract(m: MissionRecord, contract?: import
   if (contract?.integration && m.aggregate.hierarchy?.leaves?.length !== 1) throw new MissionError(422, "integration_one_leaf", "An integrated delivery must contain exactly one existing code leaf");
 }
 export function assertPublicationOperation(p: NonNullable<NonNullable<MissionRecord["aggregate"]["n5"]>["publication"]>) {
-  if (p.operation === "integrate") throw new MissionError(409, "integration_commands_required", "An integration run cannot claim publication or create another PR");
+  if (["integrate", "cancel-pr"].includes(p.operation ?? "")) throw new MissionError(409, "integration_commands_required", "A control run cannot claim publication or create another PR");
 }
 export function integrationAdmissionPending(m: MissionRecord) {
   const n5 = m.aggregate.n5;

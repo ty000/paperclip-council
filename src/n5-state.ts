@@ -18,7 +18,7 @@ export type N5State = {
     previousPlan: N5Plan; previousPublication: NonNullable<N5State["publication"]>;
     reopen: { state: "claimed"; reservationId: string }; updateAdmitted?: boolean };
   publication?: { intentId: string; submission: N2Submission; issueId: string | null; runId: string | null;
-    operation?: "create" | "update" | "integrate"; targetUrl?: string;
+    operation?: "create" | "update" | "integrate" | "cancel-pr"; targetUrl?: string;
     reservationId: string; settlementCommandId: string; settledAt?: string;
     createdAt: string; claimedAt?: string; creation: "preparing" | "claimed" | "confirmed"; wake: "pending" | "claimed";
     state: "pending" | "unknown" | "opened"; claimCommandId?: string;

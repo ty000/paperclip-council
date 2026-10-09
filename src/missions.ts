@@ -108,6 +108,7 @@ export type MissionAggregate = {
   modelSelection?: ModelSelectionState;
   workspacePreflight?: import("./workspace-preflight.js").WorkspacePreflightProfile;
   continuity?: import("./continuity-policy.js").ContinuityPolicy;
+  linearContinuity?: import("./linear-continuity-contract.js").LinearContinuityState;
   projectMandate?: import("./project-mandate-state.js").ProjectMandateSnapshot;
   deliveryPredecessor?: { sourceMissionId: string; result: ReturnType<typeof import("./integration-contract.js").integratedResult> };
   completion?: import("./completion-contract.js").CompletionState;
@@ -389,7 +390,7 @@ export async function listMissions(ctx: PluginContext, companyId: string): Promi
 /** Dedicated bounded scan: dashboard truncation cannot starve older delegated missions. */
 export async function listContinuityMissions(ctx: PluginContext): Promise<MissionRecord[]> {
   const rows = await ctx.db.query<MissionRow>(`SELECT ${selectColumns} FROM ${table(ctx)}
-    WHERE aggregate->'continuity'->>'enabled' = 'true' ORDER BY company_id, mission_id LIMIT 201`, []);
+    WHERE (aggregate->'continuity'->>'enabled' = 'true' OR aggregate->'linearContinuity' IS NOT NULL) ORDER BY company_id, mission_id LIMIT 201`, []);
   if (rows.length > 200) throw new MissionError(409, "continuity_scan_bound", "More than 200 delegated missions require an explicit scan plan; no truncated progression");
   return rows.map(parseMissionRow);
 }
@@ -715,6 +716,7 @@ export function inspectMission(mission: MissionRecord) {
     nextAction: (mission.aggregate.n6 && !mission.aggregate.n1?.rootDispatchState ? inspectN6(mission)?.nextAction : undefined) ?? n2?.nextAction.label ?? n1?.nextAction ?? "Resolve and qualify G4 before adding any dispatch or activation command.",
     n1,
     ...(mission.aggregate.completion ? { completion: mission.aggregate.completion } : {}),
+    ...(mission.aggregate.linearContinuity ? { linearContinuity: mission.aggregate.linearContinuity } : {}),
     n2,
     n3: inspectN3(mission),
     n5: inspectN5(mission),
