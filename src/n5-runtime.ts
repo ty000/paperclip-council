@@ -249,7 +249,9 @@ export async function handleN5Agent(ctx: PluginContext, input: PluginApiRequestI
       return { status: 200, body: await rebindN5Plan(ctx, m, input, body) };
     }
     m = await bindPublisher(ctx, m, input);
-    if (body.command === "n5-inspect") return { status: 200, body: { version: m.version, delivery: inspectN5(m) } };
+    if (body.command === "n5-inspect") return { status: 200, body: {
+      missionId: m.missionId, rootIssueId: m.rootIssueId, version: m.version, delivery: inspectN5(m),
+    } };
     const prior = runtimeReceipt(m, runtimeUuid(body.commandId, "commandId"), input.actor.agentId!, canonicalPayloadHash(body));
     if (prior) {
       await holdOrdinaryPublisher(ctx, m);
