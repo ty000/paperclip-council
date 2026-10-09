@@ -15,12 +15,14 @@ export type ProjectMandateContent = {
   hierarchy?: import("./hierarchy-contract.js").HierarchyPolicy;
   linearIntake?: import("./linear-intake-contract.js").LinearIntakePolicy;
   linearContinuity?: { protocol: "council-linear-continuity-v1" };
+  workflow?: import("./project-workflow.js").ProjectWorkflow;
 };
 export type ProjectMandate = { companyId: string; projectId: string; version: number; revisionId: string;
   authorizedBy: string; content: ProjectMandateContent };
 export type ProjectMandateSnapshot = { projectId: string; revisionId: string; version: number; authorizedBy: string;
   operatingProfileHash: string; mandateHash: string; allowedPaths: string[]; publication: ProjectPublication | null;
   completion?: import("./completion-contract.js").CompletionPolicy;
+  workflow?: import("./project-workflow.js").ProjectWorkflow;
   linearIntake?: { subject: import("./linear-intake-contract.js").LinearSourceSubject; bodySha256: string };
   source: { rootIssueId: string; title: string; descriptionHash: string; taskDocumentRevisionId: string | null } };
 

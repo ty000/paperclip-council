@@ -18,6 +18,8 @@ export async function inspectProjectReadiness(ctx: PluginContext, companyId: str
   record("workspace", Boolean(workspace?.projectId === projectId && workspace.isPrimary && workspace.path && isAbsolute(workspace.path)),
     "An explicit native primary workspace is required by the current shared-checkout Council path.");
   record("mandate", Boolean(policy?.content.enabled), "Only an explicitly enabled current project mandate delegates new tasks.");
+  record("workflow", Boolean(policy?.content.workflow?.commands.length),
+    "Pin exact preparation, verification and audit commands by role; configuration is not proof that an admitted agent can execute them.");
   const profile = await readNativeG4Profile(ctx, companyId);
   const accounting = profile ? await readAdmission(ctx, { companyId, periodKey: profile.periodKey }) : null;
   record("accounting", Boolean(accounting && !accounting.blockers.length && accounting.availablePeriodUnits !== null),
@@ -28,6 +30,7 @@ export async function inspectProjectReadiness(ctx: PluginContext, companyId: str
   if (policy?.content.publication) checks.push({ key: "github-publication", state: "run-check-required",
     detail: "Server repository access differs from agent push/PR access. Require the existing attributed publisher preflight before any publication claim." });
   return { protocol: "council-project-readiness-v1", companyId, projectId, policyRevisionId: policy?.revisionId ?? null,
+    workflow: policy?.content.workflow ?? null,
     observedAt: new Date().toISOString(), configurationReady: checks.every(check => check.state !== "blocked"),
     launchAuthorized: false, checks };
 }

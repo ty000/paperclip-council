@@ -19,6 +19,7 @@ import {
   validateRosterPair,
   type RosterSnapshot,
 } from "./rosters.js";
+import { inspectMissionOperations, missionAssistanceEvent } from "./mission-operations.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_RECEIPTS = 100;
@@ -67,7 +68,7 @@ export type MissionReceipt = {
   commandId: string;
   command: "bind-resumed-lead-run" | "prepare-n1-resume" | "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "fixture-bind-contribution-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish" | "recover-integration" | "recover-candidate" | "recover-contribution"
     | "resume-settled-correction" | "replace-undispatched-correction" | "start-review" | "confirm-review-handoff" | "start-correction" | "prepare-resubmission"
-    | "start-resubmitted-review" | "settle-n2-usage" | "attest-transmission" | "reconcile-native-n2" | "release-native-correction" | "reconcile-ordinary-n2" | "replace-missing-opinion" | "replace-missing-verdict" | "recover-terminal-resubmission" | "ordinary-verdict" | "configure-continuity" | "suspend-continuity" | "resume-continuity";
+    | "start-resubmitted-review" | "settle-n2-usage" | "attest-transmission" | "reconcile-native-n2" | "release-native-correction" | "reconcile-ordinary-n2" | "replace-missing-opinion" | "replace-missing-verdict" | "recover-terminal-resubmission" | "ordinary-verdict" | "configure-continuity" | "suspend-continuity" | "resume-continuity" | "record-assistance";
   actorType: "user" | "agent";
   actorId: string;
   payloadHash: string;
@@ -678,6 +679,43 @@ async function updateMandate(
   throw new MissionError(409, "version_conflict", "Mission version changed concurrently", { currentVersion: mission.version });
 }
 
+async function recordAssistance(
+  ctx: PluginContext,
+  companyId: string,
+  missionId: string,
+  actorUserId: string | null,
+  body: Record<string, unknown>,
+) {
+  const ownerUserId = await requireOwner(ctx, companyId, actorUserId);
+  const commandId = uuid(body.commandId, "commandId");
+  const expectedVersion = positiveInteger(body.expectedVersion, "expectedVersion");
+  const payloadHash = canonicalPayloadHash(body);
+  const before = await getMission(ctx, companyId, missionId);
+  if (!before) throw new MissionError(404, "mission_not_found", "Mission not found");
+  const replay = replayOrConflict(before, commandId, ownerUserId, payloadHash);
+  if (replay) return replay;
+  if (before.version !== expectedVersion) {
+    throw new MissionError(409, "version_conflict", "Mission version is stale", { currentVersion: before.version });
+  }
+  if (before.aggregate.commandReceipts.length >= MAX_RECEIPTS) {
+    throw new MissionError(409, "command_limit_reached", `Mission command receipt limit of ${MAX_RECEIPTS} is reached`);
+  }
+  const event = missionAssistanceEvent(before, ownerUserId, body);
+  const nextVersion = expectedVersion + 1;
+  const receipt: MissionReceipt = { commandId, command: "record-assistance", actorType: "user", actorId: ownerUserId,
+    payloadHash, appliedVersion: nextVersion, result: { missionId, version: nextVersion }, recordedAt: event.at };
+  const next = { ...before.aggregate, journal: [...before.aggregate.journal, event],
+    commandReceipts: [...before.aggregate.commandReceipts, receipt] };
+  const update = await ctx.db.execute(`UPDATE ${table(ctx)} SET aggregate = $1::jsonb, version = version + 1, updated_at = now()
+    WHERE company_id = $2 AND mission_id = $3 AND version = $4`, [JSON.stringify(next), companyId, missionId, expectedVersion]);
+  const mission = await getMission(ctx, companyId, missionId);
+  if (!mission) throw new Error("Mission disappeared after CAS");
+  if (update.rowCount === 1) return { outcome: "applied" as const, mission, receipt };
+  const concurrentReplay = replayOrConflict(mission, commandId, ownerUserId, payloadHash);
+  if (concurrentReplay) return concurrentReplay;
+  throw new MissionError(409, "version_conflict", "Mission version changed concurrently", { currentVersion: mission.version });
+}
+
 export async function executeMissionCommand(ctx: PluginContext, input: {
   companyId: string;
   missionId?: string;
@@ -690,6 +728,9 @@ export async function executeMissionCommand(ctx: PluginContext, input: {
   }
   if (body.command === "update-mandate" && input.missionId) {
     return await updateMandate(ctx, input.companyId, input.missionId, input.actorUserId, body);
+  }
+  if (body.command === "record-assistance" && input.missionId) {
+    return await recordAssistance(ctx, input.companyId, input.missionId, input.actorUserId, body);
   }
   throw new MissionError(400, "unknown_command", "Unsupported mission command for this route");
 }
@@ -721,6 +762,7 @@ export function inspectMission(mission: MissionRecord) {
     n3: inspectN3(mission),
     n5: inspectN5(mission),
     n6: inspectN6(mission),
+    operations: inspectMissionOperations(mission),
   };
 }
 

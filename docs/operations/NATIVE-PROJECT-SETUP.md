@@ -90,3 +90,73 @@ Install and activate separately. For the target instance, preserve active missio
 read back its installed artifact/version and configuration, then qualify a bounded
 real task under an explicit provider/publication grant before claiming operational
 autonomy. A green deterministic qualification alone does not close that requirement.
+
+## Exact workflow commands and targeted role context
+
+For a new project-mandate revision, add `workflow.protocol` equal to
+`council-project-workflow-v1` and 1–16 bounded commands. Each command declares its
+roles and is pinned into every new mission snapshot. The project readiness readback
+returns the exact workflow. Existing mandates without this field remain readable but
+their `workflow` readiness check is blocked until the owner creates a new revision.
+The plugin does not execute these strings and does not copy credentials into them.
+
+For this repository, the minimal command fragment is:
+
+```json
+{
+  "protocol": "council-project-workflow-v1",
+  "commands": [
+    { "key": "prepare", "kind": "prepare", "command": "pnpm install --frozen-lockfile", "roles": ["lead", "contributor", "integration", "correction"] },
+    { "key": "typecheck", "kind": "verify", "command": "pnpm typecheck", "roles": ["contributor", "integration", "correction", "council"] },
+    { "key": "test", "kind": "verify", "command": "pnpm test", "roles": ["contributor", "integration", "correction", "council"] },
+    { "key": "static-audit", "kind": "audit", "command": "FALLOW_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 pnpm exec fallow audit --base <exact-base-sha> --format json --quiet", "roles": ["contributor", "integration", "correction", "council"], "tool": { "name": "fallow", "versionCommand": "pnpm exec fallow --version", "expectedVersion": "3.23.0" } }
+  ]
+}
+```
+
+Replace `<exact-base-sha>` before authorizing the revision. The native workspace
+setup remains host-owned and is not exposed by the plugin SDK. Council therefore
+cannot compare its configured command with the host setup command. Every admitted
+role receives a short block containing role, compact objective, paths, predecessor,
+criteria, applicable commands and finish condition. Lead/contributor/integration,
+ordinary review/correction and publisher handoffs reuse their existing Council
+commands; they do not require agents to rediscover an OpenAPI description.
+
+`configured` proves only that the exact text was pinned and read back. Keep
+`effective-agent-environment=run-check-required` until an attributed admitted run
+has executed the version check and relevant commands in its own shell. An operator
+shell, successful installation or server-side repository access is not that proof.
+
+## Assistance and lightweight operations readback
+
+Record each material intervention on the existing owner mission command route:
+
+```json
+{
+  "command": "record-assistance",
+  "commandId": "<stable UUID>",
+  "expectedVersion": 1,
+  "category": "technical_repair",
+  "cause": "The admitted agent shell could not resolve the pinned audit command",
+  "role": "contributor",
+  "relatedRunId": "<native run UUID>"
+}
+```
+
+Categories are `normal_preparation`, `owner_choice_or_secret`, `technical_repair`,
+`code_assistance` and `human_validation`. The command is owner-only, versioned and
+idempotent. It appends to the mission journal and command receipts; it creates no
+dashboard, table, token credit, retry or departure. Omit `relatedRunId` when no run
+owns the intervention.
+
+Mission inspection now returns `operations`. It groups persisted model launches by
+role, reports run and repeated-launch counts, input/output measurements and their
+provenance, and returns `cachedInputTokens: null` because current persisted model
+measurements do not carry cache attribution. Missing measurements and excessive
+tool output remain explicit unknowns. This view does not reconcile cumulative
+session counters, alter the admission ledger or claim an efficiency rate.
+
+The final operational criterion still requires one separately authorized useful
+task on recette through its requested PR/review/correction result, without operator
+repair of workspace, instructions or rights. No provider run, historical mission
+mutation, installation or issue closure is authorized by this implementation lot.

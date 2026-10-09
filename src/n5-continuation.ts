@@ -2,7 +2,7 @@ import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-s
 import { canonicalPayloadHash, MissionError, type MissionRecord } from "./missions.js";
 import { n2CommandCas, nativeN2Profile, reserveN2Run, runtimeReceipt, runtimeUuid } from "./n2-missions.js";
 import { ordinaryTask } from "./n2-ordinary-state.js";
-import { ordinaryTaskInstructions } from "./n2-ordinary-instructions.js";
+import { projectOrdinaryTaskInstructions } from "./project-role-instructions.js";
 import { readNativeRun, readOrdinaryRun } from "./g4-native.js";
 import { readN5Plan } from "./n5-native.js";
 import { acceptedN5Submission } from "./n5-preflight.js";
@@ -95,7 +95,7 @@ async function prepareCorrectionResume(ctx: PluginContext, initial: Awaited<Retu
     // Binding can append profile guidance and detailed-history references. Preserve its fresh readback.
     const current = await ctx.issues.get(m.rootIssueId, m.companyId);
     if (!current) throw new MissionError(409, "n5_reopen_target", "Root context must be observed before correction handoff");
-    const instructions = `Post-publication correction ${requestId}: ${reason}\nCriteria: ${JSON.stringify(criteria)}\n${ordinaryTaskInstructions(bound, task)}`;
+    const instructions = `Post-publication correction ${requestId}: ${reason}\nCriteria: ${JSON.stringify(criteria)}\n${projectOrdinaryTaskInstructions(bound, task)}`;
     if (!current.description?.includes(instructions)) {
       await ctx.issues.update(m.rootIssueId, { description: `${current.description ?? ""}\n\n${instructions}` }, m.companyId);
       const observed = await ctx.issues.get(m.rootIssueId, m.companyId);

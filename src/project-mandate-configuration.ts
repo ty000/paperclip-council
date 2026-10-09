@@ -16,6 +16,7 @@ import { readNativeG4Profile } from "./g4-native.js";
 import { readAdmission } from "./admission.js";
 import { assertConfiguredGithubFeedbackRefresh } from "./github-feedback-authority.js";
 import { projectIssues, projectMandateRow, projectTable, readProjectMandate, type ProjectMandateContent, type ProjectPublication } from "./project-mandate-state.js";
+import { parseProjectWorkflow } from "./project-workflow.js";
 
 
 function text(value: unknown, label: string, max = 200) {
@@ -66,7 +67,8 @@ async function deliveryPolicy(ctx: PluginContext, companyId: string, body: Recor
   const hierarchy = body.hierarchy === undefined ? undefined : parseHierarchyPolicy(body.hierarchy);
   const completion = parseCompletionPolicy(body.completion, delegatedPublication, hierarchy);
   if (delegatedPublication?.contract?.integration && (!hierarchy?.adoptExistingChildren || hierarchy.maxContributions !== 1 || completion?.result !== "integrated-verified")) throw new MissionError(422, "integration_leaf_policy", "Integrated deliveries explicitly adopt one existing code leaf and require integrated proof closure; native result dependencies sequence separate deliveries");
-  return { publication: delegatedPublication, ...(hierarchy ? { hierarchy } : {}), ...(completion ? { completion } : {}) };
+  return { publication: delegatedPublication, ...(hierarchy ? { hierarchy } : {}), ...(completion ? { completion } : {}),
+    workflow: parseProjectWorkflow(body.workflow) };
 }
 
 async function policyContent(ctx: PluginContext, companyId: string, projectId: string, ownerId: string, body: Record<string, any>): Promise<ProjectMandateContent> {
