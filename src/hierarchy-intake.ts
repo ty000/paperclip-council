@@ -112,7 +112,7 @@ export async function prepareHierarchy(ctx: PluginContext, policy: ProjectMandat
   const allowed = new Set(pair.team.revision.content.members.map(member => member.agentId).filter(id => id !== policy.content.leadAgentId));
   const leaves: HierarchyLeaf[] = [];
   for (const issue of leafIssues) leaves.push(await leaf(ctx, policy, issue, allowed));
-  requireSeparateOwnership(leaves);
+  if (policy.content.linearContinuity?.mode !== "milestone-fixed-v1") requireSeparateOwnership(leaves);
   const nodes = [];
   for (const issue of [root!, ...tree]) {
     const relations = await ctx.issues.relations.get(issue.id, policy.companyId);

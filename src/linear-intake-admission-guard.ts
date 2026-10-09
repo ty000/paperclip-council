@@ -10,6 +10,10 @@ const receiptSchema = z.strictObject({ challengeId: z.uuid(), stage: z.literal("
   validUntil: z.iso.datetime({ offset: true }), requestSha256: digest });
 const stateSchema = z.object({ linearIntake: z.object({ snapshot: z.object({ subject: linearSourceSubjectSchema, bodySha256: digest }),
   admissionReceipt: receiptSchema }), commands: z.object({ activate: z.record(z.string(), z.unknown()) }) });
+const campaignLeafStateSchema = z.object({ repositoryCampaign: z.object({ campaignRootMissionId: z.uuid(), campaignRootIssueId: z.uuid(), sourceId: z.uuid() }),
+  commands: z.object({ activate: z.record(z.string(), z.unknown()) }) });
+const campaignRootStateSchema = z.object({ linearIntake: z.object({ snapshot: z.object({ subject: linearSourceSubjectSchema, bodySha256: digest,
+  nodes: z.array(z.object({ nativeId: z.uuid(), sourceId: z.uuid(), role: z.string() })) }) }) });
 type ChallengeRow = { company_id: string; mission_id: string; stage: string; challenge_id: string; subject_hash: string;
   request_hash: string; request: unknown; response_hash: string | null; response: unknown; consumed_at: string | Date | null };
 function requireAdmission(condition: unknown): asserts condition {
@@ -35,6 +39,33 @@ async function retainedState(ctx: PluginContext, m: MissionRecord, body: Record<
   same(state.linearIntake.snapshot, pinned.linearIntake);
   same(state.commands.activate, body);
   return state;
+}
+async function campaignLeafAdmission(ctx: PluginContext, m: MissionRecord, body: Record<string, unknown>) {
+  const pinned = m.aggregate.projectMandate!, membership = m.aggregate.repositoryCampaign!;
+  const rows = await ctx.db.query<{ state: unknown }>(`SELECT state FROM ${projectTable(ctx, "project_task_intakes")}
+    WHERE company_id = $1 AND mission_id = $2 AND root_issue_id = $3 AND project_id = $4 AND policy_revision_id = $5`,
+    [m.companyId, m.missionId, m.rootIssueId, m.projectId, pinned.revisionId]);
+  requireAdmission(rows.length === 1);
+  const leafState = campaignLeafStateSchema.safeParse(rows[0]!.state); requireAdmission(leafState.success);
+  same(leafState.data.repositoryCampaign.campaignRootMissionId, membership.campaignRootMissionId);
+  same(leafState.data.commands.activate, body);
+  const { campaignRoot } = await import("./repository-campaign.js");
+  const root = await campaignRoot(ctx, m);
+  same(root.aggregate.projectMandate?.linearIntake, pinned.linearIntake);
+  const rootRows = await ctx.db.query<{ state: unknown }>(`SELECT state FROM ${projectTable(ctx, "project_task_intakes")}
+    WHERE company_id = $1 AND mission_id = $2 AND root_issue_id = $3 AND project_id = $4 AND policy_revision_id = $5`,
+    [root.companyId, root.missionId, root.rootIssueId, root.projectId, pinned.revisionId]);
+  const rootState = rootRows.length === 1 ? campaignRootStateSchema.safeParse(rootRows[0]!.state) : null;
+  requireAdmission(rootState?.success);
+  const source = rootState.data.linearIntake.snapshot.nodes.find(node => node.nativeId === m.rootIssueId);
+  same([leafState.data.repositoryCampaign.campaignRootIssueId, leafState.data.repositoryCampaign.sourceId, source?.role, source?.sourceId],
+    [root.rootIssueId, leafState.data.repositoryCampaign.sourceId, "contribution", leafState.data.repositoryCampaign.sourceId]);
+  const plan = root.aggregate.linearContinuity?.publications.find(publication => publication.payload.campaignPlan);
+  requireAdmission(plan?.acknowledgement);
+  const { assertLinearContinuityDeparture } = await import("./linear-continuity-control.js");
+  const { assertDeliveryPredecessor } = await import("./delivery-leaves.js");
+  await assertLinearContinuityDeparture(ctx, root);
+  await assertDeliveryPredecessor(ctx, m);
 }
 async function challengeRow(ctx: PluginContext, m: MissionRecord, challengeId: string) {
   // projectTable validates the native plugin namespace; no other plugin's tables are read.
@@ -66,7 +97,9 @@ function verifyFresh(row: ChallengeRow, receipt: z.infer<typeof receiptSchema>, 
 export async function assertLinearAdmissionFresh(ctx: PluginContext, m: MissionRecord, activationBody: Record<string, unknown>) {
   const pinned = m.aggregate.projectMandate?.linearIntake;
   if (!pinned) return;
-  const policy = await currentPolicy(ctx, m), state = await retainedState(ctx, m, activationBody);
+  const policy = await currentPolicy(ctx, m);
+  if (m.aggregate.repositoryCampaign) return campaignLeafAdmission(ctx, m, activationBody);
+  const state = await retainedState(ctx, m, activationBody);
   const row = await challengeRow(ctx, m, state.linearIntake.admissionReceipt.challengeId);
   const request = linearSourceRequestSchema.safeParse(row.request), result = linearSourceResultSchema.safeParse(row.response);
   requireAdmission(request.success && result.success);

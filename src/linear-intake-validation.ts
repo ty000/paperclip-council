@@ -141,7 +141,7 @@ function assignRoles(nodes: LinearNode[], policy: ProjectMandate) {
   const leaves = nodes.filter(node => node.role === "contribution");
   requireLinear(leaves.length > 0, "linear_no_executable_descendant");
   requireLinear(leaves.length <= policy.content.hierarchy!.maxContributions, "linear_contribution_bound");
-  for (const [i, a] of leaves.entries()) for (const b of leaves.slice(i + 1)) {
+  if (policy.content.linearContinuity?.mode !== "milestone-fixed-v1") for (const [i, a] of leaves.entries()) for (const b of leaves.slice(i + 1)) {
     requireLinear(!a.ownedPaths.some(path => b.ownedPaths.some(other => ownershipsOverlap(path, other))), "linear_ownership_overlap");
   }
 }

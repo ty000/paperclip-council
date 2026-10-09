@@ -37,6 +37,7 @@ const ctx = { issues: { documents: {
 }, get: async (id: string) => structuredClone(f.issues.get(id)), update: async (id: string, body: any) => { f.issues.set(id, { ...f.issues.get(id), ...body }); },
   summaries: { getOrchestration: async () => ({ runs: [] }) } },
   events: { emit: async (...args: any[]) => { f.emitted.push(args); } },
+  db: { namespace: "test", query: async () => [] },
   companies: { get: async () => ({ defaultResponsibleUserId: "owner" }) } } as any;
 const digest = (char: string) => char.repeat(64);
 function proof(key: string, body: any) {
@@ -305,9 +306,12 @@ it.each(["draft", "executing", "reviewing", "accepted"])("native pause/resume pr
   expect(f.m.version).toBe(version);
   await reconcileLinearContinuity(ctx, f.m);
   expect(f.m.aggregate.linearContinuity.control).toBe("paused");
+  f.m.aggregate.linearContinuity.observation = undefined;
   await expect(handleLinearContinuityBoard(ctx, nativeControl("resume-linear-campaign"))).rejects.toMatchObject({ code: "linear_campaign_resume_pending" });
-  confirmPublications(); await fixedAnswer();
+  const retainedIntents = f.m.aggregate.linearContinuity.publications.map((p: any) => p.intentId);
+  await fixedAnswer();
   await handleLinearContinuityBoard(ctx, nativeControl("resume-linear-campaign"));
+  expect(f.m.aggregate.linearContinuity.publications.slice(0, retainedIntents.length).map((p: any) => p.intentId)).toEqual(retainedIntents);
   expect(f.m.aggregate.phase).toBe(phase); expect(f.m.missionId).toBe(originalId);
   expect(f.m.aggregate.mandate).toEqual(originalMandate); expect(f.reservations).toEqual([]);
   expect(f.m.aggregate.linearContinuity.control).toBe("running");

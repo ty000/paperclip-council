@@ -8,6 +8,12 @@ import { releaseReconciledRepository } from "./repository-occupation.js";
 
 const terminal = new Set(["succeeded", "failed", "cancelled", "timed_out", "interrupted"]);
 
+async function campaignTerminal(ctx: PluginContext, m: MissionRecord) {
+  if (m.aggregate.linearContinuity?.mode !== "milestone-fixed-v1") return true;
+  const { campaignMembersSafe } = await import("./repository-campaign.js");
+  return campaignMembersSafe(ctx, m, m.aggregate.completion?.state === "closed" ? "closed" : "cancelled");
+}
+
 function unresolvedCreation(m: MissionRecord) {
   const n1 = m.aggregate.n1 as N1State | undefined;
   const tasks = [...(m.aggregate.n2?.ordinary?.tasks ?? []), ...(m.aggregate.n6?.coordination?.tasks ?? []),
@@ -23,6 +29,7 @@ export async function reconcileRepositoryRelease(ctx: PluginContext, m: MissionR
   if (m.aggregate.completion?.state !== "closed" && m.aggregate.linearContinuity?.control !== "cancelled") return false;
   if (uncertainLinearEffects(m) || unresolvedCreation(m)
       || m.aggregate.linearContinuity?.publications.some(p => !p.acknowledgement)) return false;
+  if (!await campaignTerminal(ctx, m)) return false;
   const bindings = nativeRunBindings(m);
   if (bindings.some(b => b.pending)) return false;
   const documents = await ctx.db.query<{ document: AdmissionDocument }>(
