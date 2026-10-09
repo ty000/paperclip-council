@@ -87,6 +87,9 @@ if (process.argv.includes("--restart-child")) {
     const racing = await Promise.allSettled(contenders.map(m => ensureMissionRepository(ctx, m, true)));
     assert.equal(racing.filter(r => r.status === "fulfilled").length, 1);
     const winner = contenders[racing.findIndex(r => r.status === "fulfilled")]!;
+    await persist(winner);
+    const originalBudget = { reservations: [], allowance: { units: 4321 }, consumedUnits: 123 };
+    await pg.sql.unsafe(`INSERT INTO ${ns}.admission_envelopes(company_id,period_key,document) VALUES ($1,'original',$2::jsonb)`, [winner.companyId,JSON.stringify(originalBudget)]);
     const beforeRestart = await registry();
     await new Promise<void>((done, reject) => {
       const child = spawn(process.execPath, ["--import", "tsx", resolve("tests/receipts/repository-occupation.ts"), "--restart-child"], { env: { ...process.env,
@@ -95,6 +98,7 @@ if (process.argv.includes("--restart-child")) {
       child.once("error", reject); child.once("exit", code => code === 0 ? done() : reject(new Error(errors)));
     });
     assert.deepEqual(await registry(), beforeRestart);
+    assert.deepEqual((await pg.sql.unsafe(`SELECT document FROM ${ns}.admission_envelopes WHERE company_id=$1`, [winner.companyId]))[0].document, originalBudget);
     await assert.rejects(assertProjectDeparture(ctx, contenders.find(m => m !== winner)!), { code: "repository_occupied" });
     results.sixteenCrossCompanyCampaignsOneOwnerAndSeparateProcessRestart = "PASS";
 
@@ -104,6 +108,16 @@ if (process.argv.includes("--restart-child")) {
     assert.equal(Object.keys((await registry()).holders).length, 2);
     await assert.rejects(ensureMissionRepository(ctx, a, true), { code: "repository_occupied" });
     results.historicalOrdinaryConcurrencyRetained = "PASS";
+
+    await reset();
+    const differentA = await subject("owner/one"), differentB = await subject("owner/two");
+    await Promise.all([ensureMissionRepository(ctx, differentA, true), ensureMissionRepository(ctx, differentB, true)]);
+    repositories.set(differentA.projectId, "owner/changed");
+    await assert.rejects(ensureMissionRepository(ctx, differentA, true), { code: "repository_target_changed" });
+    const conflictTarget = await subject("owner/workspace");
+    conflictTarget.aggregate.projectMandate = { publication: { repository: "owner/pinned" } } as any;
+    await assert.rejects(ensureMissionRepository(ctx, conflictTarget, true), { code: "repository_target_changed" });
+    results.independentRepositoriesAndTargetDrift = "PASS";
 
     await reset();
     const unknown = await subject(null, true), known = await subject();
@@ -146,10 +160,18 @@ if (process.argv.includes("--restart-child")) {
     inventories.set(lost.rootIssueId, [{ id: randomUUID(), issueId: lost.rootIssueId, agentId: randomUUID(), status: "running" }]);
     assert.equal(await reconcileRepositoryRelease(ctx, lost), false);
     inventories.clear();
-    const reservation = { missionId: lost.missionId, status: "unsettled", usage: { status: "unknown" }, remainingExposure: { status: "unknown" } };
+    const reservationId = randomUUID(), runId = randomUUID(), agentId = randomUUID();
+    const reservation = { missionId: lost.missionId, reservationId, status: "unsettled", usage: { status: "unknown" }, remainingExposure: { status: "unknown" } };
     await pg.sql.unsafe(`INSERT INTO ${ns}.admission_envelopes(company_id,period_key,document) VALUES ($1,'fixture',$2::jsonb)`, [lost.companyId,JSON.stringify({ reservations: [reservation] })]);
     assert.equal(await reconcileRepositoryRelease(ctx, lost), false);
     await pg.sql.unsafe(`UPDATE ${ns}.admission_envelopes SET document=$1::jsonb WHERE company_id=$2`, [JSON.stringify({ reservations: [{ ...reservation, status: "settled", usage: { status: "known", units: 10 }, remainingExposure: { status: "known", units: 0 } }] }),lost.companyId]);
+    lost.aggregate.modelSelection = { tasks: [{ launches: [{ issueId: lost.rootIssueId, runId, agentId, launchKey: reservationId, state: "running" }] }] } as any;
+    await update(lost);
+    assert.equal(await reconcileRepositoryRelease(ctx, lost), false, "A missing admitted run in native inventory cannot prove termination");
+    inventories.set(lost.rootIssueId, [{ id: runId, issueId: lost.rootIssueId, agentId, status: "succeeded" }]);
+    const stale = structuredClone(lost);
+    await update(lost);
+    await assert.rejects(reconcileRepositoryRelease(ctx, stale), { code: "repository_release_pending" });
     assert.equal(await reconcileRepositoryRelease(ctx, lost), true);
     await assert.rejects(ensureMissionRepository(ctx, lost, true), { code: "repository_mission_changed" });
     await ensureMissionRepository(ctx, await subject(), true);
