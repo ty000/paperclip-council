@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { hierarchyLaunchGuidance } from "../../src/hierarchy-guidance.js";
+import type { MissionRecord } from "../../src/missions.js";
 
 /** Only native task/document/dependency APIs; no hidden mission or contributor IDs. */
 export async function prepareHierarchyTasks(api: any, companyId: string, projectId: string, actors: Record<string, string>, count: number) {
@@ -31,7 +33,9 @@ export async function verifyHierarchyTasks(api: any, proof: any, rootId: string)
   const after = await Promise.all(proof.hierarchyTasks.source.map((issue: any) => api("GET", `/api/issues/${issue.id}`)));
   for (const original of proof.hierarchyTasks.source) {
     const current = after.find((issue: any) => issue.id === original.id);
-    for (const key of ["description", "title", "parentId", "assigneeAgentId"]) assert.deepEqual(current[key], original[key]);
+    for (const key of ["title", "parentId", "assigneeAgentId"]) assert.deepEqual(current[key], original[key]);
+    const guidance = hierarchyLaunchGuidance(proof.mission as MissionRecord, original.id);
+    assert.equal(current.description, original.description + (guidance ? `\n\n${guidance}` : ""));
     assert.deepEqual(current.blockedByIssueIds, original.blockedByIssueIds);
   }
   assert.equal(after.find((issue: any) => issue.id === rootId).status, proof.mission.aggregate.completion?.state === "closed" ? "done" : "blocked");
