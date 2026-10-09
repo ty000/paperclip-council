@@ -5,6 +5,8 @@ import { linearSourceSubjectSchema } from "./linear-intake-revalidation-contract
 
 export const LINEAR_CONTINUITY_EVENT = "plugin.ty000.linear-intake.council-continuity-result";
 export const LINEAR_CONTINUITY_PROTOCOL = "council-linear-continuity-v1" as const;
+export const FIXED_CAMPAIGN_MODE = "milestone-fixed-v1" as const;
+export type LinearContinuityPolicy = { protocol: typeof LINEAR_CONTINUITY_PROTOCOL; mode?: typeof FIXED_CAMPAIGN_MODE };
 const uuid = z.string().uuid(), hash = z.string().regex(/^[a-f0-9]{64}$/), time = z.string().datetime({ offset: true });
 const documentReferenceSchema = z.object({ key: z.string().min(1).max(200), documentId: uuid, revisionId: uuid, bodySha256: hash }).strict();
 export type NativeProofReference = z.infer<typeof documentReferenceSchema>;
@@ -20,10 +22,16 @@ export type LinearContinuityChange = z.infer<typeof changeSchema>;
 const acknowledgementSchema = z.object({ intentId: uuid, payloadSha256: hash, status: z.literal("confirmed"),
   publicationReceipt: documentReferenceSchema }).strict();
 export const continuityResponseSchema = z.object({ protocol: z.literal(LINEAR_CONTINUITY_PROTOCOL), binding: continuityBindingSchema,
+  mode: z.literal(FIXED_CAMPAIGN_MODE).optional(),
   challengeId: uuid, nonce: hash, requestSha256: hash, observedAt: time, validUntil: time,
-  capabilities: z.array(z.enum(["continuous-context", "cooperative-control", "publication-readback"])).length(3),
+  capabilities: z.array(z.enum(["continuous-context", "cooperative-control", "publication-readback", "fixed-source"])).min(2).max(3),
   sourceSha256: hash, availability: z.enum(["available", "unavailable"]),
-  changes: z.array(changeSchema).max(32), acknowledgements: z.array(acknowledgementSchema).max(32) }).strict();
+  changes: z.array(changeSchema).max(32), acknowledgements: z.array(acknowledgementSchema).max(32) }).strict().refine(response => {
+    const expected = response.mode === FIXED_CAMPAIGN_MODE ? ["fixed-source", "publication-readback"]
+      : ["continuous-context", "cooperative-control", "publication-readback"];
+    return response.capabilities.length === expected.length && expected.every(c => response.capabilities.includes(c as typeof response.capabilities[number]))
+      && (response.mode !== FIXED_CAMPAIGN_MODE || response.changes.length === 0);
+  }, "The fixed campaign mode accepts no remote commands and requires its exact capabilities");
 export type LinearContinuityResponse = z.infer<typeof continuityResponseSchema>;
 export const continuityNoticeSchema = z.object({ protocol: z.literal(LINEAR_CONTINUITY_PROTOCOL), companyId: uuid,
   missionId: uuid, challengeId: uuid, response: documentReferenceSchema }).strict();
@@ -31,6 +39,7 @@ export type LinearPublication = { intentId: string; kind: "progress" | "blocker"
   payload: Record<string, unknown>; payloadSha256: string; documentKey: string; document?: NativeProofReference;
   acknowledgement?: { reference: NativeProofReference; responseSha256: string; confirmedAt: string } };
 export type LinearContinuityState = { protocol: typeof LINEAR_CONTINUITY_PROTOCOL; binding: LinearContinuityBinding;
+  mode?: typeof FIXED_CAMPAIGN_MODE;
   sourceSha256: string; sequence: number; control: "running" | "pause_requested" | "paused" | "cancel_requested" | "cancelled";
   authorizedBy: string; controlReason?: string; consumed: Array<{ commandId: string; payloadSha256: string; sequence: number;
     evidence: NativeProofReference; outcome: "applied" | "arbitration_required" }>;

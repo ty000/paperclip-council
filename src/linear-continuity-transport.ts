@@ -11,7 +11,7 @@ export async function saveLinearContinuity(ctx: PluginContext, m: MissionRecord,
 }
 export function linearPublicationState(m: MissionRecord, kind: LinearPublication["kind"], content: Record<string, unknown>) {
   const state = m.aggregate.linearContinuity!;
-  const payload = { protocol: LINEAR_CONTINUITY_PROTOCOL, binding: state.binding, sourceSha256: state.sourceSha256, kind, ...content };
+  const payload = { protocol: LINEAR_CONTINUITY_PROTOCOL, ...(state.mode ? { mode: state.mode } : {}), binding: state.binding, sourceSha256: state.sourceSha256, kind, ...content };
   const payloadSha256 = canonicalPayloadHash(payload);
   if (state.publications.some(item => item.payloadSha256 === payloadSha256)) return state;
   if (state.publications.length >= 64) throw new MissionError(409, "linear_publication_bound", "Retain the bounded original outbox; no truncation or reset");
@@ -42,7 +42,7 @@ export async function reconcileLinearTransport(ctx: PluginContext, initial: Miss
   if (!challenge || Date.parse(challenge.expiresAt) <= Date.now() || canonicalPayloadHash(challenge.payload.publications) !== canonicalPayloadHash(requests)) {
     const challengeId = randomUUID(), nonce = randomBytes(32).toString("hex"), requestedAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 300_000).toISOString();
-    const payload = { protocol: LINEAR_CONTINUITY_PROTOCOL, binding: state.binding, challengeId, nonce, requestedAt, expiresAt,
+    const payload = { protocol: LINEAR_CONTINUITY_PROTOCOL, ...(state.mode ? { mode: state.mode } : {}), binding: state.binding, challengeId, nonce, requestedAt, expiresAt,
       sourceSha256: state.sourceSha256, consumedSequence: state.sequence, control: state.control, publications: requests };
     challenge = { challengeId, nonce, requestedAt, expiresAt, payload, requestSha256: canonicalPayloadHash(payload), documentKey: `council-linear-request-${challengeId}` };
     m = await saveLinearContinuity(ctx, m, { ...state, challenge });
@@ -88,7 +88,7 @@ export async function handleLinearContinuityNotice(ctx: PluginContext, event: Pl
   const doc = await readLinearProof(ctx, m, notice.response);
   if (Buffer.byteLength(doc.body) > 128_000) throw new MissionError(409, "linear_response_bound", "Response exceeds bounded native exchange");
   const response = continuityResponseSchema.parse(JSON.parse(doc.body));
-  if (!responseFresh(response) || new Set(response.capabilities).size !== 3 || response.nonce !== challenge.nonce
+  if (!responseFresh(response) || response.mode !== state.mode || response.nonce !== challenge.nonce
       || response.challengeId !== challenge.challengeId || response.requestSha256 !== challenge.requestSha256
       || canonicalPayloadHash(response.binding) !== canonicalPayloadHash(state.binding)
       || Date.parse(response.observedAt) < Date.parse(challenge.requestedAt) || Date.parse(response.observedAt) >= Date.parse(challenge.expiresAt)

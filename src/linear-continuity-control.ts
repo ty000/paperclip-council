@@ -5,7 +5,7 @@ import { nativeRunBindings } from "./native-run-bindings.js";
 import { assertNativeRunInventory } from "./native-runs.js";
 import { nativeN2Profile } from "./n2-missions.js";
 import { readOrdinaryRun, settleOrdinaryRunUsage } from "./g4-native.js";
-import { assertContinuityBinding, linearAuthorityHash, responseFresh, type LinearContinuityChange } from "./linear-continuity-contract.js";
+import { FIXED_CAMPAIGN_MODE, assertContinuityBinding, linearAuthorityHash, responseFresh, type LinearContinuityChange } from "./linear-continuity-contract.js";
 import { linearPublicationState, saveLinearContinuity } from "./linear-continuity-transport.js";
 import { readLinearProof } from "./linear-continuity-documents.js";
 import { appliedContextAnnotations } from "./linear-context-guidance.js";
@@ -44,7 +44,7 @@ export async function settleLinearSafePoint(ctx: PluginContext, initial: Mission
   const safe = reservations.every(r => r.status === "settled" && r.usage?.status === "known" && r.remainingExposure.status === "known" && r.remainingExposure.units === 0);
   return { mission: m, safe };
 }
-function uncertainEffects(m: MissionRecord) {
+export function uncertainLinearEffects(m: MissionRecord) {
   const p = m.aggregate.n5?.publication ?? {} as Partial<NonNullable<NonNullable<MissionRecord["aggregate"]["n5"]>["publication"]>>;
   const i = m.aggregate.n5?.integration ?? {} as Partial<NonNullable<NonNullable<MissionRecord["aggregate"]["n5"]>["integration"]>>;
   const flags = [p.creation === "claimed" && !p.issueId, p.wake === "claimed" && !p.runId,
@@ -55,7 +55,7 @@ function uncertainEffects(m: MissionRecord) {
 async function resumePrerequisites(ctx: PluginContext, m: MissionRecord) {
   const state = m.aggregate.linearContinuity!;
   if (state.control !== "paused" || !state.observation || !responseFresh(state.observation.response)
-      || state.observation.response.availability !== "available" || uncertainEffects(m)
+      || state.observation.response.availability !== "available" || uncertainLinearEffects(m)
       || state.publications.some(p => ["question", "decision"].includes(p.kind) && !p.acknowledgement)) {
     throw new MissionError(409, "linear_resume_pending", "Explicit resume needs fresh source/authority, acknowledged arbitration and reconciled effects");
   }
@@ -79,10 +79,19 @@ function assertArbitrationResolved(m: MissionRecord, kind: LinearContinuityChang
 export async function applyLinearChanges(ctx: PluginContext, initial: MissionRecord) {
   let m = initial; const response = m.aggregate.linearContinuity?.observation?.response;
   if (!response || !responseFresh(response)) return m;
+  if (m.aggregate.linearContinuity!.mode === FIXED_CAMPAIGN_MODE) return holdChangedCampaign(ctx, m, response.sourceSha256);
   for (const change of response.changes) m = await applyOneChange(ctx, m, change);
   const state = m.aggregate.linearContinuity!;
   if (response.sourceSha256 !== state.sourceSha256) return saveLinearContinuity(ctx, m, { ...state, controlReason: "source_revision_unreconciled" });
   return m;
+}
+async function holdChangedCampaign(ctx: PluginContext, m: MissionRecord, sourceSha256: string) {
+  const state = m.aggregate.linearContinuity!;
+  if (sourceSha256 === state.sourceSha256 || ["cancel_requested", "cancelled"].includes(state.control)) return m;
+  if (state.controlReason === "source_revision_changed") return m;
+  const next = { ...state, control: state.control === "paused" ? "paused" as const : "pause_requested" as const, controlReason: "source_revision_changed" };
+  const subject = { ...m, aggregate: { ...m.aggregate, linearContinuity: next } };
+  return saveLinearContinuity(ctx, m, linearPublicationState(subject, "blocker", { reason: "source_revision_changed", expectedSourceSha256: state.sourceSha256, observedSourceSha256: sourceSha256 }));
 }
 function retainedControlReason(state: NonNullable<MissionRecord["aggregate"]["linearContinuity"]>, kind: LinearContinuityChange["kind"]) {
   return ["pause", "cancel"].includes(kind) ? state.controlReason : undefined;
@@ -128,7 +137,7 @@ export async function assertLinearContinuityDeparture(ctx: PluginContext, initia
   const m = await getMission(ctx, initial.companyId, initial.missionId), state = m?.aggregate.linearContinuity;
   if (!m || !state) throw new MissionError(409, "linear_continuity_missing", "Original continuity binding cannot disappear");
   assertContinuityBinding(m, state.binding);
-  const controlPublisher = cancellationReservationId && state.control === "cancel_requested"
+  const controlPublisher = state.mode !== FIXED_CAMPAIGN_MODE && cancellationReservationId && state.control === "cancel_requested"
     && m.aggregate.n5?.publication?.operation === "cancel-pr" && m.aggregate.n5.publication.reservationId === cancellationReservationId;
   for (const command of state.consumed) await readLinearProof(ctx, m, command.evidence);
   if (controlPublisher) return; // Only the specifically reserved cancellation actor may close the obsolete PR.
