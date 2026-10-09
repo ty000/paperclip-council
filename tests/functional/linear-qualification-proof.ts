@@ -26,7 +26,8 @@ async function buildFiles(root: string, directory = "dist"): Promise<string[]> {
 }
 
 export async function packageDigests(root: string) {
-  const tracked = git(root, "ls-files", "src", "migrations", "package.json").split("\n");
+  const tracked = git(root, "ls-files", "src", "migrations", "package.json", "package-lock.json", "pnpm-lock.yaml",
+    "tests/functional", "scripts/qualification").split("\n");
   const added = git(root, "ls-files", "--others", "--exclude-standard", "src", "migrations").split("\n").filter(Boolean);
   const paths = [...new Set([...tracked, ...added, ...await buildFiles(root)])]
     .filter(Boolean).sort();

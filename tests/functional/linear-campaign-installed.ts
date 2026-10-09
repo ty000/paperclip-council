@@ -7,10 +7,18 @@ import { startLinearHost, waitForLinear, linearHostCommit, type LinearHost } fro
 import { startLinearSource, type LinearSource } from "./linear-intake-source.js";
 import { installLinearCouncil, installLinearIntake, linearCampaignPolicy } from "./linear-intake-setup.js";
 import { packageDigests, journals, jobRuns, verifyNativeSourceDescription } from "./linear-qualification-proof.js";
-import { installCampaignGitHubTransport } from "./linear-campaign-github.js";
+import { canonicalPayloadHash } from "../../src/mission-primitives.js";
+import { assertIndependentCampaignReviewer } from "../../src/campaign-closure-subject.js";
+import { installCampaignGitHubTransport, campaignTransportPath } from "./linear-campaign-github.js";
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const git = (root: string, ...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+function protectedSource(source: LinearSource) {
+  return [...source.issues.values()].map(issue => ({ id: issue.uuid, title: issue.title, description: issue.description,
+    parentId: issue.parentId, teamId: issue.teamId, projectId: issue.projectId, milestone: issue.projectMilestone,
+    relations: structuredClone(issue.relations) }));
+}
+
 type Council = Awaited<ReturnType<typeof installLinearCouncil>>;
 
 async function missions(host: LinearHost, council: Council, companyId: string) {
@@ -82,6 +90,42 @@ function verifySerialResult(result: Awaited<ReturnType<typeof observeCampaign>>,
     noRootImplementation: true, serialPredecessor: true, bothFilesIntegrated: true };
 }
 
+async function verifyGlobalReview(host: LinearHost, setup: Awaited<ReturnType<typeof bootstrapCampaign>>, proof: any) {
+  const { control, members, runs } = proof.final;
+  const state = control.aggregate.campaignClosure;
+  assert.equal(state.phase, "closed"); assert.equal(state.report.verdict, "approved");
+  assert.equal(state.reportSha256, canonicalPayloadHash(state.report));
+  assert.equal(state.subject.results.length, 2);
+  assert.deepEqual(state.subject.results.map((item: any) => item.missionId).sort(), members.map((m: any) => m.missionId).sort());
+  for (const kind of ["milestone", "milestone-root", "prd", "tad"]) {
+    assert(state.subject.coverage.some((item: any) => item.kind === kind), `Global coverage includes ${kind}`);
+  }
+  assert.equal(state.report.rows.length, state.subject.coverage.length);
+  assert(state.report.rows.every((row: any) => row.result === "satisfied" && row.proofIds.length > 0 && row.remainder === null));
+  const reviewer = runs.find((run: any) => run.id === state.task.runId);
+  assert(reviewer); assert.equal(reviewer.status, "succeeded");
+  assertIndependentCampaignReviewer(control, members, reviewer.agentId);
+  const document = await host.api("GET", `/api/issues/${setup.root.id}/documents/${state.proofDocument.key}`);
+  assert.equal(document.latestRevisionId, state.proofDocument.revisionId); assert.equal(document.body, state.proofDocument.body);
+  assert(state.nativeClosures.every((entry: any) => entry.state === "confirmed"));
+  assert.equal(state.nativeClosures.at(-1).issueId, setup.root.id);
+  proof.globalReview = { runId: reviewer.id, agentId: reviewer.agentId, coverageRows: state.report.rows.length,
+    reportSha256: state.reportSha256, proofRevisionId: document.latestRevisionId };
+}
+
+async function verifyRemoteDeliveries(host: LinearHost, proof: any) {
+  const index = JSON.parse(await readFile(resolve(host.runtime, "github-transport-index.json"), "utf8"));
+  assert.equal(Object.keys(index.byMission).length, 2);
+  const deliveries = [];
+  for (const missionId of proof.serial.orderedMissionIds) {
+    const remote = JSON.parse(await readFile(campaignTransportPath(host.runtime, missionId), "utf8"));
+    assert.equal(remote.createCount, 1); assert.equal(remote.mergeCount, 1); assert.equal(remote.updateCount, 0);
+    assert.equal(remote.merged, true); deliveries.push(remote);
+  }
+  assert.equal(deliveries[1].baseCommit, deliveries[0].integratedCommit);
+  proof.remoteDeliveries = deliveries; proof.remoteIndex = index;
+}
+
 async function verifyClosure(host: LinearHost, source: LinearSource, setup: Awaited<ReturnType<typeof bootstrapCampaign>>, proof: any) {
   const { companyId, council, readiness, intake } = setup;
   for (const entry of readiness.correspondence) {
@@ -98,8 +142,9 @@ async function verifyClosure(host: LinearHost, source: LinearSource, setup: Awai
   const admission = (await host.api("GET", `${council.admissionPath}?companyId=${companyId}&periodKey=${council.profile.periodKey}`)).envelope;
   assert(admission.reservations.every((reservation: any) => reservation.status === "settled"));
   assert.equal(admission.commandReceipts.filter((receipt: any) => receipt.command === "configure").length, 1);
-  const index = JSON.parse(await readFile(resolve(host.runtime, "github-transport-index.json"), "utf8"));
-  proof.remoteIndex = index; proof.admission = admission;
+  proof.admission = admission;
+  await verifyGlobalReview(host, setup, proof);
+  await verifyRemoteDeliveries(host, proof);
   proof.intake = await intake.action("inspect-intake"); assert.equal(proof.intake.requests.length, 1);
   proof.finalJournals = await journals(host, companyId);
   proof.jobs = { council: await jobRuns(host, council.pluginId), intake: await jobRuns(host, intake.pluginId) };
@@ -109,12 +154,14 @@ async function scenario(host: LinearHost, proof: any, save: () => Promise<void>,
   const source = await startLinearSource({ campaign: true });
   const restoreGitHub = await installCampaignGitHubTransport(host.runtime, proof);
   proof.progress = [];
+  const sourceBefore = protectedSource(source);
   try {
     const setup = await bootstrapCampaign(host, source, proof, intakeRepository); await save();
     proof.policy = await host.api("POST", setup.council.policyPath, linearCampaignPolicy(setup.council, source, setup.companyId, setup.root.id));
     const result = await observeCampaign(host, setup, proof, save);
     proof.final = result; proof.serial = verifySerialResult(result, setup);
     await verifyClosure(host, source, setup, proof);
+    assert.deepEqual(protectedSource(source), sourceBefore);
     proof.checks = { completeImport: "PASS", noImporterWake: "PASS", serialIntegratedLeaves: "PASS",
       independentGlobalClosure: "PASS", terminalReadback: "PASS", singleBudget: "PASS", noProvider: "PASS" };
   } finally {
