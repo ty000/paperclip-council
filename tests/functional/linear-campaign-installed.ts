@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startLinearHost, waitForLinear, linearHostCommit, type LinearHost } from "./linear-intake-host.js";
@@ -53,6 +54,7 @@ async function observeCampaign(host: LinearHost, setup: Awaited<ReturnType<typeo
   const { council, companyId, root } = setup;
   let priorState = ""; let checkedJobsAt = 0;
   return waitForLinear("two integrated leaves and native global closure", async () => {
+    assert(!existsSync(resolve(host.runtime, "qualification-stop")), "Qualification explicitly stopped for diagnosis");
     if (Date.now() - checkedJobsAt >= 10_000) {
       checkedJobsAt = Date.now();
       const jobs = await jobRuns(host, council.pluginId);
@@ -74,6 +76,9 @@ async function observeCampaign(host: LinearHost, setup: Awaited<ReturnType<typeo
     if (state !== priorState) {
       priorState = state; proof.progress.push({ at: new Date().toISOString(), missions: current }); await save();
     }
+    proof.latest = { missions: current, runs };
+    const blockers = current.flatMap(m => (m.aggregate.linearContinuity?.publications ?? []).filter((item: any) => item.kind === "blocker"));
+    assert.equal(blockers.length, 0, "A native blocker requires diagnosis before continuing nominal qualification");
     return { control, members, runs };
   }, value => value.control?.aggregate.completion?.state === "closed", 12 * 60_000);
 }
@@ -135,11 +140,17 @@ async function verifyRemoteDeliveries(host: LinearHost, proof: any) {
   proof.remoteDeliveries = deliveries; proof.remoteIndex = index;
 }
 
-async function verifyClosure(host: LinearHost, source: LinearSource, setup: Awaited<ReturnType<typeof bootstrapCampaign>>, proof: any) {
-  const { companyId, council, readiness, intake } = setup;
+function verifyNativeOrder(nativeClosures: any[], source: LinearSource) {
+  for (const parent of nativeClosures) for (const child of nativeClosures.filter(node => node.parentId === parent.issueId)) {
+    assert(Date.parse(parent.completedAt) >= Date.parse(child.completedAt));
+  }
+  assert(source.effects.every(effect => effect.sourceId !== source.ids.history), "Historical work receives no publication effect");
+}
+
+async function verifyNativeFamily(host: LinearHost, source: LinearSource, setup: Awaited<ReturnType<typeof bootstrapCampaign>>, proof: any) {
+  const { readiness } = setup;
   const closure = proof.final.control.aggregate.campaignClosure;
   const nativeClosures: any[] = [];
-  assert(Date.parse(closure.completedAt) >= Date.parse(closure.publicationAcknowledgedAt));
   for (const entry of readiness.correspondence) {
     const native = await host.api("GET", `/api/issues/${entry.nativeId}`);
     const original = source.issues.get(entry.sourceId)!;
@@ -151,11 +162,15 @@ async function verifyClosure(host: LinearHost, source: LinearSource, setup: Awai
     }
     if (entry.sourceId !== source.ids.history) nativeClosures.push({ issueId: native.id, parentId: native.parentId, completedAt: native.completedAt });
   }
-  for (const parent of nativeClosures) for (const child of nativeClosures.filter(node => node.parentId === parent.issueId)) {
-    assert(Date.parse(parent.completedAt) >= Date.parse(child.completedAt));
-  }
-  assert(source.effects.every(effect => effect.sourceId !== source.ids.history), "Historical work receives no publication effect");
+  verifyNativeOrder(nativeClosures, source);
   proof.nativeClosures = nativeClosures;
+}
+
+async function verifyClosure(host: LinearHost, source: LinearSource, setup: Awaited<ReturnType<typeof bootstrapCampaign>>, proof: any) {
+  const { companyId, council, intake } = setup;
+  const closure = proof.final.control.aggregate.campaignClosure;
+  assert(Date.parse(closure.completedAt) >= Date.parse(closure.publicationAcknowledgedAt));
+  await verifyNativeFamily(host, source, setup, proof);
   const terminal = source.effects.filter(effect => effect.role === "saveIssue" && effect.state === source.ids.completed);
   assert.equal(terminal.at(-1)?.sourceId, source.ids.root, "Campaign ticket terminal publication is last");
   assert(source.comments.length >= 4, "Plan, two deliveries and global closure are visible");
