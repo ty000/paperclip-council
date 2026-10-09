@@ -69,3 +69,12 @@ it("keeps legacy integrated delivery policies bounded to one leaf", async () => 
   await expect(handleProjectMandate(f.ctx, f.input)).rejects.toMatchObject({ status: 422, code: "integration_leaf_policy" });
   expect(f.execute).not.toHaveBeenCalled();
 });
+
+it("retains accepted one-leaf legacy integrated delivery policies", async () => {
+  const f = fixture(false);
+  (f.input.body as any).hierarchy.maxContributions = 1;
+  const result = await handleProjectMandate(f.ctx, f.input);
+  expect(result.body.policy?.content.hierarchy?.maxContributions).toBe(1);
+  expect(result.body.policy?.content.linearContinuity).toBeUndefined();
+  expect(f.execute).toHaveBeenCalledOnce();
+});
