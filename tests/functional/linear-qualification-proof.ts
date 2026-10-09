@@ -49,6 +49,13 @@ export async function repositoryOccupation(host: LinearHost) {
   return { version: Number(rows[0].version), document: rows[0].document };
 }
 
+export async function continuityObservations(host: LinearHost, companyId: string, pluginId: string) {
+  const rows = await host.db.$client.unsafe(`SELECT value_json FROM plugin_state
+    WHERE plugin_id = $1 AND scope_kind = 'issue' AND namespace = 'continuity'
+      AND state_key = 'observation' AND value_json->>'companyId' = $2`, [pluginId, companyId]);
+  return rows.map((row: any) => row.value_json) as any[];
+}
+
 export async function jobRuns(host: LinearHost, pluginId: string) {
   const jobs = await host.api("GET", `/api/plugins/${pluginId}/jobs`);
   return Promise.all(jobs.map(async (job: any) => ({ jobKey: job.jobKey,

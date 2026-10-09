@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { startLinearHost, waitForLinear, linearHostCommit, type LinearHost } from "./linear-intake-host.js";
 import { startLinearSource, type LinearSource } from "./linear-intake-source.js";
 import { installLinearCouncil, installLinearIntake, linearCampaignPolicy } from "./linear-intake-setup.js";
-import { packageDigests, journals, jobRuns, verifyNativeSourceDescription, repositoryOccupation } from "./linear-qualification-proof.js";
+import { packageDigests, journals, jobRuns, verifyNativeSourceDescription, repositoryOccupation, continuityObservations } from "./linear-qualification-proof.js";
 import { canonicalPayloadHash } from "../../src/mission-primitives.js";
 import { assertIndependentCampaignReviewer } from "../../src/campaign-closure-subject.js";
 import { nativeRunBindings } from "../../src/native-run-bindings.js";
@@ -51,7 +51,25 @@ async function bootstrapCampaign(host: LinearHost, source: LinearSource, proof: 
   return { companyId, council, intake, family, root, readiness };
 }
 
-async function assertNominalCampaignJobs(host: LinearHost, council: Council, companyId: string, proof: any) {
+function unclaimedVersionConflict(value: any, current: any[]) {
+  if (value.observation.code !== "repository_mission_changed") return false;
+  const mission = current.find(item => item.missionId === value.missionId);
+  const publication = mission?.aggregate.n5?.publication;
+  if (publication?.creation !== "confirmed") return false;
+  // A version conflict before claiming a wake can be reread under the same
+  // retained intent. A claimed or uncertain wake must never take this exception.
+  return publication.wake === "pending" && !publication.runId;
+}
+
+async function assertNominalObservations(host: LinearHost, council: Council, companyId: string, proof: any, current: any[]) {
+  const observations = await continuityObservations(host, companyId, council.pluginId);
+  proof.nativeObservations ??= {};
+  for (const value of observations) proof.nativeObservations[`${value.missionId}:${value.documentKey}`] = value;
+  const blocked = observations.filter(value => value.observation.state === "blocked" && !unclaimedVersionConflict(value, current));
+  assert.equal(blocked.length, 0, `Native continuity requires diagnosis: ${JSON.stringify(blocked)}`);
+}
+
+async function assertNominalCampaignJobs(host: LinearHost, council: Council, companyId: string, proof: any, current: any[]) {
   const jobs = await jobRuns(host, council.pluginId);
   const failed = jobs.flatMap(group => group.runs.filter((run: any) => run.status === "failed"));
   assert.equal(failed.length, 0, "A failed native Council job requires diagnosis before continuing qualification");
@@ -63,6 +81,7 @@ async function assertNominalCampaignJobs(host: LinearHost, council: Council, com
   // closes. Retain both observations; terminal checks still require both deliveries.
   // Every other intake question is non-nominal even when the scheduled job succeeds.
   assert.equal(questions.length, 0, `Native intake requires diagnosis: ${JSON.stringify(questions)}`);
+  await assertNominalObservations(host, council, companyId, proof, current);
 }
 
 async function observeCampaign(host: LinearHost, setup: Awaited<ReturnType<typeof bootstrapCampaign>>, proof: any, save: () => Promise<void>) {
@@ -70,11 +89,11 @@ async function observeCampaign(host: LinearHost, setup: Awaited<ReturnType<typeo
   let priorState = ""; let checkedJobsAt = 0;
   return waitForLinear("two integrated leaves and native global closure", async () => {
     assert(!existsSync(resolve(host.runtime, "qualification-stop")), "Qualification explicitly stopped for diagnosis");
+    const current = await missions(host, council, companyId);
     if (Date.now() - checkedJobsAt >= 10_000) {
       checkedJobsAt = Date.now();
-      await assertNominalCampaignJobs(host, council, companyId, proof);
+      await assertNominalCampaignJobs(host, council, companyId, proof, current);
     }
-    const current = await missions(host, council, companyId);
     const control = current.find(m => m.rootIssueId === root.id);
     const members = current.filter(m => m.aggregate.repositoryCampaign);
     const runs = await host.api("GET", `/api/companies/${companyId}/heartbeat-runs`);
