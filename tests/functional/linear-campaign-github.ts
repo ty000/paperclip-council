@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 type CampaignTransportIndex = { nextPullNumber: number; byMission: Record<string, number> };
 type CampaignProof = { githubTransportCalls?: Array<Record<string, unknown>> };
 
-export const campaignTransportIndexPath = (runtime: string) => resolve(runtime, "github-transport-index.json");
+const campaignTransportIndexPath = (runtime: string) => resolve(runtime, "github-transport-index.json");
 export function campaignTransportPath(runtime: string, missionId: string) {
   assert.match(missionId, /^[0-9a-f-]{36}$/i, "Campaign transport requires the discovered mission UUID");
   return resolve(runtime, `github-transport-${missionId}.json`);
@@ -13,20 +13,11 @@ export function campaignTransportPath(runtime: string, missionId: string) {
 
 async function withIndexLock<T>(runtime: string, action: () => Promise<T>) {
   const lockPath = resolve(runtime, "github-transport-index.json.lock");
-  for (let attempt = 0; attempt < 200; attempt++) {
-    let handle;
-    try {
-      handle = await open(lockPath, "wx", 0o600);
-      return await action();
-    } catch (error) {
-      if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
-      await new Promise(done => setTimeout(done, 10));
-    } finally {
-      await handle?.close();
-      if (handle) await rm(lockPath, { force: true });
-    }
-  }
-  throw new Error("Campaign GitHub transport index lock timed out");
+  // Product promises serial publishers. Overlap or a retained unknown fixture
+  // allocation is a test failure, never permission to retry under another key.
+  const handle = await open(lockPath, "wx", 0o600);
+  try { return await action(); }
+  finally { await handle.close(); await rm(lockPath); }
 }
 
 export async function ensureCampaignTransport(runtime: string, missionId: string) {
@@ -51,29 +42,40 @@ export async function ensureCampaignTransport(runtime: string, missionId: string
   });
 }
 
+async function readCampaignPull(runtime: string, proof: CampaignProof, url: string) {
+  const match = /^https:\/\/api\.github\.com\/repos\/ty000\/paperclip-council\/pulls\/(4242|4243)$/.exec(url);
+  assert(match, "Only the two allocated campaign pull readbacks are simulated");
+  const number = Number(match[1]);
+  const current: CampaignTransportIndex = JSON.parse(await readFile(campaignTransportIndexPath(runtime), "utf8"));
+  const missionId = Object.entries(current.byMission).find(([, assigned]) => assigned === number)?.[0];
+  assert(missionId, "Campaign pull must be allocated by an authenticated publisher run before readback");
+  const remote = JSON.parse(await readFile(campaignTransportPath(runtime, missionId), "utf8"));
+  assert.equal(remote.number, number);
+  proof.githubTransportCalls!.push({ missionId, url, headSha: remote.headSha, at: new Date().toISOString() });
+  return Response.json(pullSnapshot(number, remote));
+}
+
+function pullSnapshot(number: number, remote: any) {
+  return { number, state: remote.merged ? "closed" : "open", merged: remote.merged === true,
+    merge_commit_sha: remote.integratedCommit ?? null, draft: remote.draft === true, title: "Simulated campaign delivery",
+    head: { sha: remote.headSha, ref: remote.headRef }, base: { ref: "main", sha: remote.baseCommit }, updated_at: new Date().toISOString() };
+}
+
+function fetchIdentity(input: Parameters<typeof fetch>[0], init?: RequestInit) {
+  const request = new Request(input instanceof Request ? input.clone() : input, init);
+  return { url: request.url, method: request.method.toUpperCase() };
+}
+
 export async function installCampaignGitHubTransport(runtime: string, proof: CampaignProof) {
   const index: CampaignTransportIndex = { nextPullNumber: 4242, byMission: {} };
   await writeFile(campaignTransportIndexPath(runtime), JSON.stringify(index), { flag: "wx" });
   const original = globalThis.fetch;
   proof.githubTransportCalls = [];
   globalThis.fetch = async (input, init) => {
-    const request = input instanceof Request ? input : undefined;
-    const url = String(request ? request.url : input);
+    const { url, method } = fetchIdentity(input, init);
     if (url.startsWith("https://api.github.com/")) {
-      assert.equal((init?.method ?? request?.method ?? "GET").toUpperCase(), "GET");
-      const match = /^https:\/\/api\.github\.com\/repos\/ty000\/paperclip-council\/pulls\/(4242|4243)$/.exec(url);
-      assert(match, "Only the two allocated campaign pull readbacks are simulated");
-      const number = Number(match[1]);
-      const current: CampaignTransportIndex = JSON.parse(await readFile(campaignTransportIndexPath(runtime), "utf8"));
-      const missionId = Object.entries(current.byMission).find(([, assigned]) => assigned === number)?.[0];
-      assert(missionId, "Campaign pull must be allocated by an authenticated publisher run before readback");
-      const remote = JSON.parse(await readFile(campaignTransportPath(runtime, missionId), "utf8"));
-      assert.equal(remote.number, number);
-      proof.githubTransportCalls!.push({ missionId, url, headSha: remote.headSha, at: new Date().toISOString() });
-      return new Response(JSON.stringify({ number, state: remote.merged ? "closed" : "open", merged: remote.merged === true,
-        merge_commit_sha: remote.integratedCommit ?? null, draft: remote.draft === true, title: "Simulated campaign delivery",
-        head: { sha: remote.headSha, ref: remote.headRef }, base: { ref: "main", sha: remote.baseCommit }, updated_at: new Date().toISOString() }),
-      { status: 200, headers: { "content-type": "application/json" } });
+      assert.equal(method, "GET");
+      return readCampaignPull(runtime, proof, url);
     }
     assert(["127.0.0.1", "localhost"].includes(new URL(url).hostname), "Qualification forbids unsimulated outbound fetch");
     return original(input, init);

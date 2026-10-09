@@ -1,50 +1,18 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startLinearHost, waitForLinear, linearHostCommit, type LinearHost } from "./linear-intake-host.js";
 import { startLinearSource } from "./linear-intake-source.js";
 import { installLinearCouncil, installLinearIntake, linearPolicy } from "./linear-intake-setup.js";
 
+import { packageDigests, journals, jobRuns, verifyNativeSourceDescription } from "./linear-qualification-proof.js";
+
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const git = (root: string, ...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
-const councilSchema = "plugin_private_paperclip_council_270061461e";
 
-async function buildFiles(root: string, directory = "dist"): Promise<string[]> {
-  const entries = await readdir(resolve(root, directory), { withFileTypes: true });
-  const nested = await Promise.all(entries.map(async entry => {
-    const path = `${directory}/${entry.name}`;
-    if (entry.isDirectory()) return buildFiles(root, path);
-    assert(entry.isFile(), `Build evidence must contain ordinary files: ${path}`);
-    return [path];
-  }));
-  return nested.flat();
-}
-
-async function packageDigests(root: string) {
-  const tracked = git(root, "ls-files", "src", "migrations", "package.json").split("\n");
-  const added = git(root, "ls-files", "--others", "--exclude-standard", "src", "migrations").split("\n").filter(Boolean);
-  const paths = [...new Set([...tracked, ...added, ...await buildFiles(root)])]
-    .filter(Boolean).sort();
-  return Object.fromEntries(await Promise.all(paths.map(async path => [path,
-    createHash("sha256").update(await readFile(resolve(root, path))).digest("hex")])));
-}
-
-async function journals(host: LinearHost, companyId: string) {
-  const intake = await host.db.$client.unsafe(`SELECT root_issue_id, mission_id, policy_revision_id, version, state
-    FROM ${councilSchema}.project_task_intakes WHERE company_id = $1 ORDER BY root_issue_id`, [companyId]);
-  const challenges = await host.db.$client.unsafe(`SELECT challenge_id, mission_id, stage, generation, request_hash,
-    response, consumed_at FROM ${councilSchema}.linear_intake_challenges WHERE company_id = $1 ORDER BY created_at`, [companyId]);
-  return { intake: Array.from(intake) as any[], challenges: Array.from(challenges) as any[] };
-}
-
-async function jobRuns(host: LinearHost, pluginId: string) {
-  const jobs = await host.api("GET", `/api/plugins/${pluginId}/jobs`);
-  return Promise.all(jobs.map(async (job: any) => ({ jobKey: job.jobKey,
-    runs: await host.api("GET", `/api/plugins/${pluginId}/jobs/${job.id}/runs`) })));
-}
 
 async function noAdmission(host: LinearHost, companyId: string, council: Awaited<ReturnType<typeof installLinearCouncil>>) {
   const missions = await host.api("GET", `${council.missions}?companyId=${companyId}`);
@@ -184,7 +152,7 @@ async function runScenario(host: LinearHost, proof: any, save: () => Promise<voi
     for (const issue of before) {
       const detail = await host.api("GET", `/api/issues/${issue.id}`);
       const original = readiness.correspondence.find((entry: any) => entry.nativeId === issue.id);
-      assert.equal(detail.description, source.issues.get(original.sourceId)!.description);
+      verifyNativeSourceDescription(detail, source.issues.get(original.sourceId)!.description, [proof.mission]);
       assert.equal(detail.parentId, issue.parentId); assert.equal(detail.originId, issue.originId);
       assert.deepEqual(detail.blockedByIssueIds, issue.blockedByIssueIds);
     }
