@@ -14,7 +14,8 @@ const issueId = process.env.PAPERCLIP_TASK_ID;
 const agentId = process.env.PAPERCLIP_AGENT_ID;
 const runId = process.env.PAPERCLIP_RUN_ID;
 process.on("uncaughtException", async error => {
-  await writeFile(resolve(config.runtime, `fixture-failure-${runId}.json`), JSON.stringify({ runId, message: String(error.message).slice(0, 2000) })).catch(() => {});
+  await writeFile(resolve(config.runtime, `fixture-failure-${runId}.json`), JSON.stringify({ runId,
+    message: String(error.message).slice(0, 2000), stack: String(error.stack).split("\n").slice(0, 8).join("\n") })).catch(() => {});
   process.exitCode = 1;
 });
 const headers = { authorization: `Bearer ${process.env.PAPERCLIP_API_KEY}`, "x-paperclip-run-id": runId };
@@ -200,7 +201,7 @@ else if (inspection.task) {
   const contributions = inspection.n1.hierarchy?.leaves ?? ["alpha", "beta"].map(name => ({ contributionId: randomUUID(), assigneeAgentId: config.actors[name], title: name, ownedPaths: [`${name}.txt`] }));
   if (config.campaignMode) {
     assert.equal(contributions.length, 1, "A campaign leaf mission owns exactly one planned contribution");
-    assert.equal(inspection.n1.contributions.length, 0, "Campaign work branch is initialized only for a fresh leaf plan");
+    assert.equal(inspection.n1.participants.length, 0, "Campaign work branch is initialized only for a fresh leaf plan");
     const baseCommit = git("rev-parse", "main");
     git("checkout", "-B", `campaign-${config.missionId}`, baseCommit);
     git("branch", "-f", "base", baseCommit);
