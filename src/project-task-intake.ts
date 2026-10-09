@@ -246,6 +246,9 @@ async function advance(ctx: PluginContext, initial: Intake, latest: ProjectManda
     await advancePinned(ctx, intake, latest, policy, issues);
   } catch (error) {
     if (error instanceof MissionError && ["linear_source_pending", "linear_continuity_hold"].includes(error.code)) return;
+    // Preparation can persist campaign closure before repository release loses
+    // its version check. The driver rereads that release; a closed task needs no question.
+    if (error instanceof MissionError && error.code === "repository_release_pending" && await closedCampaignIntake(ctx, intake)) return;
     // Re-read after any ambiguous database response; never write from an obsolete intake version.
     const current = await ctx.db.query<any>(`SELECT * FROM ${projectTable(ctx, "project_task_intakes")} WHERE company_id = $1 AND root_issue_id = $2`, [intake.companyId, intake.rootIssueId]);
     await question(ctx, current[0] ? fromRow(current[0]) : intake, policy, error);

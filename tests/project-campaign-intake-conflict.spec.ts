@@ -4,6 +4,7 @@ import type { MissionRecord } from "../src/missions.js";
 import { MissionError } from "../src/missions.js";
 import { prepareLinearContinuity } from "../src/linear-continuity-intake.js";
 import { reconcileProjectTasks } from "../src/project-task-intake.js";
+import { releaseReconciledRepository } from "../src/repository-occupation.js";
 
 const f = vi.hoisted(() => ({ policy: {} as any, create: vi.fn() }));
 vi.mock("../src/project-mandate-state.js", async original => ({ ...await original<any>(),
@@ -155,5 +156,75 @@ it.each(["not closed", "cancelled", "ordinary closed", "foreign root", "foreign 
   await reconcileProjectTasks(x.ctx);
   expect(x.ctx.issues.askUserQuestions).toHaveBeenCalledTimes(1);
   expect(x.intake.state.questions).toHaveProperty("repository_mission_changed");
+  expect(x.ctx.issues.requestWakeup).not.toHaveBeenCalled();
+});
+
+it("rereads a campaign closed during preparation when the real repository release CAS refuses its stale version", async () => {
+  const x = fixture(); x.noConflict();
+  const m = x.mission(), key = `${m.companyId}:${m.missionId}`;
+  const registry = { version: 1, document: { initialized: true, holders: {
+    [key]: { companyId: m.companyId, missionId: m.missionId, projectId: m.projectId, repository: "github.com/ty000/repo", exclusive: true },
+  } } };
+  Object.assign(x.intake.state.questions, { historical: { message: "Original decision", confirmed: true } });
+  const retained = structuredClone(x.intake), query = x.ctx.db.query, execute = x.ctx.db.execute;
+  x.ctx.db.query = vi.fn(async (sql: string, p: any[]) => sql.includes("repository_occupation") ? [structuredClone(registry)] : query(sql, p));
+  const release = vi.fn(async (p: any[]) => {
+    if (p[1] !== registry.version || p[4] !== m.version || m.aggregate.completion?.state !== "closed") return { rowCount: 0 };
+    registry.document = JSON.parse(p[0]); registry.version++; return { rowCount: 1 };
+  });
+  x.ctx.db.execute = vi.fn(async (sql: string, p: any[]) => sql.includes("repository_occupation") ? release(p) : execute(sql, p));
+  vi.mocked(prepareLinearContinuity).mockImplementation(async (ctx, original) => {
+    expect(original.aggregate.completion).toBeUndefined();
+    m.aggregate.completion = { state: "closed", proofId: "retained-proof" } as any;
+    m.aggregate.campaignClosure!.phase = "closed"; m.version++;
+    // A concurrent write leaves the release caller with the previous version.
+    await releaseReconciledRepository(ctx, { ...original, aggregate: structuredClone(m.aggregate) });
+    return m;
+  });
+
+  await reconcileProjectTasks(x.ctx);
+  expect(release).toHaveBeenCalledTimes(8);
+  expect(registry.document.holders).toHaveProperty(key);
+  expect(x.reads).toEqual([1, 1, 2]);
+  expect(x.intake).toEqual(retained);
+  expect(x.ctx.issues.askUserQuestions).not.toHaveBeenCalled();
+  expect(x.ctx.issues.requestWakeup).not.toHaveBeenCalled(); expect(x.leaves.size).toBe(0);
+  await reconcileProjectTasks(x.ctx);
+  expect(prepareLinearContinuity).toHaveBeenCalledTimes(1); expect(f.create).toHaveBeenCalledTimes(1);
+  expect(x.intake).toEqual(retained);
+  // The existing release driver can reconcile the same identity with its fresh version.
+  await releaseReconciledRepository(x.ctx, x.mission());
+  expect(registry.document.holders).toEqual({});
+});
+
+it.each(["not closed", "ordinary closed", "foreign root", "foreign project"])("still reports a terminal release refusal for %s work", async condition => {
+  const x = fixture(); x.noConflict();
+  if (condition === "foreign root") x.intake.root_issue_id = randomUUID();
+  if (condition === "foreign project") x.intake.project_id = randomUUID();
+  vi.mocked(prepareLinearContinuity).mockImplementation(async () => {
+    if (condition !== "not closed") x.mission().aggregate.completion = { state: "closed" } as any;
+    if (condition === "ordinary closed") delete x.mission().aggregate.linearContinuity;
+    throw new MissionError(409, "repository_release_pending", "Retain occupation and reconcile");
+  });
+  await reconcileProjectTasks(x.ctx);
+  expect(x.ctx.issues.askUserQuestions).toHaveBeenCalledTimes(1);
+  expect(x.intake.state.questions).toHaveProperty("repository_release_pending");
+  expect(x.ctx.issues.requestWakeup).not.toHaveBeenCalled();
+});
+
+it.each([
+  new Error("database response lost"),
+  new MissionError(409, "project_authority_changed", "Authority changed"),
+  new MissionError(409, "campaign_review_wake_unknown", "Retain uncertain wake"),
+])("retains other errors after closure instead of treating them as refused repository release: %s", async error => {
+  const x = fixture(); x.noConflict();
+  vi.mocked(prepareLinearContinuity).mockImplementation(async () => {
+    x.mission().aggregate.completion = { state: "closed" } as any;
+    throw error;
+  });
+  await reconcileProjectTasks(x.ctx);
+  const code = error instanceof MissionError ? error.code : "project_intake_transport";
+  expect(x.intake.state.questions).toHaveProperty(code);
+  expect(x.ctx.issues.askUserQuestions).toHaveBeenCalledTimes(1);
   expect(x.ctx.issues.requestWakeup).not.toHaveBeenCalled();
 });
