@@ -20,8 +20,8 @@ vi.mock("../src/model-variants.js", () => ({ inspectVariant: vi.fn() }));
 
 import { AdmissionError, readAdmission, reserveAdmission, settleAdmission } from "../src/admission.js";
 import { verifyIntegratedCandidate, verifyContributionBundle } from "../src/integration.js";
-import { executeN1BoardCommand, handleN1AgentApi } from "../src/n1-missions.js";
-import { getMission, handleMissionApi, canonicalPayloadHash, MissionError, type MissionAggregate } from "../src/missions.js";
+import { executeN1BoardCommand, handleN1AgentApi, inspectN1State } from "../src/n1-missions.js";
+import { getMission, handleMissionApi, canonicalPayloadHash, MissionError, type MissionAggregate, type MissionRecord } from "../src/missions.js";
 import { reconcileTerminalN1Usage } from "./functional/n1-live.js";
 import { inspectVariant } from "../src/model-variants.js";
 import { MODEL_CATALOGUE } from "../src/model-catalogue.js";
@@ -2380,6 +2380,39 @@ describe("one initial hierarchy lead resume", () => {
     expect(h.row().aggregate.continuity!.commands["reconcile-lead-usage"]!.commandId)
       .not.toBe(h.value.continuity!.commands["reconcile-lead-usage"]!.commandId);
     expect(h.envelope.reservations[0]).toEqual(h.old); expect(h.requestWakeup).toHaveBeenCalledTimes(1);
+  });
+
+  it("resumes the same coordinator before any plan without erasing settled usage, source or deadline", async () => {
+    const h = stoppedHierarchy(); h.advanceMission(a => { a.n1!.contributions = []; return a; });
+    h.body.expectedVersion = h.row().version;
+    const before = h.row().aggregate;
+    await h.apply();
+    const prepared = h.row().aggregate;
+    expect(prepared.n1!.contributions).toEqual([]);
+    expect(prepared.hierarchy).toEqual(before.hierarchy);
+    expect(prepared.mandate).toEqual(before.mandate);
+    expect(prepared.continuity!.deadline).toBe(before.continuity!.deadline);
+    expect(prepared.n1!.coordination).toEqual(before.n1!.coordination);
+    expect(h.envelope.reservations[0]).toEqual(h.old);
+    expect(h.requestWakeup).not.toHaveBeenCalled(); expect(reserveAdmission).not.toHaveBeenCalled();
+    expect((await h.apply()).outcome).toBe("replayed");
+    expect((await h.advance()).code).toBe("start-lead");
+    expect(h.requestWakeup).toHaveBeenCalledExactlyOnceWith(h.coordinator, id.company, expect.anything());
+    expect(h.create).not.toHaveBeenCalled();
+    expect(inspectN1State({ ...h.row(), aggregate: h.row().aggregate } as unknown as MissionRecord)?.leadCommands?.protocol).toBe("council-lead-commands-v1");
+  });
+
+  it.each(["plan receipt", "plan journal", "child run"])("rejects cleared pre-plan state with %s", async kind => {
+    const h = stoppedHierarchy(); h.advanceMission(a => {
+      a.n1!.contributions = [];
+      if (kind === "plan receipt") a.commandReceipts.push({ ...a.commandReceipts[0]!, command: "plan" });
+      if (kind === "plan journal") a.journal.push({ action: "contribution_plan_recorded" });
+      return a;
+    });
+    if (kind === "child run") h.childRuns.push({ ...h.runs[0]!, id: id.contributorRun, issueId: id.childA, agentId: id.contributorA });
+    h.body.expectedVersion = h.row().version; const before = h.row();
+    await expect(h.apply()).rejects.toThrow(); expect(h.row()).toEqual(before);
+    expect(h.requestWakeup).not.toHaveBeenCalled(); expect(reserveAdmission).not.toHaveBeenCalled();
   });
 
   const invalidCases: Array<[string, (h: ReturnType<typeof stoppedHierarchy>) => void]> = [
