@@ -2,6 +2,7 @@ import type { Issue, PluginContext } from "@paperclipai/plugin-sdk";
 import { canonicalPayloadHash } from "./mission-primitives.js";
 import type { ProjectMandate } from "./project-mandate-state.js";
 import { ownershipsOverlap } from "./integration.js";
+import { validateLinearCampaign } from "./linear-campaign-validation.js";
 import { LINEAR_ORIGIN, LINEAR_READINESS_KEY, LINEAR_SOURCE_KEY, parseLinearReadiness, parseLinearSource, requireLinear,
   type LinearNode, type LinearReadiness, type LinearReadinessSnapshot, type LinearPreparation, type LinearSourceDocument } from "./linear-intake-contract.js";
 
@@ -75,7 +76,8 @@ function sourceReferences(sources: Source[]) {
 }
 function parentFor(item: Source, body: LinearReadiness, refs: Map<string, Source>) {
   if (item.parsed.source.uuid === body.sourceRootId) return null;
-  const parent = refs.get(item.parsed.source.parentId ?? "");
+  const mapping = body.campaign?.nativeMapping.find(node => node.sourceId === item.parsed.source.uuid);
+  const parent = refs.get((mapping ? mapping.nativeParentSourceId : item.parsed.source.parentId) ?? "");
   requireLinear(parent, "linear_parent_missing");
   return parent.native.id;
 }
@@ -170,6 +172,7 @@ function requirePlan(body: LinearReadiness, sources: Source[], nodes: LinearNode
     intakeId: body.intakeId, activationId: body.activationId, fingerprint: body.configurationFingerprint, requestVersion: body.requestVersion,
     sourceSha256: body.sourceSha256, targetProjectId: body.targetProjectId, rootSourceId: body.sourceRootId, nodes: planNodes,
     externalBlockers: body.externalBlockers, readinessKey,
+    ...(body.campaign ? { campaign: body.campaign } : {}),
     expectedEffectKeys: [...planNodes.flatMap(node => [node.keys.issue, node.keys.document, node.keys.relations]), readinessKey] }), body.planSha256, "linear_plan_digest");
 }
 
@@ -181,6 +184,7 @@ export async function readLinearIntake(ctx: PluginContext, policy: ProjectMandat
   const body = parseLinearReadiness(doc.body); bindReadiness(policy, rootId, doc, body);
   const sources: Source[] = [];
   for (const entry of body.correspondence) sources.push(await readSource(ctx, policy, body, entry));
+  validateLinearCampaign(policy, body, sources.map(item => item.parsed));
   const refs = sourceReferences(sources), nodes: LinearNode[] = [];
   for (const item of sources) nodes.push(await nodeFor(ctx, policy, body, item, refs));
   requireTree(nodes, rootId); requireInventory(nodes, issues); assignRoles(nodes, policy); requireDependencies(nodes);
