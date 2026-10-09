@@ -125,10 +125,24 @@ else if (inspection.task) {
     await command("prepare-resubmission", { ...candidate, submissionId: randomUUID(), correctedPaths: ["alpha.txt"] });
     summary = { fixture: "ordinary-correction", taskId: task.taskId, candidateCommit: candidate.candidateCommit };
   }
+} else if (agentId === config.actors.lead && config.prePlanResume && await writeFile(resolve(config.runtime, "preplan-first-terminal"), runId, { flag: "wx" })
+  .then(() => true, error => { if (error.code === "EEXIST") return false; throw error; })) {
+  summary = { fixture: "Terminal lead before any plan; explicit resume required", runId, issueId };
 } else if (agentId === config.actors.lead) {
   const contributions = inspection.n1.hierarchy?.leaves ?? ["alpha", "beta"].map(name => ({ contributionId: randomUUID(), assigneeAgentId: config.actors[name], title: name, ownedPaths: [`${name}.txt`] }));
-  await command("plan", { contributions, ...(config.completionMode ? { sourceBaseCommit: config.baseCommit } : {}) });
-  for (const slot of contributions) await command("materialize", { contributionId: slot.contributionId });
+  if (config.leadCommandBlock) {
+    assert.equal(inspection.n1.leadCommands.protocol, "council-lead-commands-v1");
+    execFileSync("bash", ["-c", inspection.n1.leadCommands.shell], { cwd: config.repoPath,
+      env: { ...process.env, COUNCIL_LEAD_OPERATION: "plan" }, encoding: "utf8", timeout: 60000 });
+    for (let index = 1; index <= contributions.length; index++) {
+      const fresh = await call({ command: "inspect" });
+      execFileSync("bash", ["-c", fresh.n1.leadCommands.shell], { cwd: config.repoPath,
+        env: { ...process.env, COUNCIL_LEAD_OPERATION: "materialize", COUNCIL_LEAD_INPUT: String(index) }, encoding: "utf8", timeout: 60000 });
+    }
+  } else {
+    await command("plan", { contributions, ...(config.completionMode ? { sourceBaseCommit: config.baseCommit } : {}) });
+    for (const slot of contributions) await command("materialize", { contributionId: slot.contributionId });
+  }
   for (const slot of contributions) {
     const dispatched = await command("dispatch", { contributionId: slot.contributionId, reservationId: randomUUID(), requestedUnits: 1000 });
     const item = dispatched.mission.aggregate.n1.contributions.find(item => item.contributionId === slot.contributionId);
