@@ -1,3 +1,6 @@
+vi.mock("../src/repository-release.js", () => ({ reconcileRepositoryRelease: vi.fn(async () => false) }));
+// Repository arbitration is exercised with real SQL in repository-occupation tests.
+vi.mock("../src/repository-occupation.js", () => ({ ensureMissionRepository: vi.fn(async () => {}), releaseReconciledRepository: vi.fn(async () => {}) }));
 import { beforeEach, expect, it, vi } from "vitest";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import type { MissionRecord } from "../src/missions.js";
