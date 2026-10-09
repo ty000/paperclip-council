@@ -20,6 +20,11 @@ export function parseLinearContinuityPolicy(value: unknown, imported: unknown): 
 export async function prepareLinearContinuity(ctx: PluginContext, initial: MissionRecord, policy: ProjectMandate) {
   let m = initial;
   if (!policy.content.linearContinuity || !m.aggregate.projectMandate?.linearIntake) return m;
+  const existing = m.aggregate.linearContinuity, expectedMode = policy.content.linearContinuity.mode;
+  if (existing && (existing.mode !== expectedMode || existing.protocol !== policy.content.linearContinuity.protocol
+      || expectedMode === FIXED_CAMPAIGN_MODE && existing.binding.campaignId !== m.missionId)) {
+    throw new MissionError(409, "linear_continuity_policy_changed", "Retain the exact project continuity mode and original campaign identity; manual configuration cannot downgrade them");
+  }
   if (!m.aggregate.linearContinuity) {
     if (m.aggregate.phase !== "draft" || m.aggregate.n1) throw new MissionError(409, "linear_continuity_late_opt_in", "Existing execution is not retroactively upgraded");
     const subject = m.aggregate.projectMandate.linearIntake.subject;
