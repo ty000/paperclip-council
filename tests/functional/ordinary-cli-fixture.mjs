@@ -31,7 +31,7 @@ async function api(method, path, body, expected) {
 const route = `/api/plugins/private.paperclip-council/api/issues/${issueId}/council/commands`;
 if (config.campaignMode) {
   const nativeIssue = await api("GET", `/api/issues/${issueId}`);
-  const describedMissionId = /"missionId"\s*:\s*"([0-9a-f-]{36})"/i.exec(nativeIssue.description ?? "")?.[1];
+  const describedMissionId = /(?:^|[{\s,])"?missionId"?\s*:\s*"([0-9a-f-]{36})"/i.exec(nativeIssue.description ?? "")?.[1];
   const campaignReview = nativeIssue.description?.includes('"command":"campaign-review-inspect"') === true;
   let discovered;
   if (describedMissionId) discovered = { missionId: describedMissionId };
