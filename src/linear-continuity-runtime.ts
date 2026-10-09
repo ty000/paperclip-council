@@ -1,15 +1,20 @@
 import type { PluginApiRequestInput, PluginContext } from "@paperclipai/plugin-sdk";
 import { canonicalPayloadHash, getMission, MissionError, type MissionRecord } from "./missions.js";
 import { n2CommandCas, runtimeReceipt, runtimeUuid } from "./n2-missions.js";
-import { continuityBindingSchema, assertContinuityBinding, LINEAR_CONTINUITY_PROTOCOL, responseFresh } from "./linear-continuity-contract.js";
+import { continuityBindingSchema, assertContinuityBinding, FIXED_CAMPAIGN_MODE, LINEAR_CONTINUITY_PROTOCOL, responseFresh } from "./linear-continuity-contract.js";
 import { parseLinearReadiness, LINEAR_READINESS_KEY } from "./linear-intake-contract.js";
 import { applyLinearChanges, settleLinearSafePoint } from "./linear-continuity-control.js";
 import { reconcileLinearTransport, queueLinearPublication, saveLinearContinuity, linearPublicationState } from "./linear-continuity-transport.js";
 import { campaignControlCommands, controlFixedCampaign } from "./linear-campaign-control.js";
 import { reconcileRepositoryRelease } from "./repository-release.js";
+import { readProjectMandate } from "./project-mandate-state.js";
 
 async function configure(ctx: PluginContext, m: MissionRecord, body: Record<string, unknown>, owner: string) {
   if (m.aggregate.linearContinuity || m.aggregate.phase !== "draft" || m.aggregate.n1 || !m.aggregate.projectMandate?.linearIntake) throw new MissionError(409, "linear_continuity_opt_in", "Enable once for a natively imported mission with the existing continuity job; history is not upgraded automatically");
+  const policy = await readProjectMandate(ctx, m.companyId, m.projectId);
+  if (!policy || policy.revisionId !== m.aggregate.projectMandate.revisionId || policy.content.linearContinuity?.mode === FIXED_CAMPAIGN_MODE) {
+    throw new MissionError(409, "linear_continuity_project_policy", "A fixed-source campaign must be prepared under its exact project policy, not manually configured as a legacy mission");
+  }
   const binding = continuityBindingSchema.parse(body.binding); assertContinuityBinding(m, binding);
   const doc = await ctx.issues.documents.get(binding.subject.nativeRootId, LINEAR_READINESS_KEY, m.companyId);
   if (!doc || doc.id !== binding.subject.readinessDocumentId || doc.latestRevisionId !== binding.subject.readinessRevisionId
