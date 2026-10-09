@@ -326,7 +326,7 @@ try {
   const nativeChildren = await Promise.all(mission.aggregate.n1.contributions.map((slot: any) => api("GET", `/api/issues/${slot.childIssueId}`)));
   assert(nativeChildren.every((issue: any) => issue.status === (integrationMode ? "blocked" : "done")));
   assert.equal((await api("GET", `/api/agents/${actors.lead}`)).runtimeConfig.heartbeat.wakeOnDemand, true);
-  proof.nativeWaiting = { rootStatus: "blocked", childrenStatus: "done", leadDemandWakes: true, operatorChildCloses: 0 };
+  proof.nativeWaiting = { rootStatus: "blocked", childrenStatus: integrationMode ? "blocked" : "done", leadDemandWakes: true, operatorChildCloses: 0 };
   proof.prerequisite = mission;
   if (!continuityMode && deliveryMode) delivery = await prepareOrdinaryDelivery({ api, companyId, actors, rootIssueId: root.id, missionPath, runtime, proof, save });
   mission = (await api("GET", `${missionPath}?companyId=${companyId}`)).mission;
