@@ -584,8 +584,7 @@ Cancellation retains integrated work and lists an observed open PR for manual
 cleanup; this mode never launches a `cancel-pr` publisher.
 
 This is the control/protocol slice of integration plan L1, not the complete
-milestone feature. Repository exclusion, milestone import, the real Linear
-publisher, campaign sequencing and global closure remain downstream work.
+milestone feature. Global campaign review and closure remain downstream work.
 No operational configuration is changed, and no gateway/provider or installed
 runtime qualification is claimed by the unit tests.
 
@@ -600,7 +599,7 @@ Every new mission registers its original company/mission identity before its
 mission INSERT. Ordinary holders can coexist. A fixed campaign upgrades its own
 holder to exclusive before continuity preparation; ordinary/manual admissions and
 the common departure guard refuse a competing holder. No caller-controlled leaf
-membership is accepted; campaign leaf reuse remains L4 work.
+membership is accepted.
 
 A single versioned registry row supplies atomic arbitration using the supported
 SDK SQL surface. Its first-campaign bootstrap inventories existing Council
@@ -628,3 +627,26 @@ uncertain-effect retention/release. The host checkout and its dependencies are
 read-only; all database writes use the harness's private temporary socket and
 cluster. This is isolated storage evidence, not recipe installation, activation,
 a Linear write or a provider execution.
+
+### Serial fixed-source delivery leaves (V1, L4)
+
+`0.7.30` reuses the existing project intake, mission, G4 admission and integrated
+delivery engines for fixed milestone campaigns. The imported campaign root is a
+control mission: it retains source continuity, repository occupation and the
+ordered plan, but receives no execution reservation. Council creates one private
+intake and one mission for each prepared contribution leaf. Each mission keeps its
+own candidate and PR while referring to the root through a Council-owned
+`repositoryCampaign` membership that is never parsed from a public create body.
+
+Before the first leaf can depart, the root outbox must contain the deterministic
+campaign plan and Linear must confirm its readback. A later leaf waits until every
+predecessor is integrated, proof-closed and published back through the same root
+outbox with per-source status readback. Replays retain the original mission and
+publication identities. Native blockers define the topological order.
+
+All leaves share the existing company/period G4 allowance. Each leaf still uses
+its own normal run reservations; there is no campaign allowance, root reservation,
+budget reset or second scheduler. Root pause and cancellation stop new leaf
+departures. Resume and repository release also inspect member reservations,
+native runs and uncertain effects; release additionally requires every member to
+be proof-closed. The root remains responsible for later global review and closure.

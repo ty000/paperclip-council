@@ -111,6 +111,7 @@ export type MissionAggregate = {
   continuity?: import("./continuity-policy.js").ContinuityPolicy;
   linearContinuity?: import("./linear-continuity-contract.js").LinearContinuityState;
   projectMandate?: import("./project-mandate-state.js").ProjectMandateSnapshot;
+  repositoryCampaign?: import("./repository-campaign.js").RepositoryCampaignMembership;
   deliveryPredecessor?: { sourceMissionId: string; result: ReturnType<typeof import("./integration-contract.js").integratedResult> };
   completion?: import("./completion-contract.js").CompletionState;
   hierarchy?: import("./hierarchy-contract.js").HierarchyState;
@@ -526,7 +527,8 @@ function existingCreationResult(mission: MissionRecord, commandId: string, actor
   });
 }
 
-export async function createMission(ctx: PluginContext, companyId: string, actorUserId: string | null, body: unknown) {
+export async function createMission(ctx: PluginContext, companyId: string, actorUserId: string | null, body: unknown,
+  trusted?: { repositoryCampaign: import("./repository-campaign.js").RepositoryCampaignMembership }) {
   const ownerUserId = await requireOwner(ctx, companyId, actorUserId);
   const create = parseMissionCreateInput(body);
   const payloadHash = canonicalPayloadHash(create);
@@ -544,7 +546,9 @@ export async function createMission(ctx: PluginContext, companyId: string, actor
       const { readProjectMandate, projectIssues } = await import("./project-mandate-state.js");
       const policy = await readProjectMandate(ctx, companyId, create.projectId);
       const { isIntegratedLeaf } = await import("./delivery-leaves.js");
-      if (!policy?.content.enabled || policy.authorizedBy !== ownerUserId || !isIntegratedLeaf(issue as any, policy, await projectIssues(ctx, companyId, create.projectId))) throw new MissionError(422, "root_issue_required", "A child can own a mission only under explicit current per-leaf integrated delivery authority");
+      const issues = await projectIssues(ctx, companyId, create.projectId);
+      const integrated = policy?.content.enabled && policy.authorizedBy === ownerUserId && isIntegratedLeaf(issue as any, policy, issues);
+      if (!integrated || issue.originKind === "plugin:ty000.linear-intake" && !trusted?.repositoryCampaign) throw new MissionError(422, "root_issue_required", "A child can own a mission only under explicit current per-leaf integrated delivery authority");
     }
     if (issue.projectId !== create.projectId) throw new MissionError(422, "project_scope_mismatch", "Mission project must match the root issue project");
     const project = await ctx.projects.get(create.projectId, companyId);
@@ -607,6 +611,14 @@ export async function createMission(ctx: PluginContext, companyId: string, actor
   }
   if (workspacePreflight) aggregate.workspacePreflight = workspacePreflight;
   if (nativeWakePolicy) aggregate.nativeWakePolicy = nativeWakePolicy;
+  if (trusted?.repositoryCampaign) {
+    const root = await getMission(ctx, companyId, trusted.repositoryCampaign.campaignRootMissionId);
+    const leaf = root?.aggregate.hierarchy?.leaves?.find(item => item.issueId === create.rootIssueId);
+    if (!root || root.projectId !== create.projectId || root.ownerUserId !== ownerUserId
+        || root.aggregate.linearContinuity?.mode !== "milestone-fixed-v1" || root.aggregate.linearContinuity.binding.campaignId !== root.missionId
+        || !leaf) throw new MissionError(409, "repository_campaign_binding", "Only a source-bound campaign contribution may become a trusted delivery leaf");
+    aggregate.repositoryCampaign = trusted.repositoryCampaign;
+  }
   // Registration precedes the mission INSERT and survives an uncertain response.
   await ensureMissionRepository(ctx, { companyId, missionId: create.missionId, projectId: create.projectId, aggregate });
   const insert = await ctx.db.execute(

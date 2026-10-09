@@ -1,5 +1,10 @@
 // Repository arbitration is exercised with real SQL in repository-occupation tests.
 vi.mock("../src/repository-occupation.js", () => ({ ensureMissionRepository: vi.fn(async () => {}), releaseReconciledRepository: vi.fn(async () => {}) }));
+const campaign = vi.hoisted(() => ({ root: null as any, continuity: vi.fn(async () => undefined), predecessor: vi.fn(async () => undefined) }));
+vi.mock("../src/project-mandate-guard.js", () => ({ assertProjectDeparture: vi.fn(async () => undefined), assertProjectPaths: vi.fn(), assertProjectPublication: vi.fn() }));
+vi.mock("../src/repository-campaign.js", () => ({ campaignRoot: async () => campaign.root }));
+vi.mock("../src/linear-continuity-control.js", async original => ({ ...await original<any>(), assertLinearContinuityDeparture: (...args: any[]) => campaign.continuity(...args) }));
+vi.mock("../src/delivery-leaves.js", async original => ({ ...await original<any>(), assertDeliveryPredecessor: (...args: any[]) => campaign.predecessor(...args) }));
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
@@ -35,6 +40,7 @@ function fixture() {
     team_roster_id: ids.teamRoster, team_revision: "team-v1", council_roster_id: ids.councilRoster, council_revision: "council-v1", version: 1,
     aggregate, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
   let challenge: any;
+  let campaignRootState: any = null;
   function freshAttestation() {
     const now = Date.now();
     const request = { ...subject, schema: "linear-intake-revalidation-request.v1", challengeId: randomUUID(), nonce: "a".repeat(64), stage: "admission",
@@ -51,6 +57,7 @@ function fixture() {
   freshAttestation();
   const query = vi.fn(async (sql: string, params: any[]) => {
     if (sql.includes("project_task_intakes")) {
+      if (campaignRootState && params[1] === campaign.root?.missionId) return [{ state: structuredClone(campaignRootState) }];
       expect(params).toEqual([ids.company, missionId, ids.root, ids.project, policy.revisionId]); return [{ state: structuredClone(state) }];
     }
     if (sql.includes("linear_intake_challenges")) {
@@ -70,6 +77,7 @@ function fixture() {
     companies: { get: async () => ({ id: ids.company, defaultResponsibleUserId: ids.owner }) }, projects: { get: projectGet },
     agents: { get: async (id: string) => ({ id, companyId: ids.company, status: "idle" }) } } as unknown as PluginContext;
   return { ...f, ctx, body, row, state, query, execute, projectGet, freshAttestation, challenge: () => challenge,
+    setCampaignRootState: (value: any) => { campaignRootState = value; },
     run: (payload = body) => executeN1BoardCommand(ctx, { companyId: ids.company!, missionId, actorUserId: ids.owner!, body: payload }) };
 }
 type AttestationMutation = (value: ReturnType<typeof fixture>) => void;
@@ -148,4 +156,22 @@ it("rechecks current authority if it changes during reservation", async () => {
   });
   await expect(f.run()).rejects.toMatchObject({ code: "linear_source_pending" });
   expect(f.execute).not.toHaveBeenCalled(); expect(settleAdmission).not.toHaveBeenCalled();
+});
+it("activates a trusted campaign leaf through the real N1 admission guard without a second source challenge", async () => {
+  const f = fixture(), campaignRootMissionId = randomUUID(), campaignRootIssueId = randomUUID(), sourceId = randomUUID();
+  f.row.aggregate.repositoryCampaign = { campaignRootMissionId };
+  f.row.aggregate.projectMandate.completion = { result: "integrated-verified" };
+  f.row.aggregate.hierarchy = { ...f.policy.content.hierarchy, leaves: [{ issueId: f.ids.root, assigneeAgentId: f.ids.a }] };
+  Object.assign(f.issues.get(f.ids.root!)!, { assigneeAgentId: f.ids.a });
+  delete f.state.linearIntake;
+  f.state.repositoryCampaign = { campaignRootMissionId, campaignRootIssueId, sourceId };
+  campaign.root = { companyId: f.ids.company, missionId: campaignRootMissionId, rootIssueId: campaignRootIssueId,
+    projectId: f.ids.project, ownerUserId: f.ids.owner, aggregate: { projectMandate: { linearIntake: f.row.aggregate.projectMandate.linearIntake },
+      linearContinuity: { mode: "milestone-fixed-v1", publications: [{ payload: { campaignPlan: {} }, acknowledgement: { reference: {} } }] } } };
+  f.setCampaignRootState({ linearIntake: { snapshot: { ...f.row.aggregate.projectMandate.linearIntake,
+    nodes: [{ nativeId: f.ids.root, sourceId, role: "contribution" }] } } });
+  await expect(f.run()).resolves.toMatchObject({ outcome: "applied" });
+  expect(campaign.continuity).toHaveBeenCalledWith(f.ctx, campaign.root);
+  expect(campaign.predecessor).toHaveBeenCalledWith(f.ctx, expect.objectContaining({ missionId: f.row.mission_id }));
+  expect(reserveAdmission).toHaveBeenCalledTimes(1);
 });

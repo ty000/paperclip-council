@@ -41,7 +41,11 @@ export async function settleLinearSafePoint(ctx: PluginContext, initial: Mission
   }
   const { envelope } = await nativeN2Profile(ctx, m);
   const reservations = envelope.reservations.filter(r => r.missionId === m.missionId);
-  const safe = reservations.every(r => r.status === "settled" && r.usage?.status === "known" && r.remainingExposure.status === "known" && r.remainingExposure.units === 0);
+  let safe = reservations.every(r => r.status === "settled" && r.usage?.status === "known" && r.remainingExposure.status === "known" && r.remainingExposure.units === 0);
+  if (safe && m.aggregate.linearContinuity?.mode === FIXED_CAMPAIGN_MODE) {
+    const { campaignMembersSafe } = await import("./repository-campaign.js");
+    safe = await campaignMembersSafe(ctx, m);
+  }
   return { mission: m, safe };
 }
 export function uncertainLinearEffects(m: MissionRecord) {

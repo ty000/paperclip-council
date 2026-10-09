@@ -19,10 +19,12 @@ import { readLinearIntake } from "./linear-intake-validation.js";
 import { linearMissionObjective, prepareLinearTasks } from "./linear-intake-preparation.js";
 import { assertLinearSource } from "./linear-intake-revalidation.js";
 import { validateRosterPair } from "./rosters.js";
+import { queueLinearPublication } from "./linear-continuity-transport.js";
 
 type IntakeState = { createBody?: Record<string, unknown>; snapshot?: ProjectMandateSnapshot;
   hierarchy?: HierarchyState;
   linearIntake?: LinearPreparation;
+  repositoryCampaign?: { campaignRootMissionId: string; campaignRootIssueId: string; sourceId: string };
   commands: Record<string, Record<string, unknown>>; questions: Record<string, { message: string; confirmed: boolean }>;
   plan?: { key: string; body: string } };
 type Intake = { companyId: string; rootIssueId: string; projectId: string; revisionId: string; missionId: string; version: number; state: IntakeState };
@@ -94,15 +96,33 @@ async function prepareImported(ctx: PluginContext, initial: Intake, policy: Proj
   await readLinearIntake(ctx, policy, intake.rootIssueId, await projectIssues(ctx, intake.companyId, intake.projectId), intake.state.linearIntake);
   return intake;
 }
-async function pinTask(ctx: PluginContext, initial: Intake, policy: ProjectMandate, issues: Awaited<ReturnType<typeof projectIssues>>) {
-  let intake = initial;
-  let root = await ctx.issues.get(intake.rootIssueId, intake.companyId);
+async function pinnedCampaignPreparation(ctx: PluginContext, intake: Intake, rootId?: string) {
+  const membership = intake.state.repositoryCampaign!;
+  const rows = await ctx.db.query<any>(`SELECT * FROM ${projectTable(ctx, "project_task_intakes")} WHERE company_id = $1 AND root_issue_id = $2`,
+    [intake.companyId, membership.campaignRootIssueId]);
+  const preparation = rows[0] ? fromRow(rows[0]).state.linearIntake : undefined;
+  if (!preparation || preparation.snapshot.nodes.find(node => node.nativeId === rootId)?.sourceId !== membership.sourceId) {
+    throw new MissionError(409, "linear_campaign_member", "The leaf must retain its exact prepared campaign source identity");
+  }
+  return preparation;
+}
+async function taskSource(ctx: PluginContext, initial: Intake, policy: ProjectMandate, issues: Awaited<ReturnType<typeof projectIssues>>) {
+  let intake = initial, root = await ctx.issues.get(intake.rootIssueId, intake.companyId);
+  if (intake.state.repositoryCampaign) return { intake, root, campaignPreparation: await pinnedCampaignPreparation(ctx, intake, root?.id) };
   if (root?.originKind === LINEAR_ORIGIN) {
     intake = await prepareImported(ctx, intake, policy, issues);
     root = await ctx.issues.get(intake.rootIssueId, intake.companyId);
   } else if (!(root && isIntegratedLeaf(root as any, policy, issues))) requireManualRoot(root, policy);
+  return { intake, root, campaignPreparation: undefined };
+}
+async function pinTask(ctx: PluginContext, initial: Intake, policy: ProjectMandate, issues: Awaited<ReturnType<typeof projectIssues>>) {
+  const prepared = await taskSource(ctx, initial, policy, issues);
+  const { root, campaignPreparation } = prepared; let { intake } = prepared;
+  // The immutable prepared snapshot identifies a campaign leaf. Later status
+  // publications may move earlier members to Done; root continuity revalidates
+  // fixed source without replaying the initial waiting state for every member.
   if (!root) throw new MissionError(409, "project_task_missing", "The original root must remain readable");
-  const hierarchy = await prepareHierarchy(ctx, policy, root.id, issues, intake.state.linearIntake?.snapshot);
+  const hierarchy = await prepareHierarchy(ctx, policy, root.id, issues, intake.state.repositoryCampaign ? undefined : intake.state.linearIntake?.snapshot);
   if (!root.title.trim() || !root.description?.trim()) throw new MissionError(422, "project_task_description", "Describe the expected result in this task before admission");
   if (!intake.state.linearIntake && root.title.length + root.description.length > 8000) throw new MissionError(422, "project_task_description", "Task source exceeds the bounded 8000 character mission objective");
   const existing = await getMissionByRootIssue(ctx, intake.companyId, intake.rootIssueId);
@@ -117,9 +137,51 @@ async function pinTask(ctx: PluginContext, initial: Intake, policy: ProjectManda
     authorizedBy: policy.authorizedBy, operatingProfileHash: policy.content.operatingProfileHash, mandateHash: canonicalPayloadHash(mandate),
     allowedPaths: policy.content.allowedPaths, publication: policy.content.publication,
     ...(policy.content.completion ? { completion: policy.content.completion } : {}),
-    ...(intake.state.linearIntake ? { linearIntake: { subject: intake.state.linearIntake.snapshot.subject, bodySha256: intake.state.linearIntake.snapshot.bodySha256 } } : {}),
+    ...(intake.state.linearIntake || campaignPreparation ? { linearIntake: { subject: (intake.state.linearIntake ?? campaignPreparation)!.snapshot.subject,
+      bodySha256: (intake.state.linearIntake ?? campaignPreparation)!.snapshot.bodySha256 } } : {}),
     source: { rootIssueId: root.id, title: root.title, descriptionHash: canonicalPayloadHash(root.description), taskDocumentRevisionId } };
   return save(ctx, intake, { ...intake.state, createBody, snapshot, ...(hierarchy ? { hierarchy } : {}) });
+}
+
+function trustedMembership(intake: Intake) {
+  return intake.state.repositoryCampaign
+    ? { repositoryCampaign: { campaignRootMissionId: intake.state.repositoryCampaign.campaignRootMissionId } } : undefined;
+}
+
+async function prepareControlMission(ctx: PluginContext, intake: Intake, m: MissionRecord, policy: ProjectMandate) {
+  if (intake.state.repositoryCampaign) return { mission: m, controlOnly: false };
+  const mission = await prepareLinearContinuity(ctx, m, policy);
+  if (!intake.state.linearIntake?.snapshot.body.campaign) return { mission, controlOnly: false };
+  await prepareCampaignLeaves(ctx, intake, mission);
+  return { mission, controlOnly: true };
+}
+
+function orderedCampaignLeaves(preparation: LinearPreparation) {
+  const leaves = preparation.snapshot.nodes.filter(node => node.role === "contribution"), done = new Set(preparation.snapshot.nodes
+    .filter(node => node.role !== "contribution").map(node => node.nativeId)), pending = [...leaves], ordered: typeof leaves = [];
+  while (pending.length) {
+    const index = pending.findIndex(node => node.blockerIds.every(id => done.has(id)));
+    if (index < 0) throw new MissionError(409, "linear_dependency_pending", "Campaign leaf dependencies must remain complete and acyclic");
+    const node = pending.splice(index, 1)[0]!; ordered.push(node); done.add(node.nativeId);
+  }
+  return ordered;
+}
+
+async function prepareCampaignLeaves(ctx: PluginContext, intake: Intake, m: MissionRecord) {
+  const preparation = intake.state.linearIntake!, campaign = preparation.snapshot.body.campaign;
+  if (!campaign) return m;
+  const leaves = orderedCampaignLeaves(preparation);
+  m = await queueLinearPublication(ctx, m, "progress", { campaignPlan: { schema: "council-linear-delivery-plan-v1",
+    campaignRootMissionId: m.missionId, milestoneId: campaign.milestoneId,
+    leaves: leaves.map(node => ({ sourceId: node.sourceId, nativeId: node.nativeId,
+      blockedByNativeIds: node.blockerIds, assigneeAgentId: node.assigneeAgentId, ownedPaths: node.ownedPaths })) },
+    statusUpdates: [{ sourceId: preparation.snapshot.body.sourceRootId, state: "started" }] });
+  for (const node of leaves) await ctx.db.execute(`INSERT INTO ${projectTable(ctx, "project_task_intakes")}
+    (company_id, root_issue_id, project_id, policy_revision_id, mission_id, state)
+    VALUES ($1, $2, $3, $4, $5, $6::jsonb) ON CONFLICT DO NOTHING`, [intake.companyId, node.nativeId, intake.projectId,
+    intake.revisionId, randomUUID(), JSON.stringify({ commands: {}, questions: {}, repositoryCampaign: {
+      campaignRootMissionId: m.missionId, campaignRootIssueId: intake.rootIssueId, sourceId: node.sourceId } })]);
+  return m;
 }
 
 async function taskCriteria(ctx: PluginContext, intake: Intake, policy: ProjectMandate) {
@@ -173,34 +235,41 @@ async function advance(ctx: PluginContext, initial: Intake, latest: ProjectManda
   if (!rows[0]) throw new MissionError(409, "project_policy_missing", "Pinned project policy is missing");
   const policy = projectMandateRow(rows[0]);
   try {
-    if (!latest.content.enabled || latest.revisionId !== intake.revisionId || (await ctx.companies.get(intake.companyId))?.defaultResponsibleUserId !== policy.authorizedBy
-        || operatingProfileHash(await ctx.config.get(intake.companyId)) !== policy.content.operatingProfileHash) {
-      throw new MissionError(409, "project_authority_changed", "Project owner, operating profile or policy revision changed; retain the original intake without new effects");
-    }
-    if (!intake.state.createBody) intake = await pinTask(ctx, intake, policy, issues);
-    // Replays use the persisted full payload. The root is never recreated.
-    await createMission(ctx, intake.companyId, policy.authorizedBy, intake.state.createBody);
-    let m = (await getMission(ctx, intake.companyId, intake.missionId))!;
-    if (!m.aggregate.projectMandate) m = await n2Cas(ctx, m, { ...m.aggregate, projectMandate: intake.state.snapshot!,
-      ...(intake.state.hierarchy ? { hierarchy: intake.state.hierarchy } : {}) });
-    else if (canonicalPayloadHash(m.aggregate.projectMandate) !== canonicalPayloadHash(intake.state.snapshot)) throw new MissionError(409, "project_snapshot_conflict", "Original task and project snapshot changed");
-    m = await prepareLinearContinuity(ctx, m, policy);
-    await assertProjectDeparture(ctx, m);
-    if (!m.aggregate.continuity) {
-      const prepared = await command(ctx, intake, m, "configure-continuity", { authorizeProgression: true, n3Slots: policy.content.n3Slots });
-      intake = prepared.intake;
-      await configureContinuity(ctx, m, policy.authorizedBy, prepared.body, { n2CommandCas, runtimeReceipt, runtimeUuid });
-      m = (await getMission(ctx, intake.companyId, intake.missionId))!;
-    }
-    const activated = await activateTask(ctx, intake, m, policy, issues);
-    intake = activated.intake; m = activated.mission;
-    await preparePublication(ctx, intake, m, policy);
+    await advancePinned(ctx, intake, latest, policy, issues);
   } catch (error) {
     if (error instanceof MissionError && ["linear_source_pending", "linear_continuity_hold"].includes(error.code)) return;
     // Re-read after any ambiguous database response; never write from an obsolete intake version.
     const current = await ctx.db.query<any>(`SELECT * FROM ${projectTable(ctx, "project_task_intakes")} WHERE company_id = $1 AND root_issue_id = $2`, [intake.companyId, intake.rootIssueId]);
     await question(ctx, current[0] ? fromRow(current[0]) : intake, policy, error);
   }
+}
+
+async function advancePinned(ctx: PluginContext, initial: Intake, latest: ProjectMandate, policy: ProjectMandate,
+  issues: Awaited<ReturnType<typeof projectIssues>>) {
+  let intake = initial;
+  if (!latest.content.enabled || latest.revisionId !== intake.revisionId || (await ctx.companies.get(intake.companyId))?.defaultResponsibleUserId !== policy.authorizedBy
+      || operatingProfileHash(await ctx.config.get(intake.companyId)) !== policy.content.operatingProfileHash) {
+    throw new MissionError(409, "project_authority_changed", "Project owner, operating profile or policy revision changed; retain the original intake without new effects");
+  }
+  if (!intake.state.createBody) intake = await pinTask(ctx, intake, policy, issues);
+  await createMission(ctx, intake.companyId, policy.authorizedBy, intake.state.createBody, trustedMembership(intake));
+  let m = (await getMission(ctx, intake.companyId, intake.missionId))!;
+  if (!m.aggregate.projectMandate) m = await n2Cas(ctx, m, { ...m.aggregate, projectMandate: intake.state.snapshot!,
+    ...(intake.state.hierarchy ? { hierarchy: intake.state.hierarchy } : {}) });
+  else if (canonicalPayloadHash(m.aggregate.projectMandate) !== canonicalPayloadHash(intake.state.snapshot)) {
+    throw new MissionError(409, "project_snapshot_conflict", "Original task and project snapshot changed");
+  }
+  const prepared = await prepareControlMission(ctx, intake, m, policy); m = prepared.mission;
+  if (prepared.controlOnly) return;
+  await assertProjectDeparture(ctx, m);
+  if (!m.aggregate.continuity) {
+    const configured = await command(ctx, intake, m, "configure-continuity", { authorizeProgression: true, n3Slots: policy.content.n3Slots });
+    intake = configured.intake;
+    await configureContinuity(ctx, m, policy.authorizedBy, configured.body, { n2CommandCas, runtimeReceipt, runtimeUuid });
+    m = (await getMission(ctx, intake.companyId, intake.missionId))!;
+  }
+  const activated = await activateTask(ctx, intake, m, policy, issues);
+  await preparePublication(ctx, activated.intake, activated.mission, policy);
 }
 
 async function activateTask(ctx: PluginContext, intake: Intake, m: MissionRecord, policy: ProjectMandate, issues: Awaited<ReturnType<typeof projectIssues>>) {

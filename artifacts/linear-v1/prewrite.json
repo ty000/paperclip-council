@@ -1,0 +1,9 @@
+{
+  "schema_version": "prewrite-migration-contract.v1",
+  "migration_id": "linear-campaign-v1",
+  "classification": "cross-plugin",
+  "owner": "ty000.linear-intake: source/publication; private.paperclip-council: authority/consumption",
+  "surfaces": ["linear-intake/source-et-readiness", "linear-intake/revalidation-et-publication", "paperclip-council/admission-et-continuite", "paperclip-council/livraisons-et-completion"],
+  "slicing_verdict": "split-required",
+  "ordered_slices": ["L0", "L1", "L2", "L3", "L4", "L5"]
+}

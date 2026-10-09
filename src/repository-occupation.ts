@@ -115,6 +115,12 @@ async function reconcileTerminalHolders(ctx: PluginContext, m: Subject, reposito
 
 /** The identity is owned by Council, never by an intake-supplied replacement key. */
 export async function ensureMissionRepository(ctx: PluginContext, m: Subject, exclusive = m.aggregate.linearContinuity?.mode === FIXED_CAMPAIGN_MODE) {
+  if (m.aggregate.repositoryCampaign) {
+    const { campaignRoot } = await import("./repository-campaign.js");
+    const root = await campaignRoot(ctx, m as MissionRecord);
+    await ensureMissionRepository(ctx, root, true);
+    return;
+  }
   await assertCurrentMission(ctx, m);
   const repository = await target(ctx, m);
   if (exclusive && !repository) throw new MissionError(409, "repository_target_missing", "A campaign requires a verified canonical repository target");

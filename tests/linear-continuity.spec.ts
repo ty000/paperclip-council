@@ -37,6 +37,7 @@ const ctx = { issues: { documents: {
 }, get: async (id: string) => structuredClone(f.issues.get(id)), update: async (id: string, body: any) => { f.issues.set(id, { ...f.issues.get(id), ...body }); },
   summaries: { getOrchestration: async () => ({ runs: [] }) } },
   events: { emit: async (...args: any[]) => { f.emitted.push(args); } },
+  db: { namespace: "test", query: async () => [] },
   companies: { get: async () => ({ defaultResponsibleUserId: "owner" }) } } as any;
 const digest = (char: string) => char.repeat(64);
 function proof(key: string, body: any) {

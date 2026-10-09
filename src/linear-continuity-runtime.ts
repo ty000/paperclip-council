@@ -8,6 +8,8 @@ import { reconcileLinearTransport, queueLinearPublication, saveLinearContinuity,
 import { campaignControlCommands, controlFixedCampaign } from "./linear-campaign-control.js";
 import { readProjectMandate } from "./project-mandate-state.js";
 import { reconcileRepositoryRelease } from "./repository-release.js";
+import { campaignProgress } from "./repository-campaign.js";
+import { reconcileCampaignDeliveries } from "./delivery-leaves.js";
 
 async function configure(ctx: PluginContext, m: MissionRecord, body: Record<string, unknown>, owner: string) {
   if (m.aggregate.linearContinuity || m.aggregate.phase !== "draft" || m.aggregate.n1 || !m.aggregate.projectMandate?.linearIntake) throw new MissionError(409, "linear_continuity_opt_in", "Enable once for a natively imported mission with the existing continuity job; history is not upgraded automatically");
@@ -56,10 +58,15 @@ export async function reconcileLinearContinuity(ctx: PluginContext, initial: Mis
     }
   }
   const completion = m.aggregate.completion;
+  if (m.aggregate.linearContinuity!.mode === FIXED_CAMPAIGN_MODE) m = await reconcileCampaignDeliveries(ctx, m);
   if (completion?.state === "closed") m = await queueLinearPublication(ctx, m, "closure", { workResultAcquired: true,
     proofId: completion.proofId, documentKey: completion.documentKey, revisionId: completion.documentRevisionId, result: m.aggregate.projectMandate?.completion?.result });
-  else m = await queueLinearPublication(ctx, m, "progress", { phase: m.aggregate.phase, control: m.aggregate.linearContinuity!.control,
-    sourceRevision: m.aggregate.linearContinuity!.sourceSha256, workResultAcquired: false, n5State: m.aggregate.n5?.integration?.state ?? null });
+  else {
+    const campaign = m.aggregate.linearContinuity!.mode === FIXED_CAMPAIGN_MODE ? await campaignProgress(ctx, m) : undefined;
+    m = await queueLinearPublication(ctx, m, "progress", { phase: m.aggregate.phase, control: m.aggregate.linearContinuity!.control,
+      sourceRevision: m.aggregate.linearContinuity!.sourceSha256, workResultAcquired: false, n5State: m.aggregate.n5?.integration?.state ?? null,
+      ...(campaign ? { campaign } : {}) });
+  }
   m = await reconcileLinearTransport(ctx, m);
   await reconcileRepositoryRelease(ctx, m);
   return m;

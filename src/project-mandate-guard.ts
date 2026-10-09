@@ -7,10 +7,12 @@ import type { MissionRecord } from "./missions.js";
 import { operatingProfileHash } from "./project-mandate-state.js";
 import { readProjectMandate } from "./project-mandate-state.js";
 import { assertHierarchySources } from "./hierarchy-runtime.js";
+import { campaignRoot } from "./repository-campaign.js";
 
 export async function assertProjectDeparture(ctx: PluginContext, m: MissionRecord, cancellationReservationId?: string) {
-  await assertLinearContinuityDeparture(ctx, m, cancellationReservationId);
-  await ensureMissionRepository(ctx, m);
+  const control = await campaignRoot(ctx, m);
+  await assertLinearContinuityDeparture(ctx, control, cancellationReservationId);
+  await ensureMissionRepository(ctx, control);
   const pinned = m.aggregate.projectMandate;
   if (!pinned) return;
   const policy = await readProjectMandate(ctx, m.companyId, m.projectId);
