@@ -10,6 +10,10 @@ export async function retainLinearNativeStatus(ctx: PluginContext, original: Mis
   if (!original.aggregate.linearContinuity) return;
   const m = await (await import("./missions.js")).getMission(ctx, original.companyId, original.missionId);
   if (!m?.aggregate.linearContinuity) throw new MissionError(409, "linear_status_binding", "Original status handoff binding cannot disappear");
+  // The claimed global result owns the remaining Linear publication. Native
+  // observations must not append fresh intents behind its terminal readback.
+  if (m.aggregate.linearContinuity.mode === "milestone-fixed-v1" && !m.aggregate.repositoryCampaign
+      && ["publishing", "closing", "closed"].includes(m.aggregate.campaignClosure?.phase ?? "")) return;
   const doc = await ctx.issues.documents.get(m.rootIssueId, status.documentKey, m.companyId);
   if (!doc?.id || !doc.latestRevisionId || doc.body !== status.body) throw new MissionError(409, "linear_status_readback", "Read back the exact native status before retaining its publication");
   await queueLinearPublication(ctx, m, status.observation.state === "blocked" ? "blocker" : "progress", {

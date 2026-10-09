@@ -6,10 +6,12 @@ import type { MissionRecord } from "../src/missions.js";
 import { advanceContinuity, registerContinuityJob } from "../src/continuity-runtime.js";
 import { assertContinuityDeparture } from "../src/continuity-policy.js";
 import { canonicalPayloadHash } from "../src/mission-primitives.js";
+import { readContinuityObservation } from "../src/continuity-observation.js";
 
 const f = vi.hoisted(() => ({ mission: null as unknown as MissionRecord, run: { status: "running" },
   board: vi.fn(), review: vi.fn(), reconcile: vi.fn(), delivery: vi.fn(), inventory: vi.fn(), settle: vi.fn() }));
 vi.mock("../src/project-task-intake.js", () => ({ reconcileProjectTasks: async () => {} }));
+vi.mock("../src/linear-continuity-runtime.js", () => ({ reconcileLinearContinuity: async (_ctx: unknown, m: MissionRecord) => m }));
 vi.mock("../src/hierarchy-continuity.js", () => ({ advanceHierarchyChildren: vi.fn() }));
 vi.mock("../src/missions.js", async () => ({ ...await import("../src/mission-primitives.js"),
   getMission: async () => structuredClone(f.mission) }));
@@ -27,11 +29,14 @@ vi.mock("../src/model-state.js", () => ({ physicalAgent: (_m: unknown, id: strin
 const job = { jobKey: "mission-continuity", runId: "native-job", trigger: "schedule", scheduledAt: new Date().toISOString() } as PluginJobContext;
 function context() {
   let callback: (job: PluginJobContext) => Promise<void>;
-  let document: { body: string } | null = null;
+  const documents = new Map<string, { id: string; latestRevisionId: string; body: string }>();
   let stored: unknown = null;
-  const upsert = vi.fn(async (input: { body: string }) => { document = { body: input.body }; return document; });
-  const ctx = { state: { get: async () => stored, set: async (_scope: unknown, value: unknown) => { stored = value; } }, companies: { get: async () => ({ defaultResponsibleUserId: "owner" }) },
-    issues: { documents: { get: async () => document, upsert } },
+  const upsert = vi.fn(async (input: { key: string; body: string }) => {
+    const document = { id: input.key, latestRevisionId: `${input.key}-revision`, body: input.body };
+    documents.set(input.key, document); return document;
+  });
+  const ctx = { state: { get: async () => structuredClone(stored), set: async (_scope: unknown, value: unknown) => { stored = structuredClone(value); } }, companies: { get: async () => ({ defaultResponsibleUserId: "owner" }) },
+    issues: { documents: { get: async (_issue: string, key: string) => structuredClone(documents.get(key) ?? null), upsert } },
     jobs: { register: (_key: string, fn: typeof callback) => { callback = fn; } } } as unknown as PluginContext;
   return { ctx, upsert, runJob: () => callback(job) };
 }
@@ -97,5 +102,33 @@ describe("durable delegated Council progression", () => {
     expect(() => assertContinuityDeparture(f.mission)).toThrow();
     expect((await advanceContinuity(context().ctx, f.mission, job)).state).toBe("waiting");
     expect(f.reconcile).toHaveBeenCalledOnce(); expect(f.review).not.toHaveBeenCalled();
+  });
+  it("publishes a campaign root status through native readback without N1 or duplicate Linear intents", async () => {
+    const c = context();
+    delete f.mission.aggregate.continuity; delete f.mission.aggregate.n1;
+    f.mission.aggregate.linearContinuity = { mode: "milestone-fixed-v1", control: "running", binding: {},
+      sourceSha256: "a".repeat(64), publications: [] } as unknown as NonNullable<MissionRecord["aggregate"]["linearContinuity"]>;
+    registerContinuityJob(c.ctx, async () => [structuredClone(f.mission)]);
+    await c.runJob();
+    const first = await readContinuityObservation(c.ctx, f.mission);
+    expect(first).toMatchObject({ sequence: 1, documentObserved: true,
+      observation: { state: "waiting", code: "campaign_deliveries_pending" } });
+    const intent = f.mission.aggregate.linearContinuity!.publications[0];
+    await c.runJob();
+    expect(c.upsert).toHaveBeenCalledTimes(1);
+    expect(f.mission.aggregate.linearContinuity!.publications).toEqual([intent]);
+    const changedIdentity = { ...f.mission, missionId: "other-mission" };
+    await expect(readContinuityObservation(c.ctx, changedIdentity)).rejects.toMatchObject({ code: "continuity_status_identity" });
+
+    f.mission.aggregate.campaignClosure = { phase: "publishing" } as NonNullable<MissionRecord["aggregate"]["campaignClosure"]>;
+    await c.runJob();
+    expect((await readContinuityObservation(c.ctx, f.mission))?.observation.code).toBe("campaign_terminal_publication_pending");
+    f.mission.aggregate.campaignClosure!.phase = "closed";
+    f.mission.aggregate.completion = { state: "closed" } as never;
+    await c.runJob();
+    expect((await readContinuityObservation(c.ctx, f.mission))?.observation).toMatchObject({ state: "complete", code: "campaign_proof_closed" });
+    expect(f.mission.aggregate.linearContinuity!.publications).toEqual([intent]);
+    expect(f.board).not.toHaveBeenCalled(); expect(f.review).not.toHaveBeenCalled(); expect(f.delivery).not.toHaveBeenCalled();
+    expect(f.mission.aggregate.n1).toBeUndefined(); expect(f.mission.aggregate.n5).toBeUndefined();
   });
 });
