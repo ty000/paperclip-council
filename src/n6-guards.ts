@@ -1,3 +1,4 @@
+import { submissionAttachmentIssue } from "./candidate-attachment.js";
 import { integratedResult } from "./integration-contract.js";
 import { assertIntegrationRecoveryStable } from "./integration-recovery.js";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
@@ -89,8 +90,8 @@ export async function assertN6LaunchReady(ctx: PluginContext, m: MissionRecord, 
 export async function readN6Handoff(ctx: PluginContext, m: MissionRecord) {
   const source = await assertN6AcceptedSource(ctx, m);
   const accepted = acceptedN5Submission(source);
-  const attachment = (await ctx.issues.listAttachments(source.rootIssueId, source.companyId)).find(a => a.id === accepted.attachmentId);
-  if (!attachment || attachment.companyId !== source.companyId || attachment.issueId !== source.rootIssueId
+  const attachment = (await ctx.issues.listAttachments(submissionAttachmentIssue(source, accepted), source.companyId)).find(a => a.id === accepted.attachmentId);
+  if (!attachment || attachment.companyId !== source.companyId || attachment.issueId !== (submissionAttachmentIssue(source, accepted))
       || attachment.sha256 !== accepted.sha256 || attachment.byteSize !== accepted.byteSize) {
     throw new MissionError(409, "n6_attachment_mismatch", "Exact accepted source attachment must remain available and unchanged");
   }

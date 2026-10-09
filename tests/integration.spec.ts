@@ -265,6 +265,21 @@ describe("integrated Git candidate verification", () => {
     await expect(verifyIntegratedCandidate(ctx, { ...input, missingReference: input.contributions[0].commit }))
       .rejects.toThrow("cannot replace a reference present");
   });
+  it("pins an admitted artifact task while preserving the product root subject", async () => {
+    const { ctx, input } = await fixture();
+    const artifactTask = randomUUID();
+    const original = ctx.issues.listAttachments;
+    const seen: string[] = [];
+    ctx.issues.listAttachments = async (issueId, companyId) => { seen.push(issueId); return issueId === artifactTask ? original(issueId, companyId) : []; };
+    input.attachmentIssueId = artifactTask;
+    const verified = await verifyIntegratedCandidate(ctx, input);
+    expect(verified.subject.issueId).toBe(input.issueId);
+    expect(verified.candidate.attachmentIssueId).toBe(artifactTask);
+    expect(seen).toEqual([artifactTask]);
+    input.attachmentIssueId = randomUUID();
+    await expect(verifyIntegratedCandidate(ctx, input)).rejects.toThrow("not attached to this issue");
+  });
+
   it("verifies issue-bound bytes, refs, two contributions, ownership and bounded Git checks", async () => {
     const { ctx, input } = await fixture();
 

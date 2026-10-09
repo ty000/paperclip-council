@@ -1,3 +1,4 @@
+import { candidateAttachmentTarget, submissionAttachmentIssue } from "./candidate-attachment.js";
 import { feedbackCorrectionRound } from "./pr-contract.js";
 import { isLogicalActor, physicalAgent } from "./model-state.js";
 import { N3OpinionError } from "./n3-opinions.js";
@@ -27,6 +28,7 @@ export type N2Submission = {
   ordinal: 1 | 2 | 3;
   predecessorSubmissionId: string | null;
   attachmentId: string;
+  attachmentIssueId?: string;
   byteSize: number;
   sha256: string;
   baseCommit: string;
@@ -140,6 +142,7 @@ function submissionFromCandidate(
     ordinal: input.ordinal,
     predecessorSubmissionId: input.predecessorSubmissionId,
     attachmentId: candidate.candidate.attachmentId,
+    ...(candidate.candidate.attachmentIssueId ? { attachmentIssueId: candidate.candidate.attachmentIssueId } : {}),
     byteSize: candidate.candidate.byteSize,
     sha256: candidate.candidate.sha256,
     baseCommit: candidate.candidate.baseCommit,
@@ -1336,6 +1339,7 @@ export async function prepareResubmissionCommand(
     executorAgentId: input.actor.agentId!,
     runId: input.actor.runId,
     journalAction: "n2_resubmission_prepared",
+    attachmentIssueId: candidateAttachmentTarget(mission, input.params.issueId),
   });
 }
 
@@ -1351,6 +1355,7 @@ export async function prepareResubmission(
     runId: string;
     journalAction: "n2_resubmission_prepared" | "owner_recovered_terminal_resubmission";
     correctionTaskId?: string;
+    attachmentIssueId?: string;
   },
 ) {
   const state = storedN2(mission);
@@ -1374,6 +1379,7 @@ export async function prepareResubmission(
   const verified = await verifyIntegratedCandidate(ctx, {
     companyId: mission.companyId,
     issueId: mission.rootIssueId,
+    attachmentIssueId: authority.attachmentIssueId,
     attachmentId,
     baseCommit,
     candidateCommit,
@@ -1545,9 +1551,9 @@ export async function prepareN2Decision(
     // N2 already verified the bundle bytes, base, candidate and attributed paths
     // when creating this immutable submission. Recheck its native attachment
     // binding, rather than requiring an unrelated legacy delivery manifest.
-    const attachments = await ctx.issues.listAttachments(mission.rootIssueId, mission.companyId);
+    const attachments = await ctx.issues.listAttachments(submissionAttachmentIssue(mission, submission), mission.companyId);
     const attachment = attachments.find((entry) => entry.id === submission.attachmentId);
-    if (!attachment || attachment.companyId !== mission.companyId || attachment.issueId !== mission.rootIssueId
+    if (!attachment || attachment.companyId !== mission.companyId || attachment.issueId !== (submissionAttachmentIssue(mission, submission))
         || attachment.sha256 !== submission.sha256 || attachment.byteSize !== submission.byteSize) {
       throw new MissionError(409, "n2_approval_attachment_mismatch", "Approval attachment no longer matches the verified immutable N2 submission");
     }

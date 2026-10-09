@@ -63,7 +63,7 @@ async function uploadCandidate() {
   git("bundle", "create", path, "refs/heads/base", "refs/heads/candidate");
   const bytes = await readFile(path); const expectedSha256 = createHash("sha256").update(bytes).digest("hex");
   const form = new FormData(); form.append("file", new Blob([bytes]), "candidate.bundle");
-  const attached = await api("POST", `/api/companies/${config.companyId}/issues/${config.rootIssueId}/attachments`, form);
+  const attached = await api("POST", `/api/companies/${config.companyId}/issues/${config.integrationMode ? issueId : config.rootIssueId}/attachments`, form);
   return { attachmentId: attached.id, candidateCommit, baseCommit: config.baseCommit, expectedSha256 };
 }
 let summary;

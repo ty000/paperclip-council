@@ -1,3 +1,4 @@
+import { candidateAttachmentTarget } from "./candidate-attachment.js";
 import { assertN1DepartureWindow, assertContinuityDeparture } from "./continuity-policy.js";
 import { n1LeadExecution, type N1Integration } from "./n1-integration-state.js";
 import { contributionStatusBeforeIntegration } from "./integration-contract.js";
@@ -1601,6 +1602,7 @@ export async function handleN1AgentApi(input: PluginApiRequestInput, ctx: Plugin
         verified = await verifyIntegratedCandidate(ctx, {
           companyId: mission.companyId, issueId: mission.rootIssueId,
           attachmentId, baseCommit, candidateCommit, expectedSha256,
+          attachmentIssueId: candidateAttachmentTarget(mission, n1LeadExecution(mission).issueId),
           integrationAdjustedPaths,
           contributions: state.contributions.map(slot => ({ contributionId: slot.contributionId, commit: slot.commit!, ownedPaths: slot.ownedPaths })),
           ...(mission.aggregate.hierarchy ? { contributionPolicy: mission.aggregate.hierarchy } : {}),

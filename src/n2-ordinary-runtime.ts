@@ -1,3 +1,4 @@
+import { candidateAttachmentTarget } from "./candidate-attachment.js";
 import { feedbackCorrectionRound } from "./pr-contract.js";
 import { prepareFeedbackContinuation } from "./pr-feedback.js";
 import { physicalAgent } from "./model-state.js";
@@ -219,6 +220,7 @@ async function recoverTerminalResubmission(
     runId: identity.runId,
     journalAction: "owner_recovered_terminal_resubmission",
     correctionTaskId: task.taskId,
+    attachmentIssueId: candidateAttachmentTarget(mission, task.issueId),
   });
 }
 
