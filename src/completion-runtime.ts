@@ -9,6 +9,7 @@ import { completionPolicy, type CompletionState } from "./completion-contract.js
 import { assertProjectDeparture } from "./project-mandate-guard.js";
 import { physicalAgent } from "./model-state.js";
 import { leadIssueId } from "./hierarchy-contract.js";
+import { reconcileRepositoryRelease } from "./repository-release.js";
 
 function deliveredResultDescription(evidence: ReturnType<typeof completionEvidence>) {
   if (evidence.integrated) return `${evidence.integrated.url}\nCommit intégré : ${evidence.integrated.integratedCommit}.`;
@@ -97,6 +98,7 @@ async function finishNotification(ctx: PluginContext, m: MissionRecord) {
 
 /** Consolidates existing proof; no extra provider run, new budget or GitHub write. */
 export async function reconcileCompletion(ctx: PluginContext, m: MissionRecord) {
+  if (!m.aggregate.linearContinuity && m.aggregate.completion?.state === "closed") await reconcileRepositoryRelease(ctx, m);
   if (!completionPolicy(m) || m.aggregate.completion?.state === "closed") return m;
   await assertProjectDeparture(ctx, m); await assertClosureAccounting(ctx, m);
   if (completionPolicy(m)?.result === "integrated-verified") {
@@ -122,5 +124,7 @@ export async function reconcileCompletion(ctx: PluginContext, m: MissionRecord) 
   m = await closeProductNodes(ctx, m);
   await assertProjectDeparture(ctx, m);
   if (canonicalPayloadHash(completionEvidence(m)) !== m.aggregate.completion!.proofId) throw new MissionError(409, "completion_subject_changed", "Evidence changed before final notification");
-  return finishNotification(ctx, m);
+  m = await finishNotification(ctx, m);
+  if (!m.aggregate.linearContinuity) await reconcileRepositoryRelease(ctx, m);
+  return m;
 }

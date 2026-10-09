@@ -1,3 +1,5 @@
+// Repository arbitration is exercised with real SQL in repository-occupation tests.
+vi.mock("../src/repository-occupation.js", () => ({ ensureMissionRepository: vi.fn(async () => {}), releaseReconciledRepository: vi.fn(async () => {}) }));
 import { createHash, randomUUID } from "node:crypto";
 import { expect, it, vi } from "vitest";
 import type { MissionRecord } from "../src/missions.js";
