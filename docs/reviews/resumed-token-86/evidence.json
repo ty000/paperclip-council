@@ -1,0 +1,122 @@
+{
+  "analytical_excess_units": 9664122,
+  "assistance": {
+    "codex_supervision_usage": null,
+    "status": "not_selected_separate_scope"
+  },
+  "billing": "not_inferred",
+  "conclusion": "confirmed",
+  "historical_ledger": "unchanged",
+  "mode": "read_only_analysis",
+  "observation_date": "2026-10-09",
+  "paperclip_reported_usage": {
+    "cached_input_tokens": 16544384,
+    "input_tokens": 17137716,
+    "output_tokens": 67836,
+    "total_tokens": 17205552
+  },
+  "repeated_run_snapshots": 0,
+  "runs": [
+    {
+      "classification": "per_run_confirmed",
+      "reason": "matches_unique_response_deltas",
+      "reported_usage": {
+        "cached_input_tokens": 3514752,
+        "input_tokens": 3674217,
+        "output_tokens": 15111,
+        "total_tokens": 3689328
+      },
+      "response_count": 33,
+      "response_usage": {
+        "cached_input_tokens": 3514752,
+        "input_tokens": 3674217,
+        "output_tokens": 15111,
+        "total_tokens": 3689328
+      },
+      "run_id": "1b2ff8b3-55c7-431a-a64c-0c0a51c9dd12",
+      "snapshot_sha256": "0fd47867490fe6789602f577fffb2e867a5633a96a98eca19aa065c203fe3d84",
+      "turn_id": "01a1184d-8186-7970-b3fb-8d05c96b10cc"
+    },
+    {
+      "classification": "cumulative_mislabeled_confirmed",
+      "reason": "matches_prior_and_current_unique_response_deltas",
+      "reported_usage": {
+        "cached_input_tokens": 5741056,
+        "input_tokens": 5950726,
+        "output_tokens": 24068,
+        "total_tokens": 5974794
+      },
+      "response_count": 12,
+      "response_usage": {
+        "cached_input_tokens": 2226304,
+        "input_tokens": 2276509,
+        "output_tokens": 8957,
+        "total_tokens": 2285466
+      },
+      "run_id": "8eed0f68-3290-41aa-b7a3-c56325010bca",
+      "snapshot_sha256": "9f4c154727e74322fdd7c96b7e92637ea0e1634930a6acce7e8e35c4b2bfcf27",
+      "turn_id": "01a1186a-cb30-7691-ab5b-df5a4bb0bc0b"
+    },
+    {
+      "classification": "cumulative_mislabeled_confirmed",
+      "reason": "matches_prior_and_current_unique_response_deltas",
+      "reported_usage": {
+        "cached_input_tokens": 7288576,
+        "input_tokens": 7512773,
+        "output_tokens": 28657,
+        "total_tokens": 7541430
+      },
+      "response_count": 7,
+      "response_usage": {
+        "cached_input_tokens": 1547520,
+        "input_tokens": 1562047,
+        "output_tokens": 4589,
+        "total_tokens": 1566636
+      },
+      "run_id": "bf54e305-ab15-4871-8950-a6cee2938de9",
+      "snapshot_sha256": "f90b97c594b706ba146bd1a7643a4ca29f76b6f80f5f031c104b589aeb2531ef",
+      "turn_id": "01a11882-96de-7df3-a15d-490e2e81e2ce"
+    }
+  ],
+  "runtime_readback": {
+    "commit": null,
+    "date": "2026-10-09",
+    "endpoint": "/api/health",
+    "status": "ok"
+  },
+  "savings": null,
+  "schema_version": "council-resumed-usage-audit.v1",
+  "selected_run_response_usage": {
+    "cached_input_tokens": 7288576,
+    "input_tokens": 7512773,
+    "output_tokens": 28657,
+    "total_tokens": 7541430
+  },
+  "source": {
+    "cli_version": "0.160.1",
+    "conflicting_responses": 0,
+    "duplicate_responses": 0,
+    "issue_counts": {},
+    "response_audit_status": "exact",
+    "session_bytes": 5462701,
+    "session_id": "01a1184d-7cca-7ea2-9e15-17aeb9bcaf75",
+    "session_sha256": "6382a17f7c376597599feeff8fffdcf73a79d8c030243e2030ffc3414e72d71d",
+    "unique_responses": 52
+  },
+  "source_files": {
+    "packages/adapters/codex-local/src/server/parse.ts": {
+      "sha256": "cc2eb9d6be4aed3b6eaec9cf160680b069c65885168623022571dc5005856d72"
+    },
+    "server/src/services/heartbeat.ts": {
+      "sha256": "fcbd325d8fbaa0729eaf0f96b57fdedc72058663fdee02e57884fa630febbc9b"
+    }
+  },
+  "unknown_run_count": 0,
+  "versions": {
+    "council_source": "0.7.26@91b4e583abf6e1b47796a4501f07e9953175c670",
+    "historical_adapter_binary": "not_pinned_in_run_snapshots",
+    "historical_cli": "session_meta.cli_version=0.160.1; resumed process binary hashes unavailable",
+    "paperclip_adapter_package": "@paperclipai/adapter-codex-local@0.3.1",
+    "paperclip_source": "61b3fd57a695614dc4a37e2303f426a34a9795cf"
+  }
+}

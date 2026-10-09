@@ -438,3 +438,20 @@ for the observer state file updated by its one owning process.
 Treat digests, supplied identities, and provider-free replays as evidence of the
 named local checks only. They do not prove model quality, delivery, installation,
 runtime activation, native integration, or production readiness.
+
+## Reconcile resumed Codex runs
+
+`resumed_usage_audit.py --session /absolute/session.jsonl --run /absolute/run.json`
+compares explicit terminal Paperclip snapshots with unique response deltas from
+one selected Codex session. Repeat `--run` for the same session; optionally write
+an exclusive private `--output /absolute/new-report.json`. It retains input,
+cached input (included in input), output, unknowns and provenance separately.
+Supervision/repair assistance is not silently added to native runs. No ledger,
+reservation or session is modified. An inconclusive measurement remains `null`.
+
+The [#86 diagnosis and reproduction](../reviews/resumed-token-86/REPORT.md)
+confirm cumulative counters mislabeled `per_run` on the selected historical
+Codex CLI 0.160.1 traces. Current inspected Paperclip source retains that
+mechanism. Treat resumed-run efficiency comparisons as unqualified until
+response-level reconciliation; do not credit historical budgets or infer
+billing. This is an operational limitation, not an installed runtime fix.
