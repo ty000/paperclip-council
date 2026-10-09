@@ -9,10 +9,10 @@ import { reconcileLinearTransport, handleLinearContinuityNotice, queueLinearPubl
 import { applyLinearChanges, assertLinearContinuityDeparture, settleLinearSafePoint } from "../src/linear-continuity-control.js";
 import { reconcileLinearCancellation, handleCancellationRequest } from "../src/linear-continuity-cancellation.js";
 import { ensureLinearContextGuidance } from "../src/linear-context-guidance.js";
-import { FIXED_CAMPAIGN_MODE } from "../src/linear-continuity-contract.js";
+import { FIXED_CAMPAIGN_MODE, TERMINAL_PUBLICATION_PROTOCOL } from "../src/linear-continuity-contract.js";
 import { handleLinearContinuityBoard, reconcileLinearContinuity } from "../src/linear-continuity-runtime.js";
 
-const f = vi.hoisted(() => ({ m: null as any, bindings: [] as any[], reservations: [] as any[], runStatus: "running", emitted: [] as any[], launch: vi.fn(), settlement: vi.fn(), docs: new Map<string, any>(), issues: new Map<string, any>() }));
+const f = vi.hoisted(() => ({ m: null as any, bindings: [] as any[], reservations: [] as any[], runStatus: "running", emitted: [] as any[], launch: vi.fn(), settlement: vi.fn(), terminalClaim: vi.fn(), docs: new Map<string, any>(), issues: new Map<string, any>() }));
 vi.mock("../src/missions.js", async original => ({ ...await original(), getMission: async (_c: any, companyId: string, id: string) => f.m?.companyId === companyId && f.m?.missionId === id ? structuredClone(f.m) : null }));
 vi.mock("../src/n2-missions.js", async original => ({ ...await original(), n2Cas: async (_c: any, m: any, aggregate: any) => {
   if (m.version !== f.m.version) throw new Error("CAS conflict");
@@ -30,6 +30,8 @@ vi.mock("../src/n5-runtime.js", () => ({ bindPublisher: async (_ctx: any, m: any
   if (input.actor.agentId !== "publisher" || input.actor.runId !== m.aggregate.n5.publication.runId) throw new Error("foreign publisher"); return m;
 }, resumeN5Creation: (...args: any[]) => f.launch(...args) }));
 vi.mock("../src/project-mandate-guard.js", () => ({ assertProjectDeparture: async () => {} }));
+
+vi.mock("../src/linear-terminal-publication.js", () => ({ claimTerminalPublication: (...args: any[]) => f.terminalClaim(...args) }));
 
 const ctx = { issues: { documents: {
   get: async (_id: any, key: string) => structuredClone(f.docs.get(key) ?? null),
@@ -272,7 +274,8 @@ it.each([undefined, FIXED_CAMPAIGN_MODE])("pins project opt-in (%s) before admis
 
 function fixedCampaign() {
   f.m.aggregate.linearContinuity.mode = FIXED_CAMPAIGN_MODE;
-  return { mode: FIXED_CAMPAIGN_MODE, capabilities: ["fixed-source", "publication-readback"] } as const;
+  f.m.aggregate.linearContinuity.terminalPublicationProtocol = TERMINAL_PUBLICATION_PROTOCOL;
+  return { mode: FIXED_CAMPAIGN_MODE, capabilities: ["fixed-source", "publication-readback", "terminal-publication-claim"] } as const;
 }
 function nativeControl(command: string, extra: any = {}) {
   return { companyId: f.m.companyId, actor: { actorType: "user", userId: "owner" }, body: {
@@ -280,14 +283,14 @@ function nativeControl(command: string, extra: any = {}) {
   } } as any;
 }
 async function fixedAnswer(extra: Partial<LinearContinuityResponse> = {}) {
-  return answer({ mode: FIXED_CAMPAIGN_MODE, capabilities: ["fixed-source", "publication-readback"], ...extra });
+  return answer({ mode: FIXED_CAMPAIGN_MODE, capabilities: ["fixed-source", "publication-readback", "terminal-publication-claim"], ...extra });
 }
 function confirmPublications() {
   for (const p of f.m.aggregate.linearContinuity.publications) p.acknowledgement = {
     reference: proof(`ack-${p.intentId}`, { intentId: p.intentId }), responseSha256: digest("a"), confirmedAt: new Date().toISOString(),
   };
 }
-it("fixed campaigns negotiate only their two capabilities and reject remote commands and legacy replies", async () => {
+it("fixed campaigns negotiate their terminal claim capability and reject remote commands and legacy replies", async () => {
   fixedCampaign();
   await answer(); expect(f.m.aggregate.linearContinuity.observation).toBeUndefined();
   await expect(fixedAnswer({ changes: [change("pause")] })).rejects.toThrow();
@@ -299,7 +302,7 @@ it("a fixed source change persists a pause and one blocker without adopting the 
   fixedCampaign(); const original = f.m.aggregate.linearContinuity.sourceSha256;
   await fixedAnswer({ sourceSha256: digest("f") });
   await applyLinearChanges(ctx, f.m);
-  expect(f.m.aggregate.linearContinuity).toMatchObject({ sourceSha256: original, control: "pause_requested", controlReason: "source_revision_changed" });
+  expect(f.m.aggregate.linearContinuity).toMatchObject({ sourceSha256: original, control: "pause_requested", controlReason: "source_changed" });
   const retained = structuredClone(f.m.aggregate.linearContinuity.publications);
   await applyLinearChanges(ctx, structuredClone(f.m));
   expect(f.m.aggregate.linearContinuity.publications).toEqual(retained);
@@ -327,7 +330,7 @@ it.each(["draft", "executing", "reviewing", "accepted"])("native pause/resume pr
   expect(f.m.aggregate.mandate).toEqual(originalMandate); expect(f.reservations).toEqual([]);
   expect(f.m.aggregate.linearContinuity.control).toBe("running");
   await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_hold" });
-  confirmPublications(); await expect(assertLinearContinuityDeparture(ctx, f.m)).resolves.toBeUndefined();
+  await fixedAnswer(); confirmPublications(); await expect(assertLinearContinuityDeparture(ctx, f.m)).resolves.toBeUndefined();
 });
 it("native commands require the current owner, original command payload and nonterminal campaign", async () => {
   fixedCampaign(); const input = nativeControl("pause-linear-campaign");
@@ -376,4 +379,72 @@ it("manual owner configuration cannot opt a fixed-policy project into legacy rem
     content: { linearContinuity: { protocol: LINEAR_CONTINUITY_PROTOCOL, mode: FIXED_CAMPAIGN_MODE } } }] } };
   await expect(handleLinearContinuityBoard(fixedCtx, nativeControl("configure-linear-continuity", { binding }))).rejects.toMatchObject({ code: "linear_continuity_project_policy" });
   expect(f.m.aggregate.linearContinuity).toBeUndefined(); expect(f.emitted).toHaveLength(0);
+});
+
+
+it.each(["source_changed", "source_state_changed", "source_unavailable", "publication_unavailable"] as const)("persists %s before another healthy response and requires explicit resume", async code => {
+  fixedCampaign();
+  const source = f.m.aggregate.linearContinuity.sourceSha256;
+  await fixedAnswer({ availability: "unavailable", diagnostic: { code, expectedSourceSha256: source,
+    changedFields: code === "source_changed" ? ["description"] : [], changedSourceIds: [] } });
+  // No job processed the first response: a subsequent healthy read still cannot erase the hold.
+  await fixedAnswer();
+  expect(f.m.aggregate.linearContinuity).toMatchObject({ control: "pause_requested", controlReason: code, controlDiagnostic: { code } });
+  await applyLinearChanges(ctx, f.m); await applyLinearChanges(ctx, f.m);
+  expect(f.m.aggregate.linearContinuity.publications.filter((p: any) => p.kind === "blocker")).toHaveLength(1);
+  await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_hold" });
+  await reconcileLinearContinuity(ctx, f.m);
+  expect(f.m.aggregate.linearContinuity.control).toBe("paused");
+  await handleLinearContinuityBoard(ctx, nativeControl("resume-linear-campaign"));
+  expect(f.m.aggregate.linearContinuity.resumeVersion).toBe(f.m.version);
+  expect(f.m.aggregate.linearContinuity.controlDiagnostic).toBeUndefined();
+  await fixedAnswer(); confirmPublications(); await expect(assertLinearContinuityDeparture(ctx, f.m)).resolves.toBeUndefined();
+});
+
+it("retains an intake source hold even if its first unavailable reply was lost and rejects that old challenge after resume", async () => {
+  fixedCampaign();
+  // Intake observed an outage but its first reply never arrived; the source is now restored.
+  const { event } = await fixedAnswer({ availability: "available", diagnostic: { code: "source_unavailable",
+    expectedSourceSha256: f.m.aggregate.linearContinuity.sourceSha256, changedFields: [], changedSourceIds: [] } });
+  expect(f.m.aggregate.linearContinuity).toMatchObject({ control: "pause_requested", controlReason: "source_unavailable" });
+  await reconcileLinearContinuity(ctx, f.m);
+  expect(f.m.aggregate.linearContinuity.control).toBe("paused");
+  await handleLinearContinuityBoard(ctx, nativeControl("resume-linear-campaign"));
+  const resumedVersion = f.m.version;
+  expect(f.m.aggregate.linearContinuity).toMatchObject({ control: "running", resumeVersion: resumedVersion });
+  expect(f.m.aggregate.linearContinuity.observation).toBeUndefined();
+  expect(f.m.aggregate.linearContinuity.challenge).toBeUndefined();
+  await handleLinearContinuityNotice(ctx, event as any);
+  expect(f.m.version).toBe(resumedVersion);
+  expect(f.m.aggregate.linearContinuity.controlDiagnostic).toBeUndefined();
+  await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_hold" });
+  await fixedAnswer(); confirmPublications();
+  await handleLinearContinuityNotice(ctx, event as any);
+  expect(f.m.aggregate.linearContinuity.control).toBe("running");
+  await expect(assertLinearContinuityDeparture(ctx, f.m)).resolves.toBeUndefined();
+});
+
+it("does not upgrade an old fixed campaign or accept a peer without the terminal claim capability", async () => {
+  fixedCampaign();
+  await expect(fixedAnswer({ capabilities: ["fixed-source", "publication-readback"] })).rejects.toThrow();
+  expect(f.m.aggregate.linearContinuity.observation).toBeUndefined();
+  delete f.m.aggregate.linearContinuity.terminalPublicationProtocol;
+  await expect(reconcileLinearTransport(ctx, f.m)).rejects.toMatchObject({ code: "linear_terminal_protocol_missing" });
+  await expect(handleLinearContinuityBoard(ctx, nativeControl("pause-linear-campaign"))).rejects.toMatchObject({ code: "linear_terminal_protocol_missing" });
+});
+
+
+it("retries the same terminal claim after observation persistence without accepting a new result identity", async () => {
+  fixedCampaign();
+  const terminalClaimRequest = { intentId: randomUUID(), payloadSha256: digest("b") };
+  f.terminalClaim.mockRejectedValueOnce(new Error("response lost after observation persistence"));
+  await expect(fixedAnswer({ terminalClaimRequest })).rejects.toThrow(/response lost/);
+  const state = f.m.aggregate.linearContinuity, version = f.m.version;
+  const event = { eventType: LINEAR_CONTINUITY_EVENT, actorType: "plugin", actorId: "ty000.linear-intake", companyId: f.m.companyId,
+    occurredAt: new Date().toISOString(), payload: { protocol: LINEAR_CONTINUITY_PROTOCOL, companyId: f.m.companyId,
+      missionId: f.m.missionId, challengeId: state.challenge.challengeId, response: state.observation.reference } };
+  await handleLinearContinuityNotice(ctx, event as any);
+  expect(f.terminalClaim).toHaveBeenCalledTimes(2);
+  expect(f.terminalClaim.mock.calls[1]!.slice(2)).toEqual(f.terminalClaim.mock.calls[0]!.slice(2));
+  expect(f.m.version).toBe(version);
 });

@@ -37,7 +37,7 @@ function mission(phase: "reviewed" | "closing") {
         { issueId: childIssueId, parentId: rootIssueId, assigneeAgentId: null, blockedByIssueIds: [] },
         { issueId: rootIssueId, parentId: null, assigneeAgentId: null, blockedByIssueIds: [] },
       ] },
-      linearContinuity: { protocol: "council-linear-continuity-v1", mode: "milestone-fixed-v1", control: "running", publications: [] },
+      linearContinuity: { protocol: "council-linear-continuity-v1", mode: "milestone-fixed-v1", terminalPublicationProtocol: "council-terminal-publication-claim-v1", control: "running", publications: [] },
       campaignClosure: { protocol: "council-linear-campaign-closure-v1", phase,
         subject: { coverage: [], results: [] }, task: { taskId: randomUUID(), agentId: randomUUID(),
           issueId: randomUUID(), runId: randomUUID(), reservationId: randomUUID(), settlementCommandId: randomUUID(),
@@ -150,7 +150,7 @@ it("does not close the next native parent when Linear becomes unavailable after 
 it("keeps the acknowledged terminal intent in publishing when its source is no longer available", async () => {
   const { value, rootIssueId, childIssueId } = mission("closing");
   const state = value.aggregate.campaignClosure!, intentId = randomUUID(), sourceId = randomUUID(), payloadSha256 = "a".repeat(64);
-  Object.assign(state, { phase: "publishing", publicationIntentId: intentId, publicationPayloadSha256: payloadSha256 });
+  Object.assign(state, { phase: "publishing", publicationIntentId: intentId, publicationPayloadSha256: payloadSha256, terminalClaim: { intentId, payloadSha256, claimedVersion: value.version, claimedAt: new Date().toISOString() } });
   Object.assign(value.aggregate.linearContinuity!, { binding: { sourceRootId: sourceId }, publications: [{ intentId, payloadSha256,
     payload: { statusUpdates: [{ sourceId, state: "completed" }] }, acknowledgement: { reference: {}, confirmedAt: new Date().toISOString() } }] });
   vi.mocked(readLinearProof).mockResolvedValue({ body: JSON.stringify({ effects: [

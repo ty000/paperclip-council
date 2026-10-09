@@ -81,6 +81,7 @@ export type CampaignClosureState = {
   reportSha256?: string;
   blockedReason?: string;
   proofDocument: { key: string; body: string; revisionId?: string };
+  terminalClaim?: import("./linear-continuity-contract.js").TerminalPublicationClaim;
   publicationIntentId?: string;
   publicationPayloadSha256?: string;
   publicationAcknowledgedAt?: string;

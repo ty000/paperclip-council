@@ -1,3 +1,4 @@
+import { assertTerminalPublicationProtocol, pendingLinearPublication } from "./linear-continuity-contract.js";
 import { randomUUID } from "node:crypto";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { readOrdinaryRun, settleOrdinaryRunUsage } from "./g4-native.js";
@@ -46,7 +47,7 @@ function closureOrder(root: MissionRecord, memberIssueIds: Set<string>) {
 
 async function beginReview(ctx: PluginContext, initial: MissionRecord) {
   let m = initial;
-  if (m.aggregate.linearContinuity!.publications.some(item => !item.acknowledgement)) return m;
+  if (m.aggregate.linearContinuity!.publications.some(pendingLinearPublication)) return m;
   await assertLinearContinuityDeparture(ctx, m);
   if (!await campaignMembersSafe(ctx, m, "closed")) throw new MissionError(409, "campaign_review_members", "Every delivery must be safely proof-closed before the global review");
   const members = await listCampaignMembers(ctx, m);
@@ -186,7 +187,7 @@ async function assertClosureProof(ctx: PluginContext, m: MissionRecord) {
 async function queueClosurePublication(ctx: PluginContext, initial: MissionRecord) {
   // Earlier progress still owns its readback. Keep the approved review intact
   // until that publication settles, then revalidate authority before any effect.
-  if (initial.aggregate.linearContinuity!.publications.some(item => !item.acknowledgement)) return initial;
+  if (initial.aggregate.linearContinuity!.publications.some(pendingLinearPublication)) return initial;
   await assertProjectDeparture(ctx, initial);
   let m = await ensureProofDocument(ctx, initial); let state = m.aggregate.campaignClosure!;
   await assertProjectDeparture(ctx, m);
@@ -222,6 +223,10 @@ async function observeClosurePublication(ctx: PluginContext, initial: MissionRec
   const publication = initial.aggregate.linearContinuity!.publications.find(item => item.intentId === state.publicationIntentId
     && item.payloadSha256 === state.publicationPayloadSha256);
   if (!publication?.acknowledgement) return initial;
+  if (!state.terminalClaim || publication.withdrawn || state.terminalClaim.intentId !== publication.intentId
+      || state.terminalClaim.payloadSha256 !== publication.payloadSha256) {
+    throw new MissionError(409, "campaign_close_unclaimed", "An exact authorized terminal publication is required before closure");
+  }
   const document = await readLinearProof(ctx, initial, publication.acknowledgement.reference);
   let receipt: any;
   try { receipt = JSON.parse(document.body); } catch { throw new MissionError(409, "campaign_close_ack", "The global publication acknowledgement must be valid JSON"); }
@@ -297,6 +302,7 @@ async function finishClosure(ctx: PluginContext, initial: MissionRecord) {
 export async function reconcileCampaignClosure(ctx: PluginContext, initial: MissionRecord) {
   let m = await fresh(ctx, initial);
   if (m.aggregate.linearContinuity?.mode !== "milestone-fixed-v1" || m.aggregate.repositoryCampaign) return m;
+  assertTerminalPublicationProtocol(m.aggregate.linearContinuity);
   if (m.aggregate.linearContinuity.control === "cancelled") {
     if (m.aggregate.campaignClosure && !["closed", "cancelled"].includes(m.aggregate.campaignClosure.phase)) {
       m = await saveClosure(ctx, m, { ...m.aggregate.campaignClosure, phase: "cancelled", blockedReason: "campaign_cancelled" });

@@ -56,6 +56,44 @@ The companion `qualification:native:linear-intake` exercises legacy Todo import,
 source hold, worker restart under the original identity, early Board refusal,
 dependency order and settled N1. It stops before N2 on purpose.
 
+## Explicit recovery and terminal publication permission
+
+A source mismatch, incompatible human status or unavailable source/publication
+persists a hold with a bounded diagnostic. A later healthy read cannot clear it.
+Intake keeps reporting a retained source diagnostic even when the current source
+is available, so a lost initial unavailable response cannot hide the hold.
+The operator restores the pinned source and uses `resume-linear-campaign`; its
+mission CAS records `resumeVersion` and invalidates the old observation/challenge;
+a fresh reply is required before another departure. Intake uses this resume marker to
+retain its own source hold across old challenges and process restarts. The marker
+alone grants no write permission and resets no budget, source or effect identity.
+
+The fixed campaign exchange requires `council-terminal-publication-claim-v1`
+and the three capabilities `fixed-source`, `publication-readback`, and
+`terminal-publication-claim`. Existing fixed campaigns without the protocol marker
+remain held; upgrading a package does not silently adopt or authorize their pending
+publications. The legacy Todo continuity exchange retains its previous contract.
+
+Recording the global closure intent does not authorize Linear writes. Intake first
+requests the exact intent/hash claim in its existing continuity response. Council
+rechecks source, project authority, integrated results and the approved proof before
+one mission CAS grants permission for the complete terminal publication. The next
+existing continuity request carries that persisted grant. Lost messages reuse the
+same grant and local claimed effects remain readback-only, never blindly resent.
+
+Before this claim, pause is allowed while publishing; cancellation withdraws the
+unclaimed closure intent without inventing a success acknowledgement. A stale
+`running` challenge without the grant cannot publish the terminal result. Once the
+claim wins, a competing pause/cancellation is refused until its original effects
+are reconciled: the campaign cannot produce both success and cancellation. An
+automatic source/publication hold after the claim still permits explicit resume
+under the same grant, source and budget after verification. There is no timeout
+that releases an uncertain terminal effect.
+
+These recovery controls have targeted source tests. The historical installed
+receipts below remain attached to their exact earlier package pairs; they do not
+qualify this protocol change or authorize recette activation.
+
 ## Evidence
 
 Reports live under `.runtime/lot4/native-*/campaign-proof.json` (campaign) and

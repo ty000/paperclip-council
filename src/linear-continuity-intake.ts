@@ -3,7 +3,7 @@ import { ensureMissionRepository } from "./repository-occupation.js";
 import type { MissionRecord } from "./missions.js";
 import type { ProjectMandate } from "./project-mandate-state.js";
 import { n2Cas } from "./n2-missions.js";
-import { FIXED_CAMPAIGN_MODE, LINEAR_CONTINUITY_PROTOCOL, linearAuthorityHash, type LinearContinuityPolicy } from "./linear-continuity-contract.js";
+import { FIXED_CAMPAIGN_MODE, TERMINAL_PUBLICATION_PROTOCOL, LINEAR_CONTINUITY_PROTOCOL, linearAuthorityHash, type LinearContinuityPolicy } from "./linear-continuity-contract.js";
 import { LINEAR_READINESS_KEY, parseLinearReadiness } from "./linear-intake-contract.js";
 import { MissionError } from "./mission-primitives.js";
 import { reconcileLinearContinuity } from "./linear-continuity-runtime.js";
@@ -23,7 +23,7 @@ export async function prepareLinearContinuity(ctx: PluginContext, initial: Missi
   if (!policy.content.linearContinuity || !m.aggregate.projectMandate?.linearIntake) return m;
   const existing = m.aggregate.linearContinuity, expectedMode = policy.content.linearContinuity.mode;
   if (existing && (existing.mode !== expectedMode || existing.protocol !== policy.content.linearContinuity.protocol
-      || expectedMode === FIXED_CAMPAIGN_MODE && existing.binding.campaignId !== m.missionId)) {
+      || expectedMode === FIXED_CAMPAIGN_MODE && (existing.binding.campaignId !== m.missionId || existing.terminalPublicationProtocol !== TERMINAL_PUBLICATION_PROTOCOL))) {
     throw new MissionError(409, "linear_continuity_policy_changed", "Retain the exact project continuity mode and original campaign identity; manual configuration cannot downgrade them");
   }
   if (policy.content.linearContinuity.mode === FIXED_CAMPAIGN_MODE) await ensureMissionRepository(ctx, m, true);
@@ -37,7 +37,7 @@ export async function prepareLinearContinuity(ctx: PluginContext, initial: Missi
       campaignId: policy.content.linearContinuity.mode === FIXED_CAMPAIGN_MODE ? m.missionId : subject.activationId,
       sourceRootId: readiness.sourceRootId, subject, authoritySha256: linearAuthorityHash(m) };
     m = await n2Cas(ctx, m, { ...m.aggregate, linearContinuity: { protocol: LINEAR_CONTINUITY_PROTOCOL, binding,
-      ...(policy.content.linearContinuity.mode ? { mode: policy.content.linearContinuity.mode } : {}),
+      ...(policy.content.linearContinuity.mode ? { mode: policy.content.linearContinuity.mode, terminalPublicationProtocol: TERMINAL_PUBLICATION_PROTOCOL } : {}),
       authorizedBy: policy.authorizedBy, sourceSha256: readiness.campaign?.materialSourceSha256 ?? subject.sourceSha256,
       sequence: 0, control: "running", consumed: [], publications: [], safeSettlementIds: {} } });
   }

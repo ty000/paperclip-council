@@ -3,6 +3,7 @@ import type { MissionRecord } from "./missions.js";
 import type { N1State } from "./n1-missions.js";
 import type { AdmissionDocument } from "./admission.js";
 import { nativeRunBindings } from "./native-run-bindings.js";
+import { pendingLinearPublication } from "./linear-continuity-contract.js";
 import { uncertainLinearEffects } from "./linear-continuity-control.js";
 import { releaseReconciledRepository } from "./repository-occupation.js";
 
@@ -34,7 +35,7 @@ function missionIssueIds(m: MissionRecord, bindings = nativeRunBindings(m)) {
 
 async function stoppedMission(ctx: PluginContext, m: MissionRecord, delegatedIssues = new Set<string>()) {
   if (uncertainLinearEffects(m) || unresolvedCreation(m)
-      || m.aggregate.linearContinuity?.publications.some(p => !p.acknowledgement)) return false;
+      || m.aggregate.linearContinuity?.publications.some(pendingLinearPublication)) return false;
   const bindings = nativeRunBindings(m);
   if (bindings.some(b => b.pending)) return false;
   const documents = await ctx.db.query<{ document: AdmissionDocument }>(
