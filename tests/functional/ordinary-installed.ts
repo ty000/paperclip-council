@@ -22,6 +22,8 @@ const coordinationMode = process.env.COUNCIL_N6_COORDINATION === "1";
 assert(!coordinationMode || n6Mode);
 const continuityMode = process.env.COUNCIL_CONTINUITY === "1";
 const projectIntakeMode = process.env.COUNCIL_PROJECT_INTAKE === "1";
+const nativeSetupMode = process.env.COUNCIL_NATIVE_SETUP === "1";
+assert(!nativeSetupMode || projectIntakeMode);
 const deliveryMode = process.env.COUNCIL_ORDINARY_DELIVERY === "1";
 const hierarchyCount = Number(process.env.COUNCIL_HIERARCHY_COUNT ?? 0);
 assert([0, 1, 3].includes(hierarchyCount) && (!hierarchyCount || projectIntakeMode));
@@ -187,6 +189,14 @@ try {
       publication: { publisherAgentId: actors.publisher, qaAgentId: actors.quality, repository: "ty000/paperclip-council", baseRef: "main", headRefPrefix: "codex/project-task", ...(feedbackMode ? { contract: { protocol: "council-pr-contract-v1", draftOnly: true, result: "draft-pr", feedback: "review-and-correct", requiredChecks: ["fixture-ci"] } } : {}) } };
     const configured = await api("POST", policyPath, policyBody);
     assert.equal((await api("POST", policyPath, policyBody)).outcome, "replayed");
+    if (nativeSetupMode) {
+      const setup = await api("GET", `${policyPath}?companyId=${companyId}&readiness=true`);
+      assert.equal(setup.readiness.configurationReady, true);
+      assert.equal(setup.readiness.launchAuthorized, false);
+      assert.equal(setup.policy.revisionId, configured.policy.revisionId);
+      proof.projectReadiness = setup.readiness;
+      record("native_project_setup_inspected_before_new_task", { revisionId: configured.policy.revisionId });
+    }
     const incomplete = await api("POST", `/api/companies/${companyId}/issues`, { title: "Incomplete task", projectId, status: "backlog", assigneeAgentId: actors.lead });
     const hierarchy = await api("POST", `/api/companies/${companyId}/issues`, { title: "Existing hierarchy", description: "Retain existing children for lot #51", projectId, status: "backlog" });
     const child = await api("POST", `/api/companies/${companyId}/issues`, { title: "Existing child retained", parentId: hierarchy.id, projectId, status: "backlog" });
