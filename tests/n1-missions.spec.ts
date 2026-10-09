@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { composedValidationGuidance } from "../src/composed-validation.js";
 import type { PluginApiRequestInput, PluginContext, PluginJobContext } from "@paperclipai/plugin-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -2847,7 +2848,7 @@ describe("hierarchy source integrity through two physical contribution dispatche
     expect(h.row().aggregate.n2).toBeUndefined();
   });
 
-  it("correlates a persisted integration creation after a lost response without recreating its task", async () => {
+  it.each(["new", "previous-version"])("correlates a persisted %s integration creation after a lost response without recreating its task", async projection => {
     const h = hierarchyProgression(); await h.dispatch(0); h.terminal(id.leadRun); await h.report(0); await h.tick(); await h.report(1);
     const create = h.create.getMockImplementation()!, list = h.list.getMockImplementation()!;
     h.create.mockImplementationOnce(async (...args) => { await create(...args); throw new Error("lost create response"); });
@@ -2855,6 +2856,13 @@ describe("hierarchy source integrity through two physical contribution dispatche
     h.list.mockImplementation(async (...args: unknown[]) => (args[0] as { originKind?: string })?.originKind === "plugin:private.paperclip-council:n1-integration" && hidden ? [] : (list as (...values: unknown[]) => Promise<never[]>)(...args));
     await expect(h.tick()).rejects.toMatchObject({ code: "hierarchy_integration_creation_unknown" });
     const original = structuredClone((h.row().aggregate.n1 as N1State).integration!);
+    expect(original.instructionsVersion).toBe("composed-validation-v1");
+    const issue = [...h.issues.values()].find(issue => (issue as any).originId === original.taskId)!;
+    expect((issue as any).description).toContain("actual delivered entry");
+    if (projection === "previous-version") {
+      h.advanceMission(aggregate => { delete (aggregate.n1 as N1State).integration!.instructionsVersion; return aggregate; });
+      (issue as any).description = (issue as any).description.replace(composedValidationGuidance("integration") + "\n", "");
+    }
     hidden = false;
     expect((await h.tick()).code).toBe("hierarchy_integration_started");
     expect((h.row().aggregate.n1 as N1State).integration).toMatchObject({ taskId: original.taskId, reservationId: original.reservationId });

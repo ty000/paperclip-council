@@ -11,6 +11,7 @@ import { bindVariantIssue, claimVariantWake, observeVariantRun, prepareVariantLa
 import { physicalAgent } from "./model-state.js";
 import { assertHierarchySources } from "./hierarchy-runtime.js";
 import { projectRoleContext } from "./project-workflow.js";
+import { composedValidationGuidance } from "./composed-validation.js";
 
 const state = (m: MissionRecord) => m.aggregate.n1 as N1State;
 const taskAt = (m: MissionRecord) => state(m).integration!;
@@ -21,7 +22,7 @@ const save = (ctx: PluginContext, m: MissionRecord, task: N1Integration) =>
 function instructions(m: MissionRecord) {
   const context = projectRoleContext(m, "integration");
   return `${context ? `${context}\n\n` : ""}Integrate the already verified sequential contributions for Council mission ${m.missionId}. This is the final integration stage, not another planning attempt. Do not redispatch or rewrite the children's commit history. Read the original root issue ${m.rootIssueId} and its native plan document before editing: implement the shared interfaces, wiring, and composed tests assigned to the lead in that plan, within projectMandate.allowedPaths. This stage grants only the planned integration work, no unrelated refactor or child reimplementation.
-POST /api/plugins/private.paperclip-council/api/issues/$PAPERCLIP_TASK_ID/council/commands with Authorization: Bearer $PAPERCLIP_API_KEY and x-paperclip-run-id: $PAPERCLIP_RUN_ID. Normalize trailing /api in PAPERCLIP_API_URL. Never print credentials.
+${taskAt(m).instructionsVersion === "composed-validation-v1" ? composedValidationGuidance("integration") + "\n" : ""}POST /api/plugins/private.paperclip-council/api/issues/$PAPERCLIP_TASK_ID/council/commands with Authorization: Bearer $PAPERCLIP_API_KEY and x-paperclip-run-id: $PAPERCLIP_RUN_ID. Normalize trailing /api in PAPERCLIP_API_URL. Never print credentials.
 Begin with exactly {"command":"inspect","missionId":"${m.missionId}"}. Require every participant to have a commit and ${m.aggregate.projectMandate?.completion?.result === "integrated-verified" ? "proof.readyAt (product delivery is still pending)" : "proof.closedAt"}; require n1.integration.runId to equal your run ID. Use n1.sourceBaseCommit as the immutable base; verify the working tree is clean and HEAD equals the final child's commit. If this fails, stop and report the exact mismatch without another wake.
 Complete the planned integration and run the repository's relevant composed validation. Preserve all child commits as ancestors. Create exactly one final integration commit containing the planned shared changes; use git commit --allow-empty only when no shared edit is necessary. Derive integrationAdjustedPaths from the exact changed files of that one commit (git diff --name-only HEAD^ HEAD), not from a handwritten approximation. Create refs/heads/base at sourceBaseCommit and refs/heads/candidate at the new full SHA; git bundle create <file> refs/heads/base refs/heads/candidate and git bundle verify <file>. Compute SHA-256 and upload multipart field file to /api/companies/${m.companyId}/issues/$PAPERCLIP_TASK_ID/attachments with the same authenticated headers. The attachment belongs to this admitted integration task; Council pins that native location while retaining the original product root as the candidate subject. Never upload using another agent's task or operator credentials.
 Inspect for the current version, then POST {command:"publish",missionId:"${m.missionId}",commandId:<node crypto.randomUUID()>,expectedVersion:<observed>,attachmentId:<upload response>,baseCommit:<full pinned SHA>,candidateCommit:<full new SHA>,expectedSha256:<computed digest>,integrationAdjustedPaths:<exact files from final commit>}. Omit integrationAdjustedPaths when the final commit is empty. Require HTTP 200. Retain sanitized non-2xx response and stop on failure. Finish your run; Council settles it then starts the admitted review. Do not PATCH native status, comment, or wake another run.
@@ -89,7 +90,7 @@ export async function advanceHierarchyIntegration(ctx: PluginContext, initial: M
   if (!state(m).integration) {
     assertContinuityDeparture(m); assertN1DepartureWindow(m);
     m = await save(ctx, m, { taskId: randomUUID(), reservationId: randomUUID(), settlementCommandId: randomUUID(),
-      issueId: null, creation: "pending", wake: "pending", runId: null });
+      issueId: null, creation: "pending", wake: "pending", runId: null, instructionsVersion: "composed-validation-v1" });
   }
   let task = taskAt(m);
   if (!task.runId) { await launch(ctx, m); return "hierarchy_integration_started"; }

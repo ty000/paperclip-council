@@ -78,10 +78,13 @@ export async function recordParentObligations(ctx: PluginContext, m: MissionReco
   const doc = await ctx.issues.documents.get(m.rootIssueId, key, m.companyId);
   let evidence: { missionId: string; integratedReportHash: string; obligations: Array<{ criterion: string; evidenceRefs: string[] }> };
   try { evidence = JSON.parse(doc?.body ?? ""); } catch { throw new MissionError(409, "parent_obligations_document", "Exact native parent evidence document required"); }
-  if (!doc || doc.latestRevisionId !== body.documentRevisionId || evidence.missionId !== m.missionId || evidence.integratedReportHash !== result.reportHash
+  if (!doc || !evidence || typeof evidence !== "object" || Array.isArray(evidence)
+      || doc.latestRevisionId !== body.documentRevisionId || evidence.missionId !== m.missionId || evidence.integratedReportHash !== result.reportHash
       || !Array.isArray(evidence.obligations) || evidence.obligations.length !== required.length
+      || evidence.obligations.some(o => !o || typeof o.criterion !== "string" || !Array.isArray(o.evidenceRefs)
+        || !o.evidenceRefs.length || o.evidenceRefs.length > 20 || o.evidenceRefs.some(r => typeof r !== "string" || !r.trim() || r.length > 1000))
       || required.some(criterion => evidence.obligations.filter(o => o.criterion === criterion).length !== 1)
-      || evidence.obligations.some(o => !Array.isArray(o.evidenceRefs) || !o.evidenceRefs.length || o.evidenceRefs.length > 20 || o.evidenceRefs.some(r => typeof r !== "string" || !r.trim() || r.length > 1000))) {
+  ) {
     throw new MissionError(409, "parent_obligations_binding", "Every own parent criterion must bind the exact integrated result and referenced evidence");
   }
   return n2CommandCas(ctx, m, body, "user", actorId, { ...m.aggregate, n5: { ...n5!, integration: { ...integration,

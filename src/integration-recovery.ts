@@ -38,7 +38,8 @@ async function readRecoveryEvidence(ctx: PluginContext, m: MissionRecord, body: 
   const doc = await ctx.issues.documents.get(m.rootIssueId, `council-recovery-${m.missionId}`, m.companyId);
   let evidence: { originalReportHash: string; recoveryReportHash: string; criteria: Array<{ criterion: string; evidenceRefs: string[] }> };
   try { evidence = JSON.parse(doc?.body ?? ""); } catch { throw new MissionError(409, "integration_recovery_document", "Native recovery assessment must pin both result proofs and remaining original criteria"); }
-  if (!doc?.latestRevisionId || doc.latestRevisionId !== body.documentRevisionId || evidence.originalReportHash !== originalReportHash
+  if (!doc?.latestRevisionId || !evidence || typeof evidence !== "object" || Array.isArray(evidence)
+      || doc.latestRevisionId !== body.documentRevisionId || evidence.originalReportHash !== originalReportHash
       || evidence.recoveryReportHash !== recoveryReportHash || !Array.isArray(evidence.criteria) || evidence.criteria.length > 32
       || evidence.criteria.some(c => !c || typeof c.criterion !== "string" || !Array.isArray(c.evidenceRefs) || !c.evidenceRefs.length
         || c.evidenceRefs.length > 20 || c.evidenceRefs.some(r => typeof r !== "string" || !r.trim() || r.length > 1000))
