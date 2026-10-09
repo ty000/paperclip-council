@@ -9,7 +9,8 @@ import { listContinuityMissions } from "./missions.js";
 import { handleModelProfiles, chooseModelProfile, inspectModelSelections, reconcileModelMeasurements } from "./model-api.js";
 import { ModelSelectionError } from "./model-state.js";
 import { handleN6WorkAgent } from "./n6-work-api.js";
-import { getMissionByN6WorkIssue } from "./missions.js";
+import { getMissionByCampaignReviewIssue, getMissionByN6WorkIssue } from "./missions.js";
+import { handleCampaignReviewAgent } from "./campaign-closure-api.js";
 import { handleN6Board } from "./n6-runtime.js";
 import { handleIntegrationRequest } from "./integration-runtime.js";
 import { handleN5Agent, handleN5Board } from "./n5-runtime.js";
@@ -222,6 +223,9 @@ async function handleInspection(input: PluginApiRequestInput, context: PluginCon
 async function handleMissionAgentCommand(input: PluginApiRequestInput, context: PluginContext) {
   const command = input.body && typeof input.body === "object" && !Array.isArray(input.body)
     ? (input.body as Record<string, unknown>).command : null;
+  if (command === "campaign-review-inspect" || await getMissionByCampaignReviewIssue(context, input.companyId, input.params.issueId)) {
+    return handleCampaignReviewAgent(context, input);
+  }
   if (String(command).startsWith("n6-") || await getMissionByN6WorkIssue(context, input.companyId, input.params.issueId)) return handleN6WorkAgent(context, input);
   if (["n5-claim-merge", "n5-observe-integration"].includes(String(command))) return handleIntegrationRequest(context, input);
   if (["n5-claim-cancellation", "n5-observe-cancellation"].includes(String(command))) return handleCancellationRequest(context, input);

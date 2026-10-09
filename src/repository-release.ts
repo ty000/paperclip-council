@@ -17,7 +17,7 @@ async function campaignTerminal(ctx: PluginContext, m: MissionRecord) {
 function unresolvedCreation(m: MissionRecord) {
   const n1 = m.aggregate.n1 as N1State | undefined;
   const tasks = [...(m.aggregate.n2?.ordinary?.tasks ?? []), ...(m.aggregate.n6?.coordination?.tasks ?? []),
-    ...(n1?.integration ? [n1.integration] : [])];
+    ...(n1?.integration ? [n1.integration] : []), ...(m.aggregate.campaignClosure ? [m.aggregate.campaignClosure.task] : [])];
   return n1?.contributions.some(s => ["creation_claimed", "unknown"].includes(s.issueState) || s.nativeWait?.state === "claimed")
     || (n1?.coordination?.state === "claimed" && !n1.coordination.issueId)
     || m.aggregate.modelSelection?.tasks.some(task => task.launches.some(launch => !launch.runId && ["wake_claimed", "unknown"].includes(launch.state)))
