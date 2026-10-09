@@ -38,7 +38,8 @@ export async function prepareLinearContinuity(ctx: PluginContext, initial: Missi
       sourceRootId: readiness.sourceRootId, subject, authoritySha256: linearAuthorityHash(m) };
     m = await n2Cas(ctx, m, { ...m.aggregate, linearContinuity: { protocol: LINEAR_CONTINUITY_PROTOCOL, binding,
       ...(policy.content.linearContinuity.mode ? { mode: policy.content.linearContinuity.mode } : {}),
-      authorizedBy: policy.authorizedBy, sourceSha256: subject.sourceSha256, sequence: 0, control: "running", consumed: [], publications: [], safeSettlementIds: {} } });
+      authorizedBy: policy.authorizedBy, sourceSha256: readiness.campaign?.materialSourceSha256 ?? subject.sourceSha256,
+      sequence: 0, control: "running", consumed: [], publications: [], safeSettlementIds: {} } });
   }
   m = await reconcileLinearContinuity(ctx, m);
   await assertLinearContinuityDeparture(ctx, m);

@@ -1,6 +1,7 @@
 import { z } from "@paperclipai/plugin-sdk";
 import { MissionError } from "./mission-primitives.js";
 import type { ProjectMandateContent } from "./project-mandate-state.js";
+import { linearCampaignReadinessSchema, linearCampaignSourceSchema } from "./linear-campaign-contract.js";
 
 export const LINEAR_ORIGIN = "plugin:ty000.linear-intake";
 export const LINEAR_READINESS_KEY = "linear-intake-readiness-v1";
@@ -51,6 +52,7 @@ const readinessSchema = z.object({ schema: z.literal("linear-native-readiness.v1
   correspondence: z.array(correspondenceSchema).min(1).max(33), effects: z.array(effectSchema).min(3).max(99),
   externalBlockers: z.array(z.unknown()).max(10000), importStatus: z.literal("prepared"), admissionAllowed: z.literal(false),
   implementationStarted: z.literal(false), receivingContract: z.literal("unqualified"), requiresCurrentSourceAndMandateRevalidation: z.literal(true),
+  campaign: linearCampaignReadinessSchema.optional(),
 }).strict();
 export type LinearReadiness = z.infer<typeof readinessSchema>;
 const referenceSchema = z.object({ id: z.string().min(1) }).passthrough();
@@ -63,6 +65,7 @@ const sourceSchema = z.object({ id: z.string().min(1), uuid, parentId: z.string(
   stateHistory: z.array(z.object({ state: stateSchema, startedAt: timestamp, endedAt: timestamp.nullable() }).passthrough()),
 }).passthrough();
 const sourceDocumentSchema = z.object({ schema: z.literal("linear-native-source.v1"), organizationId: uuid, sourceSha256: digest,
+  campaign: linearCampaignSourceSchema.optional(),
   source: sourceSchema, provenance: z.object({ originKind: z.literal(LINEAR_ORIGIN), intakeId, activationId: uuid,
     rootSourceId: uuid, catalogSha256: digest }).strict() }).strict();
 export type LinearSourceDocument = z.infer<typeof sourceDocumentSchema>;
@@ -85,7 +88,7 @@ export function parseLinearSource(body: string): LinearSourceDocument { return p
 function parseDocument<T>(body: string, schema: z.ZodType<T>): T {
   requireLinear(Buffer.byteLength(body) <= 8 * 1024 * 1024, "linear_document_bound");
   let raw: unknown;
-  try { raw = JSON.parse(body); } catch { throw new MissionError(409, "linear_document_invalid", "Valid complete immutable JSON document required"); }
+  try { raw = JSON.parse(body); } catch { throw new MissionError(409, "linear_document_invalid", "Valid complete revision-bound JSON document required"); }
   const parsed = schema.safeParse(raw);
   requireLinear(parsed.success, "linear_document_invalid");
   return parsed.data;
