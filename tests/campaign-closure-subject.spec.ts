@@ -7,7 +7,7 @@ import { hierarchyLaunchGuidance } from "../src/hierarchy-guidance.js";
 
 const f = vi.hoisted(() => ({ members: [] as MissionRecord[], evidence: { review: "exact leaf review" },
   integrated: { url: "https://example.test/pull/1", integratedCommit: "a".repeat(40) } }));
-vi.mock("../src/repository-campaign.js", () => ({ listCampaignMembers: async () => f.members }));
+vi.mock("../src/repository-campaign.js", async original => ({ ...await original<any>(), listCampaignMembers: async () => f.members }));
 vi.mock("../src/completion-evidence.js", () => ({ completionEvidence: () => f.evidence }));
 vi.mock("../src/integration-contract.js", () => ({ integratedResult: () => f.integrated }));
 vi.mock("../src/integration-recovery.js", () => ({ assertIntegrationRecoveryStable: async () => {} }));
@@ -94,10 +94,15 @@ beforeEach(() => {
     aggregate: { completion: { state: "closed", proofId: canonicalPayloadHash(f.evidence), documentKey: "leaf-completion",
       documentRevisionId: completionDocument.latestRevisionId, body: completionBody }, compositions: { team: { members: [] } } } } as unknown as MissionRecord;
   f.members = [member];
-  const plan = { intentId: randomUUID(), payloadSha256: digest("plan-publication"), payload: { campaignPlan: { schema: "council-linear-delivery-plan-v1" } }, acknowledgement: { reference: {}, confirmedAt: now } };
+  const rootMissionId = randomUUID();
+  member.aggregate.repositoryCampaign = { campaignRootMissionId: rootMissionId };
+  const plan = { intentId: randomUUID(), payloadSha256: digest("plan-publication"), payload: { campaignPlan: {
+    schema: "council-linear-delivery-plan-v1", campaignRootMissionId: rootMissionId,
+    leaves: [{ sourceId: leafSourceId, nativeId: leafIssueId }],
+  } }, acknowledgement: { reference: {}, confirmedAt: now } };
   const delivery = { intentId: randomUUID(), payloadSha256: digest("delivery-publication"), payload: { campaignDelivery: {
     schema: "council-linear-delivery-result-v1", sourceMissionId: memberMissionId } }, acknowledgement: { reference: {}, confirmedAt: now } };
-  root = { companyId, projectId, missionId: randomUUID(), rootIssueId, ownerUserId: "owner", version: 1,
+  root = { companyId, projectId, missionId: rootMissionId, rootIssueId, ownerUserId: "owner", version: 1,
     aggregate: { mandate: { objective: "Milestone", acceptanceCriteria: ["All exact work ships"], commitments: ["Keep source immutable"] },
       projectMandate: { linearIntake: { subject } }, compositions: { team: { members: [] } },
       responsibilities: { finalReviewerAgentId: randomUUID() }, hierarchy: { nodes },
@@ -125,6 +130,12 @@ it("refuses a manual parent Done instead of treating it as global proof", async 
   const parent = root.aggregate.hierarchy!.nodes![1]!;
   issues.get(parent.issueId).status = "done";
   await expect(currentCampaignClosureSubject(context(), root)).rejects.toMatchObject({ code: "campaign_review_manual_done" });
+});
+
+it("refuses global review while an acknowledged plan leaf has no campaign mission", async () => {
+  const plan = root.aggregate.linearContinuity!.publications[0]!.payload.campaignPlan as { leaves: unknown[] };
+  plan.leaves.push({ sourceId: randomUUID(), nativeId: randomUUID() });
+  await expect(currentCampaignClosureSubject(context(), root)).rejects.toMatchObject({ code: "campaign_review_publication" });
 });
 
 it("accepts only the exact persisted Council execution suffix on a delivery leaf", async () => {

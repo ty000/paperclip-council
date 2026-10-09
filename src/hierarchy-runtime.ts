@@ -53,28 +53,42 @@ async function sourceBlockerIds(ctx: PluginContext, m: MissionRecord, issueId: s
   return ids.filter(id => id !== waitId).sort();
 }
 
+async function campaignNodeOwners(ctx: PluginContext, m: MissionRecord) {
+  const owners = new Map<string, MissionRecord>();
+  if (!m.aggregate.campaignClosure || m.aggregate.repositoryCampaign) return owners;
+  const { campaignPlanCoversMembers, listCampaignMembers } = await import("./repository-campaign.js");
+  const members = await listCampaignMembers(ctx, m);
+  if (!campaignPlanCoversMembers(m, members)) {
+    throw new MissionError(409, "hierarchy_source_changed", "Campaign leaf ownership must retain the exact acknowledged delivery plan");
+  }
+  for (const member of members) owners.set(member.rootIssueId, member);
+  return owners;
+}
+
 /** All sources remain native. Changes require a new owner decision, never inferred adoption. */
 export async function assertHierarchySources(ctx: PluginContext, m: MissionRecord) {
   const hierarchy = m.aggregate.hierarchy;
   if (!hierarchy?.nodes) return;
   await assertLinearReadiness(ctx, m);
   const issues = await projectIssues(ctx, m.companyId, m.projectId);
+  const campaignOwners = await campaignNodeOwners(ctx, m);
   const expected = new Set(hierarchy.nodes.map(node => node.issueId));
   const operational = new Set([m.aggregate.n5?.publication?.issueId, m.aggregate.n5?.continuation?.previousPublication.issueId, m.aggregate.n5?.integration?.previousPublication.issueId].filter(Boolean));
   if (issues.some(issue => issue.parentId && expected.has(issue.parentId) && !expected.has(issue.id) && !operational.has(issue.id))) {
     throw new MissionError(409, "hierarchy_source_changed", "A new descendant is outside the pinned hierarchy; retain all tasks without another departure");
   }
   for (const node of hierarchy.nodes) {
+    const owner = campaignOwners.get(node.issueId) ?? m;
     const issue = await ctx.issues.get(node.issueId, m.companyId);
     await assertLinearNode(ctx, m, node, issue);
     const leaf = hierarchy.leaves?.find(item => item.issueId === node.issueId);
-    const agentId = node.assigneeAgentId && leaf ? physicalAgent(m, node.assigneeAgentId, { issueId: node.issueId }) : node.assigneeAgentId;
+    const agentId = node.assigneeAgentId && leaf ? physicalAgent(owner, node.assigneeAgentId, { issueId: node.issueId }) : node.assigneeAgentId;
     const relations = await ctx.issues.relations.get(node.issueId, m.companyId);
     if (node.historicalStatus && issue?.status !== node.historicalStatus) throw new MissionError(409, "hierarchy_history_changed", "Imported terminal history cannot be reopened or counted as new execution");
     if (!issue || issue.id !== node.issueId || issue.companyId !== m.companyId || issue.projectId !== m.projectId
         || !issues.some(item => item.id === issue.id) || issue.parentId !== node.parentId || issue.title !== node.title
-        || !descriptionMatchesSource(m, issue.id, issue.description, node.descriptionHash)
-        || issue.assigneeAgentId !== agentId || canonicalPayloadHash(await sourceBlockerIds(ctx, m, node.issueId, relations.blockedBy.map(item => item.id))) !== canonicalPayloadHash(node.blockedByIssueIds)) {
+        || !descriptionMatchesSource(owner, issue.id, issue.description, node.descriptionHash)
+        || issue.assigneeAgentId !== agentId || canonicalPayloadHash(await sourceBlockerIds(ctx, owner, node.issueId, relations.blockedBy.map(item => item.id))) !== canonicalPayloadHash(node.blockedByIssueIds)) {
       throw new MissionError(409, "hierarchy_source_changed", "Pinned task identity, result, assignment or native dependencies changed; no replacement or blocker removal");
     }
     if (leaf && (await ctx.issues.documents.get(leaf.issueId, "council-work", m.companyId))?.latestRevisionId !== leaf.documentRevisionId) {

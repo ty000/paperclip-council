@@ -113,7 +113,7 @@ export function validateCampaignReviewReport(subject: CampaignClosureSubject, ta
       throw new MissionError(409, "campaign_review_coverage", "Coverage rows may reference only the pinned sources, deliveries and current proofs");
     }
     const satisfied = row.result === "satisfied";
-    if (satisfied !== (row.proofIds.length > 0 && row.remainder === null)) {
+    if (satisfied ? row.proofIds.length === 0 || row.remainder !== null : row.remainder === null) {
       throw new MissionError(409, "campaign_review_result", "Satisfied rows need current proof and no remainder; every other row needs an explicit remainder");
     }
   }

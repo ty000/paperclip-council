@@ -4,8 +4,15 @@ import { canonicalPayloadHash, type MissionRecord } from "../src/missions.js";
 import { assertHierarchySources } from "../src/hierarchy-runtime.js";
 import { ensureHierarchyLaunchGuidance } from "../src/hierarchy-guidance.js";
 import { linearContextGuidance } from "../src/linear-context-guidance.js";
+import { modelLaunchGuidance } from "../src/model-state.js";
+
+const campaign = vi.hoisted(() => ({ members: [] as MissionRecord[] }));
+vi.mock("../src/repository-campaign.js", async original => ({ ...await original<any>(),
+  listCampaignMembers: async () => campaign.members,
+}));
 
 function fixture() {
+  campaign.members = [];
   const issue = { id: "child", companyId: "company", projectId: "project", parentId: "root", title: "Port", description: "Implement the port", assigneeAgentId: "agent" };
   const node = { issueId: issue.id, parentId: issue.parentId, title: issue.title, descriptionHash: canonicalPayloadHash(issue.description), assigneeAgentId: "agent", blockedByIssueIds: [] };
   const leaf = { ...node, contributionId: "contribution", documentRevisionId: "ownership-v1" };
@@ -50,5 +57,22 @@ describe("hierarchy assignment carries Council handoff instructions", () => {
     await expect(assertHierarchySources(f.ctx, f.m)).resolves.toBeUndefined();
     f.issue.description = f.issue.description.replace("Preserve this interface", "Changed annotation");
     await expect(assertHierarchySources(f.ctx, f.m)).rejects.toMatchObject({ code: "hierarchy_source_changed" });
+  });
+  it("validates a campaign leaf through its exact member model binding", async () => {
+    const f = fixture(), physical = "physical-agent", launchKey = "leaf-launch";
+    const launch = { taskKey: "leaf", interventionKey: "lead", launchKey, logicalAgentId: "agent", agentId: physical,
+      roleKey: "implementation", profileId: "sol-medium", requestedProfileId: "sol-medium", family: "implementation",
+      rationale: "Pinned leaf profile", authority: "default", mappingRevision: "1", variantRevision: "1",
+      selectedAt: new Date().toISOString(), state: "bound", issueId: "child", runId: "leaf-run", ascent: false } as const;
+    const member = { ...f.m, missionId: "leaf-mission", rootIssueId: "child", aggregate: { ...f.m.aggregate,
+      repositoryCampaign: { campaignRootMissionId: "mission" }, modelSelection: { protocol: "native-variants-v1", choices: [],
+        tasks: [{ taskKey: "leaf", mapping: {} as never, variantRevision: "1", launches: [launch] }] } } } as MissionRecord;
+    campaign.members = [member];
+    f.m.aggregate.campaignClosure = {} as never;
+    f.m.aggregate.linearContinuity = { publications: [{ payload: { campaignPlan: { schema: "council-linear-delivery-plan-v1",
+      campaignRootMissionId: f.m.missionId, leaves: [{ sourceId: "source", nativeId: "child" }] } } }] } as never;
+    f.issue.assigneeAgentId = physical;
+    f.issue.description += `\n\n${modelLaunchGuidance(member, launch, "child")}`;
+    await expect(assertHierarchySources(f.ctx, f.m)).resolves.toBeUndefined();
   });
 });

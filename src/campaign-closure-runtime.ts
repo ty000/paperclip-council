@@ -9,6 +9,7 @@ import { physicalAgent } from "./model-state.js";
 import { linearPublicationState } from "./linear-continuity-transport.js";
 import { readLinearProof } from "./linear-continuity-documents.js";
 import { assertLinearContinuityDeparture } from "./linear-continuity-control.js";
+import { assertProjectDeparture } from "./project-mandate-guard.js";
 import { campaignMembersSafe, listCampaignMembers } from "./repository-campaign.js";
 import { assertCampaignClosureReadback, campaignClosureFingerprint, validateCampaignReviewReport,
   type CampaignClosureState, type CampaignReviewTask } from "./campaign-closure-contract.js";
@@ -172,8 +173,9 @@ async function ensureProofDocument(ctx: PluginContext, initial: MissionRecord) {
 }
 
 async function queueClosurePublication(ctx: PluginContext, initial: MissionRecord) {
+  await assertProjectDeparture(ctx, initial);
   let m = await ensureProofDocument(ctx, initial); let state = m.aggregate.campaignClosure!;
-  await assertLinearContinuityDeparture(ctx, m);
+  await assertProjectDeparture(ctx, m);
   const current = await currentCampaignClosureSubject(ctx, m);
   if (campaignClosureFingerprint(current) !== campaignClosureFingerprint(state.subject)) {
     return blockedReview(ctx, m, "review_subject_stale", state.report);
@@ -211,16 +213,13 @@ async function observeClosurePublication(ctx: PluginContext, initial: MissionRec
   try { receipt = JSON.parse(document.body); } catch { throw new MissionError(409, "campaign_close_ack", "The global publication acknowledgement must be valid JSON"); }
   const statusUpdates = (publication.payload.statusUpdates ?? []) as Array<{ sourceId: string; state: string }>;
   assertCampaignClosureReadback(initial.aggregate.linearContinuity!.binding.sourceRootId, statusUpdates, receipt.effects);
+  await assertLinearContinuityDeparture(ctx, initial);
   return saveClosure(ctx, initial, { ...state, phase: "closing", publicationAcknowledgedAt: publication.acknowledgement.confirmedAt });
 }
 
-async function closeOneNativeNode(ctx: PluginContext, initial: MissionRecord) {
-  let m = initial; let state = m.aggregate.campaignClosure!;
-  const entry = state.nativeClosures.find(item => item.state !== "confirmed");
-  if (!entry) return m;
-  if (m.aggregate.linearContinuity!.control !== "running") return m;
-  const node = m.aggregate.hierarchy!.nodes!.find(item => item.issueId === entry.issueId)!;
-  const issue = await ctx.issues.get(entry.issueId, m.companyId);
+async function nativeNodeReadyToClose(ctx: PluginContext, m: MissionRecord, issueId: string) {
+  const node = m.aggregate.hierarchy!.nodes!.find(item => item.issueId === issueId)!;
+  const issue = await ctx.issues.get(issueId, m.companyId);
   const expected = { companyId: m.companyId, projectId: m.projectId, parentId: node.parentId, assigneeAgentId: node.assigneeAgentId };
   if (!issue || Object.entries(expected).some(([key, value]) => (issue[key as keyof typeof issue] ?? null) !== value)
       || issue.checkoutRunId || issue.executionRunId) throw new MissionError(409, "campaign_close_native_identity", "Only the original idle campaign parent may close");
@@ -232,7 +231,16 @@ async function closeOneNativeNode(ctx: PluginContext, initial: MissionRecord) {
   if (relations.blockedBy.some(blocker => !["done", "cancelled"].includes(blocker.status))) {
     throw new MissionError(409, "campaign_close_dependency", "Native blockers must be terminal before campaign closure");
   }
+  return issue;
+}
+
+async function closeOneNativeNode(ctx: PluginContext, initial: MissionRecord) {
+  let m = initial; let state = m.aggregate.campaignClosure!;
+  const entry = state.nativeClosures.find(item => item.state !== "confirmed");
+  if (!entry || m.aggregate.linearContinuity!.control !== "running") return m;
+  const issue = await nativeNodeReadyToClose(ctx, m, entry.issueId);
   if (entry.state === "pending") {
+    await assertLinearContinuityDeparture(ctx, m);
     if (!["backlog", "blocked"].includes(issue.status)) throw new MissionError(409, "campaign_review_manual_done", "A manual terminal status cannot replace the claimed Council closure");
     state = { ...state, nativeClosures: state.nativeClosures.map(item => item === entry ? { ...item, state: "claimed" } : item) };
     m = await saveClosure(ctx, m, state);
@@ -255,6 +263,7 @@ async function finishClosure(ctx: PluginContext, initial: MissionRecord) {
   if (state.nativeClosures.some(item => item.state !== "confirmed")) throw new MissionError(409, "campaign_close_bound", "Native campaign closure exceeded the fixed 33-node bound");
   m = await fresh(ctx, m);
   if (m.aggregate.linearContinuity!.control !== "running" || m.aggregate.campaignClosure!.phase !== "closing") return m;
+  await assertLinearContinuityDeparture(ctx, m);
   const reviewerAgentId = physicalAgent(m, state.task.agentId, { launchKey: state.task.reservationId,
     issueId: state.task.issueId!, runId: state.task.runId! });
   const completedAt = new Date().toISOString();
