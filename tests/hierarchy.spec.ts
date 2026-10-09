@@ -7,6 +7,7 @@ import { parseHierarchyPolicy } from "../src/hierarchy-contract.js";
 import { prepareHierarchy } from "../src/hierarchy-intake.js";
 import { assertHierarchySources, assertHierarchyDependencies } from "../src/hierarchy-runtime.js";
 import { prepareHierarchyCoordinator, type N1Coordination } from "../src/hierarchy-coordinator.js";
+import { composedValidationGuidance } from "../src/composed-validation.js";
 vi.mock("../src/rosters.js", () => ({ validateRosterPair: async () => ({ eligible: true,
   team: { head: { publishedRevision: "team-v1" }, revision: { content: { members: ["lead", "a", "b", "c"].map(agentId => ({ agentId })) } } } }) }));
 
@@ -78,7 +79,7 @@ describe("explicit native hierarchy contract", () => {
 });
 
 describe("durable operational coordinator", () => {
-  it("correlates a lost create response after restart with no second create or reservation", async () => {
+  it.each(["new", "previous-version"])("correlates a lost %s create response after restart with no second create or reservation", async projection => {
     const body = { commandId: randomUUID(), expectedVersion: 1 };
     let m = { missionId: randomUUID(), companyId: "company", projectId: "project", rootIssueId: "root", ownerUserId: "owner", version: 1,
       aggregate: { hierarchy: { leaves: [{ issueId: "child" }] }, responsibilities: { integrationLeadAgentId: "lead" }, n1: {}, mandate: {} } } as MissionRecord;
@@ -89,6 +90,12 @@ describe("durable operational coordinator", () => {
     const persist = async (before: MissionRecord, coordination: N1Coordination) => m = { ...before, version: before.version + 1,
       aggregate: { ...before.aggregate, n1: { ...before.aggregate.n1, coordination } } };
     await expect(prepareHierarchyCoordinator(ctx, m, body, persist)).rejects.toMatchObject({ code: "hierarchy_coordinator_unknown" });
+    expect(m.aggregate.n1!.coordination).toMatchObject({ instructionsVersion: "lead-commands-v2" });
+    expect(issue.description).toContain("shared interfaces and wiring");
+    if (projection === "previous-version") {
+      (m.aggregate.n1!.coordination as N1Coordination).instructionsVersion = "lead-commands-v1";
+      issue.description = issue.description.replace(composedValidationGuidance("planner") + "\n", "");
+    }
     const claimed = structuredClone(m);
     m = await prepareHierarchyCoordinator(ctx, claimed, body, persist);
     expect(m.aggregate.n1!.coordination).toMatchObject({ state: "confirmed", issueId: "coordinator" });

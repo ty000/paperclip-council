@@ -7,6 +7,7 @@ export type N1Integration = {
   issueId: string | null; creation: "pending" | "claimed" | "confirmed";
   wake: "pending" | "claimed"; runId: string | null; usageBaselineUnits?: number;
   settledAt?: string;
+  instructionsVersion?: "composed-validation-v1";
 };
 
 export function n1LeadExecution(m: MissionRecord) {

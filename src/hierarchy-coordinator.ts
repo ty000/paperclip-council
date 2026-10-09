@@ -3,17 +3,19 @@ import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { MissionError, canonicalPayloadHash } from "./mission-primitives.js";
 import type { MissionRecord } from "./missions.js";
 import { projectRoleContext } from "./project-workflow.js";
+import { composedValidationGuidance } from "./composed-validation.js";
 
 export type N1Coordination = { intentId: string; issueId: string | null; state: "preparing" | "claimed" | "confirmed";
-  commandId: string; commandHash: string; ownerUserId: string; preparedVersion: number; instructionsVersion?: "lead-commands-v1" };
+  commandId: string; commandHash: string; ownerUserId: string; preparedVersion: number; instructionsVersion?: "lead-commands-v1" | "lead-commands-v2" };
 type Persist = (m: MissionRecord, coordination: N1Coordination) => Promise<MissionRecord>;
 
 function instructions(m: MissionRecord) {
   const context = projectRoleContext(m, "lead");
   const prefix = context ? `${context}\n\n` : "";
   const mandate = context ? "" : `Mandate: ${JSON.stringify(m.aggregate.mandate)}\n`;
-  if ((m.aggregate.n1?.coordination as N1Coordination | undefined)?.instructionsVersion === "lead-commands-v1") return `${prefix}Coordinate Council mission ${m.missionId}, original root ${m.rootIssueId}, on this admitted native task. Read Council inspect with missionId=${m.missionId}; inspect.n1.leadCommands contains the executable plan/materialize shell block and its usage. Use it to generate technical identities and a fresh version. The pinned hierarchy is the plan; do not invent IDs or replacement leaves. Before planning, read this task's mandate and hierarchy below. The council-execution documents exist only after materialization and are for contributors.
-Preserve a journaled request after any refusal, lost response or mismatched business readback. Stop for exact readback; do not retry with a new identity. Dispatch and publish remain subject to existing Council admission, predecessor settlement and exact candidate proof. No direct wake, dependency removal or extra budget. The parent remains pending delivery evidence.
+  const version = (m.aggregate.n1?.coordination as N1Coordination | undefined)?.instructionsVersion;
+  if (version === "lead-commands-v1" || version === "lead-commands-v2") return `${prefix}Coordinate Council mission ${m.missionId}, original root ${m.rootIssueId}, on this admitted native task. Read Council inspect with missionId=${m.missionId}; inspect.n1.leadCommands contains the executable plan/materialize shell block and its usage. Use it to generate technical identities and a fresh version. The pinned hierarchy is the plan; do not invent IDs or replacement leaves. Before planning, read this task's mandate and hierarchy below. The council-execution documents exist only after materialization and are for contributors.
+${version === "lead-commands-v2" ? composedValidationGuidance("planner") + "\n" : ""}Preserve a journaled request after any refusal, lost response or mismatched business readback. Stop for exact readback; do not retry with a new identity. Dispatch and publish remain subject to existing Council admission, predecessor settlement and exact candidate proof. No direct wake, dependency removal or extra budget. The parent remains pending delivery evidence.
 Plugins/skills à utiliser : accès Paperclip authentifié et Council inspect, puis son bloc leadCommands pour plan/materialize ; ensuite les contrôles Git/Paperclip déjà accessibles pour dispatch, settlement et publish. Aucune installation de skill ni modification de droits.
 Modèle et effort recommandés : conserver le modèle et l'effort du profil Council déjà épinglé pour ce lead ; réévaluer uniquement sur ambiguïté substantielle via une nouvelle autorisation. Mapping indépendant absent du checkout et du chemin partagé vérifiés le 2026-10-09 ; aucun modèle de substitution n'est configuré. Disponibilité sur la cible non vérifiée par ce texte.
 ${mandate}Hierarchy: ${JSON.stringify(m.aggregate.hierarchy)}
@@ -32,7 +34,7 @@ export async function prepareHierarchyCoordinator(ctx: PluginContext, initial: M
   let m = initial; let intent = m.aggregate.n1?.coordination as N1Coordination | undefined;
   if (!intent) {
     intent = { intentId: randomUUID(), issueId: null, state: "preparing", commandId: String(body.commandId),
-      commandHash: canonicalPayloadHash(body), ownerUserId: m.ownerUserId, preparedVersion: m.version + 1, instructionsVersion: "lead-commands-v1" };
+      commandHash: canonicalPayloadHash(body), ownerUserId: m.ownerUserId, preparedVersion: m.version + 1, instructionsVersion: "lead-commands-v2" };
     m = await persist(m, intent);
   }
   if (intent.commandHash !== canonicalPayloadHash(body) || intent.ownerUserId !== m.ownerUserId) throw new MissionError(409, "hierarchy_coordinator_command", "Reuse the original coordinator command and owner; no replacement identity");
