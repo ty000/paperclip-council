@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { campaignMembersSafe } from "../src/repository-campaign.js";
+import { campaignMembersSafe, campaignProgress } from "../src/repository-campaign.js";
 
 const f = vi.hoisted(() => ({ members: new Map<string, any>(), bindings: [] as any[], uncertain: false }));
 vi.mock("../src/missions.js", async original => ({ ...await original<any>(), getMission: async (_ctx: unknown, _company: string, id: string) => f.members.get(id) ?? null }));
@@ -32,4 +32,15 @@ it("keeps root pause and release unsafe while any private member has exposure, u
   expect(await campaignMembersSafe(x.ctx, root, "closed")).toBe(false);
   expect(await campaignMembersSafe(x.ctx, root, "cancelled")).toBe(true);
   x.issueStatus("backlog"); expect(await campaignMembersSafe(x.ctx, root, "cancelled")).toBe(false);
+});
+
+it("does not report a closed campaign while a planned leaf has no native mission", async () => {
+  const x = fixture();
+  root.aggregate.linearContinuity = { publications: [{ payload: { campaignPlan: {
+    schema: "council-linear-delivery-plan-v1", campaignRootMissionId: root.missionId,
+    leaves: [{ sourceId: "source-1", nativeId: x.member.rootIssueId }, { sourceId: "source-2", nativeId: "issue-not-created" }],
+  } } }] };
+  await expect(campaignProgress(x.ctx, root)).resolves.toMatchObject({ allMembersClosed: false });
+  root.aggregate.linearContinuity.publications[0].payload.campaignPlan.leaves.pop();
+  await expect(campaignProgress(x.ctx, root)).resolves.toMatchObject({ allMembersClosed: true });
 });

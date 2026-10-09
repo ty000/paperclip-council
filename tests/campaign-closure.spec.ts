@@ -47,6 +47,8 @@ it("retains a valid negative verdict as an explicit terminal review result", () 
   const blocked = { ...r, verdict: "blocked" as const, rows: r.rows.map((row, index) => index ? row : {
     ...row, result: "unsatisfied" as const, proofIds: [], remainder: "Parent obligation has no current proof" }) };
   expect(validateCampaignReviewReport(s, r.taskId, blocked)).toEqual(blocked);
+  expect(() => validateCampaignReviewReport(s, r.taskId, { ...blocked,
+    rows: blocked.rows.map(row => ({ ...row, remainder: null })) })).toThrowError(/explicit remainder/);
 });
 
 it("rejects a competing cancellation after the terminal publication CAS claim", async () => {

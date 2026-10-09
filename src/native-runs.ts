@@ -50,21 +50,45 @@ async function exceptionRun(ctx: PluginContext, m: MissionRecord, summary: Plugi
     && run.contextSnapshot?.issueId === summary.issueId ? run : null;
 }
 
+async function campaignInventoryMembers(ctx: PluginContext, m: MissionRecord) {
+  if (m.aggregate.linearContinuity?.mode !== "milestone-fixed-v1" || m.aggregate.repositoryCampaign) return [];
+  const { campaignMembersSafe, campaignPlanContainsMembers, campaignPlanCoversMembers, listCampaignMembers } = await import("./repository-campaign.js");
+  const members = await listCampaignMembers(ctx, m);
+  if (!members.length && !m.aggregate.campaignClosure) return [];
+  if (!campaignPlanContainsMembers(m, members)) {
+    throw new MissionError(409, "campaign_inventory_members", "Observed members must retain their exact identities within the original campaign plan");
+  }
+  for (const member of members) await assertNativeRunInventory(ctx, member);
+  if (m.aggregate.campaignClosure && (!campaignPlanCoversMembers(m, members) || !await campaignMembersSafe(ctx, m, "closed"))) {
+    throw new MissionError(409, "campaign_review_members", "Campaign review inventory requires every exact planned member to remain safely proof-closed");
+  }
+  return members;
+}
+
 /** Observation may stop subsequent launches; it cannot intercept every external provider departure. */
 export async function assertNativeRunInventory(ctx: PluginContext, m: MissionRecord, newDeparture = false) {
   const policy = m.aggregate.nativeWakePolicy;
   if (policy?.protocol !== "council-native-wake-v2") return;
+  const delegatedMembers = await campaignInventoryMembers(ctx, m);
   const bindings = nativeRunBindings(m);
-  const issueIds = [...new Set([m.rootIssueId, ...(m.aggregate.hierarchy?.nodes ?? []).map(node => node.issueId), ...bindings.map(binding => binding.issueId)])];
+  const rootBindingIssueIds = new Set(bindings.map(binding => binding.issueId));
+  const delegatedIssueIds = new Set(delegatedMembers.flatMap(member => [member.rootIssueId,
+    ...(member.aggregate.hierarchy?.nodes ?? []).map(node => node.issueId),
+    ...nativeRunBindings(member).map(binding => binding.issueId)]).filter(issueId => !rootBindingIssueIds.has(issueId)));
+  const issueIds = [...new Set([m.rootIssueId, ...(m.aggregate.hierarchy?.nodes ?? []).map(node => node.issueId),
+    ...bindings.map(binding => binding.issueId)].filter(issueId => !delegatedIssueIds.has(issueId)))];
   if (issueIds.length > 64) throw new MissionError(409, "native_run_inventory_bound", "Owned issue inventory exceeds its observation bound; no launch permitted");
   const summaries = (await Promise.all(issueIds.map(id => issueRuns(ctx, m.companyId, id)))).flat();
   const { periodKey } = (await readNativeG4Profile(ctx, m.companyId)) ?? {};
   if (!periodKey) throw new MissionError(409, "native_run_accounting_profile", "Pinned native inventory requires its configured token accounting period");
   if (m.aggregate.n1?.periodKey && m.aggregate.n1.periodKey !== periodKey) throw new MissionError(409, "native_run_period_drift", "The accounting period changed; retain the mission's original ledger");
   let envelope = await readAdmission(ctx, { companyId: m.companyId, periodKey });
-  const reserved = bindings.filter(binding => envelope?.reservations.some(r => r.missionId === m.missionId && r.reservationId === binding.reservationId));
-  const baseline = (run: PluginIssueRunSummary) => run.issueId === m.rootIssueId && policy.rootBaseline.some(old => old.runId === run.id && old.agentId === run.agentId);
-  const foreign = summaries.filter(run => !reserved.some(binding => binding.runId === run.id && binding.issueId === run.issueId && binding.agentId === run.agentId) && !baseline(run));
+  const reserved = bindings.filter(binding => envelope?.reservations.some(r => r.missionId === m.missionId
+    && r.reservationId === binding.reservationId));
+  const baseline = (run: PluginIssueRunSummary) => run.issueId === m.rootIssueId
+    && policy.rootBaseline.some(old => old.runId === run.id && old.agentId === run.agentId);
+  const foreign = summaries.filter(run => !reserved.some(binding => binding.runId === run.id
+    && binding.issueId === run.issueId && binding.agentId === run.agentId) && !baseline(run));
   for (const summary of foreign) {
     if (reserved.some(binding => binding.pending && binding.issueId === summary.issueId && binding.agentId === summary.agentId)) {
       throw new MissionError(409, "native_wake_binding_unknown", "An admitted wake remains unbound; reconcile its existing identity before classifying or repeating it");
@@ -79,7 +103,9 @@ export async function assertNativeRunInventory(ctx: PluginContext, m: MissionRec
     throw new MissionError(409, "unadmitted_native_run", "Native runs without admission are retained in the period ledger; stop new departures and resolve the exact exception", {
       runIds: envelope?.unadmittedRuns?.map(run => run.runId) ?? foreign.map(run => run.id) });
   }
-  if (newDeparture && policy.runLimit !== undefined && summaries.filter(run => !baseline(run)).length >= policy.runLimit) {
+  const rootRunIds = new Set(bindings.flatMap(binding => binding.runId ? [binding.runId] : []));
+  if (newDeparture && policy.runLimit !== undefined && summaries.filter(run => rootRunIds.has(run.id)
+    || run.issueId === m.rootIssueId && !baseline(run)).length >= policy.runLimit) {
     throw new MissionError(409, "native_run_limit_exceeded", "Observed mission runs consume the existing native run limit; no additional departure permitted");
   }
 }
