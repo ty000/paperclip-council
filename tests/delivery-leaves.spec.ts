@@ -3,10 +3,10 @@ import { canonicalPayloadHash } from "../src/mission-primitives.js";
 import { assertPreviousDelivery, deliveryCampaignRoot, isIntegratedLeaf, reconcileCampaignDeliveries } from "../src/delivery-leaves.js";
 import { sourceBase } from "../src/contribution-proof.js";
 
-const campaign = vi.hoisted(() => ({ queue: vi.fn(async (_ctx: unknown, m: any) => m), departure: vi.fn(async () => undefined), root: null as any, members: [] as any[] }));
+const campaign = vi.hoisted(() => ({ queue: vi.fn(async (_ctx: unknown, m: any, _kind: string, _payload: Record<string, unknown>) => m), departure: vi.fn(async () => undefined), root: null as any, members: [] as any[] }));
 vi.mock("../src/repository-campaign.js", () => ({ campaignRoot: async () => campaign.root, listCampaignMembers: async () => campaign.members }));
-vi.mock("../src/linear-continuity-transport.js", () => ({ queueLinearPublication: (...args: any[]) => campaign.queue(...args) }));
-vi.mock("../src/linear-continuity-control.js", () => ({ assertLinearContinuityDeparture: (...args: any[]) => campaign.departure(...args) }));
+vi.mock("../src/linear-continuity-transport.js", () => ({ queueLinearPublication: campaign.queue }));
+vi.mock("../src/linear-continuity-control.js", () => ({ assertLinearContinuityDeparture: campaign.departure }));
 
 const result = { protocol: "integrated-result-v1", repository: "ty000/repo", baseRef: "main", url: "https://github.com/ty000/repo/pull/1", candidateCommit: "a".repeat(40), integratedCommit: "c".repeat(40), reportHash: "d".repeat(64) };
 vi.mock("../src/integration-contract.js", () => ({ integratedResult: (m: any) => { if (!m.aggregate.integrated) throw new Error("Integration unverified"); return result; } }));
@@ -18,7 +18,7 @@ function fixture() {
     { id: "publisher", parentId: "a", originKind: "plugin:private.paperclip-council", status: "done", createdAt: new Date(4) },
   ];
   const policy = { content: { leadAgentId: "lead", baselineRootIds: [], publication: { contract: { integration: {} } } } } as any;
-  const source = { mission_id: "mission-a", project_id: "project", version: 1, created_at: new Date(), updated_at: new Date(), aggregate: { schemaVersion: 1, commandReceipts: [], integrated: false, completion: { state: "closed" } } };
+  const source = { mission_id: "mission-a", project_id: "project", version: 1, created_at: new Date(), updated_at: new Date(), aggregate: { schemaVersion: 1, commandReceipts: [], integrated: false, completion: { state: "closed", proofId: "fixture-proof" } } };
   const ctx = { db: { namespace: "test", query: vi.fn(async () => [source]) }, issues: { relations: { get: vi.fn(async (id: string) => ({ blockedBy: id === "b" ? [issues[1]] : [] })) } } } as any;
   return { issues, policy, source, ctx, m: { companyId: "company", projectId: "project", rootIssueId: "b", aggregate: {} } as any };
 }
