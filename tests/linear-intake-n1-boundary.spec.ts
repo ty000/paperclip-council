@@ -3,8 +3,8 @@ vi.mock("../src/repository-occupation.js", () => ({ ensureMissionRepository: vi.
 const campaign = vi.hoisted(() => ({ root: null as any, continuity: vi.fn(async () => undefined), predecessor: vi.fn(async () => undefined) }));
 vi.mock("../src/project-mandate-guard.js", () => ({ assertProjectDeparture: vi.fn(async () => undefined), assertProjectPaths: vi.fn(), assertProjectPublication: vi.fn() }));
 vi.mock("../src/repository-campaign.js", () => ({ campaignRoot: async () => campaign.root }));
-vi.mock("../src/linear-continuity-control.js", async original => ({ ...await original<any>(), assertLinearContinuityDeparture: (...args: any[]) => campaign.continuity(...args) }));
-vi.mock("../src/delivery-leaves.js", async original => ({ ...await original<any>(), assertDeliveryPredecessor: (...args: any[]) => campaign.predecessor(...args) }));
+vi.mock("../src/linear-continuity-control.js", async original => ({ ...await original<any>(), assertLinearContinuityDeparture: campaign.continuity }));
+vi.mock("../src/delivery-leaves.js", async original => ({ ...await original<any>(), assertDeliveryPredecessor: campaign.predecessor }));
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
