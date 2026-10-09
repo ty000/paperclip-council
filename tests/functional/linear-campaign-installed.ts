@@ -148,8 +148,8 @@ async function verifyClosure(host: LinearHost, source: LinearSource, setup: Awai
     assert.equal(original.statusType, entry.sourceId === source.ids.history ? "canceled" : "completed");
     if (closure.nativeClosures.some((closed: any) => closed.issueId === native.id)) {
       assert(Date.parse(native.completedAt) >= Date.parse(closure.publicationAcknowledgedAt), "Native parent closure follows Linear acknowledgement");
-      nativeClosures.push({ issueId: native.id, parentId: native.parentId, completedAt: native.completedAt });
     }
+    if (entry.sourceId !== source.ids.history) nativeClosures.push({ issueId: native.id, parentId: native.parentId, completedAt: native.completedAt });
   }
   for (const parent of nativeClosures) for (const child of nativeClosures.filter(node => node.parentId === parent.issueId)) {
     assert(Date.parse(parent.completedAt) >= Date.parse(child.completedAt));
