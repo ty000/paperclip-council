@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { campaignTransportPath } from "./linear-campaign-github.mjs";
+import { campaignTransportPath } from "./linear-campaign-github.ts";
 
 export async function integrateDelivery({ api, call, config, issueId, runId, git }) {
   let view = await call({ command: "n5-inspect" });

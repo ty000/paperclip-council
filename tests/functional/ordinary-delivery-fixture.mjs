@@ -1,5 +1,5 @@
 import { integrateDelivery } from "./integration-fixture.mjs";
-import { ensureCampaignTransport } from "./linear-campaign-github.mjs";
+import { ensureCampaignTransport } from "./linear-campaign-github.ts";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
