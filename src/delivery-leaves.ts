@@ -37,12 +37,14 @@ export async function assertPreviousDelivery(ctx: PluginContext, m: MissionRecor
     && (issue.originKind === "manual" || issue.originKind === "plugin:ty000.linear-intake" && policy.content.linearContinuity?.mode === "milestone-fixed-v1"))
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id.localeCompare(b.id));
   // Native blockers determine a complete topological order; creation order breaks ties only.
+  const internalIds = new Set(leaves.map(leaf => leaf.id));
   const pending = [...leaves], ordered: Issues = [];
   while (pending.length) {
     let selected = -1;
     for (const [index, leaf] of pending.entries()) {
       const relations = await ctx.issues.relations.get(leaf.id, m.companyId);
-      if (relations.blockedBy.every(b => ["done", "cancelled"].includes(b.status) || ordered.some(i => i.id === b.id))) { selected = index; break; }
+      if (relations.blockedBy.every(b => internalIds.has(b.id)
+        ? ordered.some(i => i.id === b.id) : ["done", "cancelled"].includes(b.status))) { selected = index; break; }
     }
     if (selected < 0) throw new MissionError(409, "delivery_dependency_pending", "Retain unresolved external blockers or cycles; no removal or inferred ordering");
     ordered.push(pending.splice(selected, 1)[0]!);
