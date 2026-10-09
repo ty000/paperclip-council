@@ -90,9 +90,9 @@ automatic source/publication hold after the claim still permits explicit resume
 under the same grant, source and budget after verification. There is no timeout
 that releases an uncertain terminal effect.
 
-These recovery controls have targeted source tests. The historical installed
-receipts below remain attached to their exact earlier package pairs; they do not
-qualify this protocol change or authorize recette activation.
+These recovery controls have targeted source tests. The installed audit receipt
+below additionally qualifies the nominal terminal permission exchange. It does
+not turn the recovery scenarios into installed tests or authorize recette activation.
 
 ## Cancellation and occupied-intake recovery
 
@@ -127,7 +127,34 @@ with `packageBytesUnchanged: true` and successful cleanup qualifies its exact pa
 Pending or failed reports retain their original result and are never rewritten as
 successful evidence. Real gateway reads/writes and the recette pilot remain L6.
 
-### Qualified candidates — 9 October 2026
+### Audit corrections — 9 October 2026, 22:20 UTC
+
+The [installed audit receipt](linear-v1-audit-native.json) qualifies Council
+`60905259ef43af2edbafd2d2588abd991dd60db0` (`0.7.41`) with intake
+`3bae49255651fddc37e0c66b016ea73e8940d660` (`0.6.1`) on the unchanged host
+`61b3fd57a695614dc4a37e2303f426a34a9795cf`. All eight acceptance checks pass:
+seventeen successful native runs, two serial Git integrations, eleven global
+coverage rows, exact terminal claim then acknowledgement, child-before-parent
+native closure, empty repository registry and seventeen settled reservations
+in the original period (2,550 fixture token units).
+
+Server and database stopped successfully; tracked host files and the recorded
+package source/build bytes remained unchanged. The receipt binds the retained
+raw report by SHA-256 and rechecks every recorded source/build file after cleanup.
+Later intake commits through `b0280d02` change only documentation and the CI gate,
+its tests and configuration; they do not change the qualified runtime files.
+This evidence commit likewise adds only documentation. The source regression
+suite contains 1,407 passing Council tests and one skipped test; typecheck, build
+and the static gate pass.
+
+This is an isolated installed qualification. Linear and GitHub responses,
+model judgments and token usage remain fixtures. Source divergence, restart,
+cancellation races and occupied-intake recovery have targeted source/PostgreSQL
+evidence; the nominal installed run does not claim to exercise all those faults.
+Real Q-LR/Q-LW, authorized recette installation/configuration, provider execution
+and the public HTTPS webhook remain outside this receipt.
+
+### Historical qualified candidates — 9 October 2026
 
 | Scenario | Council commit | Intake commit | Receipt |
 | --- | --- | --- | --- |
