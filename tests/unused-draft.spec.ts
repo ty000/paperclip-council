@@ -54,25 +54,34 @@ it("preserves the draft, profile choices and audit trail; releases only its hold
   expect(f.ctx.issues.summaries.getOrchestration).toHaveBeenCalledWith({ companyId: f.companyId, issueId: f.issue.id, includeSubtree: true });
 });
 
-it.each(["started", "n1", "n2", "n3", "n5", "n6", "unknown field", "intent", "launch", "delegation", "hierarchy", "baseline", "reservation", "settled reservation", "unadmitted run", "unknown admission", "active run", "historical run", "unknown inventory", "child", "native lock", "native cost", "approval"])("retains occupation and makes no mutation for %s", async reason => {
-  const f = fixture(); const a = f.aggregate;
-  if (reason === "started") a.phase = "executing";
-  if (["n1", "n2", "n3", "n5", "n6"].includes(reason)) a[reason] = {};
-  if (reason === "unknown field") a.futureExecution = {};
-  if (reason === "intent") a.effectIntents.push({ state: "unknown" });
-  if (reason === "launch") a.modelSelection.tasks.push({ launches: [] });
-  if (reason === "delegation") a.continuity = {};
-  if (reason === "hierarchy") a.hierarchy = {};
-  if (reason === "baseline") a.nativeWakePolicy = { protocol: "council-native-wake-v2", rootBaseline: [{ runId: randomUUID() }] };
-  if (reason.includes("reservation")) f.envelopes.push({ document: { reservations: [{ missionId: f.missionId, status: reason.startsWith("settled") ? "settled" : "reserved" }] } });
-  if (reason === "unadmitted run") f.envelopes.push({ document: { reservations: [], unadmittedRuns: [{ missionId: f.missionId }] } });
-  if (reason === "unknown admission") f.envelopes.push({ document: {} });
-  if (["active run", "historical run"].includes(reason)) f.inventory.runs.push({ status: reason === "active run" ? "running" : "succeeded" });
-  if (reason === "unknown inventory") delete f.inventory.runs;
-  if (reason === "child") f.inventory.subtreeIssueIds.push(randomUUID());
-  if (reason === "native lock") f.issue.executionRunId = randomUUID();
-  if (reason === "native cost") f.inventory.costs.inputTokens = 1;
-  if (reason === "approval") f.inventory.approvals.push({ id: randomUUID() });
+const failureMutations: Record<string, (f: ReturnType<typeof fixture>) => void> = {
+  started: f => { f.aggregate.phase = "executing"; },
+  n1: f => { f.aggregate.n1 = {}; },
+  n2: f => { f.aggregate.n2 = {}; },
+  n3: f => { f.aggregate.n3 = {}; },
+  n5: f => { f.aggregate.n5 = {}; },
+  n6: f => { f.aggregate.n6 = {}; },
+  "unknown field": f => { f.aggregate.futureExecution = {}; },
+  intent: f => { f.aggregate.effectIntents.push({ state: "unknown" }); },
+  launch: f => { f.aggregate.modelSelection.tasks.push({ launches: [] }); },
+  delegation: f => { f.aggregate.continuity = {}; },
+  hierarchy: f => { f.aggregate.hierarchy = {}; },
+  baseline: f => { f.aggregate.nativeWakePolicy = { protocol: "council-native-wake-v2", rootBaseline: [{ runId: randomUUID() }] }; },
+  reservation: f => { f.envelopes.push({ document: { reservations: [{ missionId: f.missionId, status: "reserved" }] } }); },
+  "settled reservation": f => { f.envelopes.push({ document: { reservations: [{ missionId: f.missionId, status: "settled" }] } }); },
+  "unadmitted run": f => { f.envelopes.push({ document: { reservations: [], unadmittedRuns: [{ missionId: f.missionId }] } }); },
+  "unknown admission": f => { f.envelopes.push({ document: {} }); },
+  "active run": f => { f.inventory.runs.push({ status: "running" }); },
+  "historical run": f => { f.inventory.runs.push({ status: "succeeded" }); },
+  "unknown inventory": f => { delete f.inventory.runs; },
+  child: f => { f.inventory.subtreeIssueIds.push(randomUUID()); },
+  "native lock": f => { f.issue.executionRunId = randomUUID(); },
+  "native cost": f => { f.inventory.costs.inputTokens = 1; },
+  approval: f => { f.inventory.approvals.push({ id: randomUUID() }); },
+};
+it.each(Object.entries(failureMutations))("retains occupation and makes no mutation for %s", async (_reason, mutate) => {
+  const f = fixture();
+  mutate(f);
   await expect(f.run()).rejects.toMatchObject({ code: "unused_draft_unproven" });
   expect(f.execute).not.toHaveBeenCalled(); expect(Object.keys(f.registry.document.holders)).toHaveLength(2);
 });

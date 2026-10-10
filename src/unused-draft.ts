@@ -15,32 +15,53 @@ function unavailable(): never {
   throw new MissionError(409, "unused_draft_unproven", "Only an unused, inactive draft with a complete zero-effect native inventory may be abandoned; retain its original occupation");
 }
 
-/** Deliberately narrow: previously started work uses its existing cancellation protocol. */
-export async function assertUnusedDraft(ctx: PluginContext, m: MissionRecord) {
+function assertDraftAggregate(m: MissionRecord) {
   const a = m.aggregate;
   const expectedControl = a.draftAbandonment ? { status: "blocked", reason: "unused_draft_abandoned" }
     : { status: "inactive", reason: "mission_not_enabled" };
   if (a.phase !== "draft" || canonicalPayloadHash(a.control) !== canonicalPayloadHash(expectedControl)
       || Object.keys(a).some(key => !draftKeys.has(key)) || !Array.isArray(a.effectIntents) || a.effectIntents.length
       || !Array.isArray(a.journal) || a.journal.some(e => !draftActions.has(String(e.action)))
-      || a.commandReceipts.some(r => !draftCommands.has(r.command))
-      || (a.modelSelection && (a.modelSelection.protocol !== "native-variants-v1" || !Array.isArray(a.modelSelection.tasks) || a.modelSelection.tasks.length))
-      || (a.nativeWakePolicy && (a.nativeWakePolicy.protocol !== "council-native-wake-v2" || !Array.isArray(a.nativeWakePolicy.rootBaseline) || a.nativeWakePolicy.rootBaseline.length))) unavailable();
+      || a.commandReceipts.some(r => !draftCommands.has(r.command))) unavailable();
+}
+
+function assertNoExecutionHistory(m: MissionRecord) {
+  const a = m.aggregate;
+  if (a.modelSelection && (a.modelSelection.protocol !== "native-variants-v1" || !Array.isArray(a.modelSelection.tasks) || a.modelSelection.tasks.length)) unavailable();
+  if (a.nativeWakePolicy && (a.nativeWakePolicy.protocol !== "council-native-wake-v2" || !Array.isArray(a.nativeWakePolicy.rootBaseline) || a.nativeWakePolicy.rootBaseline.length)) unavailable();
+}
+
+async function assertNoAdmissionHistory(ctx: PluginContext, m: MissionRecord) {
   if (!/^[a-z_][a-z0-9_]*$/.test(ctx.db.namespace)) throw new Error("Unsafe plugin namespace");
   const documents = await ctx.db.query<{ document: AdmissionDocument }>(
     `SELECT document FROM ${ctx.db.namespace}.admission_envelopes WHERE company_id = $1`, [m.companyId]);
   if (documents.some(({ document: d }) => !Array.isArray(d.reservations)
       || d.reservations.some(r => r.missionId === m.missionId)
       || (d.unadmittedRuns !== undefined && (!Array.isArray(d.unadmittedRuns) || d.unadmittedRuns.some(r => r.missionId === m.missionId))))) unavailable();
-  const issue = await ctx.issues.get(m.rootIssueId, m.companyId);
-  const inventory = await ctx.issues.summaries.getOrchestration({ companyId: m.companyId, issueId: m.rootIssueId, includeSubtree: true });
+}
+
+function assertWaitingRoot(m: MissionRecord, issue: Awaited<ReturnType<PluginContext["issues"]["get"]>>) {
   if (!issue || issue.id !== m.rootIssueId || issue.companyId !== m.companyId || issue.projectId !== m.projectId
-      || !["backlog", "blocked"].includes(issue.status) || issue.checkoutRunId || issue.executionRunId
-      || inventory.companyId !== m.companyId || inventory.issueId !== m.rootIssueId
+      || !["backlog", "blocked"].includes(issue.status) || issue.checkoutRunId || issue.executionRunId) unavailable();
+}
+
+function assertEmptyNativeInventory(m: MissionRecord, inventory: Awaited<ReturnType<PluginContext["issues"]["summaries"]["getOrchestration"]>>) {
+  if (inventory.companyId !== m.companyId || inventory.issueId !== m.rootIssueId
       || !Array.isArray(inventory.subtreeIssueIds) || inventory.subtreeIssueIds.length !== 1 || inventory.subtreeIssueIds[0] !== m.rootIssueId
       || !Array.isArray(inventory.runs) || inventory.runs.length
       || !Array.isArray(inventory.approvals) || inventory.approvals.length
       || !inventory.costs || [inventory.costs.costCents, inventory.costs.inputTokens, inventory.costs.cachedInputTokens, inventory.costs.outputTokens].some(n => n !== 0)) unavailable();
+}
+
+/** Deliberately narrow: previously started work uses its existing cancellation protocol. */
+export async function assertUnusedDraft(ctx: PluginContext, m: MissionRecord) {
+  assertDraftAggregate(m);
+  assertNoExecutionHistory(m);
+  await assertNoAdmissionHistory(ctx, m);
+  const issue = await ctx.issues.get(m.rootIssueId, m.companyId);
+  const inventory = await ctx.issues.summaries.getOrchestration({ companyId: m.companyId, issueId: m.rootIssueId, includeSubtree: true });
+  assertWaitingRoot(m, issue);
+  assertEmptyNativeInventory(m, inventory);
 }
 
 /** Marker first, proof again, then version-fenced release. Replay completes only this original effect. */
