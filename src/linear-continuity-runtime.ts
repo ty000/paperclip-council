@@ -29,7 +29,8 @@ export async function handleLinearContinuityBoard(ctx: PluginContext, input: Plu
   if (!m) throw new MissionError(404, "mission_not_found", "Mission not found");
   const owner = input.actor.userId, company = await ctx.companies.get(m.companyId);
   if (input.actor.actorType !== "user" || !owner || owner !== m.ownerUserId || company?.defaultResponsibleUserId !== owner) throw new MissionError(403, "linear_continuity_owner", "Current company/mission owner required");
-  if (body.command === "reconcile-linear-continuity") return { status: 200, body: { outcome: "reconciled", mission: await reconcileLinearContinuity(ctx, m) } };
+  if (body.command === "reconcile-linear-continuity") return { status: 200, body: { outcome: "reconciled", mission: await reconcileLinearContinuity(ctx, m,
+    { forceObservation: m.aggregate.linearContinuity?.mode === FIXED_CAMPAIGN_MODE }) } };
   const prior = runtimeReceipt(m, runtimeUuid(body.commandId, "commandId"), owner, canonicalPayloadHash(body));
   if (prior) return { status: 200, body: { outcome: "replayed", mission: m, receipt: prior, effectPermission: "none" } };
   if (campaignControlCommands.includes(String(body.command))) return { status: 200, body: await controlFixedCampaign(ctx, m, body, owner) };
@@ -41,8 +42,10 @@ export async function handleLinearContinuityBoard(ctx: PluginContext, input: Plu
   return { status: 200, body: await n2CommandCas(ctx, m, body, "user", owner, { ...m.aggregate, linearContinuity }) };
 }
 /** Transport and control are reconciled by the existing job, never by another campaign scheduler. */
-export async function reconcileLinearContinuity(ctx: PluginContext, initial: MissionRecord) {
-  let m = await reconcileLinearTransport(ctx, initial);
+export async function reconcileLinearContinuity(ctx: PluginContext, initial: MissionRecord, options: { forceObservation?: boolean } = {}) {
+  // Manual recovery reconciles and refreshes the final current payload below.
+  // Scheduled work keeps the existing pre/post transport passes.
+  let m = options.forceObservation ? (await getMission(ctx, initial.companyId, initial.missionId))! : await reconcileLinearTransport(ctx, initial);
   if (!m.aggregate.linearContinuity) return m;
   m = await applyLinearChanges(ctx, m);
   const state = m.aggregate.linearContinuity!;
@@ -75,7 +78,7 @@ export async function reconcileLinearContinuity(ctx: PluginContext, initial: Mis
       sourceRevision: m.aggregate.linearContinuity!.sourceSha256, workResultAcquired: false, n5State: m.aggregate.n5?.integration?.state ?? null,
       ...(campaign ? { campaign } : {}) });
   }
-  m = await reconcileLinearTransport(ctx, m);
+  m = await reconcileLinearTransport(ctx, m, options);
   await reconcileRepositoryRelease(ctx, m);
   return m;
 }

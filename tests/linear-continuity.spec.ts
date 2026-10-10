@@ -109,6 +109,106 @@ it("keeps the request window at exactly five minutes even when the clock advance
     expect(challenge.payload).toMatchObject({ requestedAt: challenge.requestedAt, expiresAt: challenge.expiresAt });
   } finally { clock.mockRestore(); vi.useRealTimers(); }
 });
+it("leaves an acknowledged paused fixed campaign quiet across restart and challenge expiry", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const started = Date.now(); fixedCampaign();
+    await queueLinearPublication(ctx, f.m, "progress", { phase: "executing" });
+    await reconcileLinearTransport(ctx, f.m);
+    const runningChallenge = f.m.aggregate.linearContinuity.challenge.challengeId;
+    const intent = f.m.aggregate.linearContinuity.publications[0];
+    intent.acknowledgement = { reference: proof("paused-quiet-ack", {}), responseSha256: digest("a"), confirmedAt: new Date().toISOString() };
+    f.m.aggregate.linearContinuity.control = "paused";
+    await reconcileLinearTransport(ctx, structuredClone(f.m));
+    const challengeId = f.m.aggregate.linearContinuity.challenge.challengeId, emitted = f.emitted.length;
+    expect(challengeId).not.toBe(runningChallenge);
+    vi.setSystemTime(started + 600_000);
+    await reconcileLinearTransport(ctx, structuredClone(f.m));
+    expect(f.emitted).toHaveLength(emitted);
+    expect(f.m.aggregate.linearContinuity.challenge.challengeId).toBe(challengeId);
+    expect(f.m.aggregate.linearContinuity.publications[0].intentId).toBe(intent.intentId);
+  } finally { vi.useRealTimers(); }
+});
+it("backs off paused fixed publication reconciliation before rotating an expired challenge", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const started = Date.now(); fixedCampaign(); f.m.aggregate.linearContinuity.control = "paused";
+    await queueLinearPublication(ctx, f.m, "progress", { phase: "executing" });
+    await reconcileLinearTransport(ctx, f.m);
+    const intentId = f.m.aggregate.linearContinuity.publications[0].intentId;
+    const challengeId = f.m.aggregate.linearContinuity.challenge.challengeId;
+    // Simulate a persisted late hint from the same durable challenge. Its expiry
+    // must not bypass the five-minute publication reconciliation cooldown.
+    f.m.aggregate.linearContinuity.challenge.lastEmittedAt = new Date(started + 60_000).toISOString();
+    vi.setSystemTime(started + 300_000);
+    await reconcileLinearTransport(ctx, structuredClone(f.m));
+    expect(f.emitted).toHaveLength(1);
+    expect(f.m.aggregate.linearContinuity.challenge.challengeId).toBe(challengeId);
+    vi.setSystemTime(started + 360_000);
+    await reconcileLinearTransport(ctx, structuredClone(f.m));
+    expect(f.emitted).toHaveLength(2);
+    expect(f.m.aggregate.linearContinuity.challenge.challengeId).not.toBe(challengeId);
+    expect(f.m.aggregate.linearContinuity.publications[0].intentId).toBe(intentId);
+    const rotated = f.m.aggregate.linearContinuity.challenge.challengeId;
+    f.m.aggregate.linearContinuity.publications[0].acknowledgement = {
+      reference: proof("paused-final-ack", {}), responseSha256: digest("a"), confirmedAt: new Date().toISOString(),
+    };
+    vi.setSystemTime(started + 900_000);
+    await reconcileLinearTransport(ctx, structuredClone(f.m));
+    expect(f.emitted).toHaveLength(3);
+    expect(f.m.aggregate.linearContinuity.challenge.challengeId).not.toBe(rotated);
+    const acknowledgedChallenge = f.m.aggregate.linearContinuity.challenge.challengeId;
+    vi.setSystemTime(started + 1_300_000);
+    await reconcileLinearTransport(ctx, structuredClone(f.m));
+    expect(f.emitted).toHaveLength(3);
+    expect(f.m.aggregate.linearContinuity.challenge.challengeId).toBe(acknowledgedChallenge);
+  } finally { vi.useRealTimers(); }
+});
+it("suppresses a duplicate fixed running request while its current response is fresh", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const started = Date.now(); fixedCampaign();
+    await reconcileLinearTransport(ctx, f.m); const challengeId = f.m.aggregate.linearContinuity.challenge.challengeId;
+    await fixedAnswer({ observedAt: new Date(started).toISOString(), validUntil: new Date(started + 100_000).toISOString() });
+    vi.setSystemTime(started + 31_000); await reconcileLinearTransport(ctx, structuredClone(f.m));
+    expect(f.emitted).toHaveLength(1);
+    vi.setSystemTime(started + 101_000); await reconcileLinearTransport(ctx, structuredClone(f.m));
+    expect(f.emitted).toHaveLength(2);
+    expect(f.m.aggregate.linearContinuity.challenge.challengeId).toBe(challengeId);
+    await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_hold" });
+  } finally { vi.useRealTimers(); }
+});
+it("requests changed fixed outbox, control, consumed input, resume and terminal claim immediately", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    fixedCampaign(); await reconcileLinearTransport(ctx, f.m); await fixedAnswer();
+    const challenges = [f.m.aggregate.linearContinuity.challenge.challengeId];
+    await queueLinearPublication(ctx, f.m, "progress", { phase: "executing" });
+    await reconcileLinearTransport(ctx, f.m); challenges.push(f.m.aggregate.linearContinuity.challenge.challengeId);
+    f.m.aggregate.linearContinuity.control = "paused";
+    await reconcileLinearTransport(ctx, f.m); challenges.push(f.m.aggregate.linearContinuity.challenge.challengeId);
+    f.m.aggregate.linearContinuity.sequence += 1;
+    await reconcileLinearTransport(ctx, f.m); challenges.push(f.m.aggregate.linearContinuity.challenge.challengeId);
+    f.m.aggregate.linearContinuity.control = "running"; f.m.aggregate.linearContinuity.resumeVersion = f.m.version;
+    await reconcileLinearTransport(ctx, f.m); challenges.push(f.m.aggregate.linearContinuity.challenge.challengeId);
+    const publication = f.m.aggregate.linearContinuity.publications[0];
+    f.m.aggregate.campaignClosure = { terminalClaim: { intentId: publication.intentId, payloadSha256: publication.payloadSha256,
+      claimedVersion: f.m.version, claimedAt: new Date().toISOString() } };
+    await reconcileLinearTransport(ctx, f.m); challenges.push(f.m.aggregate.linearContinuity.challenge.challengeId);
+    expect(new Set(challenges).size).toBe(challenges.length);
+    expect(f.emitted).toHaveLength(challenges.length);
+  } finally { vi.useRealTimers(); }
+});
+it("keeps the legacy cadence and refuses departure after an expired source reply", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const started = Date.now(); await reconcileLinearTransport(ctx, f.m); await answer();
+    vi.setSystemTime(started + 31_000); await reconcileLinearTransport(ctx, f.m);
+    expect(f.emitted).toHaveLength(2);
+    vi.setSystemTime(started + 101_000);
+    await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_hold" });
+  } finally { vi.useRealTimers(); }
+});
 it.each(["foreign-actor", "foreign-company", "bad-nonce", "old-protocol", "expired"])("rejects %s without advancing authority", async kind => {
   const override: any = {}, event: any = {};
   if (kind === "foreign-actor") event.actorId = "other";
@@ -291,6 +391,58 @@ function confirmPublications() {
     reference: proof(`ack-${p.intentId}`, { intentId: p.intentId }), responseSha256: digest("a"), confirmedAt: new Date().toISOString(),
   };
 }
+it("lets only the native owner Board refresh the durable fixed challenge without retry churn", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const started = Date.now(); fixedCampaign(); f.m.aggregate.linearContinuity.control = "paused";
+    const request = nativeControl("reconcile-linear-continuity");
+    const response = await handleLinearContinuityBoard(ctx, request);
+    expect(response.body.outcome).toBe("reconciled");
+    const challengeId = f.m.aggregate.linearContinuity.challenge.challengeId;
+    await fixedAnswer();
+    const observation = structuredClone(f.m.aggregate.linearContinuity.observation);
+    await handleLinearContinuityBoard(ctx, request);
+    expect(f.m.aggregate.linearContinuity.challenge.challengeId).toBe(challengeId);
+    expect(f.m.aggregate.linearContinuity.observation).toEqual(observation);
+    expect(f.emitted).toHaveLength(1);
+    vi.setSystemTime(started + 31_000); await handleLinearContinuityBoard(ctx, request);
+    expect(f.m.aggregate.linearContinuity.challenge.challengeId).toBe(challengeId);
+    expect(f.emitted).toHaveLength(2);
+    vi.setSystemTime(started + 301_000); await handleLinearContinuityBoard(ctx, request);
+    expect(f.m.aggregate.linearContinuity.challenge.challengeId).not.toBe(challengeId);
+    expect(f.emitted).toHaveLength(3);
+    await expect(handleLinearContinuityBoard(ctx, {
+      ...nativeControl("reconcile-linear-continuity"), actor: { actorType: "agent", agentId: "owner" },
+    })).rejects.toMatchObject({ code: "linear_continuity_owner" });
+    await expect(handleLinearContinuityBoard(ctx, {
+      ...nativeControl("reconcile-linear-continuity"), actor: { actorType: "user", userId: "other-owner" },
+    })).rejects.toMatchObject({ code: "linear_continuity_owner" });
+  } finally { vi.useRealTimers(); }
+});
+it("keeps legacy owner reconciliation on its cooperative remote-resume cadence", async () => {
+  await queueLinearPublication(ctx, f.m, "progress", { phase: f.m.aggregate.phase, control: "running",
+    sourceRevision: f.m.aggregate.linearContinuity.sourceSha256, workResultAcquired: false, n5State: null });
+  await reconcileLinearTransport(ctx, f.m); await answer();
+  const challengeId = f.m.aggregate.linearContinuity.challenge.challengeId;
+  const observation = structuredClone(f.m.aggregate.linearContinuity.observation);
+  const emitted = f.emitted.length;
+  await handleLinearContinuityBoard(ctx, nativeControl("reconcile-linear-continuity"));
+  expect(f.m.aggregate.linearContinuity.challenge.challengeId).toBe(challengeId);
+  expect(f.m.aggregate.linearContinuity.observation).toEqual(observation);
+  expect(f.emitted).toHaveLength(emitted);
+});
+it("continues local safe settlement while fixed source polling is paused", async () => {
+  fixedCampaign(); f.m.aggregate.linearContinuity.control = "paused";
+  const reservationId = randomUUID(), runId = randomUUID();
+  f.bindings = [{ issueId: f.m.rootIssueId, agentId: "lead", reservationId, runId, pending: false }];
+  f.reservations = [{ missionId: f.m.missionId, reservationId, status: "unsettled" }];
+  f.runStatus = "succeeded";
+  f.settlement.mockImplementation(async () => {
+    f.reservations[0] = { ...f.reservations[0], status: "settled", usage: { status: "known" }, remainingExposure: { status: "known", units: 0 } };
+  });
+  await reconcileLinearContinuity(ctx, f.m);
+  expect(f.settlement).toHaveBeenCalledOnce();
+});
 it("retains the resumed campaign plan until its exact publication receipt is read back, then rejects receipt drift", async () => {
   fixedCampaign();
   const content = { campaignPlan: { schema: "council-linear-delivery-plan-v1" }, ...repositoryResumptionPublication({ repositoryResumptions: [{
