@@ -5,9 +5,8 @@ remains `private.paperclip-council`, and its database namespace remains
 `private_paperclip_council`. A package rename or release must never rename either
 runtime identity.
 
-Version `0.7.45` is retained for release preparation. This document and the
-workflow do not authorize publishing it, creating a tag, or installing it on a
-target host.
+Version `0.7.45` was published on 2026-10-10. Publication does not imply host
+installation or activation.
 
 ## What each check proves
 
@@ -47,11 +46,10 @@ repository's development dependencies.
 
 ## One-time bootstrap for a new npm package
 
-npm trusted publishing can be attached only after the package exists. For the
-first release of this package name, an authorized `@ty000` maintainer must:
+For a future package name that does not yet exist, an authorized maintainer
+must bootstrap it once before configuring its npm trusted publisher:
 
-1. Select and record the actual release version. Do not reuse `0.7.45` merely
-   because it is the preparation version.
+1. Select and record a new first release version for that package name.
 2. Synchronize `package.json` and `src/manifest.ts`, run all source and package
    checks, and retain the exact `.tgz` plus its digest.
 3. Use an interactive npm web login with 2FA and publish that exact archive once:
@@ -99,9 +97,39 @@ under `next`; a stable version publishes under `latest`.
 Fallow gate, Python operation tests, typecheck, unit tests, build, pack and
 package smoke. It uploads the one verified `.tgz` and SHA-256 sidecar. The
 `npm-release` job downloads and re-verifies those exact bytes, checks tag,
-package, manifest and namespace identity, publishes that archive through OIDC,
-then compares the registry integrity with the local archive. Pull requests and
-branch pushes cannot publish.
+package, manifest and namespace identity, and publishes that archive once
+through OIDC. A separate read-only `verify` job checks registry visibility.
+Pull requests and branch pushes cannot publish; ordinary CI runs for branches
+and pull requests, while tags retain every release qualification gate.
+
+## Registry visibility and verification-only recovery
+
+The upload job makes exactly one `npm publish` call. Only that job has OIDC
+permission and the `npm-release` environment. Registry verification has only
+`contents: read` and `actions: read`, with no npm credentials or publication.
+It compares the archive's name/version and SHA512 with registry metadata and
+requires the selected `latest` or `next` tag to point to that exact version.
+
+Visibility polling lasts at most 20 minutes, with at most 160 GETs and a
+30-second limit per request (including response body). Temporary transport
+errors and HTTP 404/429/5xx are retried within that budget; wrong integrity,
+inconsistent metadata and permanent HTTP errors fail immediately. An old
+or missing dist-tag waits within the same budget. No publication is retried.
+
+If upload succeeded but verification failed, **do not rerun the failed release
+job or publish again**. Run Actions → **Verify existing npm release** from the
+trusted default branch and provide only the original release `run_id`, for
+example `38059535926`. The workflow requires a completed `release.yml` tag-push
+run in this repository, successful release qualification jobs, and its exact
+unexpired package artifact. Version comes from that run's `v<version>` tag,
+not the current checkout. It reads the archived `package.json` without executing
+packaged code. An expired or missing artifact fails closed.
+
+The original failed run remains red; a successful verification-only run is new,
+separate evidence. This checks the dist-tag **now**: after a newer publication,
+an older release can legitimately stop being `latest` or `next` and will not
+pass this check. A timeout also stays red; investigate or replay verification
+only, without another upload or automatic dist-tag change.
 
 ## Explicit installation and update
 

@@ -2,6 +2,7 @@ name: Council CI
 
 on:
   push:
+    branches: ["**"]
   pull_request:
 
 permissions:
@@ -52,6 +53,9 @@ jobs:
 
       - name: Run pinned blocking static audit
         run: pnpm audit:static
+
+      - name: Test read-only npm verification
+        run: node --test scripts/ci/verify-npm.test.mjs
 
       - name: Run typecheck, tests, and build
         run: node scripts/ci/run-checks.mjs
