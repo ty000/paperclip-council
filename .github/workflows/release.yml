@@ -51,6 +51,9 @@ jobs:
       - name: Run pinned blocking static audit
         run: pnpm audit:static --base-ref "${GITHUB_SHA}^"
 
+      - name: Test read-only npm verification
+        run: node --test scripts/ci/verify-npm.test.mjs
+
       - name: Run operations tests, typecheck, tests, and build
         run: node scripts/ci/run-checks.mjs
 
@@ -119,17 +122,38 @@ jobs:
           (cd release-artifacts && sha256sum --check "${archive##*/}.sha256")
           node scripts/ci/verify-release.mjs --tag "$GITHUB_REF_NAME" --tarball "$archive"
 
-      - name: Publish and verify registry integrity
+      - name: Publish verified archive once
         shell: bash
         run: |
-          archive="./release-artifacts/${{ steps.release.outputs.tarball }}"
-          npm publish "$archive" --access public --tag "${{ steps.release.outputs.dist_tag }}"
-          expected_integrity="sha512-$(openssl dgst -sha512 -binary "$archive" | openssl base64 -A)"
-          published_integrity=""
-          # npm may accept a publish before the version is visible to readers.
-          for attempt in $(seq 1 60); do
-            published_integrity="$(npm view "${{ steps.release.outputs.package_name }}@${{ steps.release.outputs.package_version }}" dist.integrity 2>/dev/null || true)"
-            test -n "$published_integrity" && break
-            sleep 5
-          done
-          test "$published_integrity" = "$expected_integrity"
+          npm publish "./release-artifacts/${{ steps.release.outputs.tarball }}" --access public --tag "${{ steps.release.outputs.dist_tag }}"
+
+  verify:
+    name: Verify npm visibility (read-only)
+    needs: [package, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out verifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.11.0'
+          package-manager-cache: false
+      - name: Download qualified archive
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: npm-package-${{ needs.package.outputs.package_version }}
+          path: release-artifacts
+      - name: Wait for exact package integrity and dist-tag
+        env:
+          ARCHIVE_DIRECTORY: release-artifacts
+          PACKAGE_NAME: '@ty000/paperclip-council'
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/ci/verify-npm.mjs

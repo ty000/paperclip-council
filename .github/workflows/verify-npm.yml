@@ -1,0 +1,51 @@
+name: Verify existing npm release
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Original release.yml run ID (verification only)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    name: Verify qualified release (read-only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out trusted verifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.11.0'
+          package-manager-cache: false
+      - name: Validate original release and qualification
+        id: origin
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_RUN_ID: ${{ inputs.run_id }}
+        run: node scripts/ci/verify-npm-run.mjs
+      - name: Download the exact qualified artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          artifact-ids: ${{ steps.origin.outputs.artifact_id }}
+          merge-multiple: true
+          path: release-artifacts
+          run-id: ${{ steps.origin.outputs.run_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+      - name: Wait for exact package integrity and dist-tag
+        env:
+          ARCHIVE_DIRECTORY: release-artifacts
+          PACKAGE_NAME: '@ty000/paperclip-council'
+          RELEASE_TAG: ${{ steps.origin.outputs.release_tag }}
+        run: node scripts/ci/verify-npm.mjs
