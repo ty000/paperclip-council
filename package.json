@@ -1,9 +1,15 @@
 {
-  "name": "@paperclipai/plugin-council",
+  "name": "@ty000/paperclip-council",
   "version": "0.7.42",
   "description": "Revisioned Council rosters, durable review decisions, mission admission and integrated candidate verification for Paperclip workflows",
   "type": "module",
-  "private": true,
+  "repository": "https://github.com/ty000/paperclip-council.git",
+  "homepage": "https://github.com/ty000/paperclip-council#readme",
+  "bugs": "https://github.com/ty000/paperclip-council/issues",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "packageManager": "pnpm@9.15.4",
   "files": [
     "dist",
@@ -33,10 +39,12 @@
     "qualification:proof:draft-upload": "node scripts/qualification/run-draft-upload-proof.mjs",
     "qualification:native:linear-intake": "node scripts/qualification/run-linear-intake-native.mjs",
     "qualification:native:linear-campaign": "node scripts/qualification/run-linear-campaign-native.mjs",
+    "qualification:package-pair": "tsx tests/functional/npm-pair-installed.ts",
     "build": "tsc && node ./esbuild.config.mjs",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run --config ./vitest.config.ts",
+    "test:package": "node scripts/ci/test-package.mjs",
     "audit:static": "node scripts/ci/run-static-audit.mjs",
     "test:functional": "tsx tests/functional/run.ts",
     "qualification:host:prepare": "node scripts/qualification/paperclip-host.mjs prepare",

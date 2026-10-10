@@ -1,0 +1,134 @@
+name: Council npm release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: council-npm-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Verify release package
+    if: github.repository == 'ty000/paperclip-council'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    outputs:
+      package_version: ${{ steps.release.outputs.package_version }}
+      tarball: ${{ steps.release.outputs.tarball }}
+
+    steps:
+      - name: Check out the tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24.11.0
+          package-manager-cache: false
+
+      - name: Pin npm and pnpm
+        shell: bash
+        run: |
+          npm install --global npm@11.19.0
+          corepack enable
+          pnpm_version="$(node -p "require('./package.json').packageManager.split('@').at(-1)")"
+          corepack prepare "pnpm@${pnpm_version}" --activate
+          test "$(npm --version)" = "11.19.0"
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run pinned blocking static audit
+        run: pnpm audit:static --base-ref "${GITHUB_SHA}^"
+
+      - name: Run operations tests, typecheck, tests, and build
+        run: node scripts/ci/run-checks.mjs
+
+      - name: Build, pack, install, and smoke-test the release archive
+        run: pnpm test:package -- --output-dir release-artifacts
+
+      - name: Verify tag, package, manifest, and distribution tag
+        id: release
+        shell: bash
+        run: |
+          mapfile -t archives < <(find release-artifacts -maxdepth 1 -type f -name '*.tgz' -print)
+          test "${#archives[@]}" -eq 1
+          node scripts/ci/verify-release.mjs --tag "$GITHUB_REF_NAME" --tarball "${archives[0]}"
+          (cd release-artifacts && sha256sum "${archives[0]##*/}" > "${archives[0]##*/}.sha256")
+
+      - name: Upload the exact verified npm archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-package-${{ steps.release.outputs.package_version }}
+          path: |
+            release-artifacts/${{ steps.release.outputs.tarball }}
+            release-artifacts/${{ steps.release.outputs.tarball }}.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish verified archive
+    needs: package
+    if: github.repository == 'ty000/paperclip-council' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    environment: npm-release
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check out the tagged release verifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Node.js and the public npm registry
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24.11.0
+          registry-url: https://registry.npmjs.org/
+          package-manager-cache: false
+
+      - name: Pin the OIDC-capable npm CLI
+        run: |
+          npm install --global npm@11.19.0
+          test "$(npm --version)" = "11.19.0"
+
+      - name: Download the verified archive
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: npm-package-${{ needs.package.outputs.package_version }}
+          path: release-artifacts
+
+      - name: Reverify the downloaded archive
+        id: release
+        shell: bash
+        run: |
+          mapfile -t archives < <(find release-artifacts -maxdepth 1 -type f -name '*.tgz' -print)
+          test "${#archives[@]}" -eq 1
+          archive="${archives[0]}"
+          (cd release-artifacts && sha256sum --check "${archive##*/}.sha256")
+          node scripts/ci/verify-release.mjs --tag "$GITHUB_REF_NAME" --tarball "$archive"
+
+      - name: Publish and verify registry integrity
+        shell: bash
+        run: |
+          archive="release-artifacts/${{ steps.release.outputs.tarball }}"
+          npm publish "$archive" --access public --tag "${{ steps.release.outputs.dist_tag }}"
+          expected_integrity="sha512-$(openssl dgst -sha512 -binary "$archive" | openssl base64 -A)"
+          published_integrity=""
+          for attempt in 1 2 3 4 5; do
+            published_integrity="$(npm view "${{ steps.release.outputs.package_name }}@${{ steps.release.outputs.package_version }}" dist.integrity 2>/dev/null || true)"
+            test -n "$published_integrity" && break
+            sleep 3
+          done
+          test "$published_integrity" = "$expected_integrity"
