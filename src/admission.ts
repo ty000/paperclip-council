@@ -457,11 +457,14 @@ async function casDocument(
   ctx: PluginContext,
   current: AdmissionSnapshot,
   document: AdmissionDocument,
+  reservingMissionId?: string,
 ): Promise<AdmissionSnapshot | null> {
   const result = await ctx.db.execute(
     `UPDATE ${table(ctx)} SET version = version + 1, document = $3::jsonb, updated_at = now()
-      WHERE company_id = $1 AND period_key = $2 AND version = $4`,
-    [current.companyId, current.periodKey, JSON.stringify(document), current.version],
+      WHERE company_id = $1 AND period_key = $2 AND version = $4${reservingMissionId ? `
+        AND (SELECT aggregate FROM ${ctx.db.namespace}.missions
+          WHERE company_id = $1 AND mission_id = $5 FOR UPDATE)->'draftAbandonment' IS NULL` : ""}`,
+    [current.companyId, current.periodKey, JSON.stringify(document), current.version, ...(reservingMissionId ? [reservingMissionId] : [])],
   );
   if (result.rowCount !== 1) return null;
   return requireAdmission(ctx, current.companyId, current.periodKey);
@@ -671,7 +674,7 @@ export async function reserveAdmission(ctx: PluginContext, input: AdmissionReser
     ...documentFromSnapshot(current),
     reservations: [...current.reservations, reservation],
   };
-  const updated = await casDocument(ctx, current, document);
+  const updated = await casDocument(ctx, current, document, binding.missionId);
   if (updated) return { outcome: "reserved", envelope: updated, reservation };
 
   const concurrent = await requireAdmission(ctx, companyId, periodKey);

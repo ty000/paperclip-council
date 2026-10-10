@@ -12,6 +12,12 @@ export class MissionError extends Error {
   }
 }
 
+/** Abandonment is permanent execution revocation, not an accepted result. */
+export function assertMissionNotAbandoned(m: { aggregate: { draftAbandonment?: unknown } }) {
+  if (m.aggregate.draftAbandonment !== undefined) {
+    throw new MissionError(409, "mission_abandoned", "This unused draft was explicitly abandoned; its original identity and history remain read-only");
+  }
+}
 
 function stable(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stable);

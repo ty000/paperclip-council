@@ -5,7 +5,8 @@ import { handleLinearContinuityBoard } from "./linear-continuity-runtime.js";
 import { campaignControlCommands } from "./linear-campaign-control.js";
 import { handleCancellationRequest } from "./linear-continuity-cancellation.js";
 import { handleProjectMandate } from "./project-mandate-configuration.js";
-import { listContinuityMissions } from "./missions.js";
+import { assertMissionNotAbandoned } from "./mission-primitives.js";
+import { getMission, listContinuityMissions } from "./missions.js";
 import { handleModelProfiles, chooseModelProfile, inspectModelSelections, reconcileModelMeasurements } from "./model-api.js";
 import { ModelSelectionError } from "./model-state.js";
 import { handleN6WorkAgent } from "./n6-work-api.js";
@@ -258,6 +259,11 @@ export async function handlePluginRequest(input: PluginApiRequestInput, context:
 async function handleRequest(input: PluginApiRequestInput, context: PluginContext) {
   if (input.params.companyId !== undefined && input.params.companyId !== input.companyId) {
     throw new MissionError(403, "company_scope_mismatch", "Path company does not match the host-authorized company scope");
+  }
+  if (input.routeKey === "mission-command" && input.params.missionId
+      && (input.body as { command?: string })?.command !== "abandon-unused-draft") {
+    const mission = await getMission(context, input.companyId, input.params.missionId);
+    if (mission) assertMissionNotAbandoned(mission);
   }
   if (input.routeKey.startsWith("model-profiles-")) return handleModelProfiles(context, input);
   if (input.routeKey.startsWith("project-mandate-")) return handleProjectMandate(context, input);

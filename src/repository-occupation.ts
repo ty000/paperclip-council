@@ -1,6 +1,6 @@
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import type { MissionRecord } from "./missions.js";
-import { MissionError } from "./mission-primitives.js";
+import { MissionError, assertMissionNotAbandoned } from "./mission-primitives.js";
 import { FIXED_CAMPAIGN_MODE } from "./linear-continuity-contract.js";
 
 type Subject = Pick<MissionRecord, "companyId" | "missionId" | "projectId" | "aggregate"> & { version?: number };
@@ -50,9 +50,12 @@ async function read(ctx: PluginContext): Promise<Snapshot> {
       || typeof row.document.initialized !== "boolean") throw new MissionError(409, "repository_registry_missing", "The migrated durable repository registry must be readable");
   return { version: Number(row.version), document: row.document };
 }
-async function save(ctx: PluginContext, before: Snapshot, document: Document) {
+async function save(ctx: PluginContext, before: Snapshot, document: Document, mission?: Subject) {
   const result = await ctx.db.execute(`UPDATE ${table(ctx)} SET document = $1::jsonb, version = version + 1
-    WHERE singleton = true AND version = $2`, [JSON.stringify(document), before.version]);
+    WHERE singleton = true AND version = $2${mission ? ` AND COALESCE((
+      SELECT aggregate->'draftAbandonment' IS NULL AND ($5::bigint IS NULL OR version = $5)
+      FROM ${ctx.db.namespace}.missions WHERE company_id = $3 AND mission_id = $4 FOR UPDATE), true)` : ""}`,
+    [JSON.stringify(document), before.version, ...(mission ? [mission.companyId, mission.missionId, mission.version ?? null] : [])]);
   return result.rowCount === 1;
 }
 
@@ -88,10 +91,12 @@ function conflict(holders: Record<string, Holder>, ownKey: string, wanted: Holde
 
 async function assertCurrentMission(ctx: PluginContext, m: Subject) {
   table(ctx);
+  assertMissionNotAbandoned(m);
   if (m.version !== undefined) {
     const rows = await ctx.db.query<{ version: number; aggregate: MissionRecord["aggregate"] }>(
       `SELECT version, aggregate FROM ${ctx.db.namespace}.missions WHERE company_id = $1 AND mission_id = $2`, [m.companyId, m.missionId]);
     const current = rows[0];
+    if (current) assertMissionNotAbandoned(current);
     if (current && (Number(current.version) !== m.version || current.aggregate.completion?.state === "closed"
         || current.aggregate.linearContinuity?.control === "cancelled")) {
       throw new MissionError(409, "repository_mission_changed", "Reread the original mission before repository admission; stale or terminal authority cannot be reused");
@@ -138,7 +143,7 @@ async function acquire(ctx: PluginContext, m: Subject, repository: string | null
     }
     if (previous && previous.repository === repository && previous.exclusive === wanted.exclusive) return;
     if (!previous && Object.keys(before.document.holders).length >= bound) throw new MissionError(409, "repository_inventory_bound", "Reconcile existing occupation before adding more mission identities");
-    if (await save(ctx, before, { ...before.document, holders: { ...before.document.holders, [ownKey]: wanted } })) return;
+    if (await save(ctx, before, { ...before.document, holders: { ...before.document.holders, [ownKey]: wanted } }, m)) return;
   }
   throw new MissionError(409, "repository_registry_contention", "Concurrent repository acquisition requires retry under the original identity");
 }
@@ -162,7 +167,7 @@ export async function releaseReconciledRepository(ctx: PluginContext, m: Mission
     const result = await ctx.db.execute(`UPDATE ${table(ctx)} SET document = $1::jsonb, version = version + 1
       WHERE singleton = true AND version = $2 AND EXISTS (
         SELECT 1 FROM ${ctx.db.namespace}.missions WHERE company_id = $3 AND mission_id = $4 AND version = $5
-          AND (aggregate->'completion'->>'state' = 'closed' OR aggregate->'linearContinuity'->>'control' = 'cancelled'))`,
+          AND (aggregate->'completion'->>'state' = 'closed' OR aggregate->'linearContinuity'->>'control' = 'cancelled' OR aggregate->'draftAbandonment' IS NOT NULL))`,
       [JSON.stringify({ ...before.document, holders }), before.version, m.companyId, m.missionId, m.version]);
     if (result.rowCount === 1) return;
   }

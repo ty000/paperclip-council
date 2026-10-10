@@ -1,3 +1,4 @@
+import { assertMissionNotAbandoned } from "./mission-primitives.js";
 import { candidateAttachmentTarget } from "./candidate-attachment.js";
 import { assertN1DepartureWindow, assertContinuityDeparture } from "./continuity-policy.js";
 import { n1LeadExecution, type N1Integration } from "./n1-integration-state.js";
@@ -150,6 +151,7 @@ async function cas(
   aggregate: MissionAggregate,
   expectedVersion: number,
 ): Promise<MissionRecord> {
+  assertMissionNotAbandoned(mission);
   const changed = await ctx.db.execute(
     "UPDATE " + table(ctx) + " SET aggregate = $1::jsonb, owner_user_id = $1::jsonb->>'ownerUserId', version = version + 1, updated_at = now() " +
     "WHERE company_id = $2 AND mission_id = $3 AND version = $4",
@@ -600,6 +602,7 @@ export async function executeN1BoardCommand(ctx: PluginContext, input: {
   let mission = await getMission(ctx, input.companyId, input.missionId);
   if (!mission) throw new MissionError(404, "mission_not_found", "Mission not found");
   await owner(ctx, mission, input.actorUserId, input.body.command === "prepare-n1-resume");
+  assertMissionNotAbandoned(mission);
   if (input.body.command === "bind-resumed-lead-run") {
     const commandId = uuid(input.body.commandId, "commandId");
     const replay = receipt(mission, commandId, input.actorUserId!, canonicalPayloadHash(input.body));

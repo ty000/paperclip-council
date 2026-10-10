@@ -1,3 +1,4 @@
+import { assertMissionNotAbandoned } from "./mission-primitives.js";
 import { assertContinuityDeparture } from "./continuity-policy.js";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import type { MissionAggregate, MissionRecord } from "./missions.js";
@@ -17,6 +18,7 @@ const terminal = new Set(["succeeded", "failed", "cancelled", "timed_out", "inte
 /** Namespace-local CAS; never changes another mission or resets its admission/attempt state. */
 export async function saveModelState(ctx: PluginContext, m: MissionRecord, state: ModelSelectionState): Promise<MissionRecord> {
   if (!/^[a-z_][a-z0-9_]*$/.test(ctx.db.namespace)) throw new Error("Unsafe plugin namespace");
+  assertMissionNotAbandoned(m);
   const aggregate = { ...m.aggregate, modelSelection: state };
   const result = await ctx.db.execute(`UPDATE ${ctx.db.namespace}.missions SET aggregate = $1::jsonb, version = version + 1, updated_at = now()
     WHERE company_id = $2 AND mission_id = $3 AND version = $4`, [JSON.stringify(aggregate), m.companyId, m.missionId, m.version]);
