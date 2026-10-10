@@ -103,6 +103,17 @@ describe("durable delegated Council progression", () => {
     expect((await advanceContinuity(context().ctx, f.mission, job)).state).toBe("waiting");
     expect(f.reconcile).toHaveBeenCalledOnce(); expect(f.review).not.toHaveBeenCalled();
   });
+  it("reports a newly recorded zero-correction rejection as blocked instead of pending review", async () => {
+    f.mission.aggregate.phase = "reviewing";
+    f.mission.aggregate.n2 = { status: "reviewing", ordinary: { tasks: [] } } as never;
+    f.reconcile.mockImplementation(async () => {
+      f.mission.aggregate.n2!.status = "rejected";
+      f.mission.aggregate.control = { status: "blocked", reason: "correction_limit_exceeded" };
+    });
+    const result = await advanceContinuity(context().ctx, f.mission, job);
+    expect(result).toMatchObject({ state: "blocked", code: "correction_limit_exceeded" });
+    expect(f.review).not.toHaveBeenCalled(); expect(f.delivery).not.toHaveBeenCalled();
+  });
   it("publishes a campaign root status through native readback without N1 or duplicate Linear intents", async () => {
     const c = context();
     delete f.mission.aggregate.continuity; delete f.mission.aggregate.n1;

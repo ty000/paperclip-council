@@ -144,6 +144,11 @@ export async function handleN2RunFinished(
       const decision = prepared.verdict === "approved"
         ? { ...common, verdict: "approved" as const, approvedCommit: prepared.approvedCommit! }
         : { ...common, verdict: "changes_requested" as const };
+      if (decision.verdict === "changes_requested" && mission.aggregate.n2!.correctionLimit === 0) {
+        // Recheck immediately before the legacy PATCH, including after restart.
+        const { assertNativeLeadWakePolicy } = await import("./n2-native-report.js");
+        await assertNativeLeadWakePolicy(ctx, mission, true);
+      }
       const result = await executeCouncilDecision(ctx, config, decision);
       if (result.replayed && result.receipt.state === "indeterminate") {
         return { outcome: "prepared", reason: "receipt_pending", operationId: prepared.operationId };

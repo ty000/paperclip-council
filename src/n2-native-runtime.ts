@@ -317,7 +317,7 @@ export async function reconcileNativeVerdict(ctx: PluginContext, mission: Missio
     operationId: record.operationId, justification: report.rationale, resultReference: n2SubmissionResultReference(state.activeSubmissionId), nativeReview: binding };
   const decision: CouncilDecisionInput = report.verdict === "approved" ? { ...common, verdict: "approved", approvedCommit: record.packet.submission.candidateCommit }
     : { ...common, verdict: "changes_requested" };
-  if (report.verdict === "changes_requested" && state.correctionsUsed >= state.correctionLimit) {
+  if (report.verdict === "changes_requested" && state.correctionLimit !== 0 && state.correctionsUsed >= state.correctionLimit) {
     return n2Cas(ctx, mission, { ...mission.aggregate, control: { status: "blocked", reason: "correction_limit_exceeded" },
       journal: [...mission.aggregate.journal, { action: "native_rejection_correction_limit_exceeded", runId: run.id, submissionId: state.activeSubmissionId }] });
   }

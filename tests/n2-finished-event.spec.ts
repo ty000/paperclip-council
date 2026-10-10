@@ -93,6 +93,21 @@ describe("N2 finished-run decision application", () => {
     mocks.recordN2Decision.mockResolvedValue(mission);
   });
 
+  it.each([true, false])("holds a zero-correction legacy rejection before PATCH when lead wakeOnDemand=%s", async wakeOnDemand => {
+    const zero = { ...mission, aggregate: { n2: { correctionLimit: 0 }, responsibilities: { integrationLeadAgentId: "lead" } } };
+    mocks.getMissionByRootIssue.mockResolvedValue(zero);
+    mocks.settlePreparedN2ReviewUsage.mockResolvedValue(zero);
+    ctx.agents = { get: vi.fn(async () => ({ runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand } } })) } as never;
+    if (wakeOnDemand) {
+      await expect(handleN2RunFinished(ctx, event())).rejects.toMatchObject({ code: "native_lead_wake_policy" });
+      expect(mocks.executeCouncilDecision).not.toHaveBeenCalled();
+      expect(mocks.recordN2Decision).not.toHaveBeenCalled();
+    } else {
+      expect(await handleN2RunFinished(ctx, event())).toMatchObject({ outcome: "applied" });
+      expect(mocks.executeCouncilDecision).toHaveBeenCalledTimes(1);
+    }
+  });
+
   it("waits for authoritative cost, settles, then applies the exact immutable decision once", async () => {
     const order: string[] = [];
     mocks.settlePreparedN2ReviewUsage
