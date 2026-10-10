@@ -5,6 +5,9 @@ Paperclip workflows. This standalone package extracts the demonstrated
 `private.paperclip-council` integration without importing from a Paperclip
 monorepo workspace.
 
+Version `0.7.45` fixes the tagged npm workflow's local archive path and waits
+for registry visibility after an accepted publish. It adds no runtime behavior.
+
 Version `0.7.44` adds owner-authorized abandonment of an unused draft after
 proving zero native runs, reservations and effects. The mission remains in
 history, cannot reactivate, and releases only its own repository occupation.
@@ -357,7 +360,7 @@ between package checks, this local sandbox, the integrated Paperclip recipe and
 an authorized target.
 
 For npm release, trusted-publisher bootstrap, explicit-version installation and
-rollback boundaries, follow [`RELEASE.md`](./RELEASE.md). Version `0.7.44` is a
+rollback boundaries, follow [`RELEASE.md`](./RELEASE.md). Version `0.7.45` is a
 release-preparation version here; source readiness does not authorize or prove a
 public npm publication.
 
