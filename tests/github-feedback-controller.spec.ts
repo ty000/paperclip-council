@@ -6,6 +6,8 @@ import { reconcileControllerGithubFeedback } from "../src/github-feedback-contro
 import { assertConfiguredGithubFeedbackRefresh, parseGithubFeedbackRefreshShape } from "../src/github-feedback-authority.js";
 import { inspectN5 } from "../src/n5-state.js";
 import { registerContinuityJob } from "../src/continuity-runtime.js";
+import { assertLinearContinuityDeparture } from "../src/linear-continuity-control.js";
+import { linearAuthorityHash } from "../src/linear-continuity-contract.js";
 import { canonicalPayloadHash } from "../src/mission-primitives.js";
 
 const f = vi.hoisted(() => ({ cas: vi.fn(), departure: vi.fn(), mission: null as unknown as MissionRecord }));
@@ -200,4 +202,37 @@ describe("controller GitHub feedback refresh", () => {
     await expect(reconcileControllerGithubFeedback(h.ctx, m, job)).rejects.toMatchObject({ code: "github_feedback_authority_changed" });
     expect(h.resolve).not.toHaveBeenCalled(); expect(h.fetch).not.toHaveBeenCalled();
   });
+});
+
+
+it("reads delayed GitHub checks with local gates while reserving fresh source for the next actual departure", async () => {
+  const m = f.mission, source = "a".repeat(64), now = Date.now();
+  const subject = { sourceSha256: source };
+  m.aggregate.projectMandate!.linearIntake = { subject } as any;
+  const binding = { companyId: m.companyId, projectId: m.projectId, missionId: m.missionId,
+    nativeRootId: m.rootIssueId, subject, authoritySha256: linearAuthorityHash(m) };
+  const response = { sourceObservationProtocol: "council-linear-source-observation-v1", sourceInvalidationVersion: 0,
+    observationPurpose: "action", sourceSha256: source, availability: "available",
+    observedAt: new Date(now - 1_800_000).toISOString(), validUntil: new Date(now - 1_680_000).toISOString() };
+  const doc = { id: "observation-doc", latestRevisionId: "observation-revision", body: JSON.stringify(response) };
+  const docs = new Map<string, any>([["observation", doc]]), emit = vi.fn();
+  m.aggregate.linearContinuity = { mode: "milestone-fixed-v1", protocol: "council-linear-continuity-v1",
+    terminalPublicationProtocol: "council-terminal-publication-claim-v1", binding, sourceSha256: source,
+    control: "running", sequence: 0, publications: [], consumed: [], safeSettlementIds: {},
+    observation: { response, bodySha256: canonicalPayloadHash(doc.body), reference: { key: "observation",
+      documentId: doc.id, revisionId: doc.latestRevisionId, bodySha256: canonicalPayloadHash(doc.body) } } } as any;
+  f.departure.mockImplementation((ctx, mission, cancellation, intent, requestSource = true) =>
+    assertLinearContinuityDeparture(ctx, mission, cancellation, intent, requestSource));
+  const native = { issues: { documents: { get: async (_id: string, key: string) => docs.get(key) ?? null,
+    upsert: async (input: any) => { const saved = { id: input.key, latestRevisionId: input.key, ...input }; docs.set(input.key, saved); return saved; } } }, events: { emit } };
+  const waiting = github(undefined, { duplicateConclusions: ["pending"] });
+  await reconcileControllerGithubFeedback({ ...waiting.ctx, ...native } as any, m, job);
+  expect(f.mission.aggregate.n5!.publication!.controllerFeedbackReport!.checks[0]!.state).toBe("pending");
+  const passed = github(), ctx = { ...passed.ctx, ...native } as any;
+  const next = await reconcileControllerGithubFeedback(ctx, f.mission, job);
+  expect(inspectN5(next)).toMatchObject({ publicationReady: true });
+  expect(emit).not.toHaveBeenCalled();
+  await expect(assertLinearContinuityDeparture(ctx, next)).rejects.toMatchObject({ code: "linear_continuity_hold" });
+  expect(emit).toHaveBeenCalledOnce();
+  expect(f.mission.aggregate.linearContinuity!.challenge!.payload.observationPurpose).toBe("action");
 });

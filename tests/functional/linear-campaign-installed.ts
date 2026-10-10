@@ -244,6 +244,27 @@ async function verifyClosure(host: LinearHost, source: LinearSource, setup: Awai
   proof.jobs = { council: await jobRuns(host, council.pluginId), intake: await jobRuns(host, intake.pluginId) };
 }
 
+async function verifyIdleJobs(host: LinearHost, source: LinearSource, setup: Awaited<ReturnType<typeof bootstrapCampaign>>) {
+  const jobs = await host.api("GET", `/api/plugins/${setup.council.pluginId}/jobs`);
+  const job = jobs.find((entry: any) => entry.jobKey === "mission-continuity");
+  assert(job, "The native continuity job remains installed for local settlement");
+  const runIds = async () => (await host.api("GET", `/api/companies/${setup.companyId}/heartbeat-runs`))
+    .map((run: any) => run.id).sort();
+  const callsBefore = source.calls.length, runsBefore = await runIds(), observed = [];
+  for (let cycle = 0; cycle < 3; cycle++) {
+    const triggered = await host.api("POST", `/api/plugins/${setup.council.pluginId}/jobs/${job.id}/trigger`, {});
+    const completed = await waitForLinear("idle native continuity job settles", async () => {
+      const history = await host.api("GET", `/api/plugins/${setup.council.pluginId}/jobs/${job.id}/runs`);
+      return history.find((run: any) => run.id === triggered.runId);
+    }, run => Boolean(run && ["succeeded", "failed", "cancelled"].includes(run.status)));
+    assert.equal(completed.status, "succeeded");
+    observed.push(triggered.runId);
+    assert.equal(source.calls.length, callsBefore, "An idle local job must not request Linear source refresh");
+    assert.deepEqual(await runIds(), runsBefore, "An idle local job must not start another agent");
+  }
+  return { jobRuns: observed, additionalLinearCalls: source.calls.length - callsBefore, additionalAgentRuns: 0 };
+}
+
 async function scenario(host: LinearHost, proof: any, save: () => Promise<void>, intakeRepository: string) {
   const source = await startLinearSource({ campaign: true });
   const restoreGitHub = await installCampaignGitHubTransport(host.runtime, proof);
@@ -255,9 +276,11 @@ async function scenario(host: LinearHost, proof: any, save: () => Promise<void>,
     const result = await observeCampaign(host, setup, proof, save);
     proof.final = result; proof.serial = verifySerialResult(result, setup);
     await verifyClosure(host, source, setup, proof);
+    proof.idleJobs = await verifyIdleJobs(host, source, setup);
     assert.deepEqual(protectedSource(source), sourceBefore);
     proof.checks = { completeImport: "PASS", noImporterWake: "PASS", serialIntegratedLeaves: "PASS",
-      independentGlobalClosure: "PASS", terminalReadback: "PASS", repositoryReleased: "PASS", singleBudget: "PASS", noProvider: "PASS" };
+      independentGlobalClosure: "PASS", terminalReadback: "PASS", repositoryReleased: "PASS", singleBudget: "PASS", noProvider: "PASS",
+      idleLinearSilence: "PASS" };
   } finally {
     proof.sourceReads = source.calls; proof.publications = { comments: source.comments, effects: source.effects };
     restoreGitHub(); await source.close();

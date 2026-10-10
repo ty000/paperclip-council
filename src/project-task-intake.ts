@@ -309,8 +309,8 @@ async function advancePinned(ctx: PluginContext, initial: Intake, latest: Projec
   const prepared = await prepareControlMission(ctx, intake, m, policy);
   if (!prepared || prepared.controlOnly) return;
   m = prepared.mission;
-  await assertProjectDeparture(ctx, m);
   if (!m.aggregate.continuity) {
+    await assertProjectDeparture(ctx, m);
     const configured = await command(ctx, intake, m, "configure-continuity", { authorizeProgression: true, n3Slots: policy.content.n3Slots });
     intake = configured.intake;
     await configureContinuity(ctx, m, policy.authorizedBy, configured.body, { n2CommandCas, runtimeReceipt, runtimeUuid });

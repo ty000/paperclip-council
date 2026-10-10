@@ -717,3 +717,11 @@ cancellation stop new leaf departures. Resume and repository release also inspec
 native runs and uncertain effects; release additionally requires every member to
 be proof-closed. The root remains responsible for the global review and closure
 implemented by the L5 source slice.
+
+
+Fixed Linear campaign continuity in 0.7.48 uses relevant source invalidations and
+actual action boundaries. Idle minute jobs and expired source evidence do not
+poll Linear. Native settlement continues; uncertain original publications receive
+bounded targeted readbacks, then a visible hold. See the
+[fixed campaign cadence and recovery contract](docs/LINEAR-CAMPAIGN-V1.md#continuity-cadence-and-manual-refresh)
+for positive peer negotiation, upgrade behavior and explicit owner recovery.

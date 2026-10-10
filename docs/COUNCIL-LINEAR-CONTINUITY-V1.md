@@ -39,11 +39,11 @@ Le code canonique des structures strictes est `src/linear-continuity-contract.ts
 
 1. Council conserve une outbox bornée (64 intentions maximum) et un challenge dans sa mission persistante. L'identifiant UUID d'intention ne change pas en cas de reprise, notification perdue ou réponse incertaine. Le sujet, les preuves, les budgets et les réservations ne sont jamais réinitialisés.
 2. Le document `council-linear-publication-<intentId>` contient `{intentId,payloadSha256,payload}`. Son contenu est immuable et sa révision est relue. Le document `council-linear-request-<challengeId>` contient protocole, binding, nonce, horodatages, source, séquence consommée, contrôle et références des publications en attente.
-3. Après persistance et readback, Council émet `plugin.private.paperclip-council.linear-continuity-request` avec les références. Une perte du hint entraîne sa réémission, avec le même challenge tant qu'il reste valide. Une nouvelle observation après expiration change le nonce, jamais les intentions métier.
+3. Après persistance et readback, Council émet `plugin.private.paperclip-council.linear-continuity-request` avec les références. En mode fixe 0.7.48, une perte du hint autorise au plus trois émissions du même challenge ; une expiration seule ne crée pas de nouvelle observation. Un départ, événement pertinent ou effet à publier peut demander une observation, sans remplacer les intentions métier. Le mode coopératif historique conserve sa cadence.
 4. Le peer relit la demande, puis écrit un document de réponse sur la racine native et émet **sous son identité host** `plugin.ty000.linear-intake.council-continuity-result`. Le payload du hint contient protocole, société, mission, challenge et référence exacte du document de réponse. Aucun document seul, auteur agent ou événement d'un autre plugin ne constitue une réponse authentifiée.
 5. Council lit ce document, vérifie nonce/challenge/hash de demande, binding complet, délai, capacités et révision, puis conserve la réponse dans sa propre mission. Un doublon identique n'applique pas une deuxième transition. Une notification de réponse perdue est récupérée par réémission de la demande originale et relecture/réémission côté peer ; elle n'autorise pas une nouvelle campagne ou publication.
 
-La fenêtre d'acceptation d'une réponse à un challenge vit au plus cinq minutes ; une observation source disponible vit au plus deux minutes. Le challenge durable peut rester conservé après cette fenêtre afin de préserver son identité et d'appliquer la cadence fixe décrite dans [la campagne Linear](LINEAR-CAMPAIGN-V1.md#continuity-cadence-and-manual-refresh) ; il ne rend jamais une réponse expirée à nouveau fraîche. La réémission active reste bornée à une toutes les 30 secondes. Le peer doit répondre idempotemment et intégrer les demandes non notifiées à sa réconciliation propre. Ses réponses contiennent `availability`, `sourceSha256`, `changes`, `acknowledgements`, `observedAt`, `validUntil` et l'écho exact de la demande.
+La fenêtre d'acceptation d'une réponse à un challenge vit au plus cinq minutes ; une observation source disponible vit au plus deux minutes. Le challenge durable peut rester conservé après cette fenêtre afin de préserver son identité et d'appliquer la cadence fixe décrite dans [la campagne Linear](LINEAR-CAMPAIGN-V1.md#continuity-cadence-and-manual-refresh) ; il ne rend jamais une réponse expirée à nouveau fraîche. En mode fixe, la réémission est bornée à trois tentatives, espacées d’au moins 30 secondes, puis à une retenue native visible. Le peer doit répondre idempotemment et intégrer les demandes non notifiées à sa réconciliation propre. Ses réponses contiennent `availability`, `sourceSha256`, `changes`, `acknowledgements`, `observedAt`, `validUntil` et l'écho exact de la demande.
 
 Une confirmation d'outbox fixe `intentId`, `payloadSha256`, `status: confirmed`, `publicationReceipt`. Le reçu relu contient :
 
@@ -81,3 +81,23 @@ La v1 adapte les annotations **`context-only`** des seuls nœuds explicitement c
 Les tests Council couvrent authenticité host, nonce/société/protocole/lease, doublons/perte de hint/redémarrage, révisions documentaires, séparation résultat/publication, commande atomique, ciblage, dépassement/ordre, panne, règlement terminal, pause/reprise et fermeture PR à effet unique. Les helpers GitHub sont testés avec un transport simulé. Cela reste une qualification Council avec contrepartie déterministe.
 
 Le lot peer devra adopter les schemas et hashes exacts, produire les observations/commandes/reçus, maintenir son propre outbox d'effets Linear et réémettre ses notifications perdues. Avant toute activation : tester les deux plugins compatibles sur un intake borné, deux feuilles code successives, panne/pause/reprise/annulation et readback externe de la clôture. Le handoff initial 0.4.0 est conservé ; il ne suffit pas à cette qualification. Les choix TAD sur campagnes/milestones et l'adaptation substantielle restent visibles dans #73. Installation et activation en recette sont différées à la fin des lots.
+
+
+## Extension événementielle du mode fixe — Council 0.7.48
+
+Le mode `milestone-fixed-v1` utilise désormais les générations du document natif
+`linear-source-invalidation` et le triplet négocié `sourceObservationProtocol`,
+`sourceInvalidationVersion`, `observationPurpose`, avec la capacité positive
+`event-driven-source`. Les champs et la cadence canoniques sont détaillés dans
+[le contrat de campagne](LINEAR-CAMPAIGN-V1.md#continuity-cadence-and-manual-refresh).
+Une réponse `readback` confirme des effets déjà revendiqués ; elle ne renouvelle
+jamais la preuve source. Les jobs d’attente et de règlement des coûts demeurent
+locaux. Une reprise relit la génération durable même si sa notification a été
+perdue. Toute admission, nouveau wake, fusion et clôture conserve ses contrôles
+sur la source, l’autorité, les réservations, le candidat et les preuves terminales.
+
+Les tests locaux couvrent l’inactivité après expiration, le réveil d’une demande
+au départ réel, les notifications perdues/doublées/coalescées, les réponses d’une
+génération dépassée, les réessais bornés sous les mêmes identités, la reprise
+explicite et la compatibilité fermée des versions anciennes. Ils ne prouvent pas
+une activation de webhook ni un appel Linear ou provider réel.

@@ -1,6 +1,6 @@
 {
   "name": "@ty000/paperclip-council",
-  "version": "0.7.47",
+  "version": "0.7.48",
   "description": "Revisioned Council rosters, durable review decisions, mission admission and integrated candidate verification for Paperclip workflows",
   "type": "module",
   "repository": "https://github.com/ty000/paperclip-council.git",

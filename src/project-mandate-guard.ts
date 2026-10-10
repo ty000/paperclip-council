@@ -12,9 +12,9 @@ import { readTaskIntake } from "./project-intake-rebind.js";
 import { repositoryIntakeHeld } from "./project-intake-recovery.js";
 import { assertRepositoryResumptionPlan } from "./repository-resumption-publication.js";
 
-export async function assertProjectDeparture(ctx: PluginContext, m: MissionRecord, cancellationReservationId?: string, terminalIntent?: { intentId: string; payloadSha256: string }) {
+export async function assertProjectDeparture(ctx: PluginContext, m: MissionRecord, cancellationReservationId?: string, terminalIntent?: { intentId: string; payloadSha256: string }, requireFreshLinearSource = true) {
   const control = await campaignRoot(ctx, m);
-  await assertLinearContinuityDeparture(ctx, control, cancellationReservationId, terminalIntent);
+  await assertLinearContinuityDeparture(ctx, control, cancellationReservationId, terminalIntent, requireFreshLinearSource);
   if (control.aggregate.projectMandate) {
     const intake = await readTaskIntake(ctx, control.companyId, control.projectId, control.rootIssueId);
     if (intake?.mission_id === control.missionId && repositoryIntakeHeld(intake.state)) {

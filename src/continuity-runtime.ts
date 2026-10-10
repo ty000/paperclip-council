@@ -135,6 +135,8 @@ export async function advanceContinuity(ctx: PluginContext, initial: MissionReco
   if (m.aggregate.linearContinuity) {
     m = await (await import("./linear-continuity-runtime.js")).reconcileLinearContinuity(ctx, m);
     const linear = m.aggregate.linearContinuity!;
+    if (linear.transportHold) return { state: "blocked", code: linear.transportHold.code,
+      nextAction: "Les réessais bornés sont épuisés. Le propriétaire doit réconcilier explicitement les intentions Linear conservées." };
     if (linear.control !== "running" || linear.controlReason) return waiting("linear_control_hold", "Council réconcilie les opérations admises au point sûr ; aucun nouveau départ, fusion ou clôture.");
     if (linear.mode === "milestone-fixed-v1" && !m.aggregate.repositoryCampaign) return campaignObservation(m);
   }
