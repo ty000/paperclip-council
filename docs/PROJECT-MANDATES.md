@@ -9,6 +9,15 @@ A source/document/relation/assignment change suspends new departures. No implici
 
 An intake retained with `repository_occupied` never resumes merely because the other campaign releases the repository. Its question's `confirmed` flag records publication only. The current company owner reads the retained intake through the same GET route, then POSTs `command: "resume-repository-intake"`, a stable UUID `commandId`, the original `rootIssueId`, current pinned `policyRevisionId`, `expectedIntakeVersion` and `authorizeResume: true`. This records an explicit recovery decision and permits the existing job to recheck the original request; it does not launch an agent, change mandate, replace identities or reset budgets. The original command replays without another decision. If the repository is still occupied, the request is held again and replaying the previous command cannot release that new hold.
 
+For a `milestone-fixed-v1` campaign, the resume command additionally requires
+`reason` (1–1000 characters after trimming). Council retains the blocking question,
+owner, answer and consequences, and includes the decision that actually releases
+the intake in the first campaign plan. Its Linear acknowledgement is required
+before departure. Earlier attempts remain in Paperclip history. Historical fixed
+resumptions without a retained decision are refused; an already emitted plan is
+not silently rewritten to adopt a later decision. Ordinary Todo intake retains
+its historical command contract.
+
 Qualification distinguishes deterministic model/GitHub content from real native task relations, SDK effects, cron, run accounting, worker restart and artifact verification. No provider campaign is implied.
 
 ## Explicit publication and feedback contract (0.7.14)

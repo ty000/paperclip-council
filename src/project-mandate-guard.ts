@@ -10,6 +10,7 @@ import { assertHierarchySources } from "./hierarchy-runtime.js";
 import { campaignRoot } from "./repository-campaign.js";
 import { readTaskIntake } from "./project-intake-rebind.js";
 import { repositoryIntakeHeld } from "./project-intake-recovery.js";
+import { assertRepositoryResumptionPlan } from "./repository-resumption-publication.js";
 
 export async function assertProjectDeparture(ctx: PluginContext, m: MissionRecord, cancellationReservationId?: string, terminalIntent?: { intentId: string; payloadSha256: string }) {
   const control = await campaignRoot(ctx, m);
@@ -19,6 +20,7 @@ export async function assertProjectDeparture(ctx: PluginContext, m: MissionRecor
     if (intake?.mission_id === control.missionId && repositoryIntakeHeld(intake.state)) {
       throw new MissionError(409, "repository_intake_held", "The owner must explicitly resume the original occupied intake before a new departure");
     }
+    if (intake?.mission_id === control.missionId) assertRepositoryResumptionPlan(control, intake.state);
   }
   await ensureMissionRepository(ctx, control);
   const pinned = m.aggregate.projectMandate;

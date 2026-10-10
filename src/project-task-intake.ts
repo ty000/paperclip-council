@@ -21,6 +21,7 @@ import { linearMissionObjective, prepareLinearTasks } from "./linear-intake-prep
 import { assertLinearSource } from "./linear-intake-revalidation.js";
 import { validateRosterPair } from "./rosters.js";
 import { queueLinearPublication } from "./linear-continuity-transport.js";
+import { assertRepositoryResumptionPlan, repositoryResumptionPublication, type RepositoryResumption } from "./repository-resumption-publication.js";
 
 type IntakeState = { createBody?: Record<string, unknown>; snapshot?: ProjectMandateSnapshot;
   hierarchy?: HierarchyState;
@@ -28,6 +29,7 @@ type IntakeState = { createBody?: Record<string, unknown>; snapshot?: ProjectMan
   repositoryCampaign?: { campaignRootMissionId: string; campaignRootIssueId: string; sourceId: string };
   commands: Record<string, Record<string, unknown>>; questions: Record<string, { message: string; confirmed: boolean }>;
   repositoryHold?: { status: "held" | "released"; heldAt: string };
+  repositoryResumptions?: RepositoryResumption[];
   plan?: { key: string; body: string } };
 type Intake = { companyId: string; rootIssueId: string; projectId: string; revisionId: string; missionId: string; version: number; state: IntakeState };
 function fromRow(row: any): Intake {
@@ -62,7 +64,7 @@ async function question(ctx: PluginContext, initial: Intake, policy: ProjectMand
     addresseeUserId: policy.authorizedBy, continuationPolicy: "none", title: "Council — information ou décision requise",
     payload: { version: 1, title: "Compléter la tâche dans le mandat existant", questions: [{ id: "project-task", selectionMode: "single", required: true,
       prompt: `${pending.message}\nMandat de projet : ${policy.revisionId}. ${code === "repository_occupied"
-        ? "Après libération du dépôt, son propriétaire doit relancer cette demande avec resume-repository-intake dans Paperclip. Une réponse à cette question ne relance aucun travail."
+        ? "Après libération du dépôt, son propriétaire doit relancer cette demande avec resume-repository-intake dans Paperclip, avec un reason explicite pour une campagne fixed. Une réponse à cette question ne relance aucun travail."
         : "Corrigez la tâche ou sa politique puis indiquez la décision. Cette réponse ne donne aucun droit supplémentaire."}`,
       options: [{ id: "decision", label: "Indiquer la précision ou la décision", freeText: true }] }] } }, intake.companyId);
   if (interaction.issueId !== intake.rootIssueId || interaction.addresseeUserId !== policy.authorizedBy) throw new MissionError(409, "project_question_binding", "Native question is not addressed to the pinned owner on this task");
@@ -161,7 +163,7 @@ async function prepareControlMission(ctx: PluginContext, intake: Intake, m: Miss
   const controlOnly = Boolean(intake.state.linearIntake?.snapshot.body.campaign);
   try {
     const mission = await prepareLinearContinuity(ctx, m, policy);
-    if (controlOnly) await prepareCampaignLeaves(ctx, intake, mission);
+    if (controlOnly) await prepareCampaignLeaves(ctx, intake, mission, policy);
     return { mission, controlOnly };
   } catch (error) {
     // n2Cas refused this write. The campaign reconciler rereads original intents
@@ -183,14 +185,26 @@ function orderedCampaignLeaves(preparation: LinearPreparation) {
   return ordered;
 }
 
-async function prepareCampaignLeaves(ctx: PluginContext, intake: Intake, m: MissionRecord) {
+async function prepareCampaignLeaves(ctx: PluginContext, intake: Intake, m: MissionRecord, policy: ProjectMandate) {
   const preparation = intake.state.linearIntake!, campaign = preparation.snapshot.body.campaign;
   if (!campaign) return m;
   const leaves = orderedCampaignLeaves(preparation);
+  if (m.aggregate.linearContinuity!.publications.some(publication => publication.payload.campaignPlan)) {
+    assertRepositoryResumptionPlan(m, intake.state, false);
+  } else {
+    // A retained create payload or continuity state is still pre-admission. Once
+    // this exact plan is persisted, its Started write belongs to ongoing continuity.
+    const admissionReceipt = await assertLinearSource(ctx, policy, intake.missionId, preparation.snapshot.subject,
+      "admission", intake.state.repositoryResumptions?.at(-1)?.resumedAt);
+    intake = await save(ctx, intake, { ...intake.state, linearIntake: { ...preparation, admissionReceipt } });
+    await requireCurrentPolicy(ctx, policy);
+    requireFreshLinearReceipt(admissionReceipt);
+  }
   m = await queueLinearPublication(ctx, m, "progress", { campaignPlan: { schema: "council-linear-delivery-plan-v1",
     campaignRootMissionId: m.missionId, milestoneId: campaign.milestoneId,
     leaves: leaves.map(node => ({ sourceId: node.sourceId, nativeId: node.nativeId,
       blockedByNativeIds: node.blockerIds, assigneeAgentId: node.assigneeAgentId, ownedPaths: node.ownedPaths })) },
+    ...repositoryResumptionPublication(intake.state),
     statusUpdates: [{ sourceId: preparation.snapshot.body.sourceRootId, state: "started" }] });
   for (const node of leaves) await ctx.db.execute(`INSERT INTO ${projectTable(ctx, "project_task_intakes")}
     (company_id, root_issue_id, project_id, policy_revision_id, mission_id, state)

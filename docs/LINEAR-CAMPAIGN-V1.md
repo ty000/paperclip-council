@@ -176,3 +176,41 @@ usage are synthetic, so they demonstrate neither real model quality nor provider
 cost. Failed qualification attempts retain their original reports under `.runtime`;
 the receipts identify the successful raw reports by SHA-256. L6 real gateway
 qualification and recette activation remain outstanding.
+
+## Bounded follow-up — 10 October 2026
+
+The follow-up candidate is Council 0.7.42, based on `3dc8387b…`, paired with
+intake 0.6.2 based on `a6559d1d…`. These corrections do not inherit an installed
+qualification from the earlier 0.7.41/0.6.1 receipt. No runtime installation,
+configuration or activation is performed by this lot.
+
+Before any first campaign plan, R01 also requires an initial admission source
+attestation. A retained preparation cannot bypass it. After owner resumption,
+the challenge must have been requested after that decision; a previously
+positive response cannot be reused. Once the plan is persisted, expected
+Started/progression states use ongoing continuity instead of replaying Todo
+eligibility.
+
+R05 binds the occupied-intake owner's decision to the first plan publication
+and its existing readback gate. The question, author, answer and consequences
+remain in Paperclip. No new transport, orchestration state machine or accounting
+period is introduced. The full source suite passes 1,431 tests (one skipped), with 127 Python
+operations tests. The composed driver test covers retained preparation, source
+withdrawal, fresh admission, restart and lost plan ACK. Independent source review
+found no remaining P0/P1/P2 in the bounded lot; published CI supplies final
+commit-bound checks. These are source/fixture results, not a new installed run.
+
+Two exceptional paths are explicitly outside this small V1:
+
+- R03: individual pause/cancel before a mission exists with fixed campaign
+  continuity. A repository-occupied request stays held until explicit owner
+  resumption; leaving it held is not an individual cancellation. Global intake
+  or mandate suspension is not evidence of such a cancellation.
+- R04: resuming the same fixed campaign after a failed integration. Existing
+  independent recovery-mission requirements do not bypass the original
+  repository occupation. Preserve the hold and evidence; an external repair or
+  revert alone cannot resume it. Cancellation still requires safe reconciliation.
+
+The supported pause/resume/cancel controls after campaign fixation remain
+unchanged. The earlier installed receipt remains useful for its nominal path,
+not as proof that these exceptional cases are implemented.

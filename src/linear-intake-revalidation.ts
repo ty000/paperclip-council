@@ -70,19 +70,23 @@ async function consume(ctx: PluginContext, policy: ProjectMandate, row: Challeng
 
 /** Existing continuity job drives requests; events only persist observations. */
 export async function assertLinearSource(ctx: PluginContext, policy: ProjectMandate, admissionId: string,
-  input: LinearSourceSubject, stage: "preparation" | "admission"): Promise<LinearRevalidationReceipt> {
+  input: LinearSourceSubject, stage: "preparation" | "admission", requestedAfter?: string): Promise<LinearRevalidationReceipt> {
   const subject = linearSourceSubjectSchema.parse(input);
   if (subject.companyId !== policy.companyId || subject.targetProjectId !== policy.projectId) waiting("linear_source_scope_changed");
   await currentAuthority(ctx, policy);
   const subjectHash = canonicalPayloadHash({ subject, mandateId: policy.revisionId, mandateRevisionSha256: canonicalPayloadHash(policy.content) });
   let row = await latest(ctx, subject.companyId, admissionId, stage);
   if (row && row.subject_hash !== subjectHash) waiting("linear_source_subject_changed");
-  if (row && !row.consumed_at && row.response && validSourceResultTime(row.response, Date.now())) return consume(ctx, policy, row);
+  const after = requestedAfter === undefined ? undefined : Date.parse(requestedAfter);
+  if (after !== undefined && (!Number.isFinite(after) || Date.now() <= after)) waiting();
+  const beforeRecovery = row && after !== undefined && Date.parse(row.request.requestedAt) <= after;
+  if (row && !beforeRecovery && !row.consumed_at && row.response && validSourceResultTime(row.response, Date.now())) return consume(ctx, policy, row);
   const expired = row && Date.parse(row.response?.validUntil ?? row.request.expiresAt) <= Date.now();
-  if (!row || row.consumed_at || expired) {
+  if (!row || beforeRecovery || row.consumed_at || expired) {
     row = await createChallenge(ctx, policy, admissionId, subject, stage, subjectHash, (row?.generation ?? 0) + 1);
   }
   if (row.subject_hash !== subjectHash) waiting("linear_source_subject_changed");
+  if (after !== undefined && Date.parse(row.request.requestedAt) <= after) waiting();
   await emitPending(ctx, row);
   waiting();
 }

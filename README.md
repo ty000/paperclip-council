@@ -5,6 +5,13 @@ Paperclip workflows. This standalone package extracts the demonstrated
 `private.paperclip-council` integration without importing from a Paperclip
 monorepo workspace.
 
+Version `0.7.42` binds an explicit occupied-intake resumption decision to the
+first campaign plan and its Linear acknowledgement before departure. See the
+[bounded correction and limits](docs/LINEAR-CAMPAIGN-V1.md#bounded-follow-up--10-october-2026).
+It does not install or activate the candidate. Individual stop before a fixed
+Council mission and resumption of the same campaign after failed integration
+remain deferred V1 cases.
+
 Version `0.7.31` adds the source implementation for the fixed campaign's single
 global review and terminal closure. After every delivery is integrated,
 proof-closed and acknowledged in Linear, Council prepares one parentless native

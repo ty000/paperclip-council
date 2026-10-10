@@ -11,6 +11,7 @@ import { reconcileLinearCancellation, handleCancellationRequest } from "../src/l
 import { ensureLinearContextGuidance } from "../src/linear-context-guidance.js";
 import { FIXED_CAMPAIGN_MODE, TERMINAL_PUBLICATION_PROTOCOL } from "../src/linear-continuity-contract.js";
 import { handleLinearContinuityBoard, reconcileLinearContinuity } from "../src/linear-continuity-runtime.js";
+import { repositoryResumptionPublication } from "../src/repository-resumption-publication.js";
 
 const f = vi.hoisted(() => ({ m: null as any, bindings: [] as any[], reservations: [] as any[], runStatus: "running", emitted: [] as any[], launch: vi.fn(), settlement: vi.fn(), terminalClaim: vi.fn(), docs: new Map<string, any>(), issues: new Map<string, any>() }));
 vi.mock("../src/missions.js", async original => ({ ...await original(), getMission: async (_c: any, companyId: string, id: string) => f.m?.companyId === companyId && f.m?.missionId === id ? structuredClone(f.m) : null }));
@@ -290,6 +291,26 @@ function confirmPublications() {
     reference: proof(`ack-${p.intentId}`, { intentId: p.intentId }), responseSha256: digest("a"), confirmedAt: new Date().toISOString(),
   };
 }
+it("retains the resumed campaign plan until its exact publication receipt is read back, then rejects receipt drift", async () => {
+  fixedCampaign();
+  const content = { campaignPlan: { schema: "council-linear-delivery-plan-v1" }, ...repositoryResumptionPublication({ repositoryResumptions: [{
+    commandId: randomUUID(), payloadHash: digest("f"), ownerUserId: "owner", policyRevisionId: randomUUID(), heldIntakeVersion: 4,
+    resumedAt: new Date().toISOString(), decision: { question: "Dépôt occupé", questionAuthor: "Council", response: "Reprendre la vérification",
+      consequences: "Attendre le plan confirmé" } }] }) };
+  await queueLinearPublication(ctx, f.m, "progress", content);
+  await reconcileLinearTransport(ctx, f.m); await fixedAnswer();
+  const publication = structuredClone(f.m.aggregate.linearContinuity.publications[0]);
+  await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_hold" });
+  await queueLinearPublication(ctx, f.m, "progress", content); await reconcileLinearTransport(ctx, f.m);
+  expect(f.m.aggregate.linearContinuity.publications).toEqual([publication]);
+  const receipt = proof("recovery-plan-readback", { protocol: "linear-publication-readback-v1", bindingSha256: canonicalPayloadHash(f.m.aggregate.linearContinuity.binding),
+    intentId: publication.intentId, payloadSha256: publication.payloadSha256, sourceSha256: publication.payload.sourceSha256,
+    status: "confirmed", effects: [{ sourceId: f.m.aggregate.linearContinuity.binding.sourceRootId, readbackSha256: digest("b") }] });
+  await fixedAnswer({ acknowledgements: [{ intentId: publication.intentId, payloadSha256: publication.payloadSha256, status: "confirmed", publicationReceipt: receipt }] });
+  await expect(assertLinearContinuityDeparture(ctx, f.m)).resolves.toBeUndefined();
+  f.docs.get(receipt.key).latestRevisionId = randomUUID();
+  await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_document_changed" });
+});
 it("fixed campaigns negotiate their terminal claim capability and reject remote commands and legacy replies", async () => {
   fixedCampaign();
   await answer(); expect(f.m.aggregate.linearContinuity.observation).toBeUndefined();
