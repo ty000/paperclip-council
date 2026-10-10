@@ -94,6 +94,24 @@ These recovery controls have targeted source tests. The installed audit receipt
 below additionally qualifies the nominal terminal permission exchange. It does
 not turn the recovery scenarios into installed tests or authorize recette activation.
 
+## Continuity cadence and manual refresh
+
+For a fixed campaign, an unchanged running request is not emitted again while
+its response remains fresh. A request with no response still repeats its durable
+hint after thirty seconds. A paused or cancelled campaign with no pending Linear
+publication performs no automatic source-only refresh; pending or uncertain
+publication intents retain their identity and reconcile at most once every five
+minutes. A changed outbox, control, resume marker or terminal claim may request an
+immediate observation, without bypassing publication, departure, merge or closure
+gates.
+
+The current company and mission owner may use `reconcile-linear-continuity` on
+the native Board to require one fresh observation, including before an explicit
+resume. This manual refresh reuses the durable challenge until its normal expiry
+and retains the thirty-second hint guard. It bypasses only the automatic fixed
+campaign backoff, grants no effect permission and does not replace or weaken
+source freshness and readback.
+
 ## Cancellation and occupied-intake recovery
 
 Fixed campaign cancellation leaves integrated commits and historical technical

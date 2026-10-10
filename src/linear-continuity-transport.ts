@@ -7,6 +7,49 @@ import { continuityNoticeSchema, continuityResponseSchema, LINEAR_CONTINUITY_EVE
 import { ensureLinearDocument, readLinearProof } from "./linear-continuity-documents.js";
 import { retainSourceHold } from "./linear-source-hold.js";
 
+const LOST_NOTICE_RETRY_MS = 30_000;
+const PAUSED_PUBLICATION_RECONCILIATION_MS = 300_000;
+
+type LinearTransportOptions = {
+  /** Owner-only board recovery: require a new response without relaxing any effect gate. */
+  forceObservation?: boolean;
+};
+type LinearChallenge = NonNullable<LinearContinuityState["challenge"]>;
+type FixedTerminalProtocol = { terminalPublicationProtocol?: LinearContinuityState["terminalPublicationProtocol"]; resumeVersion?: number };
+
+function continuityRequestChanged(challenge: LinearChallenge | undefined, state: LinearContinuityState,
+  requests: unknown[], terminalProtocol: FixedTerminalProtocol) {
+  if (!challenge) return false;
+  return canonicalPayloadHash(challenge.payload.publications) !== canonicalPayloadHash(requests)
+    || challenge.payload.control !== state.control
+    || challenge.payload.terminalPublicationProtocol !== terminalProtocol.terminalPublicationProtocol
+    || challenge.payload.resumeVersion !== terminalProtocol.resumeVersion
+    || challenge.payload.consumedSequence !== state.sequence;
+}
+
+function suppressFixedTransport(state: LinearContinuityState, pendingCount: number, challenge: LinearChallenge | undefined,
+  requestChanged: boolean, now: number, forceObservation: boolean) {
+  if (state.mode !== FIXED_CAMPAIGN_MODE || forceObservation || requestChanged) return false;
+  if (["paused", "cancelled"].includes(state.control)) {
+    if (pendingCount === 0) return true;
+    return challenge?.lastEmittedAt
+      ? now - Date.parse(challenge.lastEmittedAt) < PAUSED_PUBLICATION_RECONCILIATION_MS : false;
+  }
+  const response = state.observation?.response;
+  if (state.control !== "running" || !challenge || !response) return false;
+  return response.challengeId === challenge.challengeId && responseFresh(response, now);
+}
+
+function newLinearChallenge(state: LinearContinuityState, requests: unknown[], terminalProtocol: FixedTerminalProtocol, now: number): LinearChallenge {
+  const challengeId = randomUUID(), nonce = randomBytes(32).toString("hex");
+  const requestedAt = new Date(now).toISOString(), expiresAt = new Date(now + 300_000).toISOString();
+  const payload = { protocol: LINEAR_CONTINUITY_PROTOCOL, ...(state.mode ? { mode: state.mode } : {}), ...terminalProtocol,
+    binding: state.binding, challengeId, nonce, requestedAt, expiresAt, sourceSha256: state.sourceSha256,
+    consumedSequence: state.sequence, control: state.control, publications: requests };
+  return { challengeId, nonce, requestedAt, expiresAt, payload, requestSha256: canonicalPayloadHash(payload),
+    documentKey: `council-linear-request-${challengeId}` };
+}
+
 export async function saveLinearContinuity(ctx: PluginContext, m: MissionRecord, state: LinearContinuityState) {
   return n2Cas(ctx, m, { ...m.aggregate, linearContinuity: state });
 }
@@ -31,7 +74,7 @@ async function finishOutbox(ctx: PluginContext, m: MissionRecord) {
   }
   return m;
 }
-export async function reconcileLinearTransport(ctx: PluginContext, initial: MissionRecord) {
+export async function reconcileLinearTransport(ctx: PluginContext, initial: MissionRecord, options: LinearTransportOptions = {}) {
   let m = (await getMission(ctx, initial.companyId, initial.missionId))!;
   if (!m.aggregate.linearContinuity) return m;
   assertContinuityBinding(m, m.aggregate.linearContinuity.binding);
@@ -41,24 +84,24 @@ export async function reconcileLinearTransport(ctx: PluginContext, initial: Miss
   const claim = m.aggregate.campaignClosure?.terminalClaim;
   const requests = pending.map(p => ({ intentId: p.intentId, payloadSha256: p.payloadSha256, document: p.document,
     ...(claim?.intentId === p.intentId && claim.payloadSha256 === p.payloadSha256 ? { terminalClaim: claim } : {}) }));
-  const terminalProtocol = state.mode === FIXED_CAMPAIGN_MODE ? {
+  const terminalProtocol: FixedTerminalProtocol = state.mode === FIXED_CAMPAIGN_MODE ? {
     terminalPublicationProtocol: state.terminalPublicationProtocol, resumeVersion: state.resumeVersion ?? 0,
   } : {};
   let challenge = state.challenge;
-  // Expiry or a changed outbox permits a fresh observation nonce, never a new publication intent.
-  if (!challenge || Date.parse(challenge.expiresAt) <= Date.now() || canonicalPayloadHash(challenge.payload.publications) !== canonicalPayloadHash(requests)
-      || challenge.payload.control !== state.control || challenge.payload.terminalPublicationProtocol !== terminalProtocol.terminalPublicationProtocol
-      || challenge.payload.resumeVersion !== terminalProtocol.resumeVersion) {
-    const challengeId = randomUUID(), nonce = randomBytes(32).toString("hex"), requestedAtMs = Date.now();
-    const requestedAt = new Date(requestedAtMs).toISOString(), expiresAt = new Date(requestedAtMs + 300_000).toISOString();
-    const payload = { protocol: LINEAR_CONTINUITY_PROTOCOL, ...(state.mode ? { mode: state.mode } : {}), ...terminalProtocol, binding: state.binding, challengeId, nonce, requestedAt, expiresAt,
-      sourceSha256: state.sourceSha256, consumedSequence: state.sequence, control: state.control, publications: requests };
-    challenge = { challengeId, nonce, requestedAt, expiresAt, payload, requestSha256: canonicalPayloadHash(payload), documentKey: `council-linear-request-${challengeId}` };
+  const now = Date.now();
+  const requestChanged = continuityRequestChanged(challenge, state, requests, terminalProtocol);
+  // Fixed paused publication backoff is decided before expiry rotation.
+  if (suppressFixedTransport(state, pending.length, challenge, requestChanged, now, Boolean(options.forceObservation))) return m;
+
+  // Expiry or a changed request permits a fresh observation nonce, never a new
+  // publication intent. Owner recovery re-emits this durable challenge below.
+  if (!challenge || requestChanged || Date.parse(challenge.expiresAt) <= now) {
+    challenge = newLinearChallenge(state, requests, terminalProtocol, now);
     m = await saveLinearContinuity(ctx, m, { ...state, challenge });
   }
   const document = await ensureLinearDocument(ctx, m, challenge.documentKey, challenge.payload, challenge.document);
   if (!challenge.document) { challenge = { ...challenge, document }; m = await saveLinearContinuity(ctx, m, { ...m.aggregate.linearContinuity!, challenge }); }
-  if (!challenge.lastEmittedAt || Date.now() - Date.parse(challenge.lastEmittedAt) >= 30_000) {
+  if (!challenge.lastEmittedAt || now - Date.parse(challenge.lastEmittedAt) >= LOST_NOTICE_RETRY_MS) {
     // Persist before emit. A lost hint is repeated with the same nonce/document/intent by the existing job.
     challenge = { ...challenge, lastEmittedAt: new Date().toISOString() };
     m = await saveLinearContinuity(ctx, m, { ...m.aggregate.linearContinuity!, challenge });
