@@ -1,0 +1,61 @@
+{
+  "schema": "council-intake-npm-release-qualification.v1",
+  "date": "2026-10-10",
+  "outcome": "PASS",
+  "hostCommit": "61b3fd57a695614dc4a37e2303f426a34a9795cf",
+  "sources": {
+    "council": "7a2d3e2c4252df3e5d01a12b4cbd75fde37528ec",
+    "intake": "cf3b43631c84a6369917e790244879a8ffe2f075",
+    "worktreesClean": true
+  },
+  "packages": [
+    {
+      "name": "@ty000/paperclip-council",
+      "version": "0.7.42",
+      "sha256": "b4e9689d248465d3e6ef02149016315cb88580f661b21dd0a12623734982c2a2",
+      "integrity": "sha512-bzM4NcpUNQNCrJOC8tZJYrHEbnKsQBpS+XdqJg5HxW2xgGe6YKVxaPhWezAMCrIi4fmGyOW8OWhEaRrxQ47MvQ=="
+    },
+    {
+      "name": "@ty000/paperclip-linear-intake",
+      "version": "0.6.2",
+      "sha256": "91d0800ac2acc8c7490d03c764411829d51852f8f8eb4c29236bcd3ee783b2c1",
+      "integrity": "sha512-6mOW80+dJI5vTyx+bFA5fg6YWScUshgBYO9R0iFJISGFtQ70VBKpYCXo1vgxFlgcg/1ZRegQlORmQhBLGuFCzQ=="
+    }
+  ],
+  "checks": [
+    {
+      "package": "@ty000/paperclip-council",
+      "version": "0.7.42",
+      "pluginKey": "private.paperclip-council",
+      "registryInstall": true,
+      "migrationCount": 8,
+      "sameVersionUpgrade": true,
+      "configPreserved": true,
+      "health": "ok",
+      "workerPidChanged": true
+    },
+    {
+      "package": "@ty000/paperclip-linear-intake",
+      "version": "0.6.2",
+      "pluginKey": "ty000.linear-intake",
+      "registryInstall": true,
+      "migrationCount": 5,
+      "sameVersionUpgrade": true,
+      "configPreserved": true,
+      "health": "degraded",
+      "workerPidChanged": true
+    }
+  ],
+  "absenceCounts": {
+    "issues": 0,
+    "runs": 0,
+    "wakes": 0
+  },
+  "cleanup": {
+    "serverStopped": true,
+    "databaseStopped": true,
+    "hostTrackedUnchanged": true,
+    "runtimeRetained": true
+  },
+  "boundary": "Exact tarballs served from an ephemeral loopback npm registry; public npm runtime dependencies. Real host installation, SQL migrations, worker reload and same-version upgrade. No public npm publication, version-to-version migration, business enrollment or provider execution."
+}
