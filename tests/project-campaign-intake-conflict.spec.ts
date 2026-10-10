@@ -5,14 +5,17 @@ import { MissionError } from "../src/missions.js";
 import { prepareLinearContinuity } from "../src/linear-continuity-intake.js";
 import { reconcileProjectTasks } from "../src/project-task-intake.js";
 import { releaseReconciledRepository } from "../src/repository-occupation.js";
+import { assertRepositoryResumptionPlan, repositoryResumptionPublication, type RepositoryResumption } from "../src/repository-resumption-publication.js";
 
 const f = vi.hoisted(() => ({ policy: {} as any, create: vi.fn() }));
 vi.mock("../src/project-mandate-state.js", async original => ({ ...await original<any>(),
-  listProjectMandates: async () => [f.policy], projectIssues: async () => [],
+  listProjectMandates: async () => [f.policy], readProjectMandate: async () => f.policy, projectIssues: async () => [],
   operatingProfileHash: () => "profile", projectMandateRow: (row: unknown) => row,
 }));
 vi.mock("../src/missions.js", async original => ({ ...await original<any>(), createMission: (...args: unknown[]) => f.create(...args) }));
 vi.mock("../src/linear-continuity-intake.js", async original => ({ ...await original<any>(), prepareLinearContinuity: vi.fn() }));
+vi.mock("../src/linear-intake-revalidation.js", () => ({ assertLinearSource: async () => ({ challengeId: randomUUID(), stage: "admission",
+  observedAt: new Date().toISOString(), validUntil: new Date(Date.now() + 60_000).toISOString(), requestSha256: "a".repeat(64) }) }));
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -27,6 +30,7 @@ function fixture() {
   const intake = { company_id: companyId, project_id: projectId, root_issue_id: rootIssueId,
     mission_id: missionId, policy_revision_id: f.policy.revisionId, version: 1, state: {
       createBody: { command: "create", commandId: randomUUID(), missionId }, snapshot, commands: {}, questions: {},
+      repositoryResumptions: undefined as RepositoryResumption[] | undefined,
       linearIntake: { snapshot: { body: { sourceRootId: "campaign-source", campaign: { milestoneId: randomUUID() } },
         nodes: [{ nativeId: leafId, sourceId: randomUUID(), role: "contribution", blockerIds: [], assigneeAgentId: "lead", ownedPaths: ["src"] }] } },
     } };
@@ -84,6 +88,33 @@ it("rereads after a real campaign CAS conflict and preserves the original missio
   expect(f.create.mock.calls.every(call => JSON.stringify(call[3]) === JSON.stringify(x.intake.state.createBody))).toBe(true);
   expect(x.ctx.issues.requestWakeup).not.toHaveBeenCalled();
   expect(x.ctx.issues.askUserQuestions).not.toHaveBeenCalled();
+});
+
+it("carries the latest explicit recovery in the original plan, retaining its intent across CAS refusal and lost ACK", async () => {
+  const x = fixture();
+  const earlier = { commandId: randomUUID(), payloadHash: "b".repeat(64), ownerUserId: "owner", policyRevisionId: f.policy.revisionId,
+    resumedAt: new Date().toISOString(), heldIntakeVersion: 3,
+    decision: { question: "Dépôt occupé", questionAuthor: "Council" as const, response: "Vérifier sa libération", consequences: "Relecture du plan avant départ" } };
+  const latest = { ...earlier, commandId: randomUUID(), heldIntakeVersion: 5,
+    decision: { ...earlier.decision, response: "La précédente campagne est terminée ; reprendre la vérification." } };
+  const state = Object.assign(x.intake.state, { repositoryHold: { status: "released" }, repositoryResumptions: [earlier, latest] });
+  const history = structuredClone(state.repositoryResumptions);
+  await reconcileProjectTasks(x.ctx); // The first plan CAS is refused.
+  expect(x.mission().aggregate.linearContinuity!.publications).toHaveLength(0);
+  await reconcileProjectTasks(x.ctx);
+  const plan = structuredClone(x.mission().aggregate.linearContinuity!.publications[0]!);
+  expect(plan.payload).toMatchObject(repositoryResumptionPublication(state));
+  expect(() => assertRepositoryResumptionPlan(x.mission(), state)).toThrowError(/confirm the exact retained recovery/);
+  await reconcileProjectTasks(x.ctx); // Restart/lost ACK retains the same publication.
+  expect(x.mission().aggregate.linearContinuity!.publications).toEqual([plan]);
+  expect(state.repositoryResumptions).toEqual(history); expect(x.ctx.issues.requestWakeup).not.toHaveBeenCalled();
+  x.mission().aggregate.linearContinuity!.publications[0]!.acknowledgement = { reference: {} } as any;
+  expect(() => assertRepositoryResumptionPlan(x.mission(), state)).not.toThrow();
+  (x.intake.state as typeof state).repositoryResumptions.push({ ...latest, commandId: randomUUID() });
+  await reconcileProjectTasks(x.ctx);
+  expect(x.mission().aggregate.linearContinuity!.publications).toHaveLength(1);
+  expect(() => assertRepositoryResumptionPlan(x.mission(), x.intake.state)).toThrow();
+  expect(x.intake.state.questions).toHaveProperty("repository_resume_publication_pending");
 });
 
 it.each([

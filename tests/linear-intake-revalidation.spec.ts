@@ -78,7 +78,7 @@ function fixture() {
         : rows.filter(r => r.company_id === args[0] && r.challenge_id === args[1]));
     }), execute: vi.fn(async (sql: string, args: any[]) => executeChallengeSql(rows, sql, args)) },
   } as unknown as PluginContext;
-  const gate = (input = subject, stage: "preparation" | "admission" = "preparation") => assertLinearSource(ctx, policy, vector.request.admissionId, input, stage);
+  const gate = (input = subject, stage: "preparation" | "admission" = "preparation", requestedAfter?: string) => assertLinearSource(ctx, policy, vector.request.admissionId, input, stage, requestedAfter);
   return { ctx, rows, emissions, gate, changeOwner: () => { owner = "replacement-owner"; }, suspend: () => { enabled = false; } };
 }
 function answer(request: LinearSourceRequest, override: Record<string, unknown> = {}): PluginEvent {
@@ -140,6 +140,21 @@ describe("Linear importer authenticated freshness gate", () => {
     await expect(f.gate()).rejects.toMatchObject({ code: "linear_source_pending" });
     expect(f.rows).toHaveLength(2); expect(f.rows[1].request.admissionId).toBe(request.admissionId);
     expect(f.rows[1].request.nonce).not.toBe(request.nonce);
+  });
+  it("requires a new admission observation after an explicit recovery instead of consuming the earlier healthy reply", async () => {
+    const f = fixture();
+    await expect(f.gate(subject, "admission")).rejects.toMatchObject({ code: "linear_source_pending" });
+    const old = f.emissions[0]; await handleLinearSourceResult(f.ctx, answer(old));
+    const resumedAt = new Date().toISOString();
+    await expect(f.gate(subject, "admission", resumedAt)).rejects.toMatchObject({ code: "linear_source_pending" });
+    expect(f.rows[0].consumed_at).toBeNull();
+    vi.advanceTimersByTime(1);
+    await expect(f.gate(subject, "admission", resumedAt)).rejects.toMatchObject({ code: "linear_source_pending" });
+    expect(f.rows).toHaveLength(2); expect(f.rows[0].consumed_at).toBeNull();
+    const current = f.emissions[1]; expect(current.admissionId).toBe(old.admissionId);
+    expect(Date.parse(current.requestedAt)).toBeGreaterThan(Date.parse(resumedAt));
+    await handleLinearSourceResult(f.ctx, answer(current));
+    expect((await f.gate(subject, "admission", resumedAt)).challengeId).toBe(current.challengeId);
   });
   it.each(invalidResponses)("ignores an invalid %s response", async (_name, mutate) => {
     const f = fixture(), request = await requested(f), event = answer(request);
