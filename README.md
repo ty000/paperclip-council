@@ -313,6 +313,7 @@ pnpm install --frozen-lockfile
 pnpm build
 pnpm typecheck
 pnpm test
+pnpm test:package
 COUNCIL_PACKAGE_EXPECTED_COMMIT=<candidate-sha> \
   PAPERCLIP_TEST_HOST_ROOT=/absolute/path/to/paperclip pnpm test:functional
 ```
@@ -346,6 +347,11 @@ creates and removes its own runtime instance and database. See
 between package checks, this local sandbox, the integrated Paperclip recipe and
 an authorized target.
 
+For npm release, trusted-publisher bootstrap, explicit-version installation and
+rollback boundaries, follow [`RELEASE.md`](./RELEASE.md). Version `0.7.42` is a
+release-preparation version here; source readiness does not authorize or prove a
+public npm publication.
+
 To install the built checkout into a separately selected Paperclip instance:
 
 ```sh
@@ -354,15 +360,18 @@ paperclipai plugin install /absolute/path/to/paperclip-council --local
 ```
 
 Confirm the target diagnostics before installation. Local plugins are trusted
-code. This repository is not published by this extraction, and GitHub repository
-installation is not a first-class Paperclip workflow.
+code. The npm package is the deployable path; a local checkout remains a
+development and isolated-qualification path.
 
 ## Continuous integration
 
 The `Council CI` check runs on every branch push and pull request. It installs
 the frozen pnpm lockfile, then runs typechecking, unit tests (with at most two
-Vitest workers), Python operator tests, and the package build concurrently in one Linux job. Each
-command reports its own status and duration, and any failure fails the job.
+Vitest workers), Python operator tests, the package build and the isolated npm
+archive smoke. The smoke installs the `.tgz` into a temporary consumer with
+lifecycle scripts disabled and no development dependencies, then loads the
+installed manifest and worker. Each command reports its own status and duration,
+and any failure fails the job.
 
 This fast check does not run `pnpm test:functional`. The functional replay needs
 a pinned Paperclip host checkout, Chromium, an authenticated local instance, and

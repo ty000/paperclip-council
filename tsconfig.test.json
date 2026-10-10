@@ -12,6 +12,7 @@
     "tests/**/*.spec.ts",
     "tests/functional/linear-campaign-installed.ts",
     "tests/functional/linear-intake-installed.ts",
+    "tests/functional/npm-pair-installed.ts",
     "tests/receipts/**/*.ts",
     "tests/receipts/**/*.tsx"
   ]

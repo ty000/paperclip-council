@@ -55,3 +55,6 @@ jobs:
 
       - name: Run typecheck, tests, and build
         run: node scripts/ci/run-checks.mjs
+
+      - name: Build and smoke-test the npm archive
+        run: pnpm test:package
