@@ -226,6 +226,9 @@ async function recoverTerminalResubmission(
 
 async function dispatchTask(ctx: PluginContext, initial: MissionRecord, initialTask: OrdinaryTask) {
   let mission = initial; let task = initialTask;
+  if (task.kind === "correction" && mission.aggregate.n2!.correctionLimit === 0) {
+    throw new MissionError(409, "correction_limit_exceeded", "The mandate permits no correction task or departure");
+  }
   if (task.wake === "claimed" || !task.issueId && task.creation !== "pending") {
     throw new MissionError(409, "ordinary_effect_unknown", "Retain the existing uncertain creation or wake; no replacement launch");
   }
@@ -311,9 +314,10 @@ async function applyVerdict(ctx: PluginContext, mission: MissionRecord, task: Or
   const report = task.report!;
   if (canonicalPayloadHash(n3Round(mission)!.review.synthesis) !== report.synthesisHash) throw new MissionError(409, "ordinary_synthesis_changed", "Council report must retain its exact N3 synthesis");
   const operationId = task.taskId;
-  const correctionTask = ordinaryTask("correction", task.submissionId, mission.aggregate.responsibilities.integrationLeadAgentId);
+  const correctionTask = report.verdict === "changes_requested" && state.correctionLimit !== 0
+    ? ordinaryTask("correction", task.submissionId, mission.aggregate.responsibilities.integrationLeadAgentId) : null;
   const existingIntent = mission.aggregate.effectIntents.find(item => item.kind === "n2_decision" && item.operationId === operationId);
-  const correctionReservationId = typeof existingIntent?.reservationId === "string" ? existingIntent.reservationId : correctionTask.reservationId;
+  const correctionReservationId = typeof existingIntent?.reservationId === "string" ? existingIntent.reservationId : correctionTask?.reservationId;
   const common = { companyId: mission.companyId, issueId: mission.rootIssueId, actorAgentId: physicalAgent(mission, task.agentId, { issueId: task.issueId, runId: task.runId }), runId: task.runId!,
     operationId, justification: report.rationale, resultReference: n2SubmissionResultReference(task.submissionId) };
   const decision = report.verdict === "approved" ? { ...common, verdict: "approved" as const, approvedCommit: submission.candidateCommit }
@@ -325,11 +329,11 @@ async function applyVerdict(ctx: PluginContext, mission: MissionRecord, task: Or
   }
   const latest = mission.aggregate.n2!;
   const tasks = latest.ordinary!.tasks.map(item => item.taskId === task.taskId ? { ...item, receiptRecordedAt: new Date().toISOString() } : item);
-  if (report.verdict === "changes_requested" && !tasks.some(item => item.kind === "correction")) {
+  if (correctionTask && latest.status === "correction_requested" && !tasks.some(item => item.kind === "correction")) {
     tasks.push({ ...correctionTask, reservationId: latest.correction!.reservationId!,
       ...(mission.aggregate.hierarchy || feedbackCorrectionRound(mission, task.submissionId) ? {} : { issueId: mission.rootIssueId, creation: "confirmed" as const }) });
   }
-  const aggregate = prepareFeedbackContinuation(mission, report.verdict, operationId);
+  const aggregate = latest.status === "rejected" ? mission.aggregate : prepareFeedbackContinuation(mission, report.verdict, operationId);
   return n2Cas(ctx, mission, { ...aggregate, n2: { ...latest, ordinary: { ...latest.ordinary!, tasks } } });
 }
 

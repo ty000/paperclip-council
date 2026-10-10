@@ -94,6 +94,8 @@ async function advanceReview(ctx: PluginContext, m: MissionRecord, job: PluginJo
   if (!m.aggregate.n2.ordinary) throw new MissionError(409, "continuity_runtime_mismatch", "Historical experimental review contracts are not delegated to this driver");
   m = await reconcileOrdinaryN2(ctx, m);
   m = await fresh(ctx, m);
+  if (m.aggregate.n2!.status === "rejected") return { state: "blocked", code: "correction_limit_exceeded",
+    nextAction: "Le verdict négatif est conservé ; aucune correction ni poursuite automatique n’est autorisée." };
   if (m.aggregate.n2!.status !== "accepted") return waiting("native_review_pending", "Les avis indépendants, la revue et les coûts doivent être concluants avant la suite.");
   if (!m.aggregate.n5 && completionPolicy(m)) return finishAuthorizedResult(ctx, m);
   if (!m.aggregate.n5) return { state: "complete", code: "accepted_without_publication", nextAction: "Le candidat est accepté. Aucune publication n'a été autorisée." };

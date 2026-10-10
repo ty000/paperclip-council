@@ -5,6 +5,10 @@ Paperclip workflows. This standalone package extracts the demonstrated
 `private.paperclip-council` integration without importing from a Paperclip
 monorepo workspace.
 
+Version `0.7.43` supports N2 review with zero authorized corrections, including
+durable rejection without automatic corrective work. Source tests do not prove
+installation or execution in a selected Paperclip instance.
+
 Version `0.7.42` binds an explicit occupied-intake resumption decision to the
 first campaign plan and its Linear acknowledgement before departure. See the
 [bounded correction and limits](docs/LINEAR-CAMPAIGN-V1.md#bounded-follow-up--10-october-2026).
@@ -348,7 +352,7 @@ between package checks, this local sandbox, the integrated Paperclip recipe and
 an authorized target.
 
 For npm release, trusted-publisher bootstrap, explicit-version installation and
-rollback boundaries, follow [`RELEASE.md`](./RELEASE.md). Version `0.7.42` is a
+rollback boundaries, follow [`RELEASE.md`](./RELEASE.md). Version `0.7.43` is a
 release-preparation version here; source readiness does not authorize or prove a
 public npm publication.
 
@@ -420,7 +424,15 @@ explicit admission policy; they do not claim a future provider bill ceiling.
 Initial known usage and exposure are required activation inputs, and
 `initialTokenAccountingSource` must identify the company/period readback or
 bounded fresh-period attestation that supports them. Zero is never inferred.
-`maxCorrections` defaults to `0`; the N2 profile must set it explicitly to `1`.
+`maxCorrections` defaults to `0`. N2 accepts `0` or `1`; use a mission
+`correctionLimit` of `0` with `maxCorrections: 0` for a review without correction.
+Approval can proceed normally. A confirmed `changes_requested` verdict is retained
+as `rejected`, with the mission blocked and no correction reservation, task or
+wake. Reconciliation preserves that rejection. Post-publication feedback cannot
+start a correction when this cumulative limit is zero. The historical native
+rejection transport additionally requires the dedicated lead’s timer and demand
+wakes to remain disabled, checked again before its status mutation; Council does
+not change the agent policy.
 
 Using a board session authorized for the target company:
 

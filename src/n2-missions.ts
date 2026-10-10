@@ -73,12 +73,12 @@ export type N2State = {
   ordinary?: import("./n2-ordinary-state.js").OrdinaryN2State;
   native?: import("./n2-native-runtime.js").N2NativeRuntime;
   schemaVersion: 1;
-  correctionLimit: 1;
+  correctionLimit: 0 | 1;
   correctionsUsed: 0 | 1;
   submissions: N2Submission[];
   rounds: N2ReviewRound[];
   activeSubmissionId: string;
-  status: "review_handoff" | "reviewing" | "correction_requested" | "correcting" | "resubmission_prepared" | "application_unknown" | "accepted";
+  status: "review_handoff" | "reviewing" | "correction_requested" | "correcting" | "resubmission_prepared" | "application_unknown" | "accepted" | "rejected";
   correction: null | {
     requestedByOperationId: string;
     criteria: string[];
@@ -170,8 +170,9 @@ export function startN2Review(
   if (mission.aggregate.phase !== "ready_for_review") {
     throw new MissionError(409, "n2_entry_unavailable", "N2 starts only from a candidate ready for review");
   }
-  if (mission.aggregate.mandate.limits.correctionLimit !== 1) {
-    throw new MissionError(409, "n2_correction_profile_required", "N2 requires a mission mandate allowing exactly one correction");
+  const correctionLimit = mission.aggregate.mandate.limits.correctionLimit;
+  if (correctionLimit !== 0 && correctionLimit !== 1) {
+    throw new MissionError(409, "n2_correction_profile_required", "N2 requires a mission mandate allowing zero or one correction");
   }
   if (!Number.isSafeInteger(input.baselineTokenTotal) || input.baselineTokenTotal < 0
       || new Set(input.baselineRunIds).size !== input.baselineRunIds.length) {
@@ -190,7 +191,7 @@ export function startN2Review(
   });
   return {
     schemaVersion: 1,
-    correctionLimit: 1,
+    correctionLimit,
     correctionsUsed: 0,
     submissions: [submission],
     rounds: [{
@@ -445,6 +446,9 @@ export function applyN2Decision(
     return unknownApplication(state, rounds, input);
   }
   if (input.verdict === "changes_requested") {
+    if (state.correctionLimit === 0) {
+      return { ...state, rounds, status: "rejected", correction: null, application: observedApplication(input) };
+    }
     if (state.correctionsUsed >= state.correctionLimit || round.round !== 1 && !feedbackCorrectionRound(mission, round.submissionId)) {
       throw new MissionError(409, "correction_limit_exceeded", "Only one ordinary correction is supported");
     }
@@ -613,6 +617,9 @@ export function startN2ResubmittedReview(
 }
 
 function n2Blockage(state: N2State, round: N2ReviewRound | null) {
+  if (state.status === "rejected") {
+    return { code: "correction_limit_exceeded", message: "Council requested changes, but the mandate permits no correction. The verdict and evidence are retained.", nextActorId: null };
+  }
   if (state.ordinary) {
     const task = state.ordinary.tasks.find(item => !item.closedAt);
     return task && (task.creation === "claimed" || task.wake === "claimed" && !task.runId)
@@ -652,6 +659,7 @@ function ordinaryN2NextAction(state: N2State, round: N2ReviewRound | null) {
 }
 
 function n2NextAction(state: N2State, round: N2ReviewRound | null) {
+  if (state.status === "rejected") return { actorKind: "operator" as const, actorId: null, label: "Review the retained rejection; no correction or automatic continuation is authorized." };
   if (state.ordinary) return ordinaryN2NextAction(state, round);
   const nativeAction = nativeN2NextAction(state);
   if (nativeAction) return nativeAction;
@@ -866,8 +874,8 @@ function executionPrincipals(issue: unknown) {
 
 export async function nativeN2Profile(ctx: PluginContext, mission: MissionRecord) {
   const profile = await readNativeG4Profile(ctx, mission.companyId);
-  if (!profile || profile.maxCorrections !== 1) {
-    throw new MissionError(409, "n2_correction_profile_required", "Native N2 requires maxCorrections=1 in the configured operating profile");
+  if (!profile || profile.maxCorrections !== 0 && profile.maxCorrections !== 1) {
+    throw new MissionError(409, "n2_correction_profile_required", "Native N2 requires maxCorrections=0 or 1 in the configured operating profile");
   }
   if (mission.aggregate.n5?.continuation && mission.aggregate.n5.continuation.periodKey !== profile.periodKey) throw new MissionError(409, "n5_continuation_period_changed", "Post-acceptance correction must retain its original budget period");
   const envelope = await readAdmission(ctx, { companyId: mission.companyId, periodKey: profile.periodKey });
@@ -1529,6 +1537,15 @@ export function findPreparedN2Decision(
   return prepared;
 }
 
+async function holdZeroCorrectionReturn(ctx: PluginContext, mission: MissionRecord, decision: N2DecisionContext) {
+  const state = storedN2(mission);
+  if (decision.verdict !== "changes_requested" || state.correctionLimit !== 0 || state.ordinary || state.native?.reviewProtocol) return;
+  // A legacy native rejection can return the root to its lead. Keep that
+  // dedicated actor held before any decision effect can cause an implicit wake.
+  const { assertNativeLeadWakePolicy } = await import("./n2-native-report.js");
+  await assertNativeLeadWakePolicy(ctx, mission, true);
+}
+
 export async function prepareN2Decision(
   ctx: PluginContext,
   mission: MissionRecord,
@@ -1544,9 +1561,10 @@ export async function prepareN2Decision(
       || (decision.verdict === "approved" && decision.approvedCommit !== submission.candidateCommit)) {
     throw new MissionError(409, "n2_decision_target_mismatch", "Decision does not target the active N2 submission and confirmed reviewer run");
   }
-  if (decision.verdict === "changes_requested" && (round.round !== 1 && !feedbackCorrectionRound(mission, round.submissionId) || state.correctionsUsed >= state.correctionLimit)) {
+  if (decision.verdict === "changes_requested" && state.correctionLimit !== 0 && (round.round !== 1 && !feedbackCorrectionRound(mission, round.submissionId) || state.correctionsUsed >= state.correctionLimit)) {
     throw new MissionError(409, "correction_limit_exceeded", "Only one ordinary correction is supported");
   }
+  await holdZeroCorrectionReturn(ctx, mission, decision);
   if (decision.verdict === "approved") {
     // N2 already verified the bundle bytes, base, candidate and attributed paths
     // when creating this immutable submission. Recheck its native attachment
@@ -1573,7 +1591,7 @@ export async function prepareN2Decision(
     throw new MissionError(409, "n2_decision_already_prepared", "The active N2 submission already has an immutable prepared decision");
   }
   let correctionAdmission: Record<string, unknown> = {};
-  if (decision.verdict === "changes_requested") {
+  if (decision.verdict === "changes_requested" && state.correctionLimit !== 0) {
     const reservationId = runtimeUuid(correctionReservationId, "correctionReservationId");
     if (!state.native && !state.ordinary) await reserveN2Run(ctx, mission, { reservationId, effectId: decision.operationId, kind: "correction" });
     correctionAdmission = { reservationId };
@@ -1697,11 +1715,13 @@ export async function recordN2Decision(
   }
   const unknown = nextState.status === "application_unknown";
   const accepted = nextState.status === "accepted";
+  const rejected = nextState.status === "rejected";
   return n2Cas(ctx, mission, {
     ...mission.aggregate,
-    phase: unknown ? "application_unknown" : accepted ? "accepted" : "correction_requested",
+    phase: unknown ? "application_unknown" : rejected ? "blocked" : accepted ? "accepted" : "correction_requested",
     control: unknown
       ? { status: "blocked", reason: "native_decision_outcome_unknown" }
+      : rejected ? { status: "blocked", reason: "correction_limit_exceeded" }
       : accepted ? { status: "inactive", reason: "mission_accepted" } : { status: "active" },
     n2: nextState,
     effectIntents: mission.aggregate.effectIntents.map((entry) => entry.kind === "n2_decision" && entry.operationId === decision.operationId

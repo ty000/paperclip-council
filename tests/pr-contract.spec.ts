@@ -97,9 +97,10 @@ it("changes the evidence tuple while retaining accepted candidate, history and c
   expect(corrected.n5!.continuation).toMatchObject({ delegatedFeedback: true, previousPublication: p });
   expect(corrected.n2!.correctionsUsed).toBe(1);
 });
-it.each(["exhausted", "unsettled", "draft-violation", "task-active", "unknown"])("refuses a feedback departure with %s evidence", kind => {
+it.each(["zero", "exhausted", "unsettled", "draft-violation", "task-active", "unknown"])("refuses a feedback departure with %s evidence", kind => {
   const { m, p } = fixture();
   if (kind === "exhausted") m.aggregate.n2!.correctionsUsed = 1;
+  if (kind === "zero") m.aggregate.n2!.correctionLimit = 0;
   if (kind === "unsettled") delete p.settledAt;
   if (kind === "draft-violation") p.observation!.draft = false;
   if (kind === "task-active") m.aggregate.n2!.ordinary!.tasks.push({ closedAt: undefined } as never);

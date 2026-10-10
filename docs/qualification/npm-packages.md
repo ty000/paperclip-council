@@ -30,7 +30,7 @@ qualification rather than an assumed compatibility claim.
 
    ```sh
    PAPERCLIP_TEST_HOST_ROOT="$PWD/.paperclip/qualification/paperclip" \
-   COUNCIL_PACKAGE_TARBALL=/absolute/council-packages/ty000-paperclip-council-0.7.42.tgz \
+   COUNCIL_PACKAGE_TARBALL=/absolute/council-packages/ty000-paperclip-council-0.7.43.tgz \
    INTAKE_PACKAGE_TARBALL=/absolute/intake/artifacts/package/ty000-paperclip-linear-intake-0.6.2.tgz \
      pnpm qualification:package-pair
    ```

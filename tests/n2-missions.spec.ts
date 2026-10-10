@@ -131,12 +131,17 @@ function reviewingRound1() {
 }
 
 describe("N2 ordinary correction and confirmed acceptance", () => {
-  it("starts only from a verified candidate with one explicit correction and an independent reviewer", () => {
+  it.each([0, 1] as const)("starts from a verified candidate with correctionLimit=%s and an independent reviewer", correctionLimit => {
     const source = mission();
+    source.aggregate.mandate.limits.correctionLimit = correctionLimit;
     const state = startN2Review(source, { baselineRunIds: [], baselineTokenTotal: 0, submissionId: ids.submission1 });
-    expect(state).toMatchObject({ status: "review_handoff", correctionLimit: 1, correctionsUsed: 0, activeSubmissionId: ids.submission1 });
-    source.aggregate.mandate.limits.correctionLimit = 0;
-    expect(() => startN2Review(source, { baselineRunIds: [], baselineTokenTotal: 0 })).toThrowError(/exactly one correction/);
+    expect(state).toMatchObject({ status: "review_handoff", correctionLimit, correctionsUsed: 0, activeSubmissionId: ids.submission1 });
+  });
+
+  it.each([-1, 2, 0.5, NaN])("refuses unsupported correctionLimit=%s", correctionLimit => {
+    const source = mission();
+    source.aggregate.mandate.limits.correctionLimit = correctionLimit;
+    expect(() => startN2Review(source, { baselineRunIds: [], baselineTokenTotal: 0 })).toThrowError(/zero or one correction/);
   });
 
   it("rejects author/reviewer conflicts and mismatched native handoff evidence", () => {
