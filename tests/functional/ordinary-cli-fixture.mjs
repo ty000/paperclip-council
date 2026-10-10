@@ -19,13 +19,13 @@ process.on("uncaughtException", async error => {
   process.exitCode = 1;
 });
 const headers = { authorization: `Bearer ${process.env.PAPERCLIP_API_KEY}`, "x-paperclip-run-id": runId };
-async function api(method, path, body, expected) {
+async function api(method, path, body, expected, timeout = 30000) {
   const form = body instanceof FormData;
   const response = await fetch(`${base}${path}`, { method, headers: { ...headers, ...(!form ? { "content-type": "application/json" } : {}) },
-    ...(body ? { body: form ? body : JSON.stringify(body) } : {}), signal: AbortSignal.timeout(30000) });
+    ...(body ? { body: form ? body : JSON.stringify(body) } : {}), signal: AbortSignal.timeout(timeout) });
   const value = await response.json();
   if (expected) assert.equal(response.status, expected, JSON.stringify(value));
-  else if (!response.ok) throw Object.assign(new Error(`${response.status} ${JSON.stringify(value)}`), { response: value });
+  else if (!response.ok) throw Object.assign(new Error(`${response.status} ${JSON.stringify(value)}`), { status: response.status, response: value });
   return value;
 }
 const route = `/api/plugins/private.paperclip-council/api/issues/${issueId}/council/commands`;
@@ -49,7 +49,7 @@ if (config.campaignMode) {
   await writeFile(process.env.COUNCIL_ORDINARY_FIXTURE, JSON.stringify(config));
 }
 const coordinationActor = [config.actors.pm, config.actors.pmSuccessor, config.actors.facilitator].includes(agentId);
-const call = body => api("POST", route, { missionId: coordinationActor || issueId === config.n6RootIssueId ? config.n6MissionId : config.missionId, ...body });
+const call = (body, timeout) => api("POST", route, { missionId: coordinationActor || issueId === config.n6RootIssueId ? config.n6MissionId : config.missionId, ...body }, undefined, timeout);
 const pause = () => new Promise(r => setTimeout(r, 150));
 async function observe(read, ok, label) {
   const end = Date.now() + 45000;

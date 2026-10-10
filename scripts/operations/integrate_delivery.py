@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import time
+import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
 import uuid
@@ -19,6 +20,21 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise ValueError("Native redirect refused")
 
 
+def native_json(response):
+    raw = response.read(2_000_001)
+    if len(raw) > 2_000_000:
+        raise ValueError("Native response exceeds bound")
+    return json.loads(raw)
+
+
+def pending_merge(error, payload):
+    if error.code != 409 or payload.get("command") != "n5-claim-merge":
+        return False
+    value = native_json(error)
+    return isinstance(value, dict) and value.get("code") in (
+        "linear_continuity_source_pending", "linear_continuity_publication_pending")
+
+
 def native(args, payload):
     base = os.environ["PAPERCLIP_API_URL"]
     parsed = urlsplit(base)
@@ -28,11 +44,21 @@ def native(args, payload):
     data = json.dumps({"missionId": args.mission_id, **payload}).encode()
     request = urllib.request.Request(endpoint, data=data, method="POST", headers={"Content-Type": "application/json",
         "Authorization": "Bearer " + os.environ["PAPERCLIP_API_KEY"], "X-Paperclip-Run-Id": os.environ["PAPERCLIP_RUN_ID"]})
-    with urllib.request.build_opener(NoRedirect).open(request, timeout=30) as response:
-        raw = response.read(2_000_001)
-        if len(raw) > 2_000_000:
-            raise ValueError("Native response exceeds bound")
-        return json.loads(raw)
+    opener = urllib.request.build_opener(NoRedirect)
+    deadline = time.monotonic() + 30
+    for attempt in range(6):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("Bounded native claim wait exhausted")
+        try:
+            with opener.open(request, timeout=min(30, remaining)) as response:
+                return native_json(response)
+        except urllib.error.HTTPError as error:
+            # These authenticated refusals precede the claim. All other errors
+            # retain uncertainty; only this invocation may resend the same bytes.
+            if not pending_merge(error, payload) or attempt == 5 or deadline - time.monotonic() <= 5:
+                raise
+            time.sleep(5)
 
 
 def private_json(path, payload):

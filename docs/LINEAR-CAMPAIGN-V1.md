@@ -126,6 +126,10 @@ A bounded exchange in progress reports `linear_continuity_source_pending` or
 response/readback lets the next scheduled tick continue automatically. Actual
 source/control holds and exhausted retry limits retain their blocked result;
 an asynchronous refresh alone never asks the owner to approve continuation.
+The merge executable may wait on these explicit HTTP 409 pending replies using
+at most six identical local claim POSTs within thirty seconds. This client limit
+is separate from the three source emissions below and never resets their budget
+or starts another model run; every other error stops the executable.
 
 Each unresolved challenge receives at most three emitted attempts, at least
 thirty seconds apart. Each publication keeps its own cumulative attempt count;

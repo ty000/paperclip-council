@@ -657,6 +657,26 @@ it("ignores untrusted invalidation notices and refuses a mismatched native bindi
   proof(SOURCE_INVALIDATION_KEY, document);
   await expect(reconcileLinearTransport(ctx, f.m)).rejects.toMatchObject({ code: "linear_invalidation_binding" });
 });
+it("six pending action attempts share the original source challenge and emission budget", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    fixedCampaign(); await fixedAnswer();
+    const started = Date.now() + 180_000, before = f.emitted.length;
+    let challengeId: string | undefined;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      vi.setSystemTime(started + attempt * 5000);
+      await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_source_pending" });
+      const challenge = f.m.aggregate.linearContinuity.challenge;
+      challengeId ??= challenge.challengeId;
+      expect(challenge.challengeId).toBe(challengeId);
+      expect(challenge.attempts).toBe(1);
+      expect(f.emitted).toHaveLength(before + 1);
+    }
+    await fixedAnswer();
+    await assertLinearContinuityDeparture(ctx, f.m);
+    expect(f.emitted).toHaveLength(before + 1);
+  } finally { vi.useRealTimers(); }
+});
 it("bounded readback challenges retain the source clock, publication identity and unknown-effect hold across expiry", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   try {
