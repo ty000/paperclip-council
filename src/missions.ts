@@ -1,4 +1,4 @@
-import { MissionError, canonicalPayloadHash } from "./mission-primitives.js";
+import { MissionError, canonicalPayloadHash, assertMissionNotAbandoned } from "./mission-primitives.js";
 import { ensureMissionRepository } from "./repository-occupation.js";
 import { readContinuityObservation } from "./continuity-observation.js";
 import { configureContinuity } from "./continuity-configuration.js";
@@ -67,7 +67,7 @@ export type MissionMandate = {
 
 export type MissionReceipt = {
   commandId: string;
-  command: "bind-resumed-lead-run" | "prepare-n1-resume" | "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "fixture-bind-contribution-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish" | "recover-integration" | "recover-candidate" | "recover-contribution"
+  command: "abandon-unused-draft" | "bind-resumed-lead-run" | "prepare-n1-resume" | "create" | "update-mandate" | "activate" | "start-lead" | "fixture-bind-lead-run" | "fixture-bind-contribution-run" | "plan" | "materialize" | "dispatch" | "record-contribution" | "publish" | "recover-integration" | "recover-candidate" | "recover-contribution"
     | "resume-settled-correction" | "replace-undispatched-correction" | "start-review" | "confirm-review-handoff" | "start-correction" | "prepare-resubmission"
     | "start-resubmitted-review" | "settle-n2-usage" | "attest-transmission" | "reconcile-native-n2" | "release-native-correction" | "reconcile-ordinary-n2" | "replace-missing-opinion" | "replace-missing-verdict" | "recover-terminal-resubmission" | "ordinary-verdict" | "configure-continuity" | "suspend-continuity" | "resume-continuity" | "record-assistance";
   actorType: "user" | "agent";
@@ -107,6 +107,7 @@ export type MissionAggregate = {
   journal: Array<Record<string, unknown>>;
   commandReceipts: MissionReceipt[];
   effectIntents: Array<Record<string, unknown>>;
+  draftAbandonment?: { commandId: string; actorUserId: string; reason: string; recordedAt: string };
   modelSelection?: ModelSelectionState;
   workspacePreflight?: import("./workspace-preflight.js").WorkspacePreflightProfile;
   continuity?: import("./continuity-policy.js").ContinuityPolicy;
@@ -529,6 +530,7 @@ function replayOrConflict(mission: MissionRecord, commandId: string, actorId: st
 }
 
 function existingCreationResult(mission: MissionRecord, commandId: string, actorId: string, payloadHash: string) {
+  assertMissionNotAbandoned(mission);
   const replay = replayOrConflict(mission, commandId, actorId, payloadHash);
   if (replay) return replay;
   throw new MissionError(409, "mission_exists", "A mission already exists for this mission ID or root issue", {
@@ -664,6 +666,7 @@ async function updateMandate(
   const payloadHash = canonicalPayloadHash(normalized);
   const before = await getMission(ctx, companyId, missionId);
   if (!before) throw new MissionError(404, "mission_not_found", "Mission not found");
+  assertMissionNotAbandoned(before);
   const replay = replayOrConflict(before, commandId, ownerUserId, payloadHash);
   if (replay) return replay;
   if (before.version !== expectedVersion) {
@@ -716,6 +719,7 @@ async function recordAssistance(
   const payloadHash = canonicalPayloadHash(body);
   const before = await getMission(ctx, companyId, missionId);
   if (!before) throw new MissionError(404, "mission_not_found", "Mission not found");
+  assertMissionNotAbandoned(before);
   const replay = replayOrConflict(before, commandId, ownerUserId, payloadHash);
   if (replay) return replay;
   if (before.version !== expectedVersion) {
@@ -750,6 +754,13 @@ export async function executeMissionCommand(ctx: PluginContext, input: {
   if (body.command === "create" && !input.missionId) {
     return await createMission(ctx, input.companyId, input.actorUserId, body);
   }
+  if (body.command === "abandon-unused-draft" && input.missionId) {
+    const ownerUserId = await requireOwner(ctx, input.companyId, input.actorUserId);
+    const command = { command: "abandon-unused-draft" as const, commandId: uuid(body.commandId, "commandId"),
+      expectedVersion: positiveInteger(body.expectedVersion, "expectedVersion"), reason: requiredString(body.reason, "reason", 1000) };
+    const { abandonUnusedDraft } = await import("./unused-draft.js");
+    return abandonUnusedDraft(ctx, input.companyId, input.missionId, ownerUserId, command);
+  }
   if (body.command === "update-mandate" && input.missionId) {
     return await updateMandate(ctx, input.companyId, input.missionId, input.actorUserId, body);
   }
@@ -778,7 +789,7 @@ export function inspectMission(mission: MissionRecord) {
       executable: mission.aggregate.control.status === "active",
     },
     prerequisites: n1?.prerequisites ?? mission.aggregate.readiness.blockers,
-    nextAction: (mission.aggregate.n6 && !mission.aggregate.n1?.rootDispatchState ? inspectN6(mission)?.nextAction : undefined) ?? n2?.nextAction.label ?? n1?.nextAction ?? "Resolve and qualify G4 before adding any dispatch or activation command.",
+    nextAction: mission.aggregate.draftAbandonment ? "Unused draft abandoned; history retained and execution permanently disabled." : (mission.aggregate.n6 && !mission.aggregate.n1?.rootDispatchState ? inspectN6(mission)?.nextAction : undefined) ?? n2?.nextAction.label ?? n1?.nextAction ?? "Resolve and qualify G4 before adding any dispatch or activation command.",
     n1,
     ...(mission.aggregate.completion ? { completion: mission.aggregate.completion } : {}),
     ...(mission.aggregate.linearContinuity ? { linearContinuity: mission.aggregate.linearContinuity } : {}),

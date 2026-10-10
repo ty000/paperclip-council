@@ -5,6 +5,11 @@ Paperclip workflows. This standalone package extracts the demonstrated
 `private.paperclip-council` integration without importing from a Paperclip
 monorepo workspace.
 
+Version `0.7.44` adds owner-authorized abandonment of an unused draft after
+proving zero native runs, reservations and effects. The mission remains in
+history, cannot reactivate, and releases only its own repository occupation.
+See [unused draft abandonment](docs/UNUSED-DRAFT-ABANDONMENT.md).
+
 Version `0.7.43` supports N2 review with zero authorized corrections, including
 durable rejection without automatic corrective work. Source tests do not prove
 installation or execution in a selected Paperclip instance.
@@ -352,7 +357,7 @@ between package checks, this local sandbox, the integrated Paperclip recipe and
 an authorized target.
 
 For npm release, trusted-publisher bootstrap, explicit-version installation and
-rollback boundaries, follow [`RELEASE.md`](./RELEASE.md). Version `0.7.43` is a
+rollback boundaries, follow [`RELEASE.md`](./RELEASE.md). Version `0.7.44` is a
 release-preparation version here; source readiness does not authorize or prove a
 public npm publication.
 

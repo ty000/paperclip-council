@@ -1,6 +1,6 @@
 {
   "name": "@ty000/paperclip-council",
-  "version": "0.7.43",
+  "version": "0.7.44",
   "description": "Revisioned Council rosters, durable review decisions, mission admission and integrated candidate verification for Paperclip workflows",
   "type": "module",
   "repository": "https://github.com/ty000/paperclip-council.git",
@@ -56,6 +56,7 @@
     "qualification:live:n1": "node scripts/qualification/run-live-n1.mjs",
     "qualification:live:n2": "node scripts/qualification/run-live-n2.mjs",
     "qualification:live:n2:isolated": "node scripts/qualification/run-live-n2-isolated.mjs",
+    "test:unused-draft": "tsx tests/receipts/unused-draft.ts",
     "test:repository": "tsx tests/receipts/repository-occupation.ts",
     "test:receipts": "tsx tests/receipts/run.ts",
     "test:profiles:browser": "tsx tests/receipts/model-profiles-browser.ts",

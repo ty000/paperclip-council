@@ -67,6 +67,12 @@ async function stoppedIssue(ctx: PluginContext, m: MissionRecord, issueId: strin
 
 /** Read-only proof of stopped work. A terminal label or elapsed time alone never releases. */
 export async function reconcileRepositoryRelease(ctx: PluginContext, m: MissionRecord): Promise<boolean> {
+  if (m.aggregate.draftAbandonment) {
+    const { assertUnusedDraft } = await import("./unused-draft.js");
+    await assertUnusedDraft(ctx, m);
+    await releaseReconciledRepository(ctx, m);
+    return true;
+  }
   if (m.aggregate.completion?.state !== "closed" && m.aggregate.linearContinuity?.control !== "cancelled") return false;
   const members = await campaignTerminal(ctx, m);
   if (!members) return false;

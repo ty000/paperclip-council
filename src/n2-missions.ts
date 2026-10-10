@@ -1,3 +1,4 @@
+import { assertMissionNotAbandoned } from "./mission-primitives.js";
 import { candidateAttachmentTarget, submissionAttachmentIssue } from "./candidate-attachment.js";
 import { feedbackCorrectionRound } from "./pr-contract.js";
 import { isLogicalActor, physicalAgent } from "./model-state.js";
@@ -785,6 +786,7 @@ export async function n2Cas(
   mission: MissionRecord,
   aggregate: MissionAggregate,
 ): Promise<MissionRecord> {
+  assertMissionNotAbandoned(mission);
   const changed = await ctx.db.execute(
     `UPDATE ${missionTable(ctx)} SET aggregate = $1::jsonb, version = version + 1, updated_at = now()
       WHERE company_id = $2 AND mission_id = $3 AND version = $4`,
