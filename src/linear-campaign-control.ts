@@ -1,16 +1,19 @@
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { MissionError, type MissionRecord } from "./missions.js";
 import { n2CommandCas } from "./n2-missions.js";
-import { FIXED_CAMPAIGN_MODE, assertContinuityBinding, assertTerminalPublicationProtocol, responseFresh } from "./linear-continuity-contract.js";
+import { FIXED_CAMPAIGN_MODE, assertContinuityBinding, assertTerminalPublicationProtocol, fixedSourceFresh } from "./linear-continuity-contract.js";
 import { settleLinearSafePoint, uncertainLinearEffects } from "./linear-continuity-control.js";
 import { readLinearProof } from "./linear-continuity-documents.js";
-import { linearPublicationState } from "./linear-continuity-transport.js";
+import { readSourceInvalidation } from "./linear-source-invalidation.js";
+import { linearPublicationState, reconcileLinearTransport } from "./linear-continuity-transport.js";
 
 export const campaignControlCommands = ["pause-linear-campaign", "resume-linear-campaign", "cancel-linear-campaign"];
 
 async function resumeCampaign(ctx: PluginContext, m: MissionRecord) {
+  m = await readSourceInvalidation(ctx, m);
+  if (m.aggregate.linearContinuity!.control === "paused" && !fixedSourceFresh(m.aggregate.linearContinuity!)) m = await reconcileLinearTransport(ctx, m, { requestObservation: true });
   const state = m.aggregate.linearContinuity!, observation = state.observation;
-  if (state.control !== "paused" || !observation || !responseFresh(observation.response)
+  if (state.control !== "paused" || state.transportHold || !observation || !fixedSourceFresh(state)
       || observation.response.availability !== "available" || observation.response.sourceSha256 !== state.sourceSha256
       || uncertainLinearEffects(m)) {
     throw new MissionError(409, "linear_campaign_resume_pending", "Restore the fixed source and reconcile original native effects before explicit resume");

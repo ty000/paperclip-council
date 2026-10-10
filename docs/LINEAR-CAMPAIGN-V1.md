@@ -96,21 +96,65 @@ not turn the recovery scenarios into installed tests or authorize recette activa
 
 ## Continuity cadence and manual refresh
 
-For a fixed campaign, an unchanged running request is not emitted again while
-its response remains fresh. A request with no response still repeats its durable
-hint after thirty seconds. A paused or cancelled campaign with no pending Linear
-publication performs no automatic source-only refresh; pending or uncertain
-publication intents retain their identity and reconcile at most once every five
-minutes. A changed outbox, control, resume marker or terminal claim may request an
-immediate observation, without bypassing publication, departure, merge or closure
-gates.
+Council 0.7.48 checks the fixed Linear source on relevant webhook changes and
+actual action boundaries: admission, new departure, explicit resume, publication,
+merge and closure. Source evidence still expires after at most two minutes, but
+expiration alone does not schedule another read. The existing minute job reads
+native state and settles admitted runs and costs; waiting for a lead, reviewer,
+publisher or terminal receipt does not poll the complete source family.
 
-The current company and mission owner may use `reconcile-linear-continuity` on
-the native Board to require one fresh observation, including before an explicit
-resume. This manual refresh reuses the durable challenge until its normal expiry
-and retains the thirty-second hint guard. It bypasses only the automatic fixed
-campaign backoff, grants no effect permission and does not replace or weaken
-source freshness and readback.
+The Intake peer persists a coalesced monotonic generation in the native root
+`linear-source-invalidation` document, with protocol
+`council-linear-source-invalidation-v1`, exact `binding`, pinned `sourceSha256`,
+`generation`, bounded `sourceIds` (at most 33) and `changedFields`. Its authenticated
+`council-source-invalidated` event carries company, mission, native root, binding
+hash, generation and the exact `invalidation` document reference. Council rereads
+this one native document after lost events or restart, without Linear access.
+Duplicate hints and older generations cannot clear a newer pending generation.
+
+Fixed requests and responses negotiate `sourceObservationProtocol` equal to
+`council-linear-source-observation-v1`, `sourceInvalidationVersion` (integer >= 0)
+and `observationPurpose` (`action`, `event`, `publication`, `recovery` or `readback`).
+All three fields are present together. Responses echo them exactly and add
+`event-driven-source` to the three existing fixed capabilities. A source response
+covering an older generation cannot authorize a departure. `readback` may confirm
+only original claimed publication effects and receipts: it performs no complete
+source read, creates no new external effect, and never renews Council's source
+clock. Mixed peers without this positive negotiation fail closed at departure.
+A bounded exchange in progress reports `linear_continuity_source_pending` or
+`linear_continuity_publication_pending` as native **waiting**. Its authenticated
+response/readback lets the next scheduled tick continue automatically. Actual
+source/control holds and exhausted retry limits retain their blocked result;
+an asynchronous refresh alone never asks the owner to approve continuation.
+The merge executable may wait on these explicit HTTP 409 pending replies using
+at most six identical local claim POSTs within thirty seconds. This client limit
+is separate from the three source emissions below and never resets their budget
+or starts another model run; every other error stops the executable.
+
+Each unresolved challenge receives at most three emitted attempts, at least
+thirty seconds apart. Each publication keeps its own cumulative attempt count;
+partial responses lead only to targeted readback challenges within that limit.
+Expiry, job ticks and process restart do not reset the limit or replace an effect
+identity. Exhaustion persists a visible `transportHold` until explicit owner
+recovery. A new terminal permission is an actual publication boundary, still
+under its original intent and attempt limit. Complete cached responses can be
+re-emitted by Intake without source access.
+
+Paused and cancelled campaigns retain dirty generations locally. A bare webhook
+or expired proof causes no source access there. An explicit resume or manual
+recovery checks the current generation; publishing a new owner pause/cancel
+decision is also an actual bounded effect request. The native owner Board command
+`reconcile-linear-continuity` requests `recovery`, retaining the original source,
+mission, budgets and publication identities. It grants three further publication
+attempts by increasing the recorded limit while preserving the cumulative count;
+it does not itself resume a held campaign. Bare control or clock changes do not
+create publication work.
+
+Existing fixed campaigns retain old request documents and publication history.
+An old unnegotiated challenge stays silent while idle; only an actual pending
+effect, action, event or explicit recovery creates a negotiated observation.
+The older cooperative continuity mode outside `milestone-fixed-v1` keeps its
+existing polling and remote-command semantics.
 
 ## Cancellation and occupied-intake recovery
 

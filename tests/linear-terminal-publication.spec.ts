@@ -58,7 +58,7 @@ beforeEach(() => {
   const payload = { kind: "closure", binding, sourceSha256: subject.sourceSha256 }, intentId = randomUUID(), payloadSha256 = hash(payload);
   Object.assign(f.mission.aggregate.campaignClosure!, { publicationIntentId: intentId, publicationPayloadSha256: payloadSha256 });
   const now = Date.now();
-  const response = { availability: "available", sourceSha256: subject.sourceSha256, terminalClaimRequest: { intentId, payloadSha256 },
+  const response = { sourceObservationProtocol: "council-linear-source-observation-v1", sourceInvalidationVersion: 0, observationPurpose: "publication", availability: "available", sourceSha256: subject.sourceSha256, terminalClaimRequest: { intentId, payloadSha256 },
     observedAt: new Date(now).toISOString(), validUntil: new Date(now + 120_000).toISOString() };
   f.mission.aggregate.linearContinuity = { mode: "milestone-fixed-v1", protocol: "council-linear-continuity-v1",
     terminalPublicationProtocol: TERMINAL_PUBLICATION_PROTOCOL, binding, sourceSha256: subject.sourceSha256,
@@ -151,7 +151,7 @@ it.each(["protocol", "foreign intent", "mutated payload", "stale subject", "miss
 });
 
 it("a narrow terminal allowance cannot waive any other pending publication or authorize ordinary work", async () => {
-  await expect(assertLinearContinuityDeparture(ctx, m())).rejects.toMatchObject({ code: "linear_continuity_hold" });
+  await expect(assertLinearContinuityDeparture(ctx, m())).rejects.toMatchObject({ code: "linear_continuity_publication_pending" });
   await expect(assertLinearContinuityDeparture(ctx, m(), undefined, request())).resolves.toBeUndefined();
   await expect(assertLinearContinuityDeparture(ctx, m(), undefined, { ...request(), intentId: randomUUID() })).rejects.toThrow();
   f.mission!.aggregate.repositoryCampaign = { campaignRootMissionId: randomUUID() };

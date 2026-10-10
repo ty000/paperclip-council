@@ -5,10 +5,11 @@ import { nativeRunBindings } from "./native-run-bindings.js";
 import { assertNativeRunInventory } from "./native-runs.js";
 import { nativeN2Profile } from "./n2-missions.js";
 import { readOrdinaryRun, settleOrdinaryRunUsage } from "./g4-native.js";
-import { FIXED_CAMPAIGN_MODE, assertTerminalPublicationProtocol, pendingLinearPublication, assertContinuityBinding, linearAuthorityHash, responseFresh, type LinearContinuityChange } from "./linear-continuity-contract.js";
-import { linearPublicationState, saveLinearContinuity } from "./linear-continuity-transport.js";
+import { FIXED_CAMPAIGN_MODE, fixedSourceFresh, assertTerminalPublicationProtocol, pendingLinearPublication, assertContinuityBinding, linearAuthorityHash, responseFresh, type LinearContinuityChange, type LinearContinuityState } from "./linear-continuity-contract.js";
+import { linearPublicationState, saveLinearContinuity, reconcileLinearTransport } from "./linear-continuity-transport.js";
 import { readLinearProof } from "./linear-continuity-documents.js";
 import { appliedContextAnnotations } from "./linear-context-guidance.js";
+import { readSourceInvalidation } from "./linear-source-invalidation.js";
 import { sourceHoldMessage } from "./linear-source-hold.js";
 
 const terminal = new Set(["succeeded", "failed", "cancelled", "timed_out", "interrupted"]);
@@ -144,22 +145,54 @@ async function applyOneChange(ctx: PluginContext, m: MissionRecord, change: Line
   return saveLinearContinuity(ctx, m, linearPublicationState(subject, "decision", { commandId: change.commandId, kindOfDecision: change.kind,
     affectedNativeIds: change.affectedNativeIds, evidence: change.evidence, consequence: controls[change.kind] }));
 }
+function sourceAllowsDeparture(state: LinearContinuityState) {
+  const observation = state.observation;
+  if (!observation || observation.response.availability !== "available" || observation.response.sourceSha256 !== state.sourceSha256) return false;
+  return state.mode === FIXED_CAMPAIGN_MODE ? fixedSourceFresh(state) : responseFresh(observation.response);
+}
+async function refreshDepartureSource(ctx: PluginContext, m: MissionRecord, requireFreshSource: boolean) {
+  const state = m.aggregate.linearContinuity!;
+  if (!requireFreshSource || state.mode !== FIXED_CAMPAIGN_MODE || state.control !== "running" || state.controlReason) return m;
+  m = await readSourceInvalidation(ctx, m);
+  if (fixedSourceFresh(m.aggregate.linearContinuity!)) return m;
+  m = await reconcileLinearTransport(ctx, m, { requestObservation: true });
+  assertLinearRunning(m.aggregate.linearContinuity!);
+  throw new MissionError(409, "linear_continuity_source_pending", "The attempted departure awaits its current authenticated source response");
+}
+function assertLinearRunning(state: LinearContinuityState) {
+  if (state.control !== "running" || state.controlReason || state.transportHold) {
+    throw new MissionError(409, "linear_continuity_hold", "Retain the current source, control or exhausted transport hold before another departure");
+  }
+}
+async function awaitPublicationReadback(ctx: PluginContext, m: MissionRecord) {
+  if (m.aggregate.linearContinuity!.mode !== FIXED_CAMPAIGN_MODE) {
+    throw new MissionError(409, "linear_continuity_hold", "Linear publication readbacks are required before new departures");
+  }
+  m = await reconcileLinearTransport(ctx, m);
+  assertLinearRunning(m.aggregate.linearContinuity!);
+  throw new MissionError(409, "linear_continuity_publication_pending", "The original bounded Linear publication exchange awaits its readback");
+}
+function cancellationPublisher(m: MissionRecord, state: LinearContinuityState, reservationId?: string) {
+  return state.mode !== FIXED_CAMPAIGN_MODE && reservationId && state.control === "cancel_requested"
+    && m.aggregate.n5?.publication?.operation === "cancel-pr" && m.aggregate.n5.publication.reservationId === reservationId;
+}
 /** Read current durable state at each wake/merge/closure, rather than trusting a stale actor snapshot. */
 export async function assertLinearContinuityDeparture(ctx: PluginContext, initial: MissionRecord, cancellationReservationId?: string,
-  terminalIntent?: { intentId: string; payloadSha256: string }) {
+  terminalIntent?: { intentId: string; payloadSha256: string }, requireFreshSource = true) {
   if (!initial.aggregate.linearContinuity) return;
-  const m = await getMission(ctx, initial.companyId, initial.missionId), state = m?.aggregate.linearContinuity;
+  let m = await getMission(ctx, initial.companyId, initial.missionId), state = m?.aggregate.linearContinuity;
   if (!m || !state) throw new MissionError(409, "linear_continuity_missing", "Original continuity binding cannot disappear");
   assertContinuityBinding(m, state.binding);
   assertTerminalPublicationProtocol(state);
-  const controlPublisher = state.mode !== FIXED_CAMPAIGN_MODE && cancellationReservationId && state.control === "cancel_requested"
-    && m.aggregate.n5?.publication?.operation === "cancel-pr" && m.aggregate.n5.publication.reservationId === cancellationReservationId;
   for (const command of state.consumed) await readLinearProof(ctx, m, command.evidence);
-  if (controlPublisher) return; // Only the specifically reserved cancellation actor may close the obsolete PR.
-  if (state.control !== "running" || state.controlReason || !state.observation || !responseFresh(state.observation.response)
-      || state.observation.response.availability !== "available" || state.observation.response.sourceSha256 !== state.sourceSha256
-      || state.publications.some(p => pendingLinearPublication(p) && !pendingTerminalClaim(m, p, terminalIntent))) throw new MissionError(409, "linear_continuity_hold", "Fresh compatible source, running control and Linear publication readbacks are required for new departures, merges and closure");
-  await readLinearProof(ctx, m, state.observation.reference);
+  if (cancellationPublisher(m, state, cancellationReservationId)) return; // Exact reserved legacy cancellation actor only.
+  m = await refreshDepartureSource(ctx, m, requireFreshSource);
+  state = m.aggregate.linearContinuity!;
+  const requireSource = state.mode !== FIXED_CAMPAIGN_MODE || requireFreshSource;
+  assertLinearRunning(state);
+  if (requireSource && !sourceAllowsDeparture(state)) throw new MissionError(409, "linear_continuity_hold", "Fresh compatible source is required for new departures, merges and closure");
+  if (state.publications.some(p => pendingLinearPublication(p) && !pendingTerminalClaim(m, p, terminalIntent))) await awaitPublicationReadback(ctx, m);
+  if (state.observation) await readLinearProof(ctx, m, state.observation.reference);
   for (const publication of state.publications) if (publication.acknowledgement) await readLinearProof(ctx, m, publication.acknowledgement.reference);
 }
 

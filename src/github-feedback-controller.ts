@@ -181,7 +181,7 @@ function pullNumber(repository: string, url: string, observedHead: string, candi
   return match && [match[1] === repository, candidateCommit === observedHead].every(Boolean) ? match[2]! : null;
 }
 async function assertFeedbackAuthority(ctx: PluginContext, m: MissionRecord, authority: NonNullable<NonNullable<NonNullable<MissionRecord["aggregate"]["n5"]>["authority"]["contract"]>["feedbackRefresh"]>) {
-  await assertProjectDeparture(ctx, m);
+  await assertProjectDeparture(ctx, m, undefined, undefined, false);
   const pinned = m.aggregate.projectMandate?.publication?.contract?.feedbackRefresh;
   const config = await ctx.config.get(m.companyId);
   if (![pinned, pinned && canonicalPayloadHash(pinned) === canonicalPayloadHash(authority),

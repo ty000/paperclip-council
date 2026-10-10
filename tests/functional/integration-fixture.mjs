@@ -4,6 +4,24 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { campaignTransportPath } from "./linear-campaign-github.ts";
 
+function canWaitForMerge(error, attempt, deadline) {
+  return error.status === 409 && ["linear_continuity_source_pending", "linear_continuity_publication_pending"].includes(error.response?.code)
+    && attempt < 5 && deadline - performance.now() > 5000;
+}
+
+async function claimMerge(call, claim) {
+  const deadline = performance.now() + 30000;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const remaining = deadline - performance.now();
+    if (remaining <= 0) throw new Error("Bounded native claim wait exhausted");
+    try { return await call(claim, Math.max(1, Math.floor(remaining))); }
+    catch (error) {
+      if (!canWaitForMerge(error, attempt, deadline)) throw error;
+      await new Promise(resolve => setTimeout(resolve, 5000));
+    }
+  }
+}
+
 export async function integrateDelivery({ api, call, config, issueId, runId, git }) {
   let view = await call({ command: "n5-inspect" });
   const p = view.delivery.publication, a = view.delivery.authority;
@@ -20,7 +38,8 @@ export async function integrateDelivery({ api, call, config, issueId, runId, git
     reviews: [{ id: 1, author: "fixture-reviewer", headSha: p.submission.candidateCommit, state: "APPROVED", body: "Exact candidate verified",
       url: p.targetUrl + "#pullrequestreview-1", submittedAt: new Date().toISOString() }] };
   const claim = { command: "n5-claim-merge", commandId: randomUUID(), expectedVersion: view.version, integrationReport: report, feedbackReport };
-  assert.equal((await call(claim)).effectPermission, "execute");
+  await writeFile(resolve(config.runtime, `integration-claim-${runId}.json`), JSON.stringify({ missionId: config.missionId, ...claim }), { flag: "wx", mode: 0o600 });
+  assert.equal((await claimMerge(call, claim)).effectPermission, "execute");
   assert.equal((await call(claim)).effectPermission, "none");
   assert.equal(remote.mergeCount ?? 0, 0);
   // GitHub alone is simulated. The isolated Git commit really has the candidate tree and pinned base parent.

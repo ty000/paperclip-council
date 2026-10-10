@@ -3,17 +3,14 @@ import type { PluginContext, PluginEvent } from "@paperclipai/plugin-sdk";
 import { canonicalPayloadHash, getMission, MissionError, type MissionRecord } from "./missions.js";
 import { n2Cas } from "./n2-missions.js";
 import { continuityNoticeSchema, continuityResponseSchema, LINEAR_CONTINUITY_EVENT, LINEAR_CONTINUITY_PROTOCOL,
-  assertContinuityBinding, assertTerminalPublicationProtocol, pendingLinearPublication, FIXED_CAMPAIGN_MODE, responseFresh, type LinearContinuityState, type LinearPublication } from "./linear-continuity-contract.js";
+  assertContinuityBinding, assertTerminalPublicationProtocol, pendingLinearPublication, FIXED_CAMPAIGN_MODE, responseFresh, type LinearContinuityState, type LinearPublication, type LinearContinuityResponse } from "./linear-continuity-contract.js";
 import { ensureLinearDocument, readLinearProof } from "./linear-continuity-documents.js";
+import { fixedExchangePlan, LINEAR_MAX_ATTEMPTS, type LinearTransportOptions } from "./linear-source-demand.js";
+import { handleSourceInvalidation, readSourceInvalidation } from "./linear-source-invalidation.js";
+import { SOURCE_INVALIDATION_EVENT, SOURCE_OBSERVATION_PROTOCOL, type ObservationPurpose } from "./linear-continuity-contract.js";
 import { retainSourceHold } from "./linear-source-hold.js";
 
 const LOST_NOTICE_RETRY_MS = 30_000;
-const PAUSED_PUBLICATION_RECONCILIATION_MS = 300_000;
-
-type LinearTransportOptions = {
-  /** Owner-only board recovery: require a new response without relaxing any effect gate. */
-  forceObservation?: boolean;
-};
 type LinearChallenge = NonNullable<LinearContinuityState["challenge"]>;
 type FixedTerminalProtocol = { terminalPublicationProtocol?: LinearContinuityState["terminalPublicationProtocol"]; resumeVersion?: number };
 
@@ -27,24 +24,12 @@ function continuityRequestChanged(challenge: LinearChallenge | undefined, state:
     || challenge.payload.consumedSequence !== state.sequence;
 }
 
-function suppressFixedTransport(state: LinearContinuityState, pendingCount: number, challenge: LinearChallenge | undefined,
-  requestChanged: boolean, now: number, forceObservation: boolean) {
-  if (state.mode !== FIXED_CAMPAIGN_MODE || forceObservation || requestChanged) return false;
-  if (["paused", "cancelled"].includes(state.control)) {
-    if (pendingCount === 0) return true;
-    return challenge?.lastEmittedAt
-      ? now - Date.parse(challenge.lastEmittedAt) < PAUSED_PUBLICATION_RECONCILIATION_MS : false;
-  }
-  const response = state.observation?.response;
-  if (state.control !== "running" || !challenge || !response) return false;
-  return response.challengeId === challenge.challengeId && responseFresh(response, now);
-}
-
-function newLinearChallenge(state: LinearContinuityState, requests: unknown[], terminalProtocol: FixedTerminalProtocol, now: number): LinearChallenge {
+function newLinearChallenge(state: LinearContinuityState, requests: unknown[], terminalProtocol: FixedTerminalProtocol, now: number, purpose?: ObservationPurpose): LinearChallenge {
   const challengeId = randomUUID(), nonce = randomBytes(32).toString("hex");
   const requestedAt = new Date(now).toISOString(), expiresAt = new Date(now + 300_000).toISOString();
   const payload = { protocol: LINEAR_CONTINUITY_PROTOCOL, ...(state.mode ? { mode: state.mode } : {}), ...terminalProtocol,
     binding: state.binding, challengeId, nonce, requestedAt, expiresAt, sourceSha256: state.sourceSha256,
+    ...(purpose ? { sourceObservationProtocol: SOURCE_OBSERVATION_PROTOCOL, sourceInvalidationVersion: state.sourceInvalidationVersion ?? 0, observationPurpose: purpose } : {}),
     consumedSequence: state.sequence, control: state.control, publications: requests };
   return { challengeId, nonce, requestedAt, expiresAt, payload, requestSha256: canonicalPayloadHash(payload),
     documentKey: `council-linear-request-${challengeId}` };
@@ -79,8 +64,9 @@ export async function reconcileLinearTransport(ctx: PluginContext, initial: Miss
   if (!m.aggregate.linearContinuity) return m;
   assertContinuityBinding(m, m.aggregate.linearContinuity.binding);
   assertTerminalPublicationProtocol(m.aggregate.linearContinuity);
+  m = await readSourceInvalidation(ctx, m);
   m = await finishOutbox(ctx, m);
-  const state = m.aggregate.linearContinuity!, pending = state.publications.filter(pendingLinearPublication);
+  let state = m.aggregate.linearContinuity!, pending = state.publications.filter(pendingLinearPublication);
   const claim = m.aggregate.campaignClosure?.terminalClaim;
   const requests = pending.map(p => ({ intentId: p.intentId, payloadSha256: p.payloadSha256, document: p.document,
     ...(claim?.intentId === p.intentId && claim.payloadSha256 === p.payloadSha256 ? { terminalClaim: claim } : {}) }));
@@ -90,21 +76,38 @@ export async function reconcileLinearTransport(ctx: PluginContext, initial: Miss
   let challenge = state.challenge;
   const now = Date.now();
   const requestChanged = continuityRequestChanged(challenge, state, requests, terminalProtocol);
-  // Fixed paused publication backoff is decided before expiry rotation.
-  if (suppressFixedTransport(state, pending.length, challenge, requestChanged, now, Boolean(options.forceObservation))) return m;
-
-  // Expiry or a changed request permits a fresh observation nonce, never a new
-  // publication intent. Owner recovery re-emits this durable challenge below.
-  if (!challenge || requestChanged || Date.parse(challenge.expiresAt) <= now) {
+  if (state.mode === FIXED_CAMPAIGN_MODE) {
+    const priorRequests = challenge?.payload.publications as Array<{ intentId: string; terminalClaim?: unknown }> | undefined;
+    const terminalGrantChanged = Boolean(claim && requests.some(p => p.terminalClaim
+      && canonicalPayloadHash(priorRequests?.find(prior => prior.intentId === p.intentId)?.terminalClaim ?? null) !== canonicalPayloadHash(p.terminalClaim)));
+    const plan = fixedExchangePlan(state, pending, options, now, terminalGrantChanged);
+    if (plan.hold) return saveLinearContinuity(ctx, m, { ...state, transportHold: {
+      code: plan.hold, challengeId: challenge?.challengeId ?? "", at: new Date(now).toISOString(),
+    } });
+    if (!plan.purpose && !plan.repeat) return m;
+    if (plan.purpose === "recovery") {
+      state = { ...state, transportHold: undefined, publications: state.publications.map(p => pendingLinearPublication(p)
+        ? { ...p, reconciliationLimit: (p.reconciliationAttempts ?? 0) + LINEAR_MAX_ATTEMPTS } : p) };
+    }
+    if (plan.purpose) {
+      challenge = newLinearChallenge(state, requests, terminalProtocol, now, plan.purpose);
+      m = await saveLinearContinuity(ctx, m, { ...state, challenge });
+    }
+  } else if (!challenge || requestChanged || Date.parse(challenge.expiresAt) <= now) {
     challenge = newLinearChallenge(state, requests, terminalProtocol, now);
     m = await saveLinearContinuity(ctx, m, { ...state, challenge });
   }
+  if (!challenge) return m;
   const document = await ensureLinearDocument(ctx, m, challenge.documentKey, challenge.payload, challenge.document);
   if (!challenge.document) { challenge = { ...challenge, document }; m = await saveLinearContinuity(ctx, m, { ...m.aggregate.linearContinuity!, challenge }); }
   if (!challenge.lastEmittedAt || now - Date.parse(challenge.lastEmittedAt) >= LOST_NOTICE_RETRY_MS) {
     // Persist before emit. A lost hint is repeated with the same nonce/document/intent by the existing job.
-    challenge = { ...challenge, lastEmittedAt: new Date().toISOString() };
-    m = await saveLinearContinuity(ctx, m, { ...m.aggregate.linearContinuity!, challenge });
+    challenge = { ...challenge, lastEmittedAt: new Date().toISOString(), attempts: (challenge.attempts ?? 0) + 1 };
+    const current = m.aggregate.linearContinuity!;
+    const sent = new Set((challenge.payload.publications as Array<{ intentId: string }>).map(p => p.intentId));
+    const publications = current.mode === FIXED_CAMPAIGN_MODE ? current.publications.map(p => sent.has(p.intentId)
+      ? { ...p, reconciliationAttempts: (p.reconciliationAttempts ?? 0) + 1 } : p) : current.publications;
+    m = await saveLinearContinuity(ctx, m, { ...current, challenge, publications });
     await ctx.events.emit("linear-continuity-request", m.companyId, { protocol: LINEAR_CONTINUITY_PROTOCOL,
       companyId: m.companyId, missionId: m.missionId, nativeRootId: m.rootIssueId,
       challengeId: challenge.challengeId, requestSha256: challenge.requestSha256, request: document });
@@ -140,6 +143,23 @@ async function validatePublicationReceipts(ctx: PluginContext, m: MissionRecord,
   }
   return publications;
 }
+function matchingSourceNegotiation(state: LinearContinuityState, challenge: LinearChallenge, response: LinearContinuityResponse) {
+  if (state.mode !== FIXED_CAMPAIGN_MODE) return true;
+  return response.sourceObservationProtocol === SOURCE_OBSERVATION_PROTOCOL
+    && response.sourceInvalidationVersion === challenge.payload.sourceInvalidationVersion
+    && response.observationPurpose === challenge.payload.observationPurpose;
+}
+function matchingResponse(state: LinearContinuityState, challenge: LinearChallenge, response: LinearContinuityResponse) {
+  return matchingSourceNegotiation(state, challenge, response) && response.mode === state.mode
+    && response.nonce === challenge.nonce && response.challengeId === challenge.challengeId
+    && response.requestSha256 === challenge.requestSha256
+    && canonicalPayloadHash(response.binding) === canonicalPayloadHash(state.binding);
+}
+function responseTimingAllowed(response: LinearContinuityResponse, challenge: LinearChallenge, event: PluginEvent) {
+  const observed = Date.parse(response.observedAt), occurred = Date.parse(event.occurredAt);
+  return responseFresh(response) && observed >= Date.parse(challenge.requestedAt) && observed < Date.parse(challenge.expiresAt)
+    && Number.isFinite(occurred) && occurred >= observed && occurred <= Date.now() + 5000;
+}
 export async function handleLinearContinuityNotice(ctx: PluginContext, event: PluginEvent) {
   if (event.eventType !== LINEAR_CONTINUITY_EVENT || event.actorType !== "plugin" || event.actorId !== "ty000.linear-intake") return;
   const parsed = continuityNoticeSchema.safeParse(event.payload);
@@ -152,11 +172,7 @@ export async function handleLinearContinuityNotice(ctx: PluginContext, event: Pl
   if (Buffer.byteLength(doc.body) > 128_000) throw new MissionError(409, "linear_response_bound", "Response exceeds bounded native exchange");
   const response = continuityResponseSchema.parse(JSON.parse(doc.body));
   if (response.diagnostic && response.diagnostic.expectedSourceSha256 !== state.sourceSha256) return;
-  if (!responseFresh(response) || response.mode !== state.mode || response.nonce !== challenge.nonce
-      || response.challengeId !== challenge.challengeId || response.requestSha256 !== challenge.requestSha256
-      || canonicalPayloadHash(response.binding) !== canonicalPayloadHash(state.binding)
-      || Date.parse(response.observedAt) < Date.parse(challenge.requestedAt) || Date.parse(response.observedAt) >= Date.parse(challenge.expiresAt)
-      || !Number.isFinite(Date.parse(event.occurredAt)) || Date.parse(event.occurredAt) < Date.parse(response.observedAt) || Date.parse(event.occurredAt) > Date.now() + 5000) return;
+  if (!matchingResponse(state, challenge, response) || !responseTimingAllowed(response, challenge, event)) return;
   await readLinearProof(ctx, m, challenge.document); assertContinuityBinding(m, state.binding);
   const bodySha256 = canonicalPayloadHash(doc.body);
   if (state.observation?.bodySha256 === bodySha256) {
@@ -165,8 +181,10 @@ export async function handleLinearContinuityNotice(ctx: PluginContext, event: Pl
   }
   if (state.observation && Date.parse(state.observation.response.observedAt) > Date.parse(response.observedAt)) return;
   const publications = await validatePublicationReceipts(ctx, m, response);
-  const observed = await saveLinearContinuity(ctx, m, { ...retainSourceHold(state, response), publications,
-    observation: { reference: notice.response, response, bodySha256 } });
+  const readback = response.observationPurpose === "readback";
+  const observed = await saveLinearContinuity(ctx, m, { ...(readback ? state : retainSourceHold(state, response)), publications,
+    challenge: { ...challenge, answeredAt: response.observedAt },
+    ...(!readback ? { observation: { reference: notice.response, response, bodySha256 } } : {}) });
   await requestTerminalClaim(ctx, observed, response, bodySha256);
 }
 async function requestTerminalClaim(ctx: PluginContext, m: MissionRecord, response: import("./linear-continuity-contract.js").LinearContinuityResponse, bodySha256: string) {
@@ -176,4 +194,5 @@ async function requestTerminalClaim(ctx: PluginContext, m: MissionRecord, respon
 }
 export function registerLinearContinuity(ctx: PluginContext) {
   ctx.events.on(LINEAR_CONTINUITY_EVENT, event => handleLinearContinuityNotice(ctx, event));
+  ctx.events.on(SOURCE_INVALIDATION_EVENT, event => handleSourceInvalidation(ctx, event));
 }

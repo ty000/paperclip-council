@@ -170,3 +170,12 @@ describe("stable project task intake", () => {
     expect(f.create).toHaveBeenCalledTimes(1); expect(f.activate).not.toHaveBeenCalled(); expect(c.receipt().mission_id).toBe(first.mission_id);
   });
 });
+
+
+it.each(["linear_continuity_source_pending", "linear_continuity_publication_pending"])("does not ask the owner about an asynchronous %s exchange", async code => {
+  const c = context(); f.guard.mockRejectedValueOnce(new MissionError(409, code, "Bounded exchange pending"));
+  await reconcileProjectTasks(c.ctx);
+  expect(c.ask).not.toHaveBeenCalled(); expect(f.activate).not.toHaveBeenCalled();
+  await reconcileProjectTasks(c.ctx);
+  expect(f.activate).toHaveBeenCalledOnce(); expect(c.ask).not.toHaveBeenCalled();
+});

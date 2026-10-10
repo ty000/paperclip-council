@@ -42,6 +42,8 @@ export async function prepareLinearContinuity(ctx: PluginContext, initial: Missi
       sequence: 0, control: "running", consumed: [], publications: [], safeSettlementIds: {} } });
   }
   m = await reconcileLinearContinuity(ctx, m);
-  await assertLinearContinuityDeparture(ctx, m);
+  // Prepared campaign roots stay observable locally while waiting for members.
+  // Their next real departure checks source independently at its own boundary.
+  if (!m.aggregate.linearContinuity?.publications.some(p => p.payload.campaignPlan)) await assertLinearContinuityDeparture(ctx, m);
   return m;
 }
