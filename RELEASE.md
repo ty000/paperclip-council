@@ -5,7 +5,7 @@ remains `private.paperclip-council`, and its database namespace remains
 `private_paperclip_council`. A package rename or release must never rename either
 runtime identity.
 
-Version `0.7.44` is retained for release preparation. This document and the
+Version `0.7.45` is retained for release preparation. This document and the
 workflow do not authorize publishing it, creating a tag, or installing it on a
 target host.
 
@@ -50,7 +50,7 @@ repository's development dependencies.
 npm trusted publishing can be attached only after the package exists. For the
 first release of this package name, an authorized `@ty000` maintainer must:
 
-1. Select and record the actual release version. Do not reuse `0.7.44` merely
+1. Select and record the actual release version. Do not reuse `0.7.45` merely
    because it is the preparation version.
 2. Synchronize `package.json` and `src/manifest.ts`, run all source and package
    checks, and retain the exact `.tgz` plus its digest.

@@ -81,7 +81,7 @@ jobs:
     needs: package
     if: github.repository == 'ty000/paperclip-council' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 10
     environment: npm-release
     permissions:
       contents: read
@@ -122,13 +122,14 @@ jobs:
       - name: Publish and verify registry integrity
         shell: bash
         run: |
-          archive="release-artifacts/${{ steps.release.outputs.tarball }}"
+          archive="./release-artifacts/${{ steps.release.outputs.tarball }}"
           npm publish "$archive" --access public --tag "${{ steps.release.outputs.dist_tag }}"
           expected_integrity="sha512-$(openssl dgst -sha512 -binary "$archive" | openssl base64 -A)"
           published_integrity=""
-          for attempt in 1 2 3 4 5; do
+          # npm may accept a publish before the version is visible to readers.
+          for attempt in $(seq 1 60); do
             published_integrity="$(npm view "${{ steps.release.outputs.package_name }}@${{ steps.release.outputs.package_version }}" dist.integrity 2>/dev/null || true)"
             test -n "$published_integrity" && break
-            sleep 3
+            sleep 5
           done
           test "$published_integrity" = "$expected_integrity"
