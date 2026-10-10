@@ -121,3 +121,8 @@ export function fixedSourceFresh(state: LinearContinuityState, now = Date.now())
   return Boolean(response && responseFresh(response, now) && response.sourceObservationProtocol === SOURCE_OBSERVATION_PROTOCOL
     && response.observationPurpose !== "readback" && response.sourceInvalidationVersion === (state.sourceInvalidationVersion ?? 0));
 }
+
+/** Only these asynchronous exchanges are ordinary waiting, never a source/control hold. */
+export function isLinearContinuityPending(code: string) {
+  return code === "linear_continuity_source_pending" || code === "linear_continuity_publication_pending";
+}

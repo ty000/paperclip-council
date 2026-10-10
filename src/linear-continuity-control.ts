@@ -155,8 +155,22 @@ async function refreshDepartureSource(ctx: PluginContext, m: MissionRecord, requ
   if (!requireFreshSource || state.mode !== FIXED_CAMPAIGN_MODE || state.control !== "running" || state.controlReason) return m;
   m = await readSourceInvalidation(ctx, m);
   if (fixedSourceFresh(m.aggregate.linearContinuity!)) return m;
-  await reconcileLinearTransport(ctx, m, { requestObservation: true });
-  throw new MissionError(409, "linear_continuity_hold", "The attempted departure awaits its current source response");
+  m = await reconcileLinearTransport(ctx, m, { requestObservation: true });
+  assertLinearRunning(m.aggregate.linearContinuity!);
+  throw new MissionError(409, "linear_continuity_source_pending", "The attempted departure awaits its current authenticated source response");
+}
+function assertLinearRunning(state: LinearContinuityState) {
+  if (state.control !== "running" || state.controlReason || state.transportHold) {
+    throw new MissionError(409, "linear_continuity_hold", "Retain the current source, control or exhausted transport hold before another departure");
+  }
+}
+async function awaitPublicationReadback(ctx: PluginContext, m: MissionRecord) {
+  if (m.aggregate.linearContinuity!.mode !== FIXED_CAMPAIGN_MODE) {
+    throw new MissionError(409, "linear_continuity_hold", "Linear publication readbacks are required before new departures");
+  }
+  m = await reconcileLinearTransport(ctx, m);
+  assertLinearRunning(m.aggregate.linearContinuity!);
+  throw new MissionError(409, "linear_continuity_publication_pending", "The original bounded Linear publication exchange awaits its readback");
 }
 function cancellationPublisher(m: MissionRecord, state: LinearContinuityState, reservationId?: string) {
   return state.mode !== FIXED_CAMPAIGN_MODE && reservationId && state.control === "cancel_requested"
@@ -175,8 +189,9 @@ export async function assertLinearContinuityDeparture(ctx: PluginContext, initia
   m = await refreshDepartureSource(ctx, m, requireFreshSource);
   state = m.aggregate.linearContinuity!;
   const requireSource = state.mode !== FIXED_CAMPAIGN_MODE || requireFreshSource;
-  if (state.control !== "running" || state.controlReason || state.transportHold || requireSource && !sourceAllowsDeparture(state)
-      || state.publications.some(p => pendingLinearPublication(p) && !pendingTerminalClaim(m, p, terminalIntent))) throw new MissionError(409, "linear_continuity_hold", "Fresh compatible source, running control and Linear publication readbacks are required for new departures, merges and closure");
+  assertLinearRunning(state);
+  if (requireSource && !sourceAllowsDeparture(state)) throw new MissionError(409, "linear_continuity_hold", "Fresh compatible source is required for new departures, merges and closure");
+  if (state.publications.some(p => pendingLinearPublication(p) && !pendingTerminalClaim(m, p, terminalIntent))) await awaitPublicationReadback(ctx, m);
   if (state.observation) await readLinearProof(ctx, m, state.observation.reference);
   for (const publication of state.publications) if (publication.acknowledgement) await readLinearProof(ctx, m, publication.acknowledgement.reference);
 }

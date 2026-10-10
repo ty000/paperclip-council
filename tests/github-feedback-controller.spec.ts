@@ -232,7 +232,7 @@ it("reads delayed GitHub checks with local gates while reserving fresh source fo
   const next = await reconcileControllerGithubFeedback(ctx, f.mission, job);
   expect(inspectN5(next)).toMatchObject({ publicationReady: true });
   expect(emit).not.toHaveBeenCalled();
-  await expect(assertLinearContinuityDeparture(ctx, next)).rejects.toMatchObject({ code: "linear_continuity_hold" });
+  await expect(assertLinearContinuityDeparture(ctx, next)).rejects.toMatchObject({ code: "linear_continuity_source_pending" });
   expect(emit).toHaveBeenCalledOnce();
   expect(f.mission.aggregate.linearContinuity!.challenge!.payload.observationPurpose).toBe("action");
 });

@@ -1,3 +1,4 @@
+import { isLinearContinuityPending } from "./linear-continuity-contract.js";
 import { repositoryIntakeHeld } from "./project-intake-recovery.js";
 import { prepareLinearContinuity } from "./linear-continuity-intake.js";
 import { isIntegratedLeaf, assertPreviousDelivery } from "./delivery-leaves.js";
@@ -267,7 +268,7 @@ async function advance(ctx: PluginContext, initial: Intake, latest: ProjectManda
   try {
     await advancePinned(ctx, intake, latest, policy, issues);
   } catch (error) {
-    if (error instanceof MissionError && ["linear_source_pending", "linear_continuity_hold"].includes(error.code)) return;
+    if (error instanceof MissionError && (["linear_source_pending", "linear_continuity_hold"].includes(error.code) || isLinearContinuityPending(error.code))) return;
     // Preparation can persist campaign closure before repository release loses
     // its version check. The driver rereads that release; a closed task needs no question.
     if (error instanceof MissionError && error.code === "repository_release_pending" && await closedCampaignIntake(ctx, intake)) return;

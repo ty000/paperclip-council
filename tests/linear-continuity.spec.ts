@@ -12,14 +12,16 @@ import { ensureLinearContextGuidance } from "../src/linear-context-guidance.js";
 import { FIXED_CAMPAIGN_MODE, TERMINAL_PUBLICATION_PROTOCOL } from "../src/linear-continuity-contract.js";
 import { handleLinearContinuityBoard, reconcileLinearContinuity } from "../src/linear-continuity-runtime.js";
 import { handleSourceInvalidation } from "../src/linear-source-invalidation.js";
-import { advanceContinuity } from "../src/continuity-runtime.js";
+import { advanceContinuity, registerContinuityJob } from "../src/continuity-runtime.js";
+import { readContinuityObservation } from "../src/continuity-observation.js";
 import { repositoryResumptionPublication } from "../src/repository-resumption-publication.js";
 
-const f = vi.hoisted(() => ({ m: null as any, bindings: [] as any[], reservations: [] as any[], runStatus: "running", emitted: [] as any[], launch: vi.fn(), settlement: vi.fn(), terminalClaim: vi.fn(), docs: new Map<string, any>(), issues: new Map<string, any>() }));
-vi.mock("../src/missions.js", async original => ({ ...await original(), getMission: async (_c: any, companyId: string, id: string) => f.m?.companyId === companyId && f.m?.missionId === id ? structuredClone(f.m) : null }));
+const f = vi.hoisted(() => ({ m: null as any, member: null as any, departure: vi.fn(), review: vi.fn(), bindings: [] as any[], reservations: [] as any[], runStatus: "running", emitted: [] as any[], launch: vi.fn(), settlement: vi.fn(), terminalClaim: vi.fn(), docs: new Map<string, any>(), issues: new Map<string, any>() }));
+vi.mock("../src/missions.js", async original => ({ ...await original(), getMission: async (_c: any, companyId: string, id: string) => f.m?.companyId === companyId && f.m?.missionId === id ? structuredClone(f.m) : f.member?.companyId === companyId && f.member?.missionId === id ? structuredClone(f.member) : null }));
 vi.mock("../src/n2-missions.js", async original => ({ ...await original(), n2Cas: async (_c: any, m: any, aggregate: any) => {
-  if (m.version !== f.m.version) throw new Error("CAS conflict");
-  f.m = { ...m, version: m.version + 1, aggregate }; return structuredClone(f.m);
+  const key = m.missionId === f.member?.missionId ? "member" : "m";
+  if (m.version !== f[key].version) throw new Error("CAS conflict");
+  f[key] = { ...m, version: m.version + 1, aggregate }; return structuredClone(f[key]);
 }, n2CommandCas: async (_c: any, m: any, body: any, _type: string, actorId: string, aggregate: any) => {
   if (body.expectedVersion !== m.version) throw new Error("CAS conflict");
   const receipt = { commandId: body.commandId, actorId, payloadHash: canonicalPayloadHash(body) };
@@ -32,7 +34,8 @@ vi.mock("../src/g4-native.js", () => ({ readOrdinaryRun: async () => ({ status: 
 vi.mock("../src/n5-runtime.js", () => ({ bindPublisher: async (_ctx: any, m: any, input: any) => {
   if (input.actor.agentId !== "publisher" || input.actor.runId !== m.aggregate.n5.publication.runId) throw new Error("foreign publisher"); return m;
 }, resumeN5Creation: (...args: any[]) => f.launch(...args) }));
-vi.mock("../src/project-mandate-guard.js", () => ({ assertProjectDeparture: async () => {} }));
+vi.mock("../src/project-mandate-guard.js", () => ({ assertProjectDeparture: (...args: any[]) => f.departure(...args) }));
+vi.mock("../src/n2-ordinary-runtime.js", async original => ({ ...await original(), executeOrdinaryN2Board: (...args: any[]) => f.review(...args) }));
 
 vi.mock("../src/linear-terminal-publication.js", () => ({ claimTerminalPublication: (...args: any[]) => f.terminalClaim(...args) }));
 
@@ -50,7 +53,7 @@ function proof(key: string, body: any) {
   f.docs.set(key, doc); return { key, documentId: doc.id, revisionId: doc.latestRevisionId, bodySha256: canonicalPayloadHash(doc.body) };
 }
 beforeEach(() => {
-  vi.resetAllMocks(); f.docs.clear(); f.issues.clear(); f.emitted = []; f.bindings = []; f.reservations = []; f.runStatus = "running";
+  vi.resetAllMocks(); f.member = null; f.departure.mockResolvedValue(undefined); f.docs.clear(); f.issues.clear(); f.emitted = []; f.bindings = []; f.reservations = []; f.runStatus = "running";
   const companyId = randomUUID(), projectId = randomUUID(), missionId = randomUUID(), rootIssueId = randomUUID();
   const subject = { companyId, targetProjectId: projectId, nativeRootId: rootIssueId, intakeId: `linear-intake-${digest("a")}`,
     activationId: randomUUID(), configurationFingerprint: digest("b"), requestVersion: 1, readinessDocumentId: randomUUID(), readinessRevisionId: randomUUID(), readinessSha256: digest("c"), sourceSha256: digest("d"), planSha256: digest("e") };
@@ -159,7 +162,7 @@ it("suppresses a duplicate fixed running request while its current response is f
     vi.setSystemTime(started + 101_000); await reconcileLinearTransport(ctx, structuredClone(f.m));
     expect(f.emitted).toHaveLength(1);
     expect(f.m.aggregate.linearContinuity.challenge.challengeId).toBe(challengeId);
-    await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_hold" });
+    await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_source_pending" });
   } finally { vi.useRealTimers(); }
 });
 it("publishes new control decisions and the terminal grant without polling bare control changes", async () => {
@@ -341,11 +344,11 @@ it.each([undefined, FIXED_CAMPAIGN_MODE])("pins project opt-in (%s) before admis
     externalBlockers: [], importStatus: "prepared", admissionAllowed: false, implementationStarted: false, receivingContract: "unqualified", requiresCurrentSourceAndMandateRevalidation: true };
   f.docs.set("linear-intake-readiness-v1", { id: subject.readinessDocumentId, latestRevisionId: subject.readinessRevisionId, body: JSON.stringify(readiness) });
   const policy = { authorizedBy: "owner", content: { linearContinuity: { protocol: LINEAR_CONTINUITY_PROTOCOL, ...(mode ? { mode } : {}) } } } as any;
-  await expect(prepareLinearContinuity(ctx, f.m, policy)).rejects.toMatchObject({ code: "linear_continuity_hold" });
+  await expect(prepareLinearContinuity(ctx, f.m, policy)).rejects.toMatchObject({ code: mode ? "linear_continuity_source_pending" : "linear_continuity_hold" });
   expect(f.m.aggregate.phase).toBe("draft"); expect(f.m.aggregate.n1).toBeUndefined(); expect(f.reservations).toEqual([]);
   const challenge = f.m.aggregate.linearContinuity.challenge.challengeId, intent = f.m.aggregate.linearContinuity.publications[0].intentId;
   expect(f.m.aggregate.linearContinuity.binding).toMatchObject({ campaignId: mode ? f.m.missionId : subject.activationId, sourceRootId });
-  await expect(prepareLinearContinuity(ctx, structuredClone(f.m), policy)).rejects.toMatchObject({ code: "linear_continuity_hold" });
+  await expect(prepareLinearContinuity(ctx, structuredClone(f.m), policy)).rejects.toMatchObject({ code: mode ? "linear_continuity_source_pending" : "linear_continuity_hold" });
   expect(f.m.aggregate.linearContinuity.challenge.challengeId).toBe(challenge);
   expect(f.m.aggregate.linearContinuity.publications[0].intentId).toBe(intent);
   expect(parseLinearContinuityPolicy(undefined, null)).toBeUndefined();
@@ -432,7 +435,7 @@ it("retains the resumed campaign plan until its exact publication receipt is rea
   await queueLinearPublication(ctx, f.m, "progress", content);
   await reconcileLinearTransport(ctx, f.m); await fixedAnswer();
   const publication = structuredClone(f.m.aggregate.linearContinuity.publications[0]);
-  await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_hold" });
+  await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_publication_pending" });
   await queueLinearPublication(ctx, f.m, "progress", content); await reconcileLinearTransport(ctx, f.m);
   expect(f.m.aggregate.linearContinuity.publications).toEqual([publication]);
   const receipt = proof("recovery-plan-readback", { protocol: "linear-publication-readback-v1", bindingSha256: canonicalPayloadHash(f.m.aggregate.linearContinuity.binding),
@@ -482,7 +485,7 @@ it.each(["draft", "executing", "reviewing", "accepted"])("native pause/resume pr
   expect(f.m.aggregate.phase).toBe(phase); expect(f.m.missionId).toBe(originalId);
   expect(f.m.aggregate.mandate).toEqual(originalMandate); expect(f.reservations).toEqual([]);
   expect(f.m.aggregate.linearContinuity.control).toBe("running");
-  await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_hold" });
+  await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_source_pending" });
   await fixedAnswer(); confirmPublications(); await expect(assertLinearContinuityDeparture(ctx, f.m)).resolves.toBeUndefined();
 });
 it("native commands require the current owner, original command payload and nonterminal campaign", async () => {
@@ -570,7 +573,7 @@ it("retains an intake source hold even if its first unavailable reply was lost a
   await handleLinearContinuityNotice(ctx, event as any);
   expect(f.m.version).toBe(resumedVersion);
   expect(f.m.aggregate.linearContinuity.controlDiagnostic).toBeUndefined();
-  await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_hold" });
+  await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_source_pending" });
   await fixedAnswer(); confirmPublications();
   await handleLinearContinuityNotice(ctx, event as any);
   expect(f.m.aggregate.linearContinuity.control).toBe("running");
@@ -623,7 +626,7 @@ it("recovers a lost native invalidation hint, coalesces duplicates, and never cl
   await fixedAnswer();
   expect(f.m.aggregate.linearContinuity.sourceInvalidationVersion).toBe(4);
   expect(f.m.aggregate.linearContinuity.observation.response.sourceInvalidationVersion).toBe(3);
-  await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_hold" });
+  await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_source_pending" });
   expect(f.m.aggregate.linearContinuity.challenge.payload.sourceInvalidationVersion).toBe(4);
   await fixedAnswer(); await assertLinearContinuityDeparture(ctx, f.m);
   const after = f.emitted.length;
@@ -682,7 +685,7 @@ it("does not re-emit an old fixed protocol request on idle after upgrade; an act
   await answer(); const old = structuredClone(f.m.aggregate.linearContinuity.challenge);
   fixedCampaign(); const count = f.emitted.length;
   await reconcileLinearTransport(ctx, f.m); expect(f.emitted).toHaveLength(count);
-  await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_hold" });
+  await expect(assertLinearContinuityDeparture(ctx, f.m)).rejects.toMatchObject({ code: "linear_continuity_source_pending" });
   expect(f.m.aggregate.linearContinuity.challenge.challengeId).not.toBe(old.challengeId);
   const result = await fixedAnswer({ sourceObservationProtocol: undefined, sourceInvalidationVersion: undefined, observationPurpose: undefined,
     capabilities: ["fixed-source", "publication-readback", "terminal-publication-claim"] });
@@ -704,4 +707,73 @@ it("advanceContinuity keeps a campaign waiting for admitted native work silent a
     }
     expect(f.emitted).toHaveLength(count); expect(f.launch).not.toHaveBeenCalled(); expect(f.settlement).not.toHaveBeenCalled();
   } finally { vi.useRealTimers(); }
+});
+
+
+function reviewMemberJob() {
+  f.member = { ...structuredClone(f.m), missionId: randomUUID(), rootIssueId: randomUUID() };
+  delete f.member.aggregate.linearContinuity;
+  f.member.aggregate.repositoryCampaign = { campaignRootMissionId: f.m.missionId };
+  f.member.aggregate.phase = "ready_for_review"; f.member.aggregate.control = { status: "active" };
+  f.member.aggregate.journal = [];
+  f.member.aggregate.continuity = { protocol: "council-continuity-v1", enabled: true, authorizedBy: "owner",
+    mandateHash: canonicalPayloadHash(f.member.aggregate.mandate), deadline: new Date(Date.now() + 3_600_000).toISOString(),
+    authorizedAt: new Date().toISOString(), n3Slots: [], commands: {} };
+  f.departure.mockImplementation(async context => assertLinearContinuityDeparture(context, f.m));
+  let handler: (job: any) => Promise<void>, stored: any = null;
+  const context = { ...ctx, state: { get: async () => structuredClone(stored), set: async (_scope: unknown, state: any) => { stored = structuredClone(state); } },
+    jobs: { register: (_key: string, run: typeof handler) => { handler = run; } } };
+  registerContinuityJob(context, async () => [structuredClone(f.member)]);
+  return { run: () => handler({ runId: "local-job", jobKey: "mission-continuity" }),
+    observation: async () => (await readContinuityObservation(context, f.member))!.observation };
+}
+it("the registered native job waits for an expired source refresh then starts review after its authenticated response", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    fixedCampaign(); await fixedAnswer(); vi.setSystemTime(Date.now() + 121_000);
+    const job = reviewMemberJob();
+    await job.run();
+    expect(await job.observation()).toMatchObject({ state: "waiting", code: "linear_continuity_source_pending" });
+    expect(f.review).not.toHaveBeenCalled();
+    await fixedAnswer(); await job.run();
+    expect(await job.observation()).toMatchObject({ state: "progressed", code: "start-review" });
+    expect(f.review).toHaveBeenCalledOnce();
+  } finally { vi.useRealTimers(); }
+});
+it("the registered native job waits for an original publication readback then progresses without an owner decision", async () => {
+  fixedCampaign(); await fixedAnswer();
+  await queueLinearPublication(ctx, f.m, "progress", { realEffect: "original-progress" });
+  const job = reviewMemberJob(); await job.run();
+  expect(await job.observation()).toMatchObject({ state: "waiting", code: "linear_continuity_publication_pending" });
+  expect(f.review).not.toHaveBeenCalled();
+  const publication = f.m.aggregate.linearContinuity.publications[0];
+  const receipt = proof("native-job-publication-receipt", { protocol: "linear-publication-readback-v1", intentId: publication.intentId,
+    payloadSha256: publication.payloadSha256, sourceSha256: publication.payload.sourceSha256,
+    bindingSha256: canonicalPayloadHash(f.m.aggregate.linearContinuity.binding), status: "confirmed",
+    effects: [{ sourceId: f.m.aggregate.linearContinuity.binding.sourceRootId, readbackSha256: digest("b") }] });
+  await fixedAnswer({ acknowledgements: [{ intentId: publication.intentId, payloadSha256: publication.payloadSha256,
+    status: "confirmed", publicationReceipt: receipt }] });
+  await job.run(); expect(await job.observation()).toMatchObject({ state: "progressed", code: "start-review" });
+});
+it.each(["source", "publication"])("the registered native job blocks when bounded %s retries are exhausted", async kind => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    fixedCampaign(); await fixedAnswer();
+    if (kind === "source") vi.setSystemTime(Date.now() + 121_000);
+    else await queueLinearPublication(ctx, f.m, "progress", { realEffect: "original-progress" });
+    const started = Date.now(), job = reviewMemberJob();
+    for (const elapsed of [0, 31_000, 62_000]) {
+      vi.setSystemTime(started + elapsed); await job.run(); expect((await job.observation()).state).toBe("waiting");
+    }
+    vi.setSystemTime(started + 93_000); await job.run();
+    expect(await job.observation()).toMatchObject({ state: "blocked", code: "linear_continuity_hold" });
+    expect(f.m.aggregate.linearContinuity.transportHold).toBeDefined(); expect(f.review).not.toHaveBeenCalled();
+    const emitted = f.emitted.length; vi.setSystemTime(started + 300_000); await job.run(); expect(f.emitted).toHaveLength(emitted);
+  } finally { vi.useRealTimers(); }
+});
+it.each(["unavailable", "changed"])("the registered native job keeps a real %s source hold blocked", async kind => {
+  fixedCampaign(); await fixedAnswer(kind === "unavailable" ? { availability: "unavailable" } : { sourceSha256: digest("f") });
+  const job = reviewMemberJob(); await job.run();
+  expect(await job.observation()).toMatchObject({ state: "blocked", code: "linear_continuity_hold" });
+  expect(f.review).not.toHaveBeenCalled();
 });

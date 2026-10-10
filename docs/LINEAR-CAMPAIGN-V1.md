@@ -121,6 +121,11 @@ covering an older generation cannot authorize a departure. `readback` may confir
 only original claimed publication effects and receipts: it performs no complete
 source read, creates no new external effect, and never renews Council's source
 clock. Mixed peers without this positive negotiation fail closed at departure.
+A bounded exchange in progress reports `linear_continuity_source_pending` or
+`linear_continuity_publication_pending` as native **waiting**. Its authenticated
+response/readback lets the next scheduled tick continue automatically. Actual
+source/control holds and exhausted retry limits retain their blocked result;
+an asynchronous refresh alone never asks the owner to approve continuation.
 
 Each unresolved challenge receives at most three emitted attempts, at least
 thirty seconds apart. Each publication keeps its own cumulative attempt count;

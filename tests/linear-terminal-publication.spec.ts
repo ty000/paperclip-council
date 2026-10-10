@@ -151,7 +151,7 @@ it.each(["protocol", "foreign intent", "mutated payload", "stale subject", "miss
 });
 
 it("a narrow terminal allowance cannot waive any other pending publication or authorize ordinary work", async () => {
-  await expect(assertLinearContinuityDeparture(ctx, m())).rejects.toMatchObject({ code: "linear_continuity_hold" });
+  await expect(assertLinearContinuityDeparture(ctx, m())).rejects.toMatchObject({ code: "linear_continuity_publication_pending" });
   await expect(assertLinearContinuityDeparture(ctx, m(), undefined, request())).resolves.toBeUndefined();
   await expect(assertLinearContinuityDeparture(ctx, m(), undefined, { ...request(), intentId: randomUUID() })).rejects.toThrow();
   f.mission!.aggregate.repositoryCampaign = { campaignRootMissionId: randomUUID() };

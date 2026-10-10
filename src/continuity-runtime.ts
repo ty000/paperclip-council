@@ -1,3 +1,4 @@
+import { isLinearContinuityPending } from "./linear-continuity-contract.js";
 import { completionPolicy } from "./completion-contract.js";
 import { reconcileCompletion } from "./completion-runtime.js";
 import { reconcilePublicationFeedback } from "./pr-feedback-runtime.js";
@@ -159,6 +160,14 @@ export async function advanceContinuity(ctx: PluginContext, initial: MissionReco
   return advanceReview(ctx, m, job);
 }
 
+function continuityFailureObservation(code: string): Observation {
+  if (isLinearContinuityPending(code)) return waiting(code,
+    "Council attend la réponse authentifiée ou le readback de l’intention Linear conservée, puis poursuit automatiquement les actions autorisées.");
+  if (["g4_usage_unavailable", "g4_run_not_terminal", "ordinary_run_not_terminal"].includes(code)) return waiting(code,
+    "Council conserve la réservation et attend une lecture native concluante du coût terminal.");
+  return { state: "blocked", code, nextAction: "Une décision du propriétaire est requise sur l'état conservé. Council n'autorise aucune répétition incertaine." };
+}
+
 export function registerContinuityJob(ctx: PluginContext, list: () => Promise<MissionRecord[]>) {
   ctx.jobs.register(CONTINUITY_JOB_KEY, async job => {
     let intakeFailure: string | null = null;
@@ -170,9 +179,7 @@ export function registerContinuityJob(ctx: PluginContext, list: () => Promise<Mi
       try { observation = await advanceContinuity(ctx, m, job); }
       catch (error) {
         const code = error && typeof error === "object" && "code" in error ? String(error.code) : "continuity_observation_failed";
-        observation = ["g4_usage_unavailable", "g4_run_not_terminal", "ordinary_run_not_terminal"].includes(code)
-          ? waiting(code, "Council conserve la réservation et attend une lecture native concluante du coût terminal.")
-          : { state: "blocked", code, nextAction: "Une décision du propriétaire est requise sur l'état conservé. Council n'autorise aucune répétition incertaine." };
+        observation = continuityFailureObservation(code);
       }
       try { await publishContinuityObservation(ctx, m, observation); }
       catch (error) { unavailable.push({ missionId: m.missionId, code: error instanceof MissionError ? error.code : "native_status_transport_unavailable" }); }
